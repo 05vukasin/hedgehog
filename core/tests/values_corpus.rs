@@ -2,7 +2,8 @@
 //!
 //! Run with:
 //!   HEDGEHOG_DATA=/path/to/testdata cargo test -p hh_core --test values_corpus -- --ignored --nocapture
-//! Optional: HH_CORPUS_SAMPLE (Enron files, default 500), HH_CORPUS_MAX_MB (skip larger files, default 8).
+//! Optional: HH_CORPUS_SAMPLE (Enron files, default 500), HH_CORPUS_MAX_MB (skip larger files, default 8),
+//! HH_CORPUS_CSV_ROWS (rows read per CSV, default 20000).
 //!
 //! Corpus files are untrusted: they are only read through the workbook reader.
 
@@ -12,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use hh_core::values::{self, missing_token, parse_date, parse_number};
-use hh_core::{open, Features, Grid, Value};
+use hh_core::{open, Cell, Features, Grid, Sheet, Value};
 
 fn data_dir() -> PathBuf {
     std::env::var_os("HEDGEHOG_DATA")
@@ -82,6 +83,7 @@ struct Stats {
     text_cells: usize,
     numeric_text: usize,
     date_text: usize,
+    time_text: usize,
     missing: usize,
     with_currency: usize,
     with_unit: usize,
@@ -106,6 +108,12 @@ fn run_file(path: &Path, st: &mut Stats, max_bytes: u64) {
         }
     };
     for sheet in &wb.sheets {
+        run_sheet(path, sheet, st);
+    }
+}
+
+fn run_sheet(path: &Path, sheet: &Sheet, st: &mut Stats) {
+    {
         st.sheets += 1;
         st.cells += sheet.cells.len();
         let t0 = Instant::now();
@@ -119,9 +127,10 @@ fn run_file(path: &Path, st: &mut Stats, max_bytes: u64) {
         let Ok((hints, f)) = res else {
             st.panics += 1;
             eprintln!("PANIC in values::compute: {} / {}", path.display(), sheet.name);
-            continue;
+            return;
         };
         let num = f.get("v_numeric_text").unwrap();
+        let time = f.get("v_time_text").unwrap();
         let date = f.get("v_date_text").unwrap();
         for (i, c) in sheet.cells.iter().enumerate() {
             let Some(Value::Text(s)) = &c.value else { continue };
@@ -141,6 +150,10 @@ fn run_file(path: &Path, st: &mut Stats, max_bytes: u64) {
                 st.date_text += 1;
                 continue;
             }
+            if time[i] == 1.0 {
+                st.time_text += 1;
+                continue;
+            }
             if missing_token(s).is_some() {
                 st.missing += 1;
                 continue;
@@ -154,6 +167,61 @@ fn run_file(path: &Path, st: &mut Stats, max_bytes: u64) {
     }
 }
 
+/// Minimal CSV reader for the corpus check: delimiter guessed from the header line (`;`, tab or
+/// `,`), double-quote aware, first `max_rows` lines only. Every field becomes a text cell — which
+/// is exactly how numbers and dates arrive from CSV exports.
+fn csv_sheet(path: &Path, max_rows: usize) -> Option<Sheet> {
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(path).ok()?;
+    let mut lines = BufReader::new(file).lines();
+    let header = lines.next()?.ok()?;
+    let delim = [';', '\t', ','].into_iter().max_by_key(|d| header.matches(*d).count())?;
+    let mut cells = Vec::new();
+    for (row, line) in std::iter::once(Ok(header)).chain(lines).take(max_rows).enumerate() {
+        let Ok(line) = line else { break };
+        let mut field = String::new();
+        let mut col = 0u32;
+        let mut quoted = false;
+        let mut push = |field: &mut String, col: &mut u32| {
+            if !field.trim().is_empty() {
+                cells.push(Cell { row: row as u32, col: *col, value: Some(Value::Text(std::mem::take(field))), formula: None });
+            }
+            field.clear();
+            *col += 1;
+        };
+        let mut chars = line.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '"' if quoted && chars.peek() == Some(&'"') => {
+                    field.push('"');
+                    chars.next();
+                }
+                '"' => quoted = !quoted,
+                c if c == delim && !quoted => push(&mut field, &mut col),
+                c => field.push(c),
+            }
+        }
+        push(&mut field, &mut col);
+    }
+    Some(Sheet { name: path.file_name()?.to_string_lossy().into_owned(), cells, merges: Vec::new() })
+}
+
+fn csv_files(dir: &Path) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("csv"))).collect())
+        .unwrap_or_default();
+    out.sort();
+    out
+}
+
+fn run_csv(path: &Path, st: &mut Stats, max_rows: usize) {
+    st.files += 1;
+    match csv_sheet(path, max_rows) {
+        Some(sheet) => run_sheet(path, &sheet, st),
+        None => st.read_errors += 1,
+    }
+}
+
 fn report(name: &str, st: &Stats) {
     let pct = |a: usize| if st.text_cells == 0 { 0.0 } else { 100.0 * a as f64 / st.text_cells as f64 };
     println!("== {name}");
@@ -162,12 +230,14 @@ fn report(name: &str, st: &Stats) {
         st.files, st.read_errors, st.skipped_large, st.sheets, st.cells, st.millis_compute, st.panics
     );
     println!(
-        "text cells {}: numeric_text {} ({:.2}%), date_text {} ({:.2}%), missing tokens {} ({:.2}%), unparsed number-looking {} ({:.2}%)",
+        "text cells {}: numeric_text {} ({:.2}%), date_text {} ({:.2}%), time_text {} ({:.2}%), missing tokens {} ({:.2}%), unparsed number-looking {} ({:.2}%)",
         st.text_cells,
         st.numeric_text,
         pct(st.numeric_text),
         st.date_text,
         pct(st.date_text),
+        st.time_text,
+        pct(st.time_text),
         st.missing,
         pct(st.missing),
         st.unparsed_number_looking,
@@ -208,7 +278,31 @@ fn corpus_values() {
             run_file(&p, &mut sr, max_bytes);
         }
     }
-    report("serbian (serbia_data_gov_rs + data_gov_rs)", &sr);
+    report("serbian workbooks (serbia_data_gov_rs + data_gov_rs)", &sr);
     total_panics += sr.panics;
+
+    let max_rows = env_num("HH_CORPUS_CSV_ROWS", 20_000);
+    let mut uk = Stats::default();
+    for p in spreadsheet_files(&data.join("irregular/uk_ons")) {
+        run_file(&p, &mut uk, max_bytes);
+    }
+    report("UK workbooks (uk_ons)", &uk);
+    total_panics += uk.panics;
+
+    let mut intl = Stats::default();
+    for dir in ["owid", "datasets_org", "fivethirtyeight", "plotly_datasets", "vega_datasets"] {
+        for p in csv_files(&data.join("clean").join(dir)) {
+            run_csv(&p, &mut intl, max_rows);
+        }
+    }
+    report(&format!("international CSV (clean/owid, datasets_org, fivethirtyeight, plotly, vega; ≤{max_rows} rows each)"), &intl);
+    total_panics += intl.panics;
+
+    let mut srcsv = Stats::default();
+    for p in csv_files(&data.join("clean/data_gov_rs")) {
+        run_csv(&p, &mut srcsv, max_rows);
+    }
+    report("Serbian CSV (clean/data_gov_rs)", &srcsv);
+    total_panics += srcsv.panics;
     assert_eq!(total_panics, 0, "values::compute panicked");
 }

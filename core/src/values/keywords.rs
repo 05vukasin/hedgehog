@@ -1,18 +1,40 @@
-//! Keyword cues for row roles: totals (R1–R3), notes/sources (L7), enumerated labels (H5).
+//! Keyword cues (en, sr/hr/bs/sl, de, fr, es, it, nl, pt, pl) for row roles: totals (R1–R3), notes/sources (L7), enumerated labels (H5).
 //! Matching is on whole words of [`norm_key`], so Cyrillic and diacritic variants match too.
 
 use super::text::{norm_key, trim};
 
+/// Total keywords: en, sr/hr/bs/sl, de, fr, es, it, nl, pt, pl, nordic (diacritics folded).
 const TOTAL_WORDS: &[&str] = &[
-    "total", "totals", "subtotal", "subtotals", "grandtotal", "sum", "summe", "gesamt", "insgesamt", "ukupno",
-    "ukupna", "ukupan", "ukupni", "ukupne", "sveukupno", "svega", "zbir", "zbirno", "medjuzbir", "sigma", "σ",
-    "tot", "ttl", "all",
+    // en
+    "total", "totals", "subtotal", "subtotals", "grandtotal", "sum", "tot", "ttl", "all",
+    // sr / hr / bs / sl
+    "ukupno", "ukupna", "ukupan", "ukupni", "ukupne", "sveukupno", "svega", "zbir", "zbirno", "medjuzbir", "skupaj", "skupno",
+    // de
+    "summe", "gesamt", "insgesamt", "gesamtsumme", "zwischensumme", "endsumme", "gesamtbetrag", "zusammen",
+    // fr / es / it / pt
+    "somme", "totaux", "suma", "sumas", "totales", "totale", "totali", "subtotale", "soma",
+    // nl / nordic / pl
+    "totaal", "subtotaal", "som", "totalt", "razem", "ogolem", "lacznie",
+    "sigma", "σ",
 ];
 
+/// Note / source keywords in the same languages.
 const NOTE_WORDS: &[&str] = &[
-    "note", "notes", "nb", "source", "sources", "napomena", "napomene", "nap", "izvor", "izvori", "fusnota",
-    "fusnote", "footnote", "footnotes", "remark", "remarks", "comment", "comments", "komentar", "primedba",
-    "primedbe", "objasnjenje", "legend", "legenda", "disclaimer", "pojasnjenje",
+    // en
+    "note", "notes", "nb", "source", "sources", "footnote", "footnotes", "remark", "remarks", "comment", "comments",
+    "legend", "disclaimer",
+    // sr / hr / bs / sl
+    "napomena", "napomene", "nap", "izvor", "izvori", "fusnota", "fusnote", "komentar", "primedba", "primedbe",
+    "objasnjenje", "legenda", "pojasnjenje", "opomba", "opombe", "vir", "viri",
+    // de
+    "anmerkung", "anmerkungen", "hinweis", "hinweise", "quelle", "quellen", "fussnote", "fussnoten", "erlauterung",
+    "erlauterungen", "bemerkung", "bemerkungen",
+    // fr / es / it / pt
+    "remarque", "remarques", "avertissement", "nota", "notas", "fuente", "fuentes", "observacion", "observaciones",
+    "aclaracion", "aclaraciones", "fonte", "fontes", "fonti", "osservazioni", "avvertenza", "observacao",
+    "observacoes",
+    // nl / pl
+    "bron", "bronnen", "opmerking", "opmerkingen", "toelichting", "zrodlo", "zrodla", "uwaga", "uwagi", "przypis",
 ];
 
 fn words(key: &str) -> impl Iterator<Item = &str> {
@@ -33,7 +55,8 @@ pub fn total_score(s: &str) -> f32 {
     let key = norm_key(t);
     let mut ws = words(&key);
     let Some(first) = ws.next() else { return 0.0 };
-    let first_word = if first == "sub" || first == "grand" { ws.next().unwrap_or("") } else { first };
+    // "Sub-total", "Grand total", "sous-total", "gran total".
+    let first_word = if matches!(first, "sub" | "grand" | "sous" | "gran") { ws.next().unwrap_or("") } else { first };
     if TOTAL_WORDS.contains(&first_word) && (first_word != "all" || key.len() < 30) {
         return 1.0;
     }
@@ -150,6 +173,24 @@ mod tests {
         }
         for s in ["Notebook", "Beograd", "*", "", "Total", "Sources of revenue are listed".replace("Sources", "Many").as_str()] {
             assert!(!is_note(s), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn european_keywords() {
+        for s in [
+            "Gesamt", "Summe", "Insgesamt", "Zwischensumme", "Totaal", "Totale", "Totali", "Suma", "Somme", "Total général",
+            "Sous-total", "Gran total", "Razem", "Ogółem", "Łącznie", "Skupaj", "Totalt", "Soma",
+        ] {
+            assert_eq!(total_score(s), 1.0, "{s:?}");
+        }
+        assert_eq!(total_score("Umsatz gesamt"), 0.5);
+        assert_eq!(total_score("Montant total"), 0.5);
+        for s in [
+            "Anmerkung: vorläufig", "Quelle: Destatis", "Hinweis", "Remarque : provisoire", "Source : INSEE", "Nota: datos",
+            "Fuente: INE", "Fonte: ISTAT", "Bron: CBS", "Opmerking", "Źródło: GUS", "Uwaga", "Observação", "Fußnote 1",
+        ] {
+            assert!(is_note(s), "{s:?}");
         }
     }
 
