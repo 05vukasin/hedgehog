@@ -330,6 +330,12 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     if width < MIN_TABLE_COLS {
         return false;
     }
+    // Without a header, a narrow or short block is a key/value list or stray numbers, not a table.
+    if seg.header == 0
+        && (width < HEADERLESS_MIN_COLS || (seg.end - seg.start) < HEADERLESS_MIN_ROWS)
+    {
+        return false;
+    }
     let area = (rect.bottom - rect.top + 1) as f64 * width as f64;
     let filled: f64 = trows
         .iter()

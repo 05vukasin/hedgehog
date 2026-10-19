@@ -25,6 +25,9 @@ pub const LABEL_COL_TEXT_FRAC: f32 = 0.5;
 /// Minimum rows (header + body) and columns for a region to be a table.
 pub const MIN_TABLE_ROWS: usize = 2;
 pub const MIN_TABLE_COLS: u32 = 2;
+/// Tables without a header need at least this many columns and rows.
+pub const HEADERLESS_MIN_COLS: u32 = 3;
+pub const HEADERLESS_MIN_ROWS: usize = 3;
 /// Minimum filled share of the table rectangle.
 pub const MIN_TABLE_DENSITY: f32 = 0.2;
 /// Two-column blocks whose first column is mostly `Label:` text are forms, not tables (L12).
