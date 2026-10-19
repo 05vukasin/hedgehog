@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{Cursor, Read, Seek, Write};
+use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::path::Path;
 
 use calamine::{
@@ -33,9 +33,74 @@ fn err(e: impl fmt::Display) -> Error {
     Error(e.to_string())
 }
 
+/// File format from the file's content, not its name (`.xls` files that are really xlsx are
+/// common in open-data portals). `None`: unknown, let calamine go by the extension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Format {
+    Xls,
+    Xlsx,
+    Xlsb,
+    Ods,
+}
+
+fn sniff(path: &Path) -> Option<Format> {
+    let mut f = File::open(path).ok()?;
+    let mut magic = [0u8; 4];
+    f.read_exact(&mut magic).ok()?;
+    match magic {
+        [0xD0, 0xCF, 0x11, 0xE0] => Some(Format::Xls),
+        [b'P', b'K', 3, 4] => {
+            f.rewind().ok()?;
+            let mut zip = zip::ZipArchive::new(std::io::BufReader::new(f)).ok()?;
+            // ODF: a `mimetype` entry (normally stored, sometimes deflated) names the type.
+            if let Ok(mut m) = zip.by_name("mimetype") {
+                let mut t = String::new();
+                m.by_ref().take(256).read_to_string(&mut t).ok()?;
+                return t.trim().starts_with("application/vnd.oasis.opendocument.spreadsheet").then_some(Format::Ods);
+            }
+            if zip.index_for_name("xl/workbook.bin").is_some() {
+                return Some(Format::Xlsb);
+            }
+            if zip.index_for_name("xl/workbook.xml").is_some() {
+                return Some(Format::Xlsx);
+            }
+            let mut ct = String::new();
+            zip.by_name("[Content_Types].xml").ok()?.by_ref().take(1 << 20).read_to_string(&mut ct).ok()?;
+            if ct.contains("sheet.binary.macroEnabled.main") {
+                Some(Format::Xlsb)
+            } else if ct.contains("spreadsheetml") || ct.contains("ms-excel") {
+                Some(Format::Xlsx)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Opens the workbook with the reader its content calls for (extension as a fallback).
+fn open_sheets(path: &Path) -> Result<Sheets<BufReader<File>>, calamine::Error> {
+    use calamine::{open_workbook, Error as E};
+    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    let by_ext = match ext.as_deref() {
+        Some("xls" | "xla") => Some(Format::Xls),
+        Some("xlsx" | "xlsm" | "xlam") => Some(Format::Xlsx),
+        Some("xlsb") => Some(Format::Xlsb),
+        Some("ods") => Some(Format::Ods),
+        _ => None,
+    };
+    match sniff(path).or(by_ext) {
+        Some(Format::Xls) => Ok(Sheets::Xls(open_workbook(path).map_err(E::Xls)?)),
+        Some(Format::Xlsx) => Ok(Sheets::Xlsx(open_workbook(path).map_err(E::Xlsx)?)),
+        Some(Format::Xlsb) => Ok(Sheets::Xlsb(open_workbook(path).map_err(E::Xlsb)?)),
+        Some(Format::Ods) => Ok(Sheets::Ods(open_workbook(path).map_err(E::Ods)?)),
+        None => open_workbook_auto(path),
+    }
+}
+
 pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
     let path = path.as_ref();
-    match open_workbook_auto(path) {
+    match open_sheets(path) {
         Ok(wb) => {
             let scan = || merges::Scanner::new(File::open(path).ok()?);
             read_all(wb, scan)
