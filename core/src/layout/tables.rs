@@ -189,7 +189,7 @@ fn starts_new_table(
         .skip(1)
         .filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left))
         .count();
-    hits >= numeric_cols.len().min(2)
+    hits >= SPLIT_MIN_HITS && hits as f32 >= SPLIT_MIN_HIT_FRAC * numeric_cols.len() as f32
 }
 
 struct Seg {
@@ -207,17 +207,21 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
         let body = start + h;
         let sig = if h > 0 { signature(sheet, &rows[body - 1]) } else { Vec::new() };
         let mut numeric_cols: HashSet<u32> = HashSet::new();
+        let mut num_counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
         let mut split = None;
         for k in body..e {
             if k > body && k + 1 < e && starts_new_table(sheet, rows, k, e, &numeric_cols, &sig) {
                 split = Some(k);
                 break;
             }
+            let seen = (k - body + 1) as u32;
             for en in &rows[k].entries {
                 if en.kind == Kind::Num && !en.label_num {
-                    numeric_cols.insert(en.left);
+                    *num_counts.entry(en.left).or_default() += 1;
                 }
             }
+            numeric_cols.clear();
+            numeric_cols.extend(num_counts.iter().filter(|&(_, &n)| n * 2 >= seen).map(|(&c, _)| c));
         }
         let Some(sp) = split else {
             segs.push(Seg { titles, start, header: h, end: e });

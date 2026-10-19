@@ -52,6 +52,10 @@ pub const HEADER_VOTE_WINDOW: usize = 12;
 pub const HEADER_VOTE_SHARE: f32 = 0.3;
 /// Text-only tables: the first row is a header if it fills at least this share of the width.
 pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
+/// A header-like row inside a body starts a new table when it has text/years in at least this many
+/// (and this share of) the body's numeric columns (numeric in ≥ half the rows so far).
+pub const SPLIT_MIN_HITS: usize = 2;
+pub const SPLIT_MIN_HIT_FRAC: f32 = 0.5;
 /// Years in this range are header-like labels ("2023") rather than measures.
 pub const YEAR_MIN: f64 = 1900.0;
 pub const YEAR_MAX: f64 = 2100.0;
