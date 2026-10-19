@@ -499,12 +499,23 @@ fn mark_sibling_support(grid: &Grid, cands: &mut [TotalCandidate]) {
             if c.origin != TotalOrigin::Typed || c.direction != Direction::Vertical || matched[i] {
                 return false;
             }
-            let others = by_row[&c.row].iter().chain(&by_col[&c.col]).filter(|&&j| j != i);
-            let (mut n, mut ok) = (0, 0);
-            for &j in others {
-                n += 1;
-                ok += matched[j] as usize;
+            let count = |list: &[usize]| {
+                let others = list.iter().filter(|&&j| j != i);
+                let (mut n, mut ok) = (0, 0);
+                for &j in others {
+                    n += 1;
+                    ok += matched[j] as usize;
+                }
+                (n, ok)
+            };
+            let (n_row, ok_row) = count(&by_row[&c.row]);
+            let (n_col, ok_col) = count(&by_col[&c.col]);
+            // A column whose totals mostly disagree is aggregated some other way (pivot
+            // averages, counts, ratios) — not evidence of a wrong number.
+            if n_col >= 2 && 2 * ok_col < n_col {
+                return false;
             }
+            let (n, ok) = (n_row + n_col, ok_row + ok_col);
             ok >= 1 && 2 * ok >= n
         })
         .collect();
