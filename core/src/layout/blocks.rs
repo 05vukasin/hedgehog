@@ -288,9 +288,14 @@ impl Profile {
             bottom: self.rect.bottom.max(other.rect.bottom),
             right: self.rect.right.max(other.rect.right),
         };
+        // Header-only pieces carry no body types.
+        if self.header_only && !other.header_only {
+            self.counts.clear();
+        }
+        let add = !other.header_only || self.header_only;
         self.single_line = false;
         self.header_only = false;
-        for (c, (t, n)) in &other.counts {
+        for (c, (t, n)) in other.counts.iter().filter(|_| add) {
             let e = self.counts.entry(*c).or_default();
             e.0 += t;
             e.1 += n;
@@ -351,7 +356,7 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
     }
     let gap = low.rect.top as i64 - up.rect.bottom as i64 - 1;
     let max_gap = if up.header_only { HEADER_ONLY_MAX_GAP } else { MAX_ROW_GAP };
-    if !(1..=max_gap as i64).contains(&gap) || low.starts_with_header || low.single_line {
+    if !(VERTICAL_MIN_GAP..=max_gap as i64).contains(&gap) || low.starts_with_header || low.single_line {
         return false;
     }
     if inside && !up.single_line {
@@ -450,6 +455,31 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
         }
     }
 
+    // Row labels left of numbers, across blank spacer columns ("Gas Annuity =" in E, numbers in
+    // G:L; month/task text in A): a text-only narrow block sharing a row with a numeric block.
+    if LABEL_MAX_GAP > 0 {
+        for (i, p) in profiles.iter().enumerate() {
+            if !p.is_label_block() {
+                continue;
+            }
+            for gap in 1..=LABEL_MAX_GAP {
+                let Some(l) = p.rect.right.checked_add(gap + 1) else { continue };
+                for &j in by_left.get(&l).into_iter().flatten() {
+                    let q = &profiles[j];
+                    if !q.has_numeric_col() || q.rect.top > p.rect.bottom + 1 || q.rect.bottom < p.rect.top {
+                        continue;
+                    }
+                    // Same row (row label) or the row just below (group label above its rows).
+                    let rows_j = &blocks[j].rows;
+                    let hit = |r: u32| rows_j.binary_search_by_key(&r, |x| x.row).is_ok();
+                    if blocks[i].rows.iter().any(|r| hit(r.row) || hit(r.row + 1)) {
+                        join(&mut dsu, &mut group, i as u32, j as u32);
+                    }
+                }
+            }
+        }
+    }
+
     // Spacer rows and sparse columns: sweep blocks top-down against groups still "open" above.
     let mut active: Vec<u32> = Vec::new();
     for (i, p) in profiles.iter().enumerate() {
@@ -467,6 +497,30 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
         active.retain(|&g| dsu.find(g) == g);
         if !active.contains(&me) {
             active.push(me);
+        }
+    }
+
+    // Blocks lying inside another group's bounding box (a lone group label in a label column)
+    // belong to it.
+    if ABSORB_CONTAINED {
+        let mut roots: Vec<u32> = (0..blocks.len() as u32).filter(|&g| dsu.find(g) == g).collect();
+        if roots.len() <= ABSORB_MAX_GROUPS {
+            roots.sort_by_key(|&g| std::cmp::Reverse(area(&group[g as usize].rect)));
+            for k in 0..roots.len() {
+                let outer = roots[k];
+                if dsu.find(outer) != outer {
+                    continue;
+                }
+                for &inner in &roots[k + 1..] {
+                    if dsu.find(inner) != inner || inner == outer {
+                        continue;
+                    }
+                    let (o, n) = (group[outer as usize].rect, group[inner as usize].rect);
+                    if n.top >= o.top && n.bottom <= o.bottom && n.left >= o.left && n.right <= o.right {
+                        join(&mut dsu, &mut group, outer, inner);
+                    }
+                }
+            }
         }
     }
 
@@ -489,7 +543,18 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
     out
 }
 
+fn area(r: &Rect) -> u64 {
+    (r.bottom - r.top + 1) as u64 * (r.right - r.left + 1) as u64
+}
+
 impl Profile {
+    /// Narrow block of text only (row or group labels).
+    fn is_label_block(&self) -> bool {
+        self.rect.right - self.rect.left < LABEL_MAX_WIDTH
+            && self.counts.values().all(|&(_, n)| n == 0)
+            && self.counts.values().any(|&(t, _)| t > 0)
+    }
+
     /// The group's shape, but header/single-line facts of the block being placed.
     fn with_header(mut self, block: &Profile) -> Profile {
         self.starts_with_header = block.starts_with_header;

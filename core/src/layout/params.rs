@@ -17,6 +17,16 @@ pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 pub const GAP_MIN_ROW_OVERLAP: f32 = 0.8;
 /// Vertical gap merge: share of shared columns whose majority type (text/number) agrees.
 pub const GAP_MIN_TYPE_AGREE: f32 = 0.6;
+/// Max blank columns between a narrow text-only block and a numeric block it shares a row with
+/// (row labels / group labels left of the numbers); 0 turns the rule off.
+pub const LABEL_MAX_GAP: u32 = 5;
+/// … and the label block is at most this many columns wide.
+pub const LABEL_MAX_WIDTH: u32 = 2;
+/// Smallest blank-row gap for the vertical gap merge (0: rows touch without being 8-connected).
+pub const VERTICAL_MIN_GAP: i64 = 0;
+/// Merge blocks lying inside another group's bounding box into it.
+pub const ABSORB_CONTAINED: bool = true;
+pub const ABSORB_MAX_GROUPS: usize = 2000;
 /// A column counts as a row-label column when this share of its body entries is text.
 pub const LABEL_COL_TEXT_FRAC: f32 = 0.5;
 
@@ -88,8 +98,44 @@ pub const SPLIT_MIN_HIT_FRAC: f32 = 0.5;
 pub const YEAR_MIN: f64 = 1900.0;
 pub const YEAR_MAX: f64 = 2100.0;
 
+/// Outline key column (label on the first row of each group only) → GroupHeader cells.
+pub const KEY_COLUMN_GROUPS: bool = true;
+/// Data rows needed, max share of them with a key, share of keys that are text/dates, and share
+/// of keys that start a run (next data row has no key).
+pub const KEY_MIN_ROWS: usize = 4;
+pub const KEY_MAX_FILL: f32 = 0.5;
+pub const KEY_MIN_LABEL_FRAC: f32 = 0.8;
+pub const KEY_MIN_START_FRAC: f32 = 0.5;
+
 /// A group-header row must be followed by at least this many multi-cell rows.
 pub const GROUP_MIN_RUN: usize = 2;
+/// … or, for a label of at most this many characters (≤ 3 words), one multi-cell row.
+pub const GROUP_SHORT_LABEL: usize = 24;
+
+// --- Change points (stacked tables with different schemas) ------------------------------------
+
+/// Each side of a cut needs at least this many data rows (not header-like, not totals).
+pub const CP_MIN_ROWS: usize = 3;
+/// Columns at least this filled on both sides count for the shared-content distance.
+pub const CP_SHARED_MIN_FILL: f32 = 0.2;
+/// Text at least this long is "long text" (notes, descriptions) in row signatures.
+pub const CP_LONG_TEXT: usize = 25;
+/// Skip blocks with more distinct columns / more rows × columns than this.
+pub const CP_MAX_COLS: usize = 256;
+pub const CP_MAX_WORK: usize = 4_000_000;
+pub const CP_MAX_CUTS: usize = 16;
+/// Column distance = this × coarse (empty/text/date/number) + rest × fine class distance.
+pub const CP_COARSE_WEIGHT: f32 = 0.8;
+/// Distance shrinkage for small sides: × m / (m + CP_SHRINK), m = smaller side's rows.
+pub const CP_SHRINK: f32 = 2.0;
+/// … only while the smaller side has fewer rows than this (so it never moves the cut).
+pub const CP_SHRINK_ROWS: f32 = 8.0;
+/// A cut needs this profile distance with a cue (header row, gap, total above, column range
+/// change), or `CP_STRONG` without one.
+pub const CP_WEAK: f32 = 0.3;
+/// A cue (header row, gap) at most this many rows from the largest change takes the cut.
+pub const CP_SNAP: usize = 2;
+pub const CP_STRONG: f32 = 0.55;
 
 // --- Totals -----------------------------------------------------------------------------------
 

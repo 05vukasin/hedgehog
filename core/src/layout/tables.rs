@@ -54,6 +54,11 @@ pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect, next: Option<&Row
     span == 1 || (e.left == rect.left && span as f32 >= TITLE_SPAN_FRAC * width as f32)
 }
 
+/// One text cell alone on its row, not a total label.
+pub(crate) fn is_title_row_simple(sheet: &Sheet, r: &Row) -> bool {
+    single_text(r).is_some_and(|e| !is_total_label(text(sheet, e)))
+}
+
 pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
     let Some(e) = single_text(r) else { return false };
     let t = text(sheet, e);
@@ -109,7 +114,7 @@ fn has_total_label(sheet: &Sheet, r: &Row) -> bool {
     r.entries.iter().filter(|e| e.kind == Kind::Text).take(3).any(|e| is_total_label(text(sheet, e)))
 }
 
-fn is_total_row(sheet: &Sheet, r: &Row) -> bool {
+pub(crate) fn is_total_row(sheet: &Sheet, r: &Row) -> bool {
     if has_total_label(sheet, r) {
         return true;
     }
@@ -129,9 +134,9 @@ fn is_form(sheet: &Sheet, region: &Region) -> bool {
     colon as f32 >= FORM_COLON_FRAC * region.rows.len() as f32
 }
 
-type Signature = Vec<(u32, String)>;
+pub(crate) type Signature = Vec<(u32, String)>;
 
-fn signature(sheet: &Sheet, r: &Row) -> Signature {
+pub(crate) fn signature(sheet: &Sheet, r: &Row) -> Signature {
     r.filled().map(|e| (e.left, text(sheet, e).trim().to_lowercase())).collect()
 }
 
@@ -246,7 +251,7 @@ fn trim_tail(sheet: &Sheet, rows: &[Row], seg: &mut Seg) -> Range<usize> {
 
 /// Single label at the table's left edge (or merged across), followed — possibly after nested
 /// group labels — by a run of at least `GROUP_MIN_RUN` multi-cell rows.
-fn is_group_header(rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
+fn is_group_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
     let Some(e) = single_text(&rows[k]) else { return false };
     if e.left > rect.left && e.right == e.left {
         return false;
@@ -255,20 +260,32 @@ fn is_group_header(rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
     while j < end && j <= k + 2 && single_text(&rows[j]).is_some() {
         j += 1;
     }
-    j + GROUP_MIN_RUN <= end && rows[j..j + GROUP_MIN_RUN].iter().all(|r| r.n() >= 2)
+    if j + GROUP_MIN_RUN <= end && rows[j..j + GROUP_MIN_RUN].iter().all(|r| r.n() >= 2) {
+        return true;
+    }
+    // A short label ("Dec", "Region North") directly over one data row also opens a group.
+    let t = text(sheet, e).trim();
+    j == k + 1
+        && j < end
+        && rows[j].n() >= 2
+        && t.chars().count() <= GROUP_SHORT_LABEL
+        && !t.starts_with(|c: char| c.is_ascii_digit())
+        && t.split_whitespace().count() <= 3
 }
 
 struct Seg {
     titles: Range<usize>,
+    /// Piece cut off by a change point (a narrow headerless table is still a table).
+    split: bool,
     start: usize,
     header: usize,
     end: usize,
 }
 
-fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<Seg> {
+fn segment(sheet: &Sheet, rows: &[Row], titles: Range<usize>, s: usize, e: usize, rect: Rect, cut: bool) -> Vec<Seg> {
     let mut segs = Vec::new();
-    // Leading title rows of the region belong to the first table.
-    let (mut start, mut titles) = (s, 0..s);
+    // Leading title rows belong to the first table.
+    let (mut start, mut titles) = (s, titles);
     while start < e {
         let mut h = header_depth(sheet, rows, start, e, rect);
         // Metadata rows (dates, labels) between titles and the header: skip up to a few sparse rows.
@@ -305,7 +322,7 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
             numeric_cols.extend(num_counts.iter().filter(|&(_, &n)| n * 2 >= seen).map(|(&c, _)| c));
         }
         let Some(sp) = split else {
-            segs.push(Seg { titles, start, header: h, end: e });
+            segs.push(Seg { titles, split: cut, start, header: h, end: e });
             break;
         };
         // Title rows just above the next header belong to the next table.
@@ -317,7 +334,7 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
         {
             seg_end -= 1;
         }
-        segs.push(Seg { titles, start, header: h, end: seg_end });
+        segs.push(Seg { titles, split: cut, start, header: h, end: seg_end });
         titles = seg_end..sp;
         start = sp;
     }
@@ -376,14 +393,25 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     }
     // Without a header, a narrow or short block is a key/value list or stray numbers, not a table.
     if seg.header == 0
-        && (width < HEADERLESS_MIN_COLS || (seg.end - seg.start) < HEADERLESS_MIN_ROWS)
+        && ((width < HEADERLESS_MIN_COLS && !seg.split) || (seg.end - seg.start) < HEADERLESS_MIN_ROWS)
     {
         return false;
     }
     if seg.header > 0 && seg.end - body_start < MIN_BODY_ROWS {
         return false;
     }
-    let area = (rect.bottom - rect.top + 1) as f64 * width as f64;
+    // Blank spacer columns (between row labels and numbers) don't count against the density.
+    let mut spans: Vec<(u32, u32)> = trows.iter().flat_map(|r| r.filled()).map(|e| (e.left, e.right.min(rect.right))).collect();
+    spans.sort_unstable();
+    let (mut used, mut end) = (0u64, None::<u32>);
+    for (l, r) in spans {
+        let l = end.map_or(l, |e| l.max(e + 1));
+        if r >= l {
+            used += (r - l + 1) as u64;
+            end = Some(r);
+        }
+    }
+    let area = (rect.bottom - rect.top + 1) as f64 * used.max(1) as f64;
     let filled: f64 = trows
         .iter()
         .flat_map(|r| r.filled())
@@ -426,6 +454,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         rows[body_start..seg.end].iter().filter(|r| !has_total_label(sheet, r) && is_total_row(sheet, r)).count();
     let formula_totals_ok = (formula_totals as f32) <= TOTAL_MAX_ROW_FRAC * body_len as f32 || body_len < 4;
     let mut body_cells = 0usize;
+    let mut data_rows: Vec<usize> = Vec::new();
     for k in body_start..seg.end {
         let r = &rows[k];
         let last_body = k + 1 == seg.end;
@@ -435,13 +464,14 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
             Role::Total
         } else if is_note_row(sheet, r) && (last_body || is_note_label(text(sheet, single_text(r).unwrap()))) {
             Role::Note
-        } else if has_measures && is_group_header(rows, k, seg.end, rect) {
+        } else if has_measures && is_group_header(sheet, rows, k, seg.end, rect) {
             Role::GroupHeader
         } else {
             Role::Data
         };
         set_upto(out, r, role, rect.right);
         if role == Role::Data {
+            data_rows.push(k);
             for e in r.entries.iter().filter(|e| e.left <= rect.right) {
                 body_cells += (e.kind != Kind::Blank) as usize;
                 let c = col_counts.entry(e.left).or_default();
@@ -458,6 +488,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
                 }
             }
         }
+    }
+    if KEY_COLUMN_GROUPS {
+        mark_key_column(rows, &data_rows, rect, out);
     }
     let purities: Vec<f32> = col_counts
         .values()
@@ -489,7 +522,28 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     while e > s + 1 && is_note_row(sheet, &rows[e - 1]) {
         e -= 1;
     }
-    let segs = segment(sheet, rows, s, e, region.rect);
+    let h0 = header_depth(sheet, rows, s, e, region.rect);
+    let hsig = if h0 > 0 { signature(sheet, &rows[s + h0 - 1]) } else { Vec::new() };
+    let cuts = super::changepoint::boundaries(sheet, rows, s + h0, e, &hsig);
+    let mut segs = Vec::new();
+    let mut ps = s;
+    for pe in cuts.iter().copied().chain(std::iter::once(e)) {
+        if ps == s {
+            segs.extend(segment(sheet, rows, 0..s, s, pe, region.rect, false));
+        } else {
+            // Title rows at the top of a piece belong to its table.
+            let mut q = ps;
+            while q + 2 < pe
+                && q - ps < 2
+                && is_title_row(sheet, &rows[q], region.rect, rows.get(q + 1))
+                && !is_note_row(sheet, &rows[q])
+            {
+                q += 1;
+            }
+            segs.extend(segment(sheet, rows, ps..q, q, pe, region.rect, true));
+        }
+        ps = pe;
+    }
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
     for seg in &segs {
@@ -513,5 +567,49 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     if !loose_rows.is_empty() {
         loose_rows.sort_by_key(|r| r.row);
         out.loose.push(Region { rect: bounds(&loose_rows), rows: loose_rows });
+    }
+}
+
+/// Outline-style key column: the table's first column holds a label only on the first row of
+/// each group and is blank on the rows that follow ("Management | Kevin Presto | …", then
+/// " | Dana Davis | …"). Those labels are group headers (DECO), and normalize fills them down.
+fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out) {
+    if data_rows.len() < KEY_MIN_ROWS {
+        return;
+    }
+    // The leftmost column used by the data rows.
+    let Some(col) = data_rows.iter().filter_map(|&k| rows[k].filled().next().map(|e| e.left)).min() else {
+        return;
+    };
+    let key = |k: usize| rows[k].filled().find(|e| e.left == col);
+    let (mut filled, mut labels, mut starts) = (0usize, 0usize, 0usize);
+    for (j, &k) in data_rows.iter().enumerate() {
+        let Some(e) = key(k) else { continue };
+        filled += 1;
+        if e.kind == Kind::Text || e.date {
+            labels += 1;
+        }
+        // Starts a run: other cells on its row, and the next data row leaves the key blank.
+        let others = rows[k].filled().any(|x| x.left != col);
+        if others && data_rows.get(j + 1).is_some_and(|&n| key(n).is_none() && rows[n].n() > 0) {
+            starts += 1;
+        }
+    }
+    let n = data_rows.len();
+    if filled < 2
+        || filled as f32 > KEY_MAX_FILL * n as f32
+        || (labels as f32) < KEY_MIN_LABEL_FRAC * filled as f32
+        || (starts as f32) < KEY_MIN_START_FRAC * filled as f32
+        || col > rect.left + 1
+    {
+        return;
+    }
+    for &k in data_rows {
+        if let Some(e) = key(k)
+            && rows[k].filled().any(|x| x.left != col)
+            && let Some(i) = e.cell
+        {
+            out.roles[i] = Role::GroupHeader;
+        }
     }
 }
