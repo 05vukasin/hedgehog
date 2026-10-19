@@ -8,6 +8,9 @@ pub const MAX_ROW_GAP: u32 = 2;
 pub const HEADER_ONLY_MAX_GAP: u32 = 4;
 /// Max blank columns between two blocks that may still be one table (spacer columns, L5).
 pub const MAX_COL_GAP: u32 = 1;
+/// Max blank columns between exactly row-aligned blocks (or a header-only block on the header
+/// row) that are still one table.
+pub const MAX_COL_GAP_ALIGNED: u32 = 2;
 /// Vertical gap merge: column overlap / wider block width must reach this.
 pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 /// Horizontal gap merge: row overlap / taller block height must reach this.

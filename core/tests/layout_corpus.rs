@@ -259,6 +259,8 @@ fn deco_quick_eval() {
     let mut cats: BTreeMap<&str, usize> = BTreeMap::new();
     let mut misses: Vec<String> = Vec::new();
     let top_pair = std::env::var("HH_TOP").ok();
+    let mut fp: BTreeMap<String, usize> = BTreeMap::new();
+    let mut fp_list: Vec<String> = Vec::new();
     let mut top: BTreeMap<String, usize> = BTreeMap::new();
     for (file, sheets) in &by_file {
         if hh_core::eval::split::split_of(file) != hh_core::eval::split::Split::Dev {
@@ -314,6 +316,23 @@ fn deco_quick_eval() {
                     tp10 += (v >= 0.999) as usize;
                 }
             }
+            for (i, t) in l.tables.iter().enumerate() {
+                if used[i] {
+                    continue;
+                }
+                let p = t.rect;
+                let inside_gt = gtt.iter().any(|g| p.top >= g.top && p.bottom <= g.bottom && p.left >= g.left && p.right <= g.right);
+                let overl = gtt.iter().any(|g| iou(g, &p) > 0.0);
+                let kind = if inside_gt { "fragment" } else if overl { "overlap" } else { "spurious" };
+                let h = (p.bottom - p.top + 1).min(10);
+                let w = (p.right - p.left + 1).min(10);
+                *fp.entry(format!("{kind} h{h:02} hdr{}", (t.header_rows > 0) as u8)).or_default() += 1;
+                if std::env::var("HH_FP").is_ok_and(|k| k == kind) {
+                    let g = gtt.iter().find(|g| iou(g, &p) > 0.0).map_or("-".to_string(), |g| format!("{}:{}", hh_core::a1(g.top, g.left), hh_core::a1(g.bottom, g.right)));
+                    fp_list.push(format!("{kind} pred {}:{} hdr {} gt {g} | {file} [{sname}]", hh_core::a1(p.top, p.left), hh_core::a1(p.bottom, p.right), t.header_rows));
+                }
+                let _ = w;
+            }
             for (c, r) in sheet.cells.iter().zip(&l.roles) {
                 let lab = anns.iter().rev().find_map(|(lb, rr)| {
                     let inside = (rr.top..=rr.bottom).contains(&c.row) && (rr.left..=rr.right).contains(&c.col);
@@ -337,6 +356,11 @@ fn deco_quick_eval() {
     tv.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (k, v) in tv.iter().take(15) {
         println!("TOP {v:>6} {k}");
+    }
+    println!("unmatched predictions: {fp:?}");
+    let step = (fp_list.len() / 40).max(1);
+    for m in fp_list.iter().step_by(step) {
+        println!("FP {m}");
     }
     println!("non-exact GT tables by category: {cats:?}");
     let step = (misses.len() / 50).max(1);

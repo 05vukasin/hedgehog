@@ -268,6 +268,8 @@ struct Profile {
     single_line: bool,
     /// Only header-like rows (e.g. a header separated from its body by a blank row).
     header_only: bool,
+    /// Lowercased texts of the first row (to tell repeated side-by-side copies apart).
+    first_sig: Vec<String>,
     /// Per column: (text, numeric) entry counts over body rows.
     counts: BTreeMap<u32, (u32, u32)>,
 }
@@ -322,7 +324,16 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
         }
     }
     let single_line = rows.len() == 1 && rows[0].n() <= 1;
-    Profile { rect: region.rect, starts_with_header, single_line, header_only, counts }
+    let first_sig = rows
+        .first()
+        .map(|r| {
+            r.filled()
+                .filter_map(|e| e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])))
+                .map(|t| t.trim().to_lowercase())
+                .collect()
+        })
+        .unwrap_or_default();
+    Profile { rect: region.rect, starts_with_header, single_line, header_only, first_sig, counts }
 }
 
 fn overlap(a0: u32, a1: u32, b0: u32, b1: u32) -> u32 {
@@ -371,7 +382,30 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
 
 fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     let gap = right.rect.left as i64 - left.rect.right as i64 - 1;
-    if !(1..=MAX_COL_GAP as i64).contains(&gap) || right.has_label_col() || !right.has_numeric_col() {
+    if gap < 1 {
+        return false;
+    }
+    // Header cells over empty columns, on the table's header row.
+    if gap <= MAX_COL_GAP_ALIGNED as i64
+        && right.header_only
+        && right.rect.top >= left.rect.top
+        && right.rect.bottom < left.rect.bottom
+        && right.rect.top <= left.rect.top + 2
+    {
+        return true;
+    }
+    // Exactly row-aligned blocks with different headers: one wide table split by spacer columns.
+    // (Identical headers side by side are repeated copies — separate tables.)
+    if gap <= MAX_COL_GAP_ALIGNED as i64
+        && left.rect.top == right.rect.top
+        && left.rect.bottom.abs_diff(right.rect.bottom) <= 1
+        && left.rect.bottom > left.rect.top + 1
+        && !right.first_sig.is_empty()
+        && left.first_sig != right.first_sig
+    {
+        return true;
+    }
+    if gap > MAX_COL_GAP as i64 || right.has_label_col() || !right.has_numeric_col() {
         return false;
     }
     let (hl, hr) = (left.rect.bottom - left.rect.top + 1, right.rect.bottom - right.rect.top + 1);
@@ -405,7 +439,7 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
         by_left.entry(p.rect.left).or_default().push(i);
     }
     for (i, p) in profiles.iter().enumerate() {
-        for gap in 1..=MAX_COL_GAP {
+        for gap in 1..=MAX_COL_GAP.max(MAX_COL_GAP_ALIGNED) {
             let Some(l) = p.rect.right.checked_add(gap + 1) else { continue };
             for &j in by_left.get(&l).into_iter().flatten() {
                 if merge_horizontally(p, &profiles[j]) {
