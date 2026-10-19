@@ -3,7 +3,7 @@
 // --- Blocks & gap tolerance -------------------------------------------------------------------
 
 /// Max blank rows between two blocks that may still be one table (spacer rows, L5).
-pub const MAX_ROW_GAP: u32 = 2;
+pub const MAX_ROW_GAP: u32 = 3;
 /// Max blank rows between a header-only block and the body below it.
 pub const HEADER_ONLY_MAX_GAP: u32 = 4;
 /// Max blank columns between two blocks that may still be one table (spacer columns, L5).
