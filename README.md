@@ -27,7 +27,8 @@ Real spreadsheets are not tables. A typical finance or operations workbook has:
 - multi-row headers built from merged cells (`2024` over `Q1 Q2 Q3 Q4`)
 - subtotal and total rows mixed into the data, group-header rows like `Region: North`
 - numbers stored as text, `(500)` for negatives, `1.200 RSD`, "amounts in thousands"
-- Serbian / European formats: `1.200,50`, `31.12.2024.`, Cyrillic and Latin in the same column
+- US and European conventions mixed across files: `1,200.50` vs `1.200,50` vs `1 200,50`, `12/31/2024` vs
+  `31.12.2024`, month names and "Total" labels in many languages, Latin and Cyrillic in one column
 
 Give that to an LLM as CSV or a screenshot and it guesses. It miscounts columns, sums the
 subtotals twice and reads `1.200` as one point two.
@@ -51,7 +52,7 @@ exact answers.
 ## What works today
 
 ```sh
-$ hedgehog describe finansijski-plan-rashoda-2026.xlsx    # a Serbian municipal budget
+$ hedgehog describe finansijski-plan-rashoda-2026.xlsx    # a municipal budget (Serbian open data)
 PLAN RASHODA: A1:I745 · 3650 cells · 0 formulas · 255 merged ranges
 ```
 
@@ -114,7 +115,7 @@ deterministic and testable. Connectors and the MCP server live in the Python lay
   ranges) are the ground truth for table detection and cell-role scores.
 - **Synthetic messy data.** A noise generator takes clean datasets and adds titles, merged
   headers, subtotals, locale formats and so on, keeping a label for every change. This gives
-  unlimited labelled data, including Serbian / European formats that public corpora lack.
+  unlimited labelled data, covering US and European number/date conventions and languages that public corpora lack.
 - **Corpus robustness runs.** The reader and pipeline run over large random samples of real
   files to catch crashes and measure speed (the 488/500 number above comes from one).
 - **Agent Q&A end to end.** An agent answers questions about a workbook using only hedgehog's
