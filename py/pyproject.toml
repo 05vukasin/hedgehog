@@ -13,7 +13,6 @@ dynamic = ["version"]
 keywords = ["excel", "xlsx", "spreadsheet", "normalization", "llm", "agents", "table-detection"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: Implementation :: CPython",
