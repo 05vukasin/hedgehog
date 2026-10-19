@@ -49,11 +49,18 @@ impl DecimalSep {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NumberHint {
     pub decimal: Option<DecimalSep>,
+    /// The column holds other currency amounts or mentions a currency; only then are ISO codes
+    /// that double as English words (`ALL`, `TOP`, `PEN`…) read as currencies.
+    pub currency_context: bool,
 }
 
 impl NumberHint {
     pub fn with_decimal(decimal: Option<DecimalSep>) -> Self {
-        NumberHint { decimal }
+        NumberHint { decimal, currency_context: false }
+    }
+
+    pub fn with_currency_context(self, currency_context: bool) -> Self {
+        NumberHint { currency_context, ..self }
     }
 }
 
@@ -185,7 +192,13 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 if end == 0 || p.currency.is_some() {
                     return None;
                 }
-                let m = currency_match(&rest[..end])?;
+                let word = &rest[..end];
+                let m = currency_match(word)?;
+                // A letter-only code glued to the digits is an ID ("AOA2182.06", "FT-1").
+                let glued = rest[end..].chars().next().is_some_and(|c| !is_space(c));
+                if (glued && word.chars().all(char::is_alphabetic)) || (m.wordlike && !hint.currency_context) {
+                    return None;
+                }
                 p.currency = Some(m.code);
                 p.currency_ambiguous = m.ambiguous;
                 p.currency_prefix = true;
@@ -323,7 +336,7 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 if word.is_empty() {
                     return None;
                 }
-                classify_suffix(word, &mut p)?;
+                classify_suffix(word, &mut p, hint.currency_context)?;
                 rest = &rest[end..];
             }
         }
@@ -395,6 +408,10 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         n += frac;
     }
     p.leading_zero = decimal_at.is_none() && int_digits > 1 && digits[0] == b'0';
+    // "($000)", "(000$)", "000 €": a scale marker in a header ("in thousands"), not a value.
+    if p.leading_zero && digits[..nd].iter().all(|&d| d == b'0') && (p.currency.is_some() || p.negative == Some(NegativeStyle::Parens)) {
+        return None;
+    }
     let text = std::str::from_utf8(&buf[..n]).ok()?;
     let mut v: f64 = text.parse().ok()?;
     if exp != 0 {
@@ -570,13 +587,13 @@ pub fn scale(word: &str) -> Option<f64> {
     SCALES.iter().find(|(_, words)| words.iter().any(|w| eq_fold(word, w))).map(|(f, _)| *f)
 }
 
-fn classify_suffix(word: &str, p: &mut ParsedNumber) -> Option<()> {
+fn classify_suffix(word: &str, p: &mut ParsedNumber, currency_context: bool) -> Option<()> {
     // Each kind of suffix may appear once.
     // After a currency, lowercase "m" is million, not metres: "£2.5m", "$3m".
     let as_scale = if word == "m" && p.currency.is_some() { Some(1e6) } else { scale(word) };
     if let Some(f) = as_scale {
         (p.scale == 1.0).then(|| p.scale = f)
-    } else if let Some(m) = currency_match(word) {
+    } else if let Some(m) = currency_match(word).filter(|m| !m.wordlike || currency_context) {
         p.currency.is_none().then(|| {
             p.currency = Some(m.code);
             p.currency_ambiguous = m.ambiguous;
@@ -794,6 +811,22 @@ mod tests {
             assert_eq!(p.currency.unwrap_or(""), c, "{s:?}");
         }
         assert_eq!(val("$$5"), None);
+        // Audit of the Enron sample: IDs and header markers are not amounts.
+        for s in ["AOA2182.06", "FT-1", "NGN2", "SDG1", "JPY4512201", "($000)", "(000$)", "000 $", "5 ft"] {
+            assert_eq!(auto(s).and_then(|p| p.currency), None, "{s:?}");
+        }
+        assert_eq!(val("$2M"), Some(2e6));
+        assert_eq!(val("$0.50 MM"), Some(5e5));
+        assert_eq!(val("$             0.00"), Some(0.0));
+        // Word-like codes need column evidence.
+        for s in ["TOP 10", "ALL 5", "CUP 3", "5 PEN", "BOB 2", "MOP 1", "GEL 4"] {
+            assert_eq!(auto(s), None, "{s:?}");
+        }
+        let ctx = NumberHint::default().with_currency_context(true);
+        assert_eq!(parse_number("ALL 5", ctx).unwrap().currency, Some("ALL"));
+        assert_eq!(parse_number("5 PEN", ctx).unwrap().currency, Some("PEN"));
+        assert_eq!(auto("USD 5").unwrap().currency, Some("USD"));
+        assert_eq!(auto("100 USD").unwrap().currency, Some("USD"));
         assert_eq!(val("5 EUR USD"), None);
     }
 

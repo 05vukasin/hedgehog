@@ -66,7 +66,7 @@ impl Locale {
     }
 
     pub fn hints(self) -> ColumnHints {
-        ColumnHints { decimal: Some(self.decimal()), date_order: self.date_order() }
+        ColumnHints { decimal: Some(self.decimal()), date_order: self.date_order(), currency_context: false }
     }
 
     pub fn number_hint(self) -> NumberHint {
@@ -123,7 +123,10 @@ mod tests {
 
     #[test]
     fn presets() {
-        assert_eq!(Locale::Us.hints(), ColumnHints { decimal: Some(DecimalSep::Dot), date_order: Some(DateOrder::MonthDay) });
+        assert_eq!(
+            Locale::Us.hints(),
+            ColumnHints { decimal: Some(DecimalSep::Dot), date_order: Some(DateOrder::MonthDay), currency_context: false }
+        );
         assert_eq!(Locale::Uk.date_order(), Some(DateOrder::DayMonth));
         assert_eq!(Locale::Ch.decimal(), DecimalSep::Dot);
         assert_eq!(Locale::De.decimal(), DecimalSep::Comma);

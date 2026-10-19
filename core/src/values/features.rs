@@ -11,6 +11,7 @@ use super::date::{parse_date, parse_time, serial_to_ymd, DateOrder, DateOrderVot
 use super::locale::Locale;
 use super::keywords::{is_note, starts_with_enumerator, total_score};
 use super::missing::{is_excel_error, missing_token, parse_bool};
+use super::currency::mentions_currency;
 use super::number::{parse_number, DecimalSep, DecimalVotes, NumberHint};
 use super::text::{has_cyrillic, is_padded, trim};
 use crate::features::Features;
@@ -62,23 +63,33 @@ const N: usize = FEATURES.len();
 pub struct ColumnHints {
     pub decimal: Option<DecimalSep>,
     pub date_order: Option<DateOrder>,
+    /// The column holds currency amounts or mentions a currency (see [`NumberHint::currency_context`]).
+    pub currency_context: bool,
 }
 
 impl ColumnHints {
     pub fn number_hint(&self) -> NumberHint {
-        NumberHint::with_decimal(self.decimal)
+        NumberHint::with_decimal(self.decimal).with_currency_context(self.currency_context)
     }
+}
+
+/// Column evidence for word-like currency codes: a cell already read with a currency, or text
+/// mentioning one (`Amount (USD)`, `$`, `Currency`).
+fn currency_evidence(s: &str) -> bool {
+    parse_number(s, NumberHint::default()).is_some_and(|p| p.currency.is_some()) || mentions_currency(s)
 }
 
 /// Infers decimal convention and day/month order from a column's text values.
 pub fn infer_column<'a>(values: impl IntoIterator<Item = &'a str>) -> ColumnHints {
     let mut d = DecimalVotes::default();
     let mut o = DateOrderVotes::default();
+    let mut cur = false;
     for s in values {
         d.add(s);
         o.add(s);
+        cur = cur || currency_evidence(s);
     }
-    ColumnHints { decimal: d.decision(), date_order: o.decision() }
+    ColumnHints { decimal: d.decision(), date_order: o.decision(), currency_context: cur }
 }
 
 /// Infers [`ColumnHints`] for every column of the sheet, from the data only.
@@ -94,6 +105,7 @@ pub fn sheet_column_hints(grid: &Grid) -> HashMap<u32, ColumnHints> {
 /// Like [`sheet_column_hints`], but an explicit `locale` overrides inference for every column.
 pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u32, ColumnHints> {
     let mut votes: HashMap<u32, (DecimalVotes, DateOrderVotes)> = HashMap::new();
+    let mut currency_cols: HashMap<u32, bool> = HashMap::new();
     for c in &grid.sheet.cells {
         if let Some(Value::Text(s)) = &c.value {
             let e = votes.entry(c.col).or_default();
@@ -101,10 +113,15 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
                 e.0.add(s);
                 e.1.add(s);
             }
+            let cur = currency_cols.entry(c.col).or_default();
+            if !*cur {
+                *cur = currency_evidence(s);
+            }
         }
     }
+    let cur = |col: &u32| currency_cols.get(col).copied().unwrap_or(false);
     if let Some(l) = locale {
-        return votes.into_keys().map(|col| (col, l.hints())).collect();
+        return votes.into_keys().map(|col| (col, ColumnHints { currency_context: cur(&col), ..l.hints() })).collect();
     }
     let mut sheet_d = DecimalVotes::default();
     let mut sheet_o = DateOrderVotes::default();
@@ -124,7 +141,8 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
     votes
         .into_iter()
         .map(|(col, (d, o))| {
-            (col, ColumnHints { decimal: d.decision().or(sheet_decimal), date_order: o.decision().or(sheet_order) })
+            let currency_context = cur(&col);
+            (col, ColumnHints { decimal: d.decision().or(sheet_decimal), date_order: o.decision().or(sheet_order), currency_context })
         })
         .collect()
 }
@@ -421,6 +439,8 @@ mod tests {
     #[test]
     fn infer_column_combines() {
         let h = infer_column(["1.200,50", "25/12/2024"]);
-        assert_eq!(h, ColumnHints { decimal: Some(DecimalSep::Comma), date_order: Some(DateOrder::DayMonth) });
+        assert_eq!(h, ColumnHints { decimal: Some(DecimalSep::Comma), date_order: Some(DateOrder::DayMonth), currency_context: false });
+        assert!(infer_column(["ALL 5", "Amount (USD)"]).currency_context);
+        assert!(!infer_column(["ALL 5", "TOP 10"]).currency_context);
     }
 }

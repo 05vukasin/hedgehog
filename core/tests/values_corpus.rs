@@ -3,7 +3,8 @@
 //! Run with:
 //!   HEDGEHOG_DATA=/path/to/testdata cargo test -p hh_core --test values_corpus -- --ignored --nocapture
 //! Optional: HH_CORPUS_SAMPLE (Enron files, default 500), HH_CORPUS_MAX_MB (skip larger files, default 8),
-//! HH_CORPUS_CSV_ROWS (rows read per CSV, default 20000).
+//! HH_CORPUS_CSV_ROWS (rows read per CSV, default 20000), HH_CORPUS_ENRON_ONLY=1,
+//! HH_AUDIT_OUT=<tsv> (dump Enron cells read with a currency).
 //!
 //! Corpus files are untrusted: they are only read through the workbook reader.
 
@@ -92,6 +93,8 @@ struct Stats {
     unparsed_number_looking: usize,
     unparsed: HashMap<String, (usize, String)>,
     millis_compute: u128,
+    /// (file, cell, raw text, normalized value, currency) of every text cell read with a currency.
+    currency_cells: Vec<(String, String, String, f64, &'static str)>,
 }
 
 fn run_file(path: &Path, st: &mut Stats, max_bytes: u64) {
@@ -140,6 +143,11 @@ fn run_sheet(path: &Path, sheet: &Sheet, st: &mut Stats) {
                 st.numeric_text += 1;
                 if let Some(p) = parse_number(s, h.number_hint()) {
                     st.with_currency += p.currency.is_some() as usize;
+                    if let Some(cur) = p.currency {
+                        let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                        let cell = format!("{}!{}", sheet.name, hh_core::a1(c.row, c.col));
+                        st.currency_cells.push((file, cell, s.clone(), p.normalized(), cur));
+                    }
                     st.with_unit += p.unit.is_some() as usize;
                     st.percent += p.percent as usize;
                     st.ambiguous_numbers += p.ambiguous as usize;
@@ -270,7 +278,19 @@ fn corpus_values() {
         run_file(p, &mut st, max_bytes);
     }
     report(&format!("enron sample ({} of {})", sample.min(enron.len()), enron.len()), &st);
+    // HH_AUDIT_OUT=<file>: dump the currency cells of the Enron sample as TSV for review.
+    if let Some(out) = std::env::var_os("HH_AUDIT_OUT") {
+        let mut tsv = String::from("file\tcell\traw\tvalue\tcurrency\n");
+        for (f, c, raw, v, cur) in &st.currency_cells {
+            tsv.push_str(&format!("{f}\t{c}\t{}\t{v}\t{cur}\n", raw.replace(['\t', '\n'], " ")));
+        }
+        std::fs::write(out, tsv).expect("write audit file");
+    }
     let mut total_panics = st.panics;
+    if std::env::var("HH_CORPUS_ENRON_ONLY").is_ok_and(|v| v == "1") {
+        assert_eq!(total_panics, 0, "values::compute panicked");
+        return;
+    }
 
     let mut sr = Stats::default();
     for dir in ["irregular/serbia_data_gov_rs", "clean/data_gov_rs"] {

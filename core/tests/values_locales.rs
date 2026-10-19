@@ -551,7 +551,7 @@ fn currency_positions_and_ambiguity() {
         ("₪100", "ILS"),
         ("100 zł", "PLN"),
         ("100 Kč", "CZK"),
-        ("100 PEN", "PEN"),
+        ("100 UAH", "UAH"),
         ("ZAR 100", "ZAR"),
         ("100 XAF", "XAF"),
     ] {
@@ -559,4 +559,8 @@ fn currency_positions_and_ambiguity() {
         assert_eq!(p.currency, Some(c), "{s:?}");
     }
     assert_eq!(parse_number("100 pen", Default::default()), None);
+    // Word-like ISO codes need column evidence.
+    assert_eq!(parse_number("100 PEN", Default::default()), None);
+    let ctx = hh_core::values::NumberHint::default().with_currency_context(true);
+    assert_eq!(parse_number("100 PEN", ctx).unwrap().currency, Some("PEN"));
 }
