@@ -165,7 +165,7 @@ pub(crate) fn formula_agg(formula: &str, row: u32, col: u32) -> Agg {
     }
     if refs.iter().all(|r| r.c1 == col && r.c2 == col && r.r2 < row) {
         Agg::Vertical
-    } else if refs.iter().all(|r| r.r1 == row && r.r2 == row && r.c2 < col) {
+    } else if (is_sum || refs.len() >= 3) && refs.iter().all(|r| r.r1 == row && r.r2 == row && r.c2 < col) {
         Agg::Horizontal
     } else {
         Agg::None
