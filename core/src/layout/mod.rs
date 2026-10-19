@@ -19,7 +19,7 @@ use crate::grid::Grid;
 use crate::model::Sheet;
 
 use cells::{is_note_label, text_of, Kind};
-use params::{NOTE_MAX_GAP, TITLE_MAX_GAP};
+use params::{LOOSE_MAX_ROWS, NOTE_MAX_GAP, TITLE_MAX_GAP};
 use tables::Out;
 
 /// Detects tables and assigns one [`Role`] per entry of `grid.sheet.cells` (same order).
@@ -39,12 +39,13 @@ fn classify_loose(sheet: &Sheet, out: &mut Out) {
     let first_top = out.tables.iter().map(|t| t.rect.top).min();
     for region in std::mem::take(&mut out.loose) {
         let r = region.rect;
-        let mut above = first_top.is_some_and(|t| r.bottom < t);
+        let small = region.rows.len() <= LOOSE_MAX_ROWS;
+        let mut above = small && first_top.is_some_and(|t| r.bottom < t);
         let mut below = false;
         for t in &out.tables {
             let t = t.rect;
             let cols = r.left <= t.right.saturating_add(1) && r.right.saturating_add(1) >= t.left;
-            if !cols {
+            if !cols || !small {
                 continue;
             }
             if r.bottom < t.top && t.top - r.bottom - 1 <= TITLE_MAX_GAP {

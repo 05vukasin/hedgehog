@@ -258,6 +258,8 @@ fn deco_quick_eval() {
     let mut sheets_eval = 0;
     let mut cats: BTreeMap<&str, usize> = BTreeMap::new();
     let mut misses: Vec<String> = Vec::new();
+    let top_pair = std::env::var("HH_TOP").ok();
+    let mut top: BTreeMap<String, usize> = BTreeMap::new();
     for (file, sheets) in &by_file {
         if hh_core::eval::split::split_of(file) != hh_core::eval::split::Split::Dev {
             continue;
@@ -319,6 +321,9 @@ fn deco_quick_eval() {
                 });
                 if let Some(g) = lab {
                     *conf.entry((g, r.as_str())).or_default() += 1;
+                    if top_pair.as_deref() == Some(&format!("{g}:{}", r.as_str())) {
+                        *top.entry(format!("{file} [{sname}]")).or_default() += 1;
+                    }
                 }
             }
         }
@@ -328,6 +333,11 @@ fn deco_quick_eval() {
         let r = tp as f64 / n_gt.max(1) as f64;
         (p, r, 2.0 * p * r / (p + r).max(1e-9))
     };
+    let mut tv: Vec<_> = top.into_iter().collect();
+    tv.sort_by_key(|x| std::cmp::Reverse(x.1));
+    for (k, v) in tv.iter().take(15) {
+        println!("TOP {v:>6} {k}");
+    }
     println!("non-exact GT tables by category: {cats:?}");
     let step = (misses.len() / 50).max(1);
     for m in misses.iter().step_by(step) {

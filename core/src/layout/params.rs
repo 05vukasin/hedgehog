@@ -27,6 +27,11 @@ pub const MIN_TABLE_DENSITY: f32 = 0.2;
 /// Two-column blocks whose first column is mostly `Label:` text are forms, not tables (L12).
 pub const FORM_COLON_FRAC: f32 = 0.6;
 
+/// Trailing body rows that together use at most this share of the table's reference width (header
+/// / first body rows), in a run of at least `TAIL_MIN_ROWS`, are cut off the table (→ Other).
+pub const TAIL_MAX_FILL_FRAC: f32 = 0.5;
+pub const TAIL_MIN_ROWS: usize = 3;
+
 // --- Titles & notes ---------------------------------------------------------------------------
 
 /// Max leading single-cell rows inside a block treated as titles.
@@ -37,6 +42,8 @@ pub const TITLE_SPAN_FRAC: f32 = 0.8;
 pub const TITLE_MAX_GAP: u32 = 5;
 /// A loose text block at most this many blank rows below a table is a note.
 pub const NOTE_MAX_GAP: u32 = 6;
+/// Loose blocks with more rows than this are never titles/notes by position (only by wording).
+pub const LOOSE_MAX_ROWS: usize = 4;
 /// A single text cell at least this long below a table is a note even without a marker.
 pub const NOTE_MIN_LEN: usize = 50;
 

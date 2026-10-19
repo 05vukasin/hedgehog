@@ -192,6 +192,36 @@ fn starts_new_table(
     hits >= SPLIT_MIN_HITS && hits as f32 >= SPLIT_MIN_HIT_FRAC * numeric_cols.len() as f32
 }
 
+/// Long sparse tail of a table (helper formulas or a lone column running far below the data):
+/// trailing rows that together use only a few columns compared with the header / first body
+/// rows. Returns the removed rows.
+fn trim_tail(sheet: &Sheet, rows: &[Row], seg: &mut Seg) -> Range<usize> {
+    let body = seg.start + seg.header;
+    if seg.end <= body + TAIL_MIN_ROWS {
+        return seg.end..seg.end;
+    }
+    // Reference width: the header's last row and the first body rows.
+    let first = rows[body..seg.end].iter().take(3).map(|r| r.n());
+    let reference = first.chain((seg.header > 0).then(|| rows[body - 1].n())).max().unwrap_or(0);
+    let limit = TAIL_MAX_FILL_FRAC * reference as f32;
+    let mut cols: HashSet<u32> = HashSet::new();
+    let mut k = seg.end;
+    while k > body && !is_total_row(sheet, &rows[k - 1]) {
+        cols.extend(rows[k - 1].filled().map(|e| e.left));
+        if cols.len() as f32 > limit {
+            break;
+        }
+        k -= 1;
+    }
+    if seg.end - k >= TAIL_MIN_ROWS && k >= body + 2 {
+        let tail = k..seg.end;
+        seg.end = k;
+        tail
+    } else {
+        seg.end..seg.end
+    }
+}
+
 struct Seg {
     titles: Range<usize>,
     start: usize,
@@ -375,6 +405,10 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
     for seg in &segs {
+        let mut seg = Seg { titles: seg.titles.clone(), ..*seg };
+        // Trimmed tail rows keep the default role (Other).
+        let _tail = trim_tail(sheet, rows, &mut seg);
+        let seg = &seg;
         if emit_table(sheet, rows, seg, out) {
             any = true;
         } else {
