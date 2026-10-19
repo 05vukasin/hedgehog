@@ -32,6 +32,7 @@ pub mod json;
 pub mod metrics;
 pub mod run;
 pub mod split;
+pub mod synthetic;
 
 use std::fmt;
 use std::path::PathBuf;
