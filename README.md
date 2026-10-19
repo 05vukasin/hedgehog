@@ -8,142 +8,246 @@
 <h1 align="center">hedgehog</h1>
 
 <p align="center">
-  <b>Turns messy business spreadsheets into clean, understood data that AI agents can trust.</b><br>
-  Rust core · Python bindings · pre-alpha
+  <b>Turns messy Excel workbooks into clean, typed tables and a manifest that AI agents can work with.</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/05vukasin/hedgehog/actions/workflows/ci.yml"><img src="https://github.com/05vukasin/hedgehog/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
 ---
 
-> **Status: pre-alpha.** Today hedgehog reads xlsx / xlsm / xlsb / xls / ods into one cell model
-> and prints a `describe` overview. Everything else below is being built right now or is on the
-> roadmap, and is marked as such. The API will change.
+hedgehog reads a real-world spreadsheet (titles above the data, multi-row merged headers, group rows,
+subtotals, numbers stored as text in US or European format) and writes a **normalized copy**: one
+clean sheet per table with a flat header and typed columns, every total listed and recomputed, every
+other cell kept with its address, plus a **JSON manifest** describing it all. An agent with a code
+sandbox loads it with one `pandas.read_excel` call and can trace every value back to its source cell.
 
-## The problem
+The analysis is deterministic Rust with Python bindings. LLMs are optional and only phrase summaries.
 
-Real spreadsheets are not tables. A typical finance or operations workbook has:
+> **Status: pre-alpha (0.1.0).** Normalization, table detection, value parsing and totals
+> verification work and are tested; accuracy is measured and [published](docs/evaluation.md). The
+> API may still change.
 
-- a title, a date and a note above the data, and footnotes below it
-- several tables on one sheet, side by side or stacked
-- multi-row headers built from merged cells (`2024` over `Q1 Q2 Q3 Q4`)
-- subtotal and total rows mixed into the data, group-header rows like `Region: North`
-- numbers stored as text, `(500)` for negatives, `1.200 RSD`, "amounts in thousands"
-- US and European conventions mixed across files: `1,200.50` vs `1.200,50` vs `1 200,50`, `12/31/2024` vs
-  `31.12.2024`, month names and "Total" labels in many languages, Latin and Cyrillic in one column
+## Why
 
-Give that to an LLM as CSV or a screenshot and it guesses. It miscounts columns, sums the
-subtotals twice and reads `1.200` as one point two.
+A typical report, and what `pd.read_excel` makes of it versus what hedgehog writes:
 
-## What hedgehog does for an agent
+```
+ Source sheet "Sales"                              Normalized sheet "T1_sales_report_2024"
+ ───────────────────────────────────────────       ──────────────────────────────────────────────────────────────
+ Sales report 2024                                 Region  Product  Revenue / Q1  Revenue / Q2  Units  Margin  _src_row
+ Product   Revenue          Units   Margin         North   Widgets        1200.5          1350   1200    0.12         6
+           Q1       Q2                             North   Gadgets         300.0           410    350   0.085         7
+ Region: North                                     South   Widgets         980.0          1150            0.10        10
+ Widgets   1200.5   1350    1,200   12%            South   Gizmos         2045.0          1720   2100    0.15        11
+ Gadgets   300      410     350     8.5%
+ Subtotal  1500.5   1760                           Totals sheet: B13 "Grand total" = 4600,
+ Region: South                                     but B6:B12 add up to 4525.5  → mismatch
+ Widgets   980      1150    n/a     10%
+ Gizmos    2045     1720    2,100   15%            Notes sheet: A1 title, A15 source note
+ Subtotal  3025     2870
+ Grand total 4600   4630
+ Source: internal ERP export, amounts in USD
+```
 
-Planned pipeline, run once per workbook, deterministic, no LLM calls inside:
+Read naively, the title becomes the header, subtotals get summed twice, `"1,200"` and `"12%"` stay
+text, and nobody notices that the grand total is wrong. After normalizing, `df["Revenue / Q1"].sum()`
+is simply right.
 
-1. **Find the tables**: table ranges on every sheet, including titles and notes around them.
-2. **Label every cell**: title, header, data, group header, total, note.
-3. **Normalize values**: locale-aware numbers, units and currency, dates, missing-value tokens.
-4. **Verify totals**: recompute every total/subtotal row and flag the ones that don't add up.
-5. **Summarize**: a short markdown summary (tables, columns, key numbers, warnings) where
-   every number carries its cell reference, e.g. `Revenue 2024 = 1.234.000 (Sheet1!F43)`.
-6. **Answer through tools**: `describe`, `get_cell`, `find`, `aggregate`, `metric`, `trace`,
-   `sql`. Every answer returns the source cells it came from, so the agent can cite them.
+## Installation
 
-The agent reads a summary of under 1k tokens instead of the whole file, then calls tools for
-exact answers.
-
-## What works today
+Prebuilt wheels for Linux, macOS and Windows (CPython 3.9+), no Rust toolchain needed. The package is
+**`hedgehog-sheets`**; you `import hedgehog`.
 
 ```sh
-$ hedgehog describe finansijski-plan-rashoda-2026.xlsx    # a municipal budget (Serbian open data)
-PLAN RASHODA: A1:I745 · 3650 cells · 0 formulas · 255 merged ranges
+# From GitHub Releases (available from the first release, v0.1.0)
+pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
+
+# From PyPI: coming soon
+pip install hedgehog-sheets
+
+# Optional LLM providers: [openai], [anthropic], [bedrock] or [llm] for all three
+pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
 ```
+
+From source (needs Rust): `pip install ./py` in a clone. The `hedgehog` command-line tool is built
+separately: `cargo install --git https://github.com/05vukasin/hedgehog hh_cli`.
+Details: [docs/installation.md](docs/installation.md).
+
+## Quickstart: command line
+
+```console
+$ hedgehog describe sales.xlsx
+Sales: A1:E15 · 39 cells · 0 formulas · 4 merged ranges
+$ hedgehog normalize sales.xlsx -o out/
+sales.xlsx: 1 tables, 39 cells (28 in tables, 9 totals, 2 notes) in 16 ms
+  out/sales.normalized.xlsx
+  out/sales.manifest.json
+```
+
+Options: `--keep-totals` (keep total rows, marked in `_row_type`), `--csv` (one CSV per table),
+`--locale de-DE` (fix the decimal separator and date order). Development commands: `hedgehog eval`
+(accuracy on an annotated corpus) and `hedgehog bench` (speed). See [docs/cli.md](docs/cli.md).
+
+## Quickstart: Python
 
 ```python
 import hedgehog
 
-wb = hedgehog.open("finansijski-plan-rashoda-2026.xlsx")
-wb.sheet_names          # ['PLAN RASHODA']
-print(wb.describe())
+r = hedgehog.normalize("sales.xlsx", "out/")         # same files as the CLI
+df = r.read("T1")                                      # pandas DataFrame of the first table
+print(df["Revenue / Q1"].sum(), r.manifest["totals"]["mismatch"], "wrong total(s)")
+
+wb = hedgehog.open("sales.xlsx")                       # the source workbook, read-only
+print(wb.get_cell("Sales", "B13")["value"])            # one cell
+print(wb.get_range("Sales", "A6:C7")["rows"])          # a range, row by row
+print(wb.find_text("grand total")[0]["address"])       # case- and accent-insensitive search
+print([(t["address"], t["ok"]) for t in wb.totals("Sales")][-2:])   # totals, recomputed
 ```
 
-Measured on a random sample of 500 Enron spreadsheets, the reader opens **500 / 500** at about
-**17 ms per file** (including process start). 12 of them list a `veryHidden` sheet with an empty
-`r:id` (a leftover VBA module sheet from xls to xlsx conversion) that calamine rejects; hedgehog
-strips that entry in memory and reads the rest of the workbook.
-
-## Roadmap
-
-Every milestone ships with a number measured on the eval harness, before and after.
-
-- [x] **M0 Skeleton + cell model**: `Workbook → Sheet → Cell{value, type, formula, merge}`, reader via calamine, `describe`, Python import
-- [ ] **M1 Eval harness** (in progress): one label schema for cell roles and table ranges, DECO converter, table-detection P@IoU and cell-role F1, `hedgehog eval`
-- [ ] **M2 Layout rules** (in progress): table detection with gap tolerance, titles/notes, multi-row and merged headers, total and subtotal rows, group-header rows
-- [ ] **M3 Value normalizer** (in progress): `1.200,50`, `(500)`, units and currency, mixed date formats, `-` / `n/a` / `#N/A`, Cyrillic ↔ Latin
-- [ ] **M4 Output**: tables as Arrow / pandas, JSON workbook map, markdown summary with cell refs and warnings (e.g. wrong totals)
-- [ ] **M5 Noise generator**: ~15 operators that turn clean datasets into realistically messy sheets, with full labels
-- [ ] **M6 Learned cell-role model**: gradient-boosted trees trained in Python, evaluated in Rust by our own tree evaluator
-- [ ] **M7 Semantic column types**: city / country, currency amount, date / period, tax ID (PIB / MB), person / company, category, percent
-- [ ] **M8 Metrics & formulas**: metric definitions that become Excel formulas and queries, cleaned xlsx with a Review sheet, cached profiles
-- [ ] **M9 Agent tools / MCP server**: `describe`, `get_cell`, `find`, `aggregate`, `metric`, `trace`, `sql`
-- [ ] **M10 Connectors & speed**: Google Sheets, OneDrive / SharePoint, S3, email attachments; streaming reader and parallelism if profiling asks for it
-
-Details and "done when" criteria: [`PLAN.md`](PLAN.md).
-
-## Architecture
-
-```
-            ┌────────────── hh_core (Rust) ──────────────┐
- xlsx/xls/  │ reader → cell model → layout → values →    │   PyO3    ┌── hedgehog (Python) ──┐
- xlsb/ods ─▶│ totals → summary          (+ eval)         │ ────────▶ │ open(), describe(),   │──▶ agent
-            └────────────────────────────────────────────┘           │ later: MCP server     │
-                          ▲                                          └───────────────────────┘
-                     hh_cli: `hedgehog describe` (dev tool)
+```text
+4525.5 1 wrong total(s)
+4600.0
+[['Widgets', 1200.5, 1350.0], ['Gadgets', 300.0, 410.0]]
+A13
+[('B13', False), ('C13', True)]
 ```
 
-| Folder | Crate | What |
-|---|---|---|
-| `core/` | `hh_core` | Rust library: reader, workbook model, feature table, and the `layout`, `values`, `totals`, `eval`, `context` workstreams |
-| `py/` | `hh_py` | PyO3 bindings (`src/`) and the `hedgehog` Python package (`python/hedgehog/`) |
-| `cli/` | `hh_cli` | the `hedgehog` command, for development |
+A summary, deterministic and free, or phrased by an LLM in one call with every cited cell checked:
 
-The Rust core has no network access and makes no LLM calls, so every result is
-deterministic and testable. Connectors and the MCP server live in the Python layer.
+```python
+import hedgehog
 
-## How it is tested
-
-- **Unit tests on generated fixtures.** Tests build their xlsx files with `rust_xlsxwriter`
-  at test time, so no spreadsheets are committed.
-- **Accuracy on real sheets.** Enron spreadsheets with DECO annotations (cell roles and table
-  ranges) are the ground truth for table detection and cell-role scores.
-- **Synthetic messy data.** A noise generator takes clean datasets and adds titles, merged
-  headers, subtotals, locale formats and so on, keeping a label for every change. This gives
-  unlimited labelled data, covering US and European number/date conventions and languages that public corpora lack.
-- **Corpus robustness runs.** The reader and pipeline run over large random samples of real
-  files to catch crashes and measure speed (the 488/500 number above comes from one).
-- **Agent Q&A end to end.** An agent answers questions about a workbook using only hedgehog's
-  tools, and the answers are checked against the known cells.
-
-Test corpora are several GB, live outside the repo in `../testdata`, and are never committed.
-
-## Why Rust
-
-Parsing and analysing large workbooks cell by cell is CPU-bound work that should take
-milliseconds, not seconds. Rust gives that speed with predictable memory, one core that can be
-shipped as a Python wheel today and to other languages later, and a type system that keeps a
-pipeline with many small rules honest. Python stays where it is best: training models,
-generating test data, connectors and the agent-facing layer.
-
-## Develop
-
-```sh
-cargo test --workspace --exclude hh_py      # Rust tests (fixtures are generated, no xlsx in git)
-cargo run -p hh_cli -- describe file.xlsx
-
-uv venv .venv && uv pip install --python .venv/bin/python maturin
-(cd py && ../.venv/bin/maturin develop)     # add --release for the optimized build
-.venv/bin/python -c "import hedgehog; print(hedgehog.open('file.xlsx').describe())"
+summary = hedgehog.summarize("sales.xlsx").text          # markdown: sheets, totals, problems first
+print(next(line for line in summary.splitlines() if "B13" in line))
 ```
 
-Test corpora live outside the repo in `../testdata` and are never committed.
+```text
+- Sales!B13 "Grand total": 4,600, but B6:B12 adds up to 4,525.5 (diff +74.50; mismatch)
+```
+
+```python
+import hedgehog
+from hedgehog import llm
+
+client = llm.connect("openai", api_key="sk-...")       # or "anthropic", "ollama", "vllm", "bedrock", ...
+s = hedgehog.summarize("sales.xlsx", llm=client)       # one call; s.text, s.usage, s.warnings
+```
+
+See [docs/python-api.md](docs/python-api.md) and [docs/llm.md](docs/llm.md).
+
+## Using it from an agent sandbox
+
+Give the agent `out/sales.normalized.xlsx` and `out/sales.manifest.json`. It needs only pandas:
+
+```python
+import json
+import pandas as pd
+
+m = json.load(open("out/sales.manifest.json", encoding="utf-8"))
+t = m["tables"][0]                                     # source sheet, ranges, columns, dtypes
+df = pd.read_excel("out/sales.normalized.xlsx", sheet_name=t["sheet"])
+col = {c["name"]: c["source_column"] for c in t["columns"]}
+
+i = df["Revenue / Q1"].idxmax()                        # cite the original cell via _src_row
+print(df.loc[i, "Product"], f'{t["source"]["sheet"]}!{col["Revenue / Q1"]}{df.loc[i, "_src_row"]}')
+print([x["cell"] for x in m["totals"]["items"] if x["status"] == "mismatch"])
+```
+
+```text
+Gizmos Sales!B11
+['B13']
+```
+
+More recipes (dtypes, totals, notes, writing corrections back): [docs/agent-recipes.md](docs/agent-recipes.md).
+
+## Features
+
+- **Reads** xlsx, xlsm, xlsb, xls and ods (format detected from content); values, formulas with
+  cached results, merged cells.
+- **Finds tables** on every sheet, several per sheet, with titles above and notes below, and labels
+  every cell: title, header, data, group header, total, note, other.
+- **Flattens headers**: multi-row and merged headers become `Revenue / Q1`; names are made unique.
+- **Parses values** stored as text: `1,200.50`, `1.200,50`, `1 200,50`, `(500)`, `12%`, `$1,200`,
+  `1.200 €`, units, `5k`; dates in numeric forms and with month names in nine European languages, quarters, ISO weeks;
+  missing tokens (`-`, `n/a`, `#N/A`); booleans. US and European conventions are equal citizens;
+  ambiguous values (`1.200`, `03/04/2024`) are decided per column and flagged, never silently.
+- **Verifies totals**: SUM/SUBTOTAL formulas and typed total rows are recomputed from the data;
+  double-counted subtotals and wrong grand totals are reported.
+- **Keeps provenance**: `_src_row`, source column letters and original header cells for every value;
+  every other cell on a `Notes` sheet; the source file's SHA-256 in a deterministic manifest.
+- **Agent tools**: `get_cell`, `get_range`, `find_text`, `totals`, and an optional LLM tool loop with
+  citation checking (OpenAI, OpenAI-compatible servers, Anthropic, Bedrock).
+
+## How it works
+
+```
+ workbook ─▶ read ─▶ detect tables ─▶ parse values ─▶ verify totals ─▶ normalize ─▶ .normalized.xlsx
+            cells,   & cell roles     per-column      recompute from   flat header,  + manifest.json
+            merges,                   locale          cached values    typed cols,   + summary
+            formulas                                                   Totals, Notes
+```
+
+Everything above runs in the Rust core: no network, no LLM, same input gives the same bytes.
+[docs/concepts.md](docs/concepts.md) explains each stage; [docs/architecture.md](docs/architecture.md)
+the code.
+
+## Documentation
+
+| | |
+|---|---|
+| [Installation](docs/installation.md) | wheels, extras, CLI, from source |
+| [Quickstart](docs/quickstart.md) | a messy sample workbook, end to end |
+| [Agent recipes](docs/agent-recipes.md) | pandas/openpyxl code for sandbox agents |
+| [Normalized output](docs/normalized-output.md) | sheets and manifest schema |
+| [CLI](docs/cli.md) · [Python API](docs/python-api.md) | full reference |
+| [LLMs](docs/llm.md) · [Locales](docs/locales.md) | providers and keys; numbers, dates, currencies |
+| [Concepts](docs/concepts.md) · [Evaluation](docs/evaluation.md) | how it works; how well it works |
+| [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Troubleshooting](docs/troubleshooting.md) | for contributors and when things go wrong |
+
+## Status and roadmap
+
+Measured on the annotated DECO corpus of real Enron spreadsheets ([details](docs/evaluation.md)):
+table detection F1 at IoU ≥ 0.5 is **74.1** on the dev split (flood-fill baseline: 17.3; held-out
+test split: 64.1), cell-role macro F1 **50.4** (baseline 19.9). The reader opened 500 of 500 randomly
+sampled Enron files.
+
+Done in 0.1.0:
+
+- [x] Reader and cell model; `describe`
+- [x] Evaluation harness (DECO, table and role metrics, `hedgehog eval`)
+- [x] Rule-based table detection and cell roles
+- [x] Locale-aware value parsing (numbers, currencies, dates, missing values)
+- [x] Totals detection and verification
+- [x] Normalized workbook + manifest (`normalize`), deterministic summary
+- [x] Optional LLM layer: summaries, tool loop, model benchmark
+
+Planned:
+
+- [ ] Noise generator for labelled synthetic messy sheets (in progress)
+- [ ] Learned cell-role model (gradient-boosted trees, XGBoost or LightGBM, evaluated in Rust)
+- [ ] Semantic column types (city, country, tax ID, currency amount, period, ...)
+- [ ] Metrics and formulas (metric definitions that become Excel formulas)
+- [ ] MCP server exposing the agent tools
+- [ ] Connectors (Google Sheets, OneDrive/SharePoint, S3, email attachments)
+- [ ] PyPI release
+
+Milestones and their "done when" criteria: [PLAN.md](PLAN.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+
+## Contributing
+
+Issues and pull requests are welcome. Please:
+
+- include a small (anonymized) workbook or the openpyxl code that builds one when reporting a misread
+  file; never commit spreadsheets (tests generate them);
+- run `cargo test --workspace --exclude hh_py`, `cargo clippy --workspace -- -D warnings` and the
+  Python tests before opening a PR;
+- for changes to detection, parsing or totals, include `hedgehog eval` scores before and after.
+
+Setup and conventions: [docs/development.md](docs/development.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

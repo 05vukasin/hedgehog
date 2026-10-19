@@ -98,20 +98,21 @@ hedgehog eval deco --split dev --analyzer layout --limit 50     # quick check on
 ```
 
 All flags are listed in [cli.md](cli.md#hedgehog-eval). The JSON report holds every number of the
-scoreboard plus one row per sheet, so two runs can be compared sheet by sheet. Files are opened one at
-a time, so memory stays low; a full dev run took about 2.5 minutes with a debug build on the
-development machine, most of it reading the files.
+scoreboard plus one row per sheet, so two runs can be compared sheet by sheet. Files are scored on
+`--threads` workers (default: up to 4), each holding one workbook at a time; the report is the same
+for any thread count. A full dev run took 25 s with a debug build on the development machine; the
+`open` and `analyze` times on the `time:` line are summed over the workers.
 
 ## Reading the scoreboard
 
-Output of `hedgehog eval deco --split dev --analyzer layout --no-json` (debug build):
+Output of `hedgehog eval deco --split dev --analyzer layout --no-json` (debug build, 4 threads):
 
 ```text
 hedgehog eval · deco · split=dev · analyzer=layout
 corpus: 854 files matched (0 unmatched), 854 annotated sheets, 0 unmapped labels
   note: 1 annotated `Range_Annotations_Data` sheet(s) (DECO bookkeeping) ignored
 run: 596/596 files opened (0 failed, 0 via fallback copy) · 596 sheets (0 not found) · 1431296 cells scored (1 missing in reader)
-time: load 7.8s · open 128.8s · analyze 7.77s (13.03 ms/sheet) · eval total 137.7s
+time: load 8.4s · open 78.2s · analyze 9.13s (15.33 ms/sheet) · eval total 25.0s
 
 tables (gt 1087, pred 1202)     P      R     F1
   IoU>=0.5                70.5  78.0  74.1

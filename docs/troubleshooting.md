@@ -34,7 +34,7 @@ source: [installation.md](installation.md#the-hedgehog-command).
 | Message | Cause | What to do |
 |---|---|---|
 | `Xlsx error: I/O error: No such file or directory` | Wrong path. | Check the path and the working directory. |
-| `Cannot detect file format` | The extension is not `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods` (for example a `.csv`). | Convert CSV files to xlsx first, or load them with pandas directly. |
+| `Cannot detect file format` | The file is not an xlsx, xlsm, xlsb, xls or ods workbook, for example a CSV. The format is detected from the file's content, so a wrong extension alone is not a problem. | Load CSV files with pandas directly, or convert them to xlsx first. |
 | `Xlsx error: Zip error: invalid Zip archive` | The file is not really an xlsx: truncated, an HTML or CSV export renamed to `.xlsx`, or password-protected (encrypted files are not zip archives). | Re-export the file from Excel or LibreOffice; remove the password. |
 | `TypeError: ... is not an instance of 'str'` | `hedgehog.open` was given a `pathlib.Path`. | Pass `str(path)`. `normalize` and `summarize` accept both. |
 

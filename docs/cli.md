@@ -8,8 +8,13 @@ The CLI is a thin wrapper over the Rust core. It is built from the `cli/` crate
 ```
 hedgehog describe <file>
 hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG]
-hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress]
+hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
+hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
+hedgehog bench --synthetic [--case NAME]
+hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 ```
+
+`describe` and `normalize` are for users; `eval`, `bench` and `golden` are development tools.
 
 Input files can be `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`. Examples on this page use `sales.xlsx`
 from the [quickstart](quickstart.md#a-sample-messy-workbook).
@@ -93,6 +98,7 @@ HEDGEHOG_DATA=/path/to/testdata hedgehog eval deco --split dev --analyzer layout
 | `--json OUT.json` | see below | Where to write the full JSON report. |
 | `--no-json` | off | Print the scoreboard only. |
 | `--progress` | off | Print progress while scoring. |
+| `--threads N` | min(4, CPUs) | Files are scored on `N` worker threads. The report is identical to a single-threaded run. |
 
 Environment variables:
 
@@ -103,12 +109,55 @@ Environment variables:
 
 The scoreboard format is shown in [evaluation.md](evaluation.md#reading-the-scoreboard).
 
+## `hedgehog bench`
+
+Throughput and per-stage timing of the analysis pipeline (read, grid, context, values, totals,
+total detection and verification, baseline layout) over a directory of workbooks or a text file
+with one path per line. A development tool for performance work; see [PERF.md](PERF.md).
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `<dir\|filelist>` | | Directory (all workbooks in it) or a file listing paths. |
+| `--limit N` | all | Only the first `N` files. |
+| `--threads N` | 1 | Process files on `N` threads. |
+| `--top K` | 5 | How many of the slowest files to list. |
+| `--open-only` | off | Time only reading the files. |
+| `--synthetic [--case NAME]` | | Run on generated worst-case sheets (dense, sparse, giant merges, a million rows, ...) instead of files. |
+
+Output for a directory with the three sample workbooks (debug build; timings vary):
+
+```
+$ hedgehog bench . --top 2
+hedgehog bench · 3 files (3 ok, 0 failed) · 1 threads · 3 sheets · 63 cells · 4 merges · 0 formulas
+wall 0.01s · 330.61 files/s · 6943 cells/s · peak RSS 11 MB
+stage            cpu s   share
+  open             0.004   48.2%
+  grid             0.000    0.3%
+  context          0.001    6.4%
+  values           0.003   36.5%
+  totals           0.000    4.5%
+  detect_verify    0.000    2.7%
+  baseline         0.000    1.5%
+  sum              0.009
+slowest files:
+    0.004s       39 cells  sales.xlsx
+    0.003s       12 cells  budget.xlsx
+```
+
+Files that fail to open are listed at the end and do not stop the run.
+
+## `hedgehog golden`
+
+Prints one hash per file over every output of every analysis stage (cells, merges, feature columns,
+totals and the baseline layout), or with `--check GOLDEN.txt` compares against a saved list. Used to
+prove that a performance change did not change any result.
+
 ## Exit codes
 
 | Code | When |
 |---|---|
 | `0` | Success. |
-| `1` | The command ran but failed: the file could not be opened or read, an unknown flag or locale, a missing `-o`, an unwritable output directory, or a missing corpus for `eval`. The error is printed to stderr, followed by the usage text for `normalize` and `eval`. |
+| `1` | The command ran but failed: the file could not be opened or read, an unknown flag or locale, a missing `-o`, an unwritable output directory, or a missing corpus for `eval`. The error is printed to stderr, followed by the usage text for every command except `describe`. |
 | `2` | No or unknown subcommand. The usage text is printed to stderr. |
 
 ```console
