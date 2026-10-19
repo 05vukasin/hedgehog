@@ -70,6 +70,10 @@ pub const HEADER_MAX_NUM_FRAC: f32 = 0.25;
 pub const HEADER_VOTE_WINDOW: usize = 12;
 /// A cell "repeats" its column's body type when that type has at least this share below it.
 pub const HEADER_VOTE_SHARE: f32 = 0.3;
+/// With no type-vote header, accept a wide all-text first row as the header.
+pub const HEADER_PRIOR: bool = true;
+/// Sparse metadata rows (≤2 cells) that may sit between the titles and the header.
+pub const MAX_PRE_HEADER_ROWS: usize = 3;
 /// Text-only tables: the first row is a header if it fills at least this share of the width.
 pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
 /// A header-like row inside a body starts a new table when it has text/years in at least this many

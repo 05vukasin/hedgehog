@@ -135,6 +135,12 @@ fn signature(sheet: &Sheet, r: &Row) -> Signature {
     r.filled().map(|e| (e.left, text(sheet, e).trim().to_lowercase())).collect()
 }
 
+fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
+    let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
+    let width = rect.right - rect.left + 1;
+    r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
+}
+
 /// Number of leading rows (from `start`) that form the header.
 fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect) -> usize {
     let mut d = 0;
@@ -161,7 +167,12 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         return ok as usize;
     }
     if d == 0 {
-        return 0;
+        // Prior: nearly every table has a header. A wide all-text first row counts.
+        if HEADER_PRIOR && end - start >= 2 && is_wide_text_row(&rows[start], rect) {
+            d = 1;
+        } else {
+            return 0;
+        }
     }
     // Vertical merges in the header (e.g. "Region" over two header rows) push its bottom down.
     let mut last = rows[start + d - 1].row;
@@ -259,7 +270,21 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
     // Leading title rows of the region belong to the first table.
     let (mut start, mut titles) = (s, 0..s);
     while start < e {
-        let h = header_depth(sheet, rows, start, e, rect);
+        let mut h = header_depth(sheet, rows, start, e, rect);
+        // Metadata rows (dates, labels) between titles and the header: skip up to a few sparse rows.
+        if h == 0 && segs.is_empty() {
+            let mut o = 0;
+            while o < MAX_PRE_HEADER_ROWS && start + o + 2 < e && rows[start + o].n() <= 2 {
+                o += 1;
+                let h2 = header_depth(sheet, rows, start + o, e, rect);
+                if h2 > 0 {
+                    titles = titles.start..start + o;
+                    start += o;
+                    h = h2;
+                    break;
+                }
+            }
+        }
         let body = start + h;
         let sig = if h > 0 { signature(sheet, &rows[body - 1]) } else { Vec::new() };
         let mut numeric_cols: HashSet<u32> = HashSet::new();

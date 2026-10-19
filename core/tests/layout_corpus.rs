@@ -353,6 +353,12 @@ fn deco_quick_eval() {
             for k in names {
                 let (g, p) = (sheet_gold.get(k).copied().unwrap_or(0), sheet_pred.get(k).copied().unwrap_or(0));
                 let e = presence.entry(k).or_default();
+                if std::env::var("HH_GOLDONLY").is_ok_and(|x| x == k) && g > 0 && p == 0 {
+                    println!("GOLDONLY {k} {g} | {file} [{sname}]");
+                }
+                if std::env::var("HH_PREDONLY").is_ok_and(|x| x == k) && g == 0 && p > 0 {
+                    println!("PREDONLY {k} {p} | {file} [{sname}]");
+                }
                 match (g > 0, p > 0) {
                     (true, false) => e.0 += 1,
                     (false, true) => e.1 += 1,
