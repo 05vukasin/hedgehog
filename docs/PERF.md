@@ -9,18 +9,19 @@ expect ±10% noise between runs (key comparisons were repeated, alternating bina
 ## How to measure
 
 ```bash
-export CARGO_TARGET_DIR=/home/vukasin/projects/excell-lib-project/hedgehog/target
-S=/home/vukasin/projects/excell-lib-project/scripts/run_capped.sh
+# Optional: run heavy commands under a memory cap, e.g. `S="systemd-run --user --wait -p MemoryMax=4G"`;
+# with no cap, leave S empty.
+S=""
 
 # throughput + per-stage share + peak RSS over a directory or a file list
-$S 4G bench.log cargo run --release -p hh_cli -- bench core/benches/enron50.txt [--threads 8] [--open-only] [--limit N]
+$S cargo run --release -p hh_cli -- bench core/benches/enron50.txt [--threads 8] [--open-only] [--limit N]
 # generated worst cases (dense, sparse over the whole sheet, merges, formulas, 1M rows, 16k cols, giant merges)
-$S 4G bench.log cargo run --release -p hh_cli -- bench --synthetic [--case tall_1m]
+$S cargo run --release -p hh_cli -- bench --synthetic [--case tall_1m]
 # criterion, per stage, synthetic + real files (HH_BENCH_BIG=1 adds the 9 biggest files)
-$S 4G bench.log cargo bench -p hh_core --bench stages
+$S cargo bench -p hh_core --bench stages
 # golden check: every output of every stage must hash as before
-$S 4G gold.log cargo run --release -p hh_cli -- golden core/benches/enron50.txt --threads 4 --check core/benches/golden_enron50.txt
-$S 4G gold.log cargo test --release -p hh_core --test perf_golden -- --ignored --nocapture
+$S cargo run --release -p hh_cli -- golden core/benches/enron50.txt --threads 4 --check core/benches/golden_enron50.txt
+$S cargo test --release -p hh_core --test perf_golden -- --ignored --nocapture
 # merged areas of the byte scanner vs calamine on the whole Enron set
 $S 5G m.log cargo test --profile profiling -p hh_core --test reader_merges_corpus -- --ignored --nocapture
 ```

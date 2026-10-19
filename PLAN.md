@@ -17,7 +17,7 @@ Rule for every milestone: **it ships with a number.** Each step is measured on t
 ```
 hedgehog/
   core/   Rust: workbook reader, cell model, detection, normalization, summary
-  py/     PyO3 bindings (`src/`) + Python package (`python/hedgehog/`, later: MCP server, connectors)
+  py/     PyO3 bindings (`src/`) + Python package (`python/hedgehog/`, later: MCP server)
   cli/    `hedgehog describe|eval|bench <file>` for development
   tools/
     noise/           noise generator (Python, fast to iterate) + labels
@@ -43,7 +43,7 @@ Test corpora stay outside the repo (`../testdata`, path via `HEDGEHOG_DATA`), th
 | M7 | Semantic column types | City/country/municipality (GeoNames + Serbian list), currency amount, date/period, ID/tax ID (PIB/MB), person/company, category, percent…; value detectors + header embeddings + boosted-tree classifier | Column-type F1 measured on synthetic (known types) + small hand-labelled real set |
 | M8 | Metrics & formulas | Metric definitions (one JSON def → Excel `SUMIFS` formulas + query); recipe catalogue (date+measure → quarterly/YoY, dimension+measure → group-by/share, totals → check); writes cleaned xlsx + "Review" sheet; profile embedded in xlsx + cache keyed by content hash | Re-opening the same/updated file reuses the profile; quarterly question answered from stored metric in ms |
 | M9 | Agent tools / MCP server | `describe`, `get_cell`, `find`, `aggregate`, `metric`, `trace`, `sql` — every answer returns source cells | An agent answers "sum of invoices in D43"-type questions via tools only |
-| M10 | Connectors & speed | Data sources (Google Sheets, OneDrive/SharePoint, S3, email attachments…) in Python plugin layer; own streaming xlsx reader (zip + quick-xml) replacing calamine if profiling shows it's the bottleneck; rayon parallelism | Benchmarks on the 1 GB Enron set |
+| M10 | Speed & scale | Own streaming reader only if profiling shows calamine is the bottleneck; rayon across sheets; values caching per column | `hedgehog bench` on the Enron set; perf golden check identical |
 
 Order rationale: M1 before any algorithm (no number → no progress). M2–M4 are rules only and already
 useful to an agent. ML (M6, M7) comes once there is labelled data (M5) to train and measure it on —
@@ -54,8 +54,11 @@ the research shows rules reach ~90% and boosted trees close most of the remainin
   ("Relationship not found"). Fixed in `reader.rs`: the entry is stripped in memory and the file reopened (500/500 open).
 - calamine gives no cell styles (bold, borders, fills, number formats) — needed for M6 features.
 
+## Scope
+- Input is the file the user gives; output is a new normalized version of it plus a summary. No data-source
+  connectors (Google Sheets, SharePoint, S3, …) — out of scope by design.
+
 ## Not blocking yet (decide by M8–M10)
-- Connectors: data sources, LLM providers, or both?
 - Output: add sheets to the original file vs. new clean workbook (recommendation: add, never overwrite user data).
 - May the pipeline call an LLM (cost/privacy)? Design works without one.
 - Deployment: pip library, MCP server, hosted service.

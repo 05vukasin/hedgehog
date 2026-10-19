@@ -1,0 +1,5 @@
+# Same compiler locally and in CI, so a new clippy lint can't break CI unexpectedly.
+# Bump deliberately (and fix new lints) rather than following `stable`.
+[toolchain]
+channel = "1.97.1"
+components = ["clippy", "rustfmt"]

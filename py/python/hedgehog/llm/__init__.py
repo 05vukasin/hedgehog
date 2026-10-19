@@ -1,7 +1,7 @@
 """LLM connections for hedgehog: one provider-neutral ChatClient over OpenAI, OpenAI-compatible
 servers (vLLM, Ollama, OpenRouter, Groq), Anthropic and AWS Bedrock, plus a tool loop (``ask``) and a
 model comparison (``bench``). The Rust core never calls an LLM; everything here is optional and
-needs the provider SDK extra (``pip install 'hedgehog[llm]'``)."""
+needs the provider SDK extra (``pip install 'hedgehog-sheets[llm]'``)."""
 
 from .agent import Answer, BenchTable, ask, bench, final_answer, load_cases, score
 from .base import ChatClient, list_models, set_max_concurrent

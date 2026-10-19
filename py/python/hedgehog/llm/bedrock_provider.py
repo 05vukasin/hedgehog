@@ -34,7 +34,7 @@ def _import_sdk():
         import boto3  # noqa: PLC0415
         from botocore.config import Config  # noqa: PLC0415
     except ImportError as e:  # pragma: no cover - depends on environment
-        raise MissingDependency("The Bedrock provider needs `boto3`: pip install 'hedgehog[bedrock]'") from e
+        raise MissingDependency("The Bedrock provider needs `boto3`: pip install 'hedgehog-sheets[bedrock]'") from e
     return boto3, Config
 
 

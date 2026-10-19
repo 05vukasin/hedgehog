@@ -35,7 +35,7 @@ def _import_sdk():
         import anthropic  # noqa: PLC0415
     except ImportError as e:  # pragma: no cover - depends on environment
         raise MissingDependency(
-            "The Anthropic provider needs the `anthropic` package: pip install 'hedgehog[anthropic]'"
+            "The Anthropic provider needs the `anthropic` package: pip install 'hedgehog-sheets[anthropic]'"
         ) from e
     return anthropic
 

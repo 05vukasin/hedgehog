@@ -2,7 +2,7 @@
 
 Optional: hedgehog computes everything deterministically, and the LLM only phrases summaries or answers
 test questions through tools. The Rust core makes no network or LLM calls. Install a provider with
-`pip install 'hedgehog[openai]'`, `[anthropic]`, `[bedrock]` or `[llm]` (all three).
+`pip install 'hedgehog-sheets[openai]'`, `[anthropic]`, `[bedrock]` or `[llm]` (all three).
 
 ```python
 import hedgehog
