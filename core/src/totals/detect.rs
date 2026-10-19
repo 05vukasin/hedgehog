@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::grid::Grid;
 use crate::model::{Cell, Rect, Value};
@@ -263,8 +263,8 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
         out.push(c);
     }
 
-    let formula_total: HashSet<(u32, u32)> = out.iter().map(|c| (c.row, c.col)).collect();
-    let rows_with_cells: HashSet<u32> = sheet.cells.iter().map(|c| c.row).collect();
+    let formula_total: FxHashSet<(u32, u32)> = out.iter().map(|c| (c.row, c.col)).collect();
+    let rows_with_cells: FxHashSet<u32> = sheet.cells.iter().map(|c| c.row).collect();
 
     // (b) Typed numbers in keyword rows → column totals over the cells above.
     let mut kw_sorted: Vec<_> = kw_rows.iter().map(|(&r, &v)| (r, v)).collect();
@@ -335,7 +335,7 @@ fn group_name(label: &str) -> Option<String> {
 fn typed_group(
     grid: &Grid,
     kw_rows: &HashMap<u32, (u32, KeywordLevel)>,
-    rows_with_cells: &HashSet<u32>,
+    rows_with_cells: &FxHashSet<u32>,
     row: u32,
     col: u32,
     label_col: u32,
@@ -412,8 +412,8 @@ fn typed_group(
 fn typed_vertical(
     grid: &Grid,
     kw_rows: &HashMap<u32, (u32, KeywordLevel)>,
-    formula_total: &HashSet<(u32, u32)>,
-    rows_with_cells: &HashSet<u32>,
+    formula_total: &FxHashSet<(u32, u32)>,
+    rows_with_cells: &FxHashSet<u32>,
     row: u32,
     col: u32,
     label_col: u32,
