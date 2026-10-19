@@ -7,6 +7,17 @@ name = "hedgehog"
 requires-python = ">=3.9"
 dynamic = ["version"]
 
+[project.optional-dependencies]
+# LLM providers are optional; the core library needs none of them.
+openai = ["openai>=1.40"]
+anthropic = ["anthropic>=1.15"]
+bedrock = ["boto3>=1.39"]
+llm = ["openai>=1.40", "anthropic>=1.15", "boto3>=1.39"]
+test = ["pytest>=8", "openpyxl>=3.1"]
+
 [tool.maturin]
 python-source = "python"
 module-name = "hedgehog._native"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
