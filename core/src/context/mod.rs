@@ -49,8 +49,9 @@ pub use components::{components, label, Component, Labeling};
 pub use kind::{kind_of, Kind};
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::features::Features;
 use crate::grid::Grid;
@@ -133,10 +134,10 @@ pub fn compute(grid: &Grid, out: &mut Features) {
     };
 
     // ---- aggregates (first pass) ----
-    let mut sheet_rows: HashMap<u32, u32> = HashMap::new();
-    let mut rows: HashMap<(u32, u32), RowAgg> = HashMap::new();
-    let mut cols: HashMap<(u32, u32), ColAgg> = HashMap::new();
-    let mut seen_values: HashSet<(u32, u32, u64)> = HashSet::new();
+    let mut sheet_rows: HashMap<u32, u32> = HashMap::default();
+    let mut rows: HashMap<(u32, u32), RowAgg> = HashMap::default();
+    let mut cols: HashMap<(u32, u32), ColAgg> = HashMap::default();
+    let mut seen_values: HashSet<(u32, u32, u64)> = HashSet::default();
     for (i, cell) in cells.iter().enumerate() {
         let (k, comp) = (kinds[i], comp_of[i]);
         *sheet_rows.entry(cell.row).or_default() += 1;

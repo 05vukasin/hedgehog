@@ -3,7 +3,7 @@
 //! Header, the rest Data; cells of smaller components are Other. The number every layout change
 //! must beat.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 use crate::analysis::{DetectedTable, Role, SheetLayout};
 use crate::grid::Grid;
@@ -12,7 +12,7 @@ use crate::model::Rect;
 pub fn analyze(grid: &Grid) -> SheetLayout {
     let sheet = grid.sheet;
     // Position → component id (usize::MAX = not yet visited). Covers cells and merged areas.
-    let mut comp: HashMap<(u32, u32), usize> = HashMap::new();
+    let mut comp: HashMap<(u32, u32), usize> = HashMap::default();
     for c in &sheet.cells {
         comp.insert((c.row, c.col), usize::MAX);
     }

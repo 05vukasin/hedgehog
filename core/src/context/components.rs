@@ -1,6 +1,6 @@
 //! 8-connected components of filled positions (cells + merged areas) — the "blocks" of a sheet.
 
-use std::collections::HashMap;
+use rustc_hash::FxHashMap as HashMap;
 
 use crate::grid::Grid;
 use crate::model::Rect;
@@ -44,6 +44,7 @@ pub fn label(grid: &Grid) -> Labeling {
     let n = cells.len();
     let mut uf = UnionFind::new(n + merges.len());
 
+    // Node of a merged area: the last merge listed with the same top-left corner.
     let merge_index: HashMap<(u32, u32), usize> =
         merges.iter().enumerate().map(|(i, r)| ((r.top, r.left), i)).collect();
     let merge_node = |r: u32, c: u32| -> Option<usize> {
@@ -108,7 +109,7 @@ pub fn label(grid: &Grid) -> Labeling {
     }
 
     // Root → component id, only for roots that own a cell.
-    let mut root_comp: HashMap<usize, u32> = HashMap::new();
+    let mut root_comp: HashMap<usize, u32> = HashMap::default();
     let mut comps: Vec<Component> = Vec::new();
     let mut cell_component = Vec::with_capacity(n);
     for (i, cell) in cells.iter().enumerate() {
