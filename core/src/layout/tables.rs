@@ -325,7 +325,12 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
 }
 
 fn set(out: &mut Out, r: &Row, role: Role) {
-    for e in &r.entries {
+    set_upto(out, r, role, u32::MAX);
+}
+
+/// Like [`set`], for entries starting at or left of `max_col` only.
+fn set_upto(out: &mut Out, r: &Row, role: Role, max_col: u32) {
+    for e in r.entries.iter().filter(|e| e.left <= max_col) {
         if let Some(i) = e.cell {
             out.roles[i] = role;
         }
@@ -391,12 +396,17 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     for r in &rows[seg.titles.clone()] {
         set(out, r, if is_note_row(sheet, r) { Role::Note } else { Role::Title });
     }
+    // Unlabelled helper columns at the right edge (no header cell above them) are not the table's.
+    if RIGHT_TRIM_UNHEADED && seg.header > 0 {
+        let covered = rows[seg.start..body_start].iter().map(|r| r.right()).max().unwrap_or(rect.right);
+        rect.right = rect.right.min(covered.max(rect.left + 1));
+    }
     let mut header_rows = 0;
     if seg.header > 0 {
         let first_body = rows[body_start].row;
         let mut last = rows[body_start - 1].row;
         for r in &rows[seg.start..body_start] {
-            set(out, r, Role::Header);
+            set_upto(out, r, Role::Header, rect.right);
             for e in &r.entries {
                 if e.bottom < first_body {
                     last = last.max(e.bottom);
@@ -425,9 +435,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         } else {
             Role::Data
         };
-        set(out, r, role);
+        set_upto(out, r, role, rect.right);
         if role == Role::Data {
-            for e in &r.entries {
+            for e in r.entries.iter().filter(|e| e.left <= rect.right) {
                 body_cells += (e.kind != Kind::Blank) as usize;
                 let c = col_counts.entry(e.left).or_default();
                 match e.kind {

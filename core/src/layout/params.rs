@@ -40,6 +40,10 @@ pub const FORM_COLON_FRAC: f32 = 0.6;
 pub const TAIL_MAX_FILL_FRAC: f32 = 0.5;
 pub const TAIL_MIN_ROWS: usize = 3;
 
+/// Cut columns at the right edge of a table that have no header cell above them (→ Other).
+/// Tried: worse on DECO dev (tables -1.1, roles -0.2), so off.
+pub const RIGHT_TRIM_UNHEADED: bool = false;
+
 // --- Titles & notes ---------------------------------------------------------------------------
 
 /// Max leading single-cell rows inside a block treated as titles.
