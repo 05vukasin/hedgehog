@@ -7,7 +7,8 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use super::date::{parse_date, serial_to_ymd, DateOrder, DateOrderVotes};
+use super::date::{parse_date, parse_time, serial_to_ymd, DateOrder, DateOrderVotes};
+use super::locale::Locale;
 use super::keywords::{is_note, starts_with_enumerator, total_score};
 use super::missing::{is_excel_error, missing_token, parse_bool};
 use super::number::{parse_number, DecimalSep, DecimalVotes, NumberHint};
@@ -17,7 +18,7 @@ use crate::grid::Grid;
 use crate::model::{Cell, Value};
 
 /// Name and one-line meaning of every feature, in the order they are added.
-pub const FEATURES: [(&str, &str); 33] = [
+pub const FEATURES: [(&str, &str); 34] = [
     ("v_is_number", "stored value is a number"),
     ("v_is_text", "stored value is text"),
     ("v_is_date", "stored value is an Excel date/time"),
@@ -51,6 +52,7 @@ pub const FEATURES: [(&str, &str); 33] = [
     ("v_kw_total", "1 if text starts with a total keyword (total/ukupno/svega/укупно…), 0.5 if one appears later"),
     ("v_kw_note", "text starts like a note/source line (`Note:`, `Izvor:`, `Napomena`, `*`, `¹`)"),
     ("v_starts_with_enumerator", "text starts with an enumerator (`1.`, `1.2`, `a)`, `(3)`, `IV.`, `-`, `•`) then text"),
+    ("v_time_text", "text that is a clock time alone (`6:00`, `6:00 PM`, `18:00:00`, `18h30`)"),
 ];
 
 const N: usize = FEATURES.len();
@@ -79,35 +81,67 @@ pub fn infer_column<'a>(values: impl IntoIterator<Item = &'a str>) -> ColumnHint
     ColumnHints { decimal: d.decision(), date_order: o.decision() }
 }
 
-/// Infers [`ColumnHints`] for every column of the sheet. Columns without decimal evidence use
-/// the sheet-wide vote.
+/// Infers [`ColumnHints`] for every column of the sheet, from the data only.
+///
+/// Per column: majority of unambiguous values. Columns without evidence fall back to the
+/// sheet-wide vote, then to cross-evidence (a comma-decimal sheet writes dates day-first; a
+/// month-first sheet uses the decimal point). With no evidence at all the hint stays `None` and
+/// the parsers apply their documented tie-breaks, flagging the value `ambiguous`.
 pub fn sheet_column_hints(grid: &Grid) -> HashMap<u32, ColumnHints> {
+    sheet_column_hints_with(grid, None)
+}
+
+/// Like [`sheet_column_hints`], but an explicit `locale` overrides inference for every column.
+pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u32, ColumnHints> {
     let mut votes: HashMap<u32, (DecimalVotes, DateOrderVotes)> = HashMap::new();
     for c in &grid.sheet.cells {
         if let Some(Value::Text(s)) = &c.value {
             let e = votes.entry(c.col).or_default();
-            e.0.add(s);
-            e.1.add(s);
+            if locale.is_none() {
+                e.0.add(s);
+                e.1.add(s);
+            }
         }
     }
-    let mut sheet = DecimalVotes::default();
-    for (d, _) in votes.values() {
-        sheet.merge(d);
+    if let Some(l) = locale {
+        return votes.into_keys().map(|col| (col, l.hints())).collect();
     }
-    let sheet_decimal = sheet.decision();
+    let mut sheet_d = DecimalVotes::default();
+    let mut sheet_o = DateOrderVotes::default();
+    for (d, o) in votes.values() {
+        sheet_d.merge(d);
+        sheet_o.merge(o);
+    }
+    let sheet_order = sheet_o.decision();
+    let sheet_decimal = sheet_d.decision().or(match sheet_order {
+        Some(DateOrder::MonthDay) => Some(DecimalSep::Dot),
+        _ => None,
+    });
+    let sheet_order = sheet_order.or(match sheet_decimal {
+        Some(DecimalSep::Comma) => Some(DateOrder::DayMonth),
+        _ => None,
+    });
     votes
         .into_iter()
-        .map(|(col, (d, o))| (col, ColumnHints { decimal: d.decision().or(sheet_decimal), date_order: o.decision() }))
+        .map(|(col, (d, o))| {
+            (col, ColumnHints { decimal: d.decision().or(sheet_decimal), date_order: o.decision().or(sheet_order) })
+        })
         .collect()
 }
 
-/// Adds every `v_*` column (see [`FEATURES`]) to `out`, one value per entry of `sheet.cells`.
+/// Adds every `v_*` column (see [`FEATURES`]) to `out`, one value per entry of `sheet.cells`,
+/// inferring each column's conventions from the data.
 pub fn compute(grid: &Grid, out: &mut Features) {
+    compute_with(grid, out, None);
+}
+
+/// [`compute`] with an optional explicit locale for the whole sheet (overrides inference).
+pub fn compute_with(grid: &Grid, out: &mut Features, locale: Option<Locale>) {
     let cells = &grid.sheet.cells;
-    let hints = sheet_column_hints(grid);
+    let hints = sheet_column_hints_with(grid, locale);
     let mut cols: Vec<Vec<f32>> = (0..N).map(|_| Vec::with_capacity(cells.len())).collect();
     for c in cells {
-        let h = hints.get(&c.col).copied().unwrap_or_default();
+        let h = hints.get(&c.col).copied().unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
         let row = cell_features(c, h);
         for (col, v) in cols.iter_mut().zip(row) {
             col.push(v);
@@ -227,6 +261,8 @@ pub fn cell_features(cell: &Cell, hints: ColumnHints) -> [f32; N] {
                     f[8] = 1.0;
                 } else if super::date::is_period_label(t) {
                     f[10] = 1.0;
+                } else if parse_time(t).is_some() {
+                    f[33] = 1.0;
                 }
                 f[9] = flag(parse_bool(t).is_some());
                 f[30] = total_score(t);

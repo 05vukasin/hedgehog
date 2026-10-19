@@ -8,9 +8,24 @@
 //! on purpose so that dates, phone numbers and codes are not misread.
 //!
 //! The ambiguous case — one separator followed by exactly three digits (`1.200`, `1,200`) — is
-//! resolved by [`NumberHint`], normally the per-column result of [`infer_decimal`].
+//! resolved, in order, by:
+//! 1. [`NumberHint`]: an explicit [`super::Locale`] or the per-column result of
+//!    [`infer_decimal`] (which itself falls back to the sheet-wide vote);
+//! 2. the currency in the cell, when its area has one convention (`1.200 RSD` → 1200,
+//!    `$1,200` → 1200; `€` is mixed and gives no evidence);
+//! 3. a fixed tie-break with [`ParsedNumber::ambiguous`] set: `.` is read as the decimal point
+//!    and `,` as a thousands separator (`1.200` → 1.2, `1,200` → 1200). This is the reading of
+//!    spreadsheet "invariant" formatting; it is a guess, never silent — callers must treat
+//!    `ambiguous` values as unresolved until column or sheet evidence arrives.
+//!
+//! Inference is symmetric: a value counts as evidence for a convention only when it cannot be
+//! read the other way (`1.200,50`, `3,25`, `1.200.000` ⇒ comma; `1,200.50`, `3.25`,
+//! `1,200,000` ⇒ dot).
 
+use super::currency::{currency_match, decimal_convention, eq_fold};
 use super::text::{is_space, trim};
+
+pub use super::currency::currency;
 
 /// Which character a column uses as the decimal separator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -64,6 +79,12 @@ pub struct ParsedNumber {
     pub percent: bool,
     /// ISO 4217 code of a currency symbol/code/word found (`€` → `EUR`, `din.` → `RSD`).
     pub currency: Option<&'static str>,
+    /// The currency symbol is shared by several currencies (`kr`, `¥`, `Rs`); `currency` holds
+    /// the most common reading.
+    pub currency_ambiguous: bool,
+    /// The currency was written before the number (`$5`, `CHF 1'234.50`) rather than after
+    /// (`1 234,56 €`).
+    pub currency_prefix: bool,
     /// Canonical unit found (`kom.` → `pcs`, `m²` → `m2`).
     pub unit: Option<&'static str>,
     /// Multiplier from a scale word (`k` → 1e3, `mil.` → 1e6, `mlrd` → 1e9); 1.0 when none.
@@ -117,6 +138,8 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         negative: None,
         percent: false,
         currency: None,
+        currency_ambiguous: false,
+        currency_prefix: false,
         unit: None,
         scale: 1.0,
         thousands_sep: None,
@@ -162,7 +185,10 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 if end == 0 || p.currency.is_some() {
                     return None;
                 }
-                p.currency = Some(currency(&rest[..end])?);
+                let m = currency_match(&rest[..end])?;
+                p.currency = Some(m.code);
+                p.currency_ambiguous = m.ambiguous;
+                p.currency_prefix = true;
                 rest = &rest[end..];
             }
         }
@@ -323,10 +349,11 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         Some(c) => NumberHint::with_decimal(Some(if c == ',' { DecimalSep::Comma } else { DecimalSep::Dot })),
         None => hint,
     };
-    // Without a column hint, a regional currency implies the comma convention ("1.200 RSD").
-    let comma_currency = matches!(p.currency, Some("RSD" | "BAM" | "MKD" | "HRK"));
+    // Without a column hint, the currency's customary convention breaks the tie
+    // ("1.200 RSD" → 1200, "$1,200" → 1200, "1.200 €" stays a guess: the euro area is mixed).
+    let currency_hint = if p.currency_ambiguous { None } else { p.currency.and_then(decimal_convention) };
     let hint_used = match hint.decimal {
-        None if comma_currency => NumberHint::with_decimal(Some(DecimalSep::Comma)),
+        None if currency_hint.is_some() => NumberHint::with_decimal(currency_hint),
         _ => hint,
     };
     let (thousands, decimal_at, mut ambiguous) = resolve_separators(groups, seps, digits[0] == b'0', hint_used)?;
@@ -463,56 +490,8 @@ fn resolve_separators(groups: &[u8], seps: &[char], lead_zero: bool, hint: Numbe
     Some((thousands, decimal_at, ambiguous))
 }
 
-/// Case-insensitive comparison of `word` against a lowercase dictionary entry.
-fn eq_fold(word: &str, lower: &str) -> bool {
-    if word.is_ascii() && lower.is_ascii() {
-        return word.eq_ignore_ascii_case(lower);
-    }
-    let mut a = word.chars().flat_map(char::to_lowercase);
-    let mut b = lower.chars();
-    loop {
-        match (a.next(), b.next()) {
-            (None, None) => return true,
-            (Some(x), Some(y)) if x == y => {}
-            _ => return false,
-        }
-    }
-}
-
 fn lookup(word: &str, table: &[(&'static str, &[&str])]) -> Option<&'static str> {
     table.iter().find(|(_, aliases)| aliases.iter().any(|a| eq_fold(word, a))).map(|(code, _)| *code)
-}
-
-const CURRENCIES: &[(&str, &[&str])] = &[
-    ("RSD", &["rsd", "din", "din.", "dinar", "dinara", "dinari", "дин", "дин.", "динар", "динара"]),
-    ("EUR", &["eur", "€", "euro", "euros", "evra", "evro", "eura", "евра", "евро"]),
-    ("USD", &["usd", "$", "us$", "dollars", "dolara", "долара"]),
-    ("GBP", &["gbp", "£"]),
-    ("CHF", &["chf"]),
-    ("JPY", &["jpy", "¥"]),
-    ("RUB", &["rub", "₽", "руб", "руб."]),
-    ("HRK", &["hrk", "kn"]),
-    ("BAM", &["bam"]),
-    ("MKD", &["mkd", "ден", "ден."]),
-    ("HUF", &["huf", "ft"]),
-    ("CAD", &["cad", "c$"]),
-    ("AUD", &["aud", "a$"]),
-    ("CNY", &["cny", "rmb"]),
-    ("INR", &["inr", "₹"]),
-    ("SEK", &["sek"]),
-    ("NOK", &["nok"]),
-    ("DKK", &["dkk"]),
-    ("PLN", &["pln", "zł"]),
-    ("CZK", &["czk", "kč"]),
-    ("TRY", &["try", "₺"]),
-];
-
-/// ISO code for a currency symbol, code or word (case-insensitive), e.g. `din.` → `RSD`.
-pub fn currency(word: &str) -> Option<&'static str> {
-    if word == "KM" {
-        return Some("BAM"); // konvertibilna marka; lowercase "km" is kilometres
-    }
-    lookup(word, CURRENCIES)
 }
 
 const UNITS: &[(&str, &[&str])] = &[
@@ -530,7 +509,15 @@ const UNITS: &[(&str, &[&str])] = &[
     ("ha", &["ha", "hektar", "hektara", "ха"]),
     ("l", &["l", "lit", "lit.", "litar", "litara", "liter", "liters", "litre", "litres", "л"]),
     ("ml", &["ml"]),
-    ("pcs", &["kom", "kom.", "komada", "komad", "pcs", "pc", "pcs.", "pieces", "kos", "ком", "ком."]),
+    ("pcs", &[
+        "kom", "kom.", "komada", "komad", "pcs", "pc", "pcs.", "pieces", "kos", "ком", "ком.", "stk", "stk.", "stück",
+        "uds", "uds.", "ud", "ud.", "unidades", "pz", "pz.", "pezzi", "szt", "szt.", "st.", "stuks", "pièces",
+    ]),
+    ("lb", &["lb", "lbs", "lb."]),
+    ("oz", &["oz"]),
+    ("ft", &["ft", "ft."]),
+    ("mi", &["mi"]),
+    ("gal", &["gal", "gal."]),
     ("h", &["h", "hr", "hrs", "hours", "sat", "sati", "сати"]),
     ("min", &["min", "min.", "minuta"]),
     ("s", &["s", "sec", "sek"]),
@@ -554,9 +541,20 @@ pub fn unit(word: &str) -> Option<&'static str> {
 }
 
 const SCALES: &[(f64, &[&str])] = &[
-    (1e3, &["k", "th", "thousand", "thousands", "hilj", "hilj.", "hiljada", "hiljade", "hiljadu", "tis", "tis.", "хиљ", "хиљ.", "хиљада", "хиљаде"]),
-    (1e6, &["mil", "mil.", "mln", "mln.", "mn", "mio", "mio.", "milion", "miliona", "milioni", "million", "millions", "мил", "мил.", "милион", "милиона"]),
-    (1e9, &["bn", "bln", "mlrd", "mlrd.", "milijarda", "milijarde", "milijardi", "billion", "billions", "млрд", "млрд.", "милијарди", "милијарда"]),
+    (1e3, &[
+        "k", "th", "thousand", "thousands", "hilj", "hilj.", "hiljada", "hiljade", "hiljadu", "tis", "tis.", "хиљ", "хиљ.",
+        "хиљада", "хиљаде", "tsd", "tsd.", "tausend", "mille", "tys", "tys.",
+    ]),
+    (1e6, &[
+        "mil", "mil.", "mln", "mln.", "mn", "mio", "mio.", "milion", "miliona", "milioni", "million", "millions", "мил",
+        "мил.", "милион", "милиона", "millionen", "millón", "millones", "milione", "miljoen", "milhão",
+        "milhões", "milionów",
+    ]),
+    (1e9, &[
+        "bn", "bln", "mlrd", "mlrd.", "milijarda", "milijarde", "milijardi", "billion", "billions", "млрд", "млрд.",
+        "милијарди", "милијарда", "mrd", "mrd.", "milliarde", "milliarden", "milliard", "milliards", "md", "mld", "mld.",
+        "miliardi", "miljard", "mds",
+    ]),
 ];
 
 /// Multiplier for a scale word (`k`, `mil.`, `mln`, `hiljada`, `million`, `mlrd`, …).
@@ -574,10 +572,15 @@ pub fn scale(word: &str) -> Option<f64> {
 
 fn classify_suffix(word: &str, p: &mut ParsedNumber) -> Option<()> {
     // Each kind of suffix may appear once.
-    if let Some(f) = scale(word) {
+    // After a currency, lowercase "m" is million, not metres: "£2.5m", "$3m".
+    let as_scale = if word == "m" && p.currency.is_some() { Some(1e6) } else { scale(word) };
+    if let Some(f) = as_scale {
         (p.scale == 1.0).then(|| p.scale = f)
-    } else if let Some(c) = currency(word) {
-        p.currency.is_none().then(|| p.currency = Some(c))
+    } else if let Some(m) = currency_match(word) {
+        p.currency.is_none().then(|| {
+            p.currency = Some(m.code);
+            p.currency_ambiguous = m.ambiguous;
+        })
     } else {
         let u = unit(word)?;
         p.unit.is_none().then(|| p.unit = Some(u))

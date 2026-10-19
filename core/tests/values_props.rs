@@ -167,3 +167,73 @@ fn parsers_never_panic() {
         let _ = values::cell_features(&cell, values::ColumnHints::default());
     }
 }
+
+/// Every locale preset: format numbers and dates the way that locale writes them → parse with the
+/// preset as hint → same value.
+#[test]
+fn round_trip_every_locale() {
+    use hh_core::values::Locale;
+    let months: [(Locale, [&str; 12]); 12] = [
+        (Locale::Us, ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]),
+        (Locale::Uk, ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]),
+        (Locale::De, ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]),
+        (Locale::Fr, ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]),
+        (Locale::Es, ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]),
+        (Locale::It, ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]),
+        (Locale::Nl, ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"]),
+        (Locale::Pt, ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]),
+        (Locale::Pl, ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "lis.", "grudnia"]),
+        (Locale::Ch, ["Jan.", "Feb.", "Mär.", "Apr.", "Mai", "Jun.", "Jul.", "Aug.", "Sep.", "Okt.", "Nov.", "Dez."]),
+        (Locale::Rs, ["januar", "februar", "mart", "april", "maj", "jun", "jul", "avgust", "septembar", "oktobar", "novembar", "decembar"]),
+        (Locale::Iso, ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]),
+    ];
+    let mut rng = Rng(0xC0FFEE);
+    for (loc, names) in months {
+        let dch = loc.decimal().as_char();
+        let thousands: &[&str] = match loc {
+            Locale::Us | Locale::Uk => &[",", ""],
+            Locale::Iso => &[""],
+            Locale::Ch => &["'", "’", ""],
+            Locale::Fr | Locale::Pl => &["\u{202F}", "\u{A0}", " ", ""],
+            _ => &[".", ""],
+        };
+        for _ in 0..3_000 {
+            let int_part = rng.below(100_000_000);
+            let frac = (rng.below(2) == 0).then(|| (rng.below(100), 2usize));
+            let t = *rng.pick(thousands);
+            let body = format_num(int_part, frac, (!t.is_empty()).then_some(t), dch);
+            let want = int_part as f64 + frac.map_or(0.0, |(f, _)| f as f64 / 100.0);
+            let text = match rng.below(4) {
+                0 => format!("-{body}"),
+                1 => format!("({body})"),
+                _ => body.clone(),
+            };
+            let sign = if text.starts_with(['-', '(']) { -1.0 } else { 1.0 };
+            let p = parse_number(&text, loc.number_hint()).unwrap_or_else(|| panic!("{loc:?}: {text:?}"));
+            assert!((p.value - sign * want).abs() <= 1e-9 * want.max(1.0), "{loc:?}: {text:?} → {}", p.value);
+
+            let serial = 20000.0 + rng.below(40000) as f64;
+            let (y, m, d) = values::serial_to_ymd(serial).unwrap();
+            let numeric = match loc {
+                Locale::Us => format!("{m}/{d}/{y}"),
+                Locale::Uk | Locale::Fr | Locale::Es | Locale::It | Locale::Pt => format!("{d:02}/{m:02}/{y}"),
+                Locale::Nl => format!("{d}-{m}-{y}"),
+                Locale::De | Locale::Ch | Locale::Pl => format!("{d}.{m}.{y}"),
+                Locale::Rs => format!("{d:02}.{m:02}.{y}."),
+                Locale::Iso => format!("{y}-{m:02}-{d:02}"),
+            };
+            let name = names[(m - 1) as usize];
+            let worded = match loc {
+                Locale::Us => format!("{name} {d}, {y}"),
+                Locale::De | Locale::Ch | Locale::Rs => format!("{d}. {name} {y}"),
+                Locale::Es | Locale::Pt => format!("{d} de {name} de {y}"),
+                _ => format!("{d} {name} {y}"),
+            };
+            for s in [numeric, worded] {
+                let p = parse_date(&s, loc.date_order()).unwrap_or_else(|| panic!("{loc:?}: {s:?}"));
+                assert_eq!(p.serial(), serial, "{loc:?}: {s:?}");
+                assert!(!p.ambiguous, "{loc:?}: {s:?}");
+            }
+        }
+    }
+}
