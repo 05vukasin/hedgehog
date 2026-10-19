@@ -97,7 +97,7 @@ pub fn analyze(grid: &Grid) -> SheetLayout {
         .iter()
         .zip(&is_table)
         .filter(|(_, t)| **t)
-        .map(|(r, _)| DetectedTable { rect: *r, header_rows: 1, confidence: 0.5 })
+        .map(|(r, _)| DetectedTable { rect: *r, header_top: r.top, header_rows: 1, confidence: 0.5 })
         .collect();
 
     SheetLayout { tables, roles }

@@ -37,7 +37,10 @@ impl Role {
 pub struct DetectedTable {
     /// Full table range including header and total rows.
     pub rect: Rect,
-    /// Number of header rows at the top of `rect` (0 = no header found).
+    /// First header row (sheet row, 0-based). Title rows directly above the header can be inside
+    /// `rect`, so the header does not always start at `rect.top`. With no header, the first body row.
+    pub header_top: u32,
+    /// Number of header rows starting at `header_top` (0 = no header found).
     pub header_rows: u32,
     pub confidence: f32,
 }
