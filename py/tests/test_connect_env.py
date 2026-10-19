@@ -123,7 +123,7 @@ def test_ai_provider_and_chat_model(monkeypatch):
 
 
 def test_bedrock_key_exported_for_boto3(monkeypatch):
-    import boto3
+    boto3 = pytest.importorskip("boto3")
 
     seen = {}
 
