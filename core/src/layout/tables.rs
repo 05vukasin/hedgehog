@@ -470,7 +470,8 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         + CONF_TYPE * purity
         + CONF_SIZE * (body_cells as f32 / CONF_SIZE_CELLS).min(1.0))
     .clamp(0.0, 1.0);
-    out.tables.push(DetectedTable { rect, header_rows, confidence });
+    let header_top = rows[seg.start].row;
+    out.tables.push(DetectedTable { rect, header_top, header_rows, confidence });
     true
 }
 
