@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use crate::model::{Sheet, Value};
-use crate::values::{parse_date, parse_number, NumberHint};
+use crate::values::{parse_date, parse_number, parse_time, NumberHint};
 
 use super::blocks::{Entry, Row};
 use super::cells::Kind;
@@ -76,7 +76,7 @@ fn class_of(sheet: &Sheet, e: &Entry) -> u8 {
                     if let Some(p) = parse_number(t, NumberHint::default()) {
                         return if p.normalized().fract() == 0.0 { INT } else { DEC };
                     }
-                    if parse_date(t, None).is_some() {
+                    if parse_date(t, None).is_some() || parse_time(t).is_some() {
                         return DATE;
                     }
                 }
@@ -116,14 +116,27 @@ fn signatures(sheet: &Sheet, rows: &[Row]) -> Option<Sigs> {
     let mut data = Vec::with_capacity(rows.len());
     for r in rows {
         let mut v = Vec::with_capacity(r.entries.len());
-        let d = is_dataish(r) && !is_total_row(sheet, r);
+        let classes: Vec<u8> = r.entries.iter().map(|e| class_of(sheet, e)).collect();
+        // Data row: holds a measure (years don't count), or a date or two with at most as many
+        // texts (a row of many dates across the columns is a period header), or is not
+        // header-like at all. Totals are left out too.
+        let (mut measures, mut dates, mut texts) = (0, 0, 0);
+        for (e, &k) in r.entries.iter().zip(&classes) {
+            match k {
+                INT | DEC if !(e.label_num && !e.date) => measures += 1,
+                DATE => dates += 1,
+                TEXT | LONG => texts += 1,
+                _ => {}
+            }
+        }
+        let d = (measures > 0 || ((1..=2).contains(&dates) && dates >= texts) || !is_headerish(r))
+            && !is_total_row(sheet, r);
         data.push(d);
         if !d {
             out.push(v);
             continue;
         }
-        for e in &r.entries {
-            let k = class_of(sheet, e);
+        for (e, &k) in r.entries.iter().zip(&classes) {
             if k == EMPTY {
                 continue;
             }
@@ -294,9 +307,9 @@ fn best_cut(
         }
         let head = (r.n() >= 2 && !same_types(r, &rows[t - 1]) && is_header_row(r, &rows[t + 1..hi]))
             || (is_title_row_simple(sheet, r) && t + 1 < hi && is_header_row(&rows[t + 1], &rows[t + 2..hi]));
-        let weak_cue = gap
-            || is_total_row(sheet, &rows[t - 1])
-            || ranges.iter().find(|x| x.0 == t).is_some_and(|x| x.1);
+        let total_above = is_total_row(sheet, &rows[t - 1]);
+        let range_change = ranges.iter().find(|x| x.0 == t).is_some_and(|x| x.1);
+        let weak_cue = gap || total_above || range_change;
         // A new header row explains a shape change; otherwise the shared columns must change
         // content too (optional columns filling in later are not a new table).
         let ok = if head {
@@ -320,13 +333,6 @@ fn best_cut(
 fn same_types(r: &Row, prev: &Row) -> bool {
     r.n() == prev.n()
         && r.filled().all(|e| prev.filled().any(|p| p.left == e.left && p.ty() == e.ty()))
-}
-
-/// Holds a measure, or a date or two with at most as many texts, or is not header-like at all.
-/// (A row of many dates across the columns is a period header.)
-fn is_dataish(r: &Row) -> bool {
-    let dates = r.entries.iter().filter(|e| e.date).count();
-    r.n_measure() > 0 || ((1..=2).contains(&dates) && dates >= r.n_text()) || !is_headerish(r)
 }
 
 /// Blank rows between `rows[t - 1]` and `rows[t]`.
