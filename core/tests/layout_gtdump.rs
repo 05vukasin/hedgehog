@@ -110,7 +110,7 @@ fn gtdump() {
                 }
                 let g = gt.get(&(c.row, c.col)).map_or("-", |r| tag(*r));
                 let p = tag(l.roles[i]);
-                let mark = if g == p { format!("{g}") } else { format!("{g}/{p}") };
+                let mark = if g == p { g.to_string() } else { format!("{g}/{p}") };
                 let f = if c.formula.is_some() { "=" } else { "" };
                 line.push_str(&format!(" {}[{}]{}{}", a1(c.row, c.col), mark, f, short(&c.value)));
             }
