@@ -7,11 +7,13 @@ build-backend = "maturin"
 name = "hedgehog-sheets"
 description = "Understand and normalize messy Excel spreadsheets for AI agents. Rust core, Python API."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.9"
 dynamic = ["version"]
 keywords = ["excel", "xlsx", "spreadsheet", "normalization", "llm", "agents", "table-detection"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: Implementation :: CPython",

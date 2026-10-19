@@ -143,3 +143,7 @@ uv venv .venv && uv pip install --python .venv/bin/python maturin
 ```
 
 Test corpora live outside the repo in `../testdata` and are never committed.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
