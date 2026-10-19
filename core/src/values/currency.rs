@@ -6,6 +6,10 @@
 //! distinct). Symbols shared by several currencies resolve to the most common one and are flagged
 //! [`CurrencyMatch::ambiguous`]: `kr` (SEK/NOK/DKK/ISK → SEK), `¥` (JPY/CNY → JPY), `Rs`
 //! (INR/PKR/LKR/NPR → INR).
+//!
+//! Codes that are also English words (`ALL`, `TOP`, `CUP`, `BOB`, `MOP`, `PEN`, `GEL`, `MAD`,
+//! `SOS`, `TRY`) are marked [`CurrencyMatch::wordlike`]; the number parser accepts them only with
+//! column evidence of currencies ([`super::NumberHint::currency_context`]).
 
 use super::number::DecimalSep;
 
@@ -38,12 +42,12 @@ const ALIASES: &[(&str, bool, &[&str])] = &[
     ("INR", false, &["₹", "inr"]),
     ("SEK", true, &["kr", "kr.", ":-"]),
     ("RUB", false, &["₽", "rub", "руб", "руб.", "rbl"]),
-    ("TRY", false, &["₺", "try", "tl"]),
-    ("KRW", false, &["₩", "krw", "won"]),
+    ("TRY", false, &["₺", "tl"]),
+    ("KRW", false, &["₩", "krw"]),
     ("ILS", false, &["₪", "ils", "nis"]),
     ("PLN", false, &["zł", "pln"]),
     ("CZK", false, &["kč", "czk"]),
-    ("HUF", false, &["ft", "huf"]),
+    ("HUF", false, &["huf"]),
     ("RON", false, &["lei", "ron"]),
     ("BGN", false, &["лв", "лв.", "bgn"]),
     ("UAH", false, &["₴", "грн", "uah"]),
@@ -74,6 +78,24 @@ pub struct CurrencyMatch {
     pub code: &'static str,
     /// The symbol is shared by several currencies (`kr`, `¥`, `Rs`).
     pub ambiguous: bool,
+    /// The code is also an English word (`ALL`, `TOP`, `PEN`…) and needs extra evidence.
+    pub wordlike: bool,
+}
+
+const WORDLIKE: [&str; 10] = ["ALL", "BOB", "CUP", "GEL", "MAD", "MOP", "PEN", "SOS", "TOP", "TRY"];
+
+/// True if the text mentions a currency: a currency symbol, a (non-word-like) ISO code or alias
+/// as a separate token, or the word "currency" in a few languages. Used as column evidence.
+pub fn mentions_currency(s: &str) -> bool {
+    if s.chars().any(|c| matches!(c, '$' | '€' | '£' | '¥' | '₹' | '₽' | '₺' | '₩' | '₪' | '₴' | '₫' | '฿' | '₱' | '₦' | '₸')) {
+        return true;
+    }
+    s.split(|c: char| !c.is_alphanumeric() && c != '.').filter(|w| !w.is_empty()).any(|w| {
+        matches!(
+            w.to_lowercase().as_str(),
+            "currency" | "valuta" | "währung" | "wahrung" | "devise" | "moneda" | "divisa" | "waluta" | "moeda"
+        ) || currency_match(w).is_some_and(|m| !m.wordlike && (w.len() >= 3 || !w.is_ascii()))
+    })
 }
 
 /// Case-insensitive comparison of `word` against a lowercase entry.
@@ -103,14 +125,18 @@ pub fn is_iso_code(word: &str) -> bool {
 pub fn currency_match(word: &str) -> Option<CurrencyMatch> {
     if word == "KM" {
         // konvertibilna marka; lowercase "km" is kilometres
-        return Some(CurrencyMatch { code: "BAM", ambiguous: false });
+        return Some(CurrencyMatch { code: "BAM", ambiguous: false, wordlike: false });
+    }
+    if word == "Ft" {
+        // Hungarian forint as written in Hungary; lowercase "ft" is feet.
+        return Some(CurrencyMatch { code: "HUF", ambiguous: false, wordlike: false });
     }
     if let Some((code, ambiguous, _)) = ALIASES.iter().find(|(_, _, a)| a.iter().any(|x| eq_fold(word, x))) {
-        return Some(CurrencyMatch { code, ambiguous: *ambiguous });
+        return Some(CurrencyMatch { code, ambiguous: *ambiguous, wordlike: false });
     }
     if is_iso_code(word) {
         let i = ISO_CODES.binary_search(&word).ok()?;
-        return Some(CurrencyMatch { code: ISO_CODES[i], ambiguous: false });
+        return Some(CurrencyMatch { code: ISO_CODES[i], ambiguous: false, wordlike: WORDLIKE.contains(&word) });
     }
     None
 }
@@ -166,6 +192,16 @@ mod tests {
         assert!(!currency_match("$").unwrap().ambiguous);
         assert!(!currency_match("SEK").unwrap().ambiguous);
         assert_eq!(currency("km"), None);
+        assert!(currency_match("TOP").unwrap().wordlike);
+        assert!(!currency_match("USD").unwrap().wordlike);
+        assert_eq!(currency("ft"), None);
+        assert!(mentions_currency("Amount (USD)"));
+        assert!(mentions_currency("Iznos u din."));
+        assert!(mentions_currency("$"));
+        assert!(mentions_currency("Currency"));
+        assert!(!mentions_currency("ALL regions"));
+        assert!(!mentions_currency("Top 10"));
+        assert!(!mentions_currency("Pending"));
         assert_eq!(currency("kg"), None);
     }
 

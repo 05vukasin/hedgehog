@@ -20,7 +20,7 @@ pub mod missing;
 pub mod number;
 pub mod text;
 
-pub use currency::{currency_match, is_iso_code, CurrencyMatch};
+pub use currency::{currency_match, is_iso_code, mentions_currency, CurrencyMatch};
 pub use date::{infer_date_order, parse_date, parse_time, serial_to_ymd, ymd_to_serial, DateOrder, DatePrecision, ParsedDate};
 pub use features::{
     cell_features, compute, compute_with, infer_column, sheet_column_hints, sheet_column_hints_with, ColumnHints, FEATURES,
