@@ -16,6 +16,7 @@ eval: data root from $HEDGEHOG_DATA (default /home/vukasin/projects/excell-lib-p
 fn analyzer(name: &str) -> Option<&'static dyn Analyzer> {
     match name {
         "baseline" => Some(&eval::baseline::analyze),
+        "layout" => Some(&hh_core::layout::analyze),
         _ => None,
     }
 }
