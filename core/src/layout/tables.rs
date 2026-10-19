@@ -233,6 +233,20 @@ fn trim_tail(sheet: &Sheet, rows: &[Row], seg: &mut Seg) -> Range<usize> {
     }
 }
 
+/// Single label at the table's left edge (or merged across), followed — possibly after nested
+/// group labels — by a run of at least `GROUP_MIN_RUN` multi-cell rows.
+fn is_group_header(rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
+    let Some(e) = single_text(&rows[k]) else { return false };
+    if e.left > rect.left && e.right == e.left {
+        return false;
+    }
+    let mut j = k + 1;
+    while j < end && j <= k + 2 && single_text(&rows[j]).is_some() {
+        j += 1;
+    }
+    j + GROUP_MIN_RUN <= end && rows[j..j + GROUP_MIN_RUN].iter().all(|r| r.n() >= 2)
+}
+
 struct Seg {
     titles: Range<usize>,
     start: usize,
@@ -381,7 +395,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
             Role::Total
         } else if is_note_row(sheet, r) && (last_body || is_note_label(text(sheet, single_text(r).unwrap()))) {
             Role::Note
-        } else if has_measures && !last_body && single_text(r).is_some() {
+        } else if has_measures && is_group_header(rows, k, seg.end, rect) {
             Role::GroupHeader
         } else {
             Role::Data

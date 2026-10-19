@@ -80,6 +80,9 @@ pub const SPLIT_MIN_HIT_FRAC: f32 = 0.5;
 pub const YEAR_MIN: f64 = 1900.0;
 pub const YEAR_MAX: f64 = 2100.0;
 
+/// A group-header row must be followed by at least this many multi-cell rows.
+pub const GROUP_MIN_RUN: usize = 2;
+
 // --- Totals -----------------------------------------------------------------------------------
 
 /// A row is a total when at least this share of its numeric cells aggregate cells above (`SUM(`).

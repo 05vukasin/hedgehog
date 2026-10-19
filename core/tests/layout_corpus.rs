@@ -261,6 +261,7 @@ fn deco_quick_eval() {
     let top_pair = std::env::var("HH_TOP").ok();
     let mut fp: BTreeMap<String, usize> = BTreeMap::new();
     let mut fp_list: Vec<String> = Vec::new();
+    let mut presence: BTreeMap<&str, (usize, usize, usize)> = BTreeMap::new();
     let mut top: BTreeMap<String, usize> = BTreeMap::new();
     for (file, sheets) in &by_file {
         if hh_core::eval::split::split_of(file) != hh_core::eval::split::Split::Dev {
@@ -333,16 +334,30 @@ fn deco_quick_eval() {
                 }
                 let _ = w;
             }
+            let mut sheet_gold: BTreeMap<&str, usize> = BTreeMap::new();
+            let mut sheet_pred: BTreeMap<&str, usize> = BTreeMap::new();
             for (c, r) in sheet.cells.iter().zip(&l.roles) {
                 let lab = anns.iter().rev().find_map(|(lb, rr)| {
                     let inside = (rr.top..=rr.bottom).contains(&c.row) && (rr.left..=rr.right).contains(&c.col);
                     if inside { map(lb) } else { None }
                 });
                 if let Some(g) = lab {
+                    *sheet_gold.entry(g).or_default() += 1;
+                    *sheet_pred.entry(r.as_str()).or_default() += 1;
                     *conf.entry((g, r.as_str())).or_default() += 1;
                     if top_pair.as_deref() == Some(&format!("{g}:{}", r.as_str())) {
                         *top.entry(format!("{file} [{sname}]")).or_default() += 1;
                     }
+                }
+            }
+            for k in names {
+                let (g, p) = (sheet_gold.get(k).copied().unwrap_or(0), sheet_pred.get(k).copied().unwrap_or(0));
+                let e = presence.entry(k).or_default();
+                match (g > 0, p > 0) {
+                    (true, false) => e.0 += 1,
+                    (false, true) => e.1 += 1,
+                    (true, true) => e.2 += 1,
+                    _ => {}
                 }
             }
         }
@@ -352,6 +367,9 @@ fn deco_quick_eval() {
         let r = tp as f64 / n_gt.max(1) as f64;
         (p, r, 2.0 * p * r / (p + r).max(1e-9))
     };
+    for (k, v) in &presence {
+        println!("presence {k}: gold-only {} pred-only {} both {}", v.0, v.1, v.2);
+    }
     let mut tv: Vec<_> = top.into_iter().collect();
     tv.sort_by_key(|x| std::cmp::Reverse(x.1));
     for (k, v) in tv.iter().take(15) {
