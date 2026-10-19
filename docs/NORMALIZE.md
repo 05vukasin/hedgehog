@@ -169,6 +169,7 @@ are letters, as in Excel.
       "original_header": [{"text": "Revenue", "cell": "B3"}, {"text": "Q1", "cell": "B4"}],
       "unit": null, "currency": null,         // e.g. "kg", "EUR"
       "locale": {"decimal": ".", "date_order": "mdy", "ambiguous": 0},  // "," / "dmy"; null = no evidence
+                                              // (inferred for number/date columns only; `ambiguous` = values read by a guess)
       "nulls": 1, "distinct": 3, "min": 50, "max": 1200.5, "example": 1200.5   // dates as ISO strings
     }],
     "group_column": "Region",                 // or null
