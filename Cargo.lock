@@ -315,6 +315,7 @@ version = "0.1.0"
 dependencies = [
  "calamine",
  "criterion",
+ "memchr",
  "rust_xlsxwriter",
  "rustc-hash",
  "zip 9.0.5",

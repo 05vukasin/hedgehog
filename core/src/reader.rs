@@ -16,6 +16,8 @@ use zip::CompressionMethod;
 
 use crate::model::{Cell, Rect, Sheet, Value, Workbook};
 
+mod merges;
+
 #[derive(Debug)]
 pub struct Error(String);
 
@@ -34,20 +36,41 @@ fn err(e: impl fmt::Display) -> Error {
 pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
     let path = path.as_ref();
     match open_workbook_auto(path) {
-        Ok(wb) => read_all(wb),
+        Ok(wb) => {
+            let scan = || merges::Scanner::new(File::open(path).ok()?);
+            read_all(wb, scan)
+        }
         // Some converted workbooks list a veryHidden sheet with `r:id=""` (a leftover VBA module
         // sheet); calamine rejects the whole file. Drop those entries and retry from memory.
         Err(e) if e.to_string().contains("Relationship not found") => {
             let repaired = repair_unlinked_sheets(path).map_err(|_| err(e))?;
-            read_all(open_workbook_auto_from_rs(Cursor::new(repaired)).map_err(err)?)
+            let wb = open_workbook_auto_from_rs(Cursor::new(repaired.as_slice())).map_err(err)?;
+            read_all(wb, || merges::Scanner::new(Cursor::new(repaired.as_slice())))
         }
         Err(e) => Err(err(e)),
     }
 }
 
-fn read_all<RS: Read + Seek>(mut wb: Sheets<RS>) -> Result<Workbook, Error> {
+/// (sheets whose merged areas came from the byte scan, sheets that fell back to calamine) since
+/// the process started — for tests and benchmarks.
+#[doc(hidden)]
+pub fn merge_scan_stats() -> (usize, usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    (merges::SCANNED.load(Relaxed), merges::FALLBACK.load(Relaxed))
+}
+
+/// `scanner` opens a second, lightweight view of the same xlsx package for [`merges::Scanner`];
+/// it is only called for xlsx files.
+fn read_all<RS: Read + Seek, R: Read + Seek>(
+    mut wb: Sheets<RS>,
+    scanner: impl FnOnce() -> Option<merges::Scanner<R>>,
+) -> Result<Workbook, Error> {
     let names = wb.sheet_names();
     let mut sheets = Vec::with_capacity(names.len());
+    let mut scanner = match &wb {
+        Sheets::Xlsx(_) => scanner(),
+        _ => None,
+    };
     for name in names {
         // xlsx: values and formulas in one streaming pass, straight into sparse cells.
         let cells = match &mut wb {
@@ -55,8 +78,19 @@ fn read_all<RS: Read + Seek>(mut wb: Sheets<RS>) -> Result<Workbook, Error> {
             _ => None,
         };
         let sheet = match cells {
-            Some(cells) => {
-                let merges = merge_cells(&mut wb, &name);
+            Some((cells, dims)) => {
+                // Merged areas sit after the cells; a byte scan finds them much faster than a
+                // second full XML parse. Anything unexpected → calamine's parse.
+                let merges = match scanner.as_mut().and_then(|s| s.merges(&name, dims)) {
+                    Some(m) => {
+                        merges::SCANNED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        m
+                    }
+                    None => {
+                        merges::FALLBACK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        merge_cells(&mut wb, &name)
+                    }
+                };
                 Sheet { name, cells, merges }
             }
             None => {
@@ -86,8 +120,11 @@ struct Record {
 /// cells [`build_sheet`] makes from `worksheet_range` + `worksheet_formula` — without their two
 /// passes and their dense `rows × cols` grids (which explode on a sheet using A1 and XFD1048576).
 /// Any error (also a non-worksheet part) → `Err`, and the caller takes the generic path.
-fn read_xlsx_cells<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str) -> Result<Vec<Cell>, XlsxError> {
+/// Also returns the sheet's declared `<dimension>`, which the merge scanner uses to check that it
+/// found the same sheet part.
+fn read_xlsx_cells<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str) -> Result<(Vec<Cell>, Dimensions), XlsxError> {
     let mut reader = x.worksheet_cells_reader(name)?;
+    let dims = reader.dimensions();
     let mut recs: Vec<Record> = Vec::new();
     while let Some(rec) = reader.next_cell_with_formula()? {
         let has_value = !matches!(rec.value, DataRef::Empty);
@@ -124,11 +161,12 @@ fn read_xlsx_cells<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str) -> Result<Vec<
         }
         recs = out;
     }
-    Ok(recs
+    let cells = recs
         .into_iter()
         .filter(|r| r.value.is_some() || r.formula.is_some())
         .map(|r| Cell { row: r.row, col: r.col, value: r.value, formula: r.formula })
-        .collect())
+        .collect();
+    Ok((cells, dims))
 }
 
 /// Copies the xlsx zip into memory with `<sheet … r:id="">` entries removed from `xl/workbook.xml`.
