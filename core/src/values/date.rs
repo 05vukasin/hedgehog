@@ -246,7 +246,7 @@ fn split_time(s: &str) -> Option<(&str, Option<u32>)> {
     let Some(colon) = s.find(':') else { return Some((s, None)) };
     // Start of the time = last space or 'T' before the first colon.
     let head = &s[..colon];
-    let start = head.rfind([' ', 'T', 't'])? + 1;
+    let start = head.rfind([' ', ',', 'T', 't'])? + 1;
     let date = s[..start - 1].trim_end_matches([' ', ',']);
     let mut t = s[start..].trim();
     let lower_ampm = |t: &str| -> Option<(String, bool)> {
@@ -309,12 +309,10 @@ pub fn parse_date(s: &str, order: Option<DateOrder>) -> Option<ParsedDate> {
     let (date_part, time) = split_time(s)?;
     let mut toks = tokenize(date_part)?;
     // Drop a leading weekday ("Monday, March 12, 2024", "pon, 12.03.2024").
-    if let Some(Tok::Word(w)) = toks.first() {
-        if weekday_word(w) {
+    if matches!(toks.first(), Some(Tok::Word(w)) if weekday_word(w)) {
+        toks.remove(0);
+        while matches!(toks.first(), Some(Tok::Sep(_))) {
             toks.remove(0);
-            while matches!(toks.first(), Some(Tok::Sep(_))) {
-                toks.remove(0);
-            }
         }
     }
     // Trailing dot (Serbian "12.03.2024.") and a trailing comma are noise.
@@ -409,7 +407,7 @@ fn parse_tokens(t: &[Tok], order: Option<DateOrder>, trailing_dot: bool) -> Opti
         {
             month(*y as i32, *m)
         }
-        [Num { v: y, len: 4 }, Sep(s), Num { v: m, len: 2 }] if matches!(s, '-' | '/') => month(*y as i32, *m),
+        [Num { v: y, len: 4 }, Sep('-' | '/'), Num { v: m, len: 2 }] => month(*y as i32, *m),
         // ---- month names ---------------------------------------------------------------
         // 12 March 2024 / 12. mart 2024. / 12-Mar-24
         [Num { v: d, len: dl }, rest @ ..] if *dl <= 2 => {
@@ -626,6 +624,8 @@ mod tests {
         assert_eq!(parse_date("3/12/2024 2:05 PM", None).unwrap().time, Some(14 * 3600 + 300));
         assert_eq!(parse_date("3/12/2024 12:00 AM", None).unwrap().time, Some(0));
         assert_eq!(parse_date("12.03.2024. 23:59:59", None).unwrap().time, Some(86399));
+        assert_eq!(parse_date("01.01.2019,14:42", None).unwrap().time, Some(14 * 3600 + 42 * 60));
+        assert_eq!(parse_date("March 12, 2024, 10:30", None).unwrap().time, Some(37800));
         assert_eq!(parse_date("2024-03-12 25:00", None), None);
         assert_eq!(parse_date("2024-03-12 10:3", None), None);
         assert_eq!(parse_date("10:30", None), None);

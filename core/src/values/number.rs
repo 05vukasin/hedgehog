@@ -197,7 +197,17 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         if !is_sep {
             break;
         }
-        let after = &rest[i + c.len_utf8()..];
+        // A run of up to three spaces counts as one thousands separator ("700   000").
+        let mut sep_len = c.len_utf8();
+        if is_space(c) {
+            for _ in 0..2 {
+                match rest[i + sep_len..].chars().next() {
+                    Some(n) if is_space(n) && !matches!(n, '\t' | '\n' | '\r') => sep_len += n.len_utf8(),
+                    _ => break,
+                }
+            }
+        }
+        let after = &rest[i + sep_len..];
         let next = after.chars().next();
         let next_digit = next.is_some_and(|n| n.is_ascii_digit());
         if !next_digit {
@@ -219,7 +229,7 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         }
         seps[ng - 1] = if is_space(c) { ' ' } else if c == '’' { '\'' } else { c };
         ng += 1;
-        i += c.len_utf8();
+        i += sep_len;
     }
     if nd == 0 {
         return None;
@@ -432,10 +442,8 @@ fn resolve_separators(groups: &[u8], seps: &[char], lead_zero: bool, hint: Numbe
         Some(k) => &groups[..=k],
         None => groups,
     };
-    if let Some(k) = decimal_at {
-        if groups[k + 1] == 0 {
-            return None;
-        }
+    if decimal_at.is_some_and(|k| groups[k + 1] == 0) {
+        return None;
     }
     let thousands = if int_groups.len() > 1 {
         if !(1..=3).contains(&int_groups[0]) || int_groups[1..].iter().any(|&g| g != 3) {
@@ -565,25 +573,15 @@ pub fn scale(word: &str) -> Option<f64> {
 }
 
 fn classify_suffix(word: &str, p: &mut ParsedNumber) -> Option<()> {
+    // Each kind of suffix may appear once.
     if let Some(f) = scale(word) {
-        if p.scale != 1.0 {
-            return None;
-        }
-        p.scale = f;
+        (p.scale == 1.0).then(|| p.scale = f)
     } else if let Some(c) = currency(word) {
-        if p.currency.is_some() {
-            return None;
-        }
-        p.currency = Some(c);
-    } else if let Some(u) = unit(word) {
-        if p.unit.is_some() {
-            return None;
-        }
-        p.unit = Some(u);
+        p.currency.is_none().then(|| p.currency = Some(c))
     } else {
-        return None;
+        let u = unit(word)?;
+        p.unit.is_none().then(|| p.unit = Some(u))
     }
-    Some(())
 }
 
 /// Per-column vote on the decimal convention, from the column's text values.
@@ -675,8 +673,8 @@ mod tests {
         assert_eq!(val("42"), Some(42.0));
         assert_eq!(val(" 42 "), Some(42.0));
         assert_eq!(val("\u{A0}42\u{200B}"), Some(42.0));
-        assert_eq!(val("3.14"), Some(3.14));
-        assert_eq!(val("3,14"), Some(3.14));
+        assert_eq!(val("3.25"), Some(3.25));
+        assert_eq!(val("3,25"), Some(3.25));
         assert_eq!(val(".5"), Some(0.5));
         assert_eq!(val(",5"), Some(0.5));
         assert_eq!(val("+7"), Some(7.0));
@@ -694,6 +692,8 @@ mod tests {
         assert_eq!(val("1,234,567"), Some(1234567.0));
         assert_eq!(val("1 234 567,5"), Some(1234567.5));
         assert_eq!(val("1\u{A0}234,5"), Some(1234.5));
+        assert_eq!(val("700   000"), Some(700000.0));
+        assert_eq!(val("700    000"), None);
         assert_eq!(val("1\u{202F}234.5"), Some(1234.5));
         assert_eq!(val("1'234'567.50"), Some(1234567.5));
         assert_eq!(val("1’234.50"), Some(1234.5));
