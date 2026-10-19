@@ -20,6 +20,8 @@ use crate::values::text::clean;
 pub(super) const MAX_TEXT: usize = 32_767;
 const TYPE_SHARE: f64 = 0.9;
 const MAX_LISTED: usize = 10;
+/// Text values used to infer a column's decimal separator / day-month order.
+const INFER_SAMPLE: usize = 2000;
 
 /// One source value of a column.
 #[derive(Debug, Clone, Copy)]
@@ -80,13 +82,6 @@ pub(super) fn fit(mut s: String, tr: &mut Transforms) -> String {
     s
 }
 
-struct Cand {
-    missing: Option<bool>, // Some(is_error)
-    num: Option<ParsedNumber>,
-    date: Option<ParsedDate>,
-    boolean: Option<bool>,
-}
-
 fn most_common(counts: &HashMap<&'static str, usize>) -> Option<(&'static str, usize)> {
     let mut v: Vec<_> = counts.iter().map(|(k, n)| (*k, *n)).collect();
     v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
@@ -101,55 +96,87 @@ fn list(addrs: &[String]) -> String {
     s
 }
 
+/// Parsed readings of one text value (each `None` when not tried or not parseable).
+#[derive(Default, Clone, Copy)]
+struct Cand {
+    num: Option<ParsedNumber>,
+    date: Option<ParsedDate>,
+    boolean: Option<bool>,
+}
+
 /// Types one column. `rows[i]` is the source row of `slots[i]`, `col` the source column (both
-/// 0-based, for warnings).
-pub(super) fn type_column(name: &str, col: u32, slots: &[Slot], rows: &[u32], hints: ColumnHints, tr: &mut Transforms) -> Typed {
-    let nh = hints.number_hint();
-    let cands: Vec<Cand> = slots
+/// 0-based, for warnings). `first` are the hints for the typing pass (explicit locale or none);
+/// `refine` is asked for the final hints of a numeric / date column, given a sample of its text
+/// values and whether any value was ambiguous under `first` — so locale inference only runs on
+/// columns where it can change something.
+pub(super) fn type_column(
+    name: &str,
+    col: u32,
+    slots: &[Slot],
+    rows: &[u32],
+    first: ColumnHints,
+    refine: &mut dyn FnMut(&[&str], bool) -> ColumnHints,
+    tr: &mut Transforms,
+) -> Typed {
+    // Pass 0: missing values (cheap) and the number of real values.
+    let missing: Vec<Option<bool>> = slots
         .iter()
-        .map(|s| {
-            let mut c = Cand { missing: None, num: None, date: None, boolean: None };
-            match s {
-                Slot::Val(Value::Text(t)) => {
-                    if let Some(k) = missing_token(t) {
-                        c.missing = Some(k == MissingKind::Error);
-                    } else {
-                        c.num = parse_number(t, nh);
-                        c.date = parse_date(t, hints.date_order);
-                        c.boolean = parse_bool(t);
-                    }
-                }
-                Slot::Val(Value::Error(_)) => c.missing = Some(true),
-                _ => {}
-            }
-            c
+        .map(|s| match s {
+            Slot::Val(Value::Text(t)) => missing_token(t).map(|k| k == MissingKind::Error),
+            Slot::Val(Value::Error(_)) => Some(true),
+            _ => None,
         })
         .collect();
+    let n = slots.iter().zip(&missing).filter(|(s, m)| matches!(s, Slot::Val(_)) && m.is_none()).count();
+    // A kind is out once its misses exceed what the 90 % rule allows.
+    let allowed = n - (TYPE_SHARE * n as f64).ceil() as usize;
 
-    let (mut n, mut num_ok, mut lead0, mut date_ok, mut bool_ok) = (0usize, 0usize, 0usize, 0usize, 0usize);
-    for (s, c) in slots.iter().zip(&cands) {
+    // Pass 1: parse text with `first`, giving up on a kind as soon as it cannot win.
+    let nh = first.number_hint();
+    let (mut num_ok, mut lead0, mut date_ok, mut bool_ok) = (0usize, 0usize, 0usize, 0usize);
+    let (mut num_miss, mut date_miss, mut bool_miss) = (0usize, 0usize, 0usize);
+    let mut ambiguous_seen = false;
+    let mut cands: Vec<Cand> = vec![Cand::default(); slots.len()];
+    for (i, s) in slots.iter().enumerate() {
         let Slot::Val(v) = s else { continue };
-        if c.missing.is_some() {
+        if missing[i].is_some() {
             continue;
         }
-        n += 1;
+        let (mut is_num, mut is_date, mut is_bool) = (false, false, false);
         match v {
-            Value::Number(_) => num_ok += 1,
-            Value::DateTime(_) => date_ok += 1,
-            Value::Bool(_) => bool_ok += 1,
-            Value::Text(_) => {
-                if let Some(p) = &c.num {
-                    if p.leading_zero {
-                        lead0 += 1;
-                    } else {
-                        num_ok += 1;
+            Value::Number(_) => is_num = true,
+            Value::DateTime(_) => is_date = true,
+            Value::Bool(_) => is_bool = true,
+            Value::Text(t) => {
+                let c = &mut cands[i];
+                if num_miss <= allowed && lead0 == 0 {
+                    c.num = parse_number(t, nh);
+                    if let Some(p) = &c.num {
+                        if p.leading_zero {
+                            lead0 += 1;
+                        } else {
+                            is_num = true;
+                            ambiguous_seen |= p.ambiguous;
+                        }
                     }
                 }
-                date_ok += c.date.is_some() as usize;
-                bool_ok += c.boolean.is_some() as usize;
+                if date_miss <= allowed {
+                    c.date = parse_date(t, first.date_order);
+                    if let Some(d) = &c.date {
+                        is_date = true;
+                        ambiguous_seen |= d.ambiguous;
+                    }
+                }
+                if bool_miss <= allowed {
+                    c.boolean = parse_bool(t);
+                    is_bool = c.boolean.is_some();
+                }
             }
             Value::Error(_) => {}
         }
+        if is_num { num_ok += 1 } else { num_miss += 1 }
+        if is_date { date_ok += 1 } else { date_miss += 1 }
+        if is_bool { bool_ok += 1 } else { bool_miss += 1 }
     }
     let share = |k: usize| n > 0 && k as f64 >= TYPE_SHARE * n as f64;
     #[derive(PartialEq)]
@@ -171,6 +198,36 @@ pub(super) fn type_column(name: &str, col: u32, slots: &[Slot], rows: &[u32], hi
     } else {
         Kind::Text
     };
+
+    // Pass 2 (numeric / date columns): final hints; re-parse only if they can change a value.
+    let mut hints = first;
+    if kind == Kind::Num || kind == Kind::Date {
+        let sample: Vec<&str> = slots
+            .iter()
+            .zip(&missing)
+            .filter_map(|(s, m)| match (s, m) {
+                (Slot::Val(Value::Text(t)), None) => Some(t.as_str()),
+                _ => None,
+            })
+            .take(INFER_SAMPLE)
+            .collect();
+        if !sample.is_empty() {
+            hints = refine(&sample, ambiguous_seen);
+            let reparse = ambiguous_seen || hints.currency_context != first.currency_context;
+            if reparse && hints != first {
+                let nh = hints.number_hint();
+                for (i, s) in slots.iter().enumerate() {
+                    if let (Slot::Val(Value::Text(t)), None) = (s, missing[i]) {
+                        if kind == Kind::Num {
+                            cands[i].num = parse_number(t, nh);
+                        } else {
+                            cands[i].date = parse_date(t, hints.date_order);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Numeric subtype from the text values.
     let (mut pct, mut cur_n, mut unit_n) = (0usize, 0usize, 0usize);
@@ -199,6 +256,7 @@ pub(super) fn type_column(name: &str, col: u32, slots: &[Slot], rows: &[u32], hi
     let mut all_int = true;
     let mut values = Vec::with_capacity(slots.len());
     for (i, (s, c)) in slots.iter().zip(&cands).enumerate() {
+        let c = (missing[i], c);
         let out = match s {
             Slot::Empty => Out::Null,
             Slot::NoCache => {
@@ -206,7 +264,7 @@ pub(super) fn type_column(name: &str, col: u32, slots: &[Slot], rows: &[u32], hi
                 Out::Null
             }
             Slot::Val(v) => {
-                if let Some(is_err) = c.missing {
+                if let Some(is_err) = c.0 {
                     tr.add(if is_err { T::ErrorsToNull } else { T::MissingToNull }, 1);
                     values.push(Out::Null);
                     continue;
@@ -218,7 +276,7 @@ pub(super) fn type_column(name: &str, col: u32, slots: &[Slot], rows: &[u32], hi
                 };
                 match (&kind, v) {
                     (Kind::Num, Value::Number(x)) => Out::Num(*x),
-                    (Kind::Num, Value::Text(_)) => match &c.num {
+                    (Kind::Num, Value::Text(_)) => match &c.1.num {
                         Some(p) if !p.leading_zero => {
                             tr.add(T::NumbersFromText, 1);
                             tr.add(T::PercentFromText, p.percent as usize);
@@ -235,7 +293,7 @@ pub(super) fn type_column(name: &str, col: u32, slots: &[Slot], rows: &[u32], hi
                         _ => fallback(tr),
                     },
                     (Kind::Date, Value::DateTime(x)) => Out::Date(*x),
-                    (Kind::Date, Value::Text(_)) => match &c.date {
+                    (Kind::Date, Value::Text(_)) => match &c.1.date {
                         Some(d) if d.serial() >= 1.0 => {
                             tr.add(T::DatesFromText, 1);
                             ambiguous += d.ambiguous as usize;
@@ -248,7 +306,7 @@ pub(super) fn type_column(name: &str, col: u32, slots: &[Slot], rows: &[u32], hi
                         Out::Date(*x)
                     }
                     (Kind::Bool, Value::Bool(b)) => Out::Bool(*b),
-                    (Kind::Bool, Value::Text(_)) => match c.boolean {
+                    (Kind::Bool, Value::Text(_)) => match c.1.boolean {
                         Some(b) => {
                             tr.add(T::BoolsFromText, 1);
                             Out::Bool(b)

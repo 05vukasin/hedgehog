@@ -210,7 +210,7 @@ fn messy_workbook_round_trip() {
         "\"dtype\": \"date\"",
         "\"dtype\": \"bool\"",
         "\"decimal\": \",\"",
-        "\"date_order\": \"dmy\"",
+        "\"date_order\": \"mdy\"",
         "\"total_rows_removed\": 3",
         "\"group_header_rows_to_column\": 2",
         "\"numbers_from_text\": 5",

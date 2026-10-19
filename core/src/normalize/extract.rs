@@ -2,6 +2,7 @@
 //! every other filled cell → `NoteItem`s. Each source cell ends up in exactly one place
 //! (table, Totals or Notes), which `CellCounts` reports.
 
+use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 
 use super::typing::{display, fit, type_column, Slot};
@@ -176,7 +177,7 @@ fn build_table(
     lay: &SheetLayout,
     t: &DetectedTable,
     n: usize,
-    sheet_hints: &HashMap<u32, ColumnHints>,
+    sheet_hints: &OnceCell<HashMap<u32, ColumnHints>>,
     row_level: &HashMap<u32, TotalLevel>,
     opts: &Options,
     owner: &mut [u8],
@@ -423,33 +424,37 @@ fn build_table(
     for k in 0..ncols {
         let col = r.left + k as u32;
         let mut parts: Vec<(String, (u32, u32))> = Vec::new();
-        for h in head.iter().map(|row| &row[k]).flatten() {
+        for h in head.iter().flat_map(|row| &row[k]) {
             if parts.last().is_none_or(|p| p.0 != h.0) {
                 parts.push(h.clone());
             }
         }
-        let texts = slots[k].iter().filter_map(|s| match s {
-            Slot::Val(Value::Text(t)) => Some(t.as_str()),
-            _ => None,
-        });
-        let inferred = infer_column(texts);
-        let hints = match opts.locale {
-            Some(l) => ColumnHints { currency_context: inferred.currency_context, ..l.hints() },
-            None => {
-                let sh = sheet_hints.get(&col).copied().unwrap_or_default();
-                ColumnHints {
-                    decimal: inferred.decimal.or(sh.decimal),
-                    date_order: inferred.date_order.or(sh.date_order),
-                    currency_context: inferred.currency_context || sh.currency_context,
-                }
-            }
-        };
         let mut name = parts.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(" / ");
         if name.chars().count() > MAX_HEADER_LEN {
             name = name.chars().take(MAX_HEADER_LEN).collect();
         }
         let label = if name.is_empty() { format!("col_{}", col_letter(col)) } else { name.clone() };
-        let typed = type_column(&label, col, &slots[k], &src_rows, hints, &mut tr);
+        let first = opts.locale.map(|l| l.hints()).unwrap_or_default();
+        let mut refine = |sample: &[&str], ambiguous: bool| -> ColumnHints {
+            let inferred = infer_column(sample.iter().copied());
+            if let Some(l) = opts.locale {
+                return ColumnHints { currency_context: inferred.currency_context, ..l.hints() };
+            }
+            let mut h = inferred;
+            // The sheet-wide vote is only worth its cost when a guess is actually needed.
+            if ambiguous && (h.decimal.is_none() || h.date_order.is_none()) {
+                let sh = sheet_hints
+                    .get_or_init(|| sheet_column_hints_with(grid, None))
+                    .get(&col)
+                    .copied()
+                    .unwrap_or_default();
+                h.decimal = h.decimal.or(sh.decimal);
+                h.date_order = h.date_order.or(sh.date_order);
+                h.currency_context |= sh.currency_context;
+            }
+            h
+        };
+        let typed = type_column(&label, col, &slots[k], &src_rows, first, &mut refine, &mut tr);
         if parts.is_empty() && typed.dtype == Dtype::Empty {
             tr.add(T::EmptyColumnsRemoved, 1);
             continue;
@@ -617,7 +622,7 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
     }
     let lay = layout::analyze(&grid);
     let mut owner = vec![OWN_NONE; cells.len()];
-    let sheet_hints = if lay.tables.is_empty() { HashMap::new() } else { sheet_column_hints_with(&grid, opts.locale) };
+    let sheet_hints = OnceCell::new();
     let cands = totals::detect(&grid);
     let checks: Vec<_> = cands.iter().map(|c| totals::verify(&grid, c)).collect();
     let mut row_level: HashMap<u32, TotalLevel> = HashMap::new();
