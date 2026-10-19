@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Rust tests
+        run: cargo test --workspace --exclude hh_py
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel and run Python tests
+        run: |
+          python -m pip install maturin pytest openpyxl openai anthropic
+          maturin build -m py/Cargo.toml --profile dev --out dist
+          python -m pip install --no-index --find-links dist hedgehog-sheets
+          cd py && python -m pytest -q tests

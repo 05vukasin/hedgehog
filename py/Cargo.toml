@@ -9,4 +9,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 hh_core.workspace = true
-pyo3 = { workspace = true, features = ["extension-module"] }
+# abi3: one wheel per platform works on every CPython >= 3.9
+pyo3 = { workspace = true, features = ["extension-module", "abi3-py39"] }

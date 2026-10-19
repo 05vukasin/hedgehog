@@ -3,9 +3,23 @@ requires = ["maturin>=1.7,<2"]
 build-backend = "maturin"
 
 [project]
-name = "hedgehog"
+# Distribution name; "hedgehog" is taken on PyPI. The import name is still `import hedgehog`.
+name = "hedgehog-sheets"
+description = "Understand and normalize messy Excel spreadsheets for AI agents. Rust core, Python API."
+readme = "README.md"
 requires-python = ">=3.9"
 dynamic = ["version"]
+keywords = ["excel", "xlsx", "spreadsheet", "normalization", "llm", "agents", "table-detection"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Office/Business :: Financial :: Spreadsheet",
+]
+
+[project.urls]
+Repository = "https://github.com/05vukasin/hedgehog"
 
 [project.optional-dependencies]
 # LLM providers are optional; the core library needs none of them.
