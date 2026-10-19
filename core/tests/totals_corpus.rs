@@ -198,3 +198,27 @@ fn corpus_totals() {
     }
     assert_eq!(st.our_panics, 0);
 }
+
+/// Debug helper: `TOTALS_DUMP="<path>|<sheet>|<row0>|<row1>|<col0>|<col1>"` (0-based, inclusive)
+/// prints that region's cells and the totals found in it.
+#[test]
+#[ignore]
+fn dump_region() {
+    let Ok(spec) = std::env::var("TOTALS_DUMP") else { return };
+    let p: Vec<&str> = spec.split('|').collect();
+    let wb = open(p[0]).unwrap();
+    let sheet = wb.sheets.iter().find(|s| s.name == p[1]).unwrap();
+    let n = |i: usize| p[i].parse::<u32>().unwrap();
+    let (r0, r1, c0, c1) = (n(2), n(3), n(4), n(5));
+    for c in &sheet.cells {
+        if (r0..=r1).contains(&c.row) && (c0..=c1).contains(&c.col) {
+            println!("{} {:?} {:?}", a1(c.row, c.col), c.value, c.formula);
+        }
+    }
+    let grid = Grid::new(sheet);
+    for t in hh_core::totals::detect(&grid) {
+        if (r0..=r1).contains(&t.row) && (c0..=c1).contains(&t.col) {
+            println!("TOTAL {} {:?} {:?} {:?} ranges {:?} excl {:?} ev {:?} -> {:?}", a1(t.row, t.col), t.origin, t.level, t.direction, t.ranges, t.exclude, t.evidence, verify(&grid, &t));
+        }
+    }
+}

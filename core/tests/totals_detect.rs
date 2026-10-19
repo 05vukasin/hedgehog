@@ -428,3 +428,34 @@ fn pivot_style_group_totals() {
         assert_eq!(verify(&grid, at(&c, r, 3)).ok, Some(ok), "row {r}");
     }
 }
+
+#[test]
+fn stray_keyword_above_a_sum_is_not_a_total() {
+    // "TOTAL:" sits one row above the real SUM; the number in its row is data.
+    let sheet = fixture("stray", |ws| {
+        ws.write_string(0, 0, "Well").unwrap();
+        ws.write_string(0, 2, "Volume").unwrap();
+        rows(ws, 1, &[("w1", &[0.0, 10.0]), ("w2", &[0.0, 20.0])]);
+        ws.write_string(3, 1, "TOTAL:").unwrap();
+        ws.write_number(3, 2, 5.0).unwrap();
+        f(ws, 4, 2, "=SUM(C2:C4)", 35.0);
+    });
+    let grid = Grid::new(&sheet);
+    let c = detect(&grid);
+    assert_eq!(c.len(), 1, "{c:#?}");
+    let chk = verify(&grid, &c[0]);
+    assert_eq!((c[0].row, chk.ok, c[0].double_counted.len()), (4, Some(true), 0));
+}
+
+#[test]
+fn collapsed_list_of_group_totals_has_no_visible_source() {
+    let sheet = fixture("collapsed", |ws| {
+        ws.write_string(0, 0, "Group").unwrap();
+        ws.write_string(0, 1, "Value").unwrap();
+        rows(ws, 1, &[("East Total", &[10.0]), ("West Total", &[20.0]), ("North Total", &[7.0])]);
+    });
+    let grid = Grid::new(&sheet);
+    let c = detect(&grid);
+    // Only the first could be read as a total of nothing; none has a source on the sheet.
+    assert!(c.is_empty(), "{c:#?}");
+}

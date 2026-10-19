@@ -255,6 +255,7 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
         out.extend(typed_horizontal(grid, &taken, h.row, h.col, lvl));
     }
 
+    drop_unconfirmed_inside_formulas(&mut out);
     resolve_nesting(grid, &mut out);
     mark_sibling_support(grid, &mut out);
     out.sort_by_key(|c| (c.row, c.col));
@@ -313,7 +314,21 @@ fn typed_group(
             continue;
         }
         if text(grid.cell(r, label_col)).is_some_and(|t| t.trim().to_lowercase() == name) {
-            start = Some(r);
+            // Tabular pivots repeat the group label on every row: take the whole run.
+            // Deeper totals interrupt the run without ending the group.
+            let mut s = r;
+            let mut k = r;
+            while k > 0 {
+                k -= 1;
+                if kw_rows.get(&k).is_some_and(|&(lc, _)| lc > label_col) {
+                    continue;
+                }
+                if !text(grid.cell(k, label_col)).is_some_and(|t| t.trim().to_lowercase() == name) {
+                    break;
+                }
+                s = k;
+            }
+            start = Some(s);
             break;
         }
     }
@@ -445,9 +460,11 @@ fn typed_vertical(
         c.evidence.push(Evidence::ArithmeticMatch);
     } else if has_section && (totals.is_empty() || lvl != KeywordLevel::GrandTotal) {
         section(&mut c);
-    } else if lvl != KeywordLevel::Subtotal {
+    } else if lvl == KeywordLevel::GrandTotal || totals.is_empty() {
         whole(&mut c);
     } else {
+        // Directly under other totals with no data in between (a collapsed list of "X Total"
+        // rows): its source is not on the sheet.
         return None;
     }
     Some(c)
@@ -457,11 +474,15 @@ fn typed_vertical(
 /// [`Evidence::SiblingsMatch`] when most other totals in the same row or column check out —
 /// then a mismatch is a real error rather than a wrongly inferred source.
 fn mark_sibling_support(grid: &Grid, cands: &mut [TotalCandidate]) {
+    // A zero that "matches" a sum of zeros proves nothing about the inferred ranges.
     let matched: Vec<bool> = cands
         .iter()
-        .map(|c| match c.origin {
-            TotalOrigin::Typed => c.evidence.contains(&Evidence::ArithmeticMatch),
-            TotalOrigin::Formula => verify(grid, c).ok == Some(true),
+        .map(|c| {
+            number(grid.cell(c.row, c.col)).is_some_and(|v| v != 0.0)
+                && match c.origin {
+                    TotalOrigin::Typed => c.evidence.contains(&Evidence::ArithmeticMatch),
+                    TotalOrigin::Formula => verify(grid, c).ok == Some(true),
+                }
         })
         .collect();
     let mut by_row: HashMap<u32, Vec<usize>> = HashMap::new();
@@ -541,7 +562,7 @@ fn typed_horizontal(grid: &Grid, taken: &HashSet<(u32, u32)>, hrow: u32, hcol: u
         let mut s = 0.0;
         for (k, &(_, x)) in lefts[i].iter().enumerate() {
             s += x;
-            if k >= 1 && close(value, s, true) {
+            if k >= 1 && value != 0.0 && close(value, s, true) {
                 *votes.entry(k + 1).or_default() += 1;
             }
         }
@@ -566,6 +587,18 @@ fn typed_horizontal(grid: &Grid, taken: &HashSet<(u32, u32)>, hrow: u32, hcol: u
             c
         })
         .collect()
+}
+
+/// A typed "total" that a formula total adds as an ordinary value, and whose own source did not
+/// add up, is a data cell next to a stray keyword ("TOTAL:" one row above the real SUM).
+fn drop_unconfirmed_inside_formulas(cands: &mut Vec<TotalCandidate>) {
+    let formulas: Vec<TotalCandidate> =
+        cands.iter().filter(|c| c.origin == TotalOrigin::Formula).cloned().collect();
+    cands.retain(|c| {
+        c.origin == TotalOrigin::Formula
+            || c.evidence.contains(&Evidence::ArithmeticMatch)
+            || !formulas.iter().any(|f| f.direction == c.direction && f.covers(c.row, c.col))
+    });
 }
 
 /// Totals inside other totals' sources (same direction): an outer total that adds only totals is a
