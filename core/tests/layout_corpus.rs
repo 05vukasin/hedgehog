@@ -341,6 +341,12 @@ fn deco_quick_eval() {
                     let inside = (rr.top..=rr.bottom).contains(&c.row) && (rr.left..=rr.right).contains(&c.col);
                     if inside { map(lb) } else { None }
                 });
+                if let Some(g) = lab
+                    && std::env::var("HH_CELLS").is_ok_and(|x| x == format!("{g}:{}", r.as_str()))
+                {
+                    let v = format!("{:?}", c.value).chars().take(40).collect::<String>();
+                    println!("CELL {g}->{} {} {v} | {file} [{sname}]", r.as_str(), hh_core::a1(c.row, c.col));
+                }
                 if let Some(g) = lab {
                     *sheet_gold.entry(g).or_default() += 1;
                     *sheet_pred.entry(r.as_str()).or_default() += 1;

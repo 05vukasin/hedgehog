@@ -19,7 +19,7 @@ use crate::grid::Grid;
 use crate::model::Sheet;
 
 use cells::{is_note_label, text_of, Kind};
-use params::{LOOSE_MAX_ROWS, NOTE_MAX_GAP, TITLE_MAX_GAP};
+use params::{LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP};
 use tables::Out;
 
 /// Detects tables and assigns one [`Role`] per entry of `grid.sheet.cells` (same order).
@@ -61,7 +61,7 @@ fn classify_loose(sheet: &Sheet, out: &mut Out) {
                 out.roles[i] = match e.kind {
                     Kind::Text => {
                         let t = text_of(&sheet.cells[i]).unwrap_or("");
-                        if is_note_label(t) {
+                        if is_note_label(t) || (!above && t.trim().chars().count() >= NOTE_MIN_LEN) {
                             Role::Note
                         } else if above {
                             Role::Title
