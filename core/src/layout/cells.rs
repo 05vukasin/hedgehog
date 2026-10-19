@@ -1,0 +1,282 @@
+//! Cheap per-cell signals used by the layout rules: coarse type, keyword classes, `SUM(` shape.
+//! Deliberately self-contained; the values/context workstreams will provide richer versions.
+
+use crate::model::{Cell, Value};
+
+use super::params::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Kind {
+    Text,
+    /// Number, date, numeric-looking text, or a formula without cached value.
+    Num,
+    /// Missing tokens ("-", "n/a"), booleans, errors: filled but type-neutral.
+    Missing,
+    /// Empty merged area (no value at its anchor).
+    Blank,
+}
+
+/// How a formula aggregates other cells.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Agg {
+    None,
+    /// Sum/plus of ≥2 cells above in the same column (total row).
+    Vertical,
+    /// Sum/plus of ≥2 cells to the left in the same row (total column).
+    Horizontal,
+}
+
+const MISSING_TOKENS: &[&str] = &[
+    "-", "--", "---", "–", "—", "n/a", "na", "n.a.", "#n/a", "x", ".", "..", "...", "?", "null", "none", "nema", "нема",
+];
+
+const TOTAL_WORDS: &[&str] = &[
+    "total", "totals", "subtotal", "subtotals", "sum", "ukupno", "ukupna", "ukupni", "ukupan", "sveukupno", "svega",
+    "zbir", "zbirno", "укупно", "укупна", "укупни", "укупан", "свеукупно", "свега", "збир", "збирно",
+];
+
+const NOTE_WORDS: &[&str] = &[
+    "note", "notes", "source", "sources", "napomena", "napomene", "izvor", "izvori", "напомена", "напомене", "извор",
+    "извори", "nb", "footnote", "footnotes", "comment", "comments", "remark", "remarks", "prepared", "pripremio",
+    "pripremila", "припремио", "disclaimer",
+];
+
+pub(crate) fn kind_of(cell: &Cell) -> Kind {
+    match &cell.value {
+        Some(Value::Number(_)) | Some(Value::DateTime(_)) => Kind::Num,
+        Some(Value::Text(s)) => text_kind(s),
+        Some(Value::Bool(_)) | Some(Value::Error(_)) => Kind::Missing,
+        None if cell.formula.is_some() => Kind::Num,
+        None => Kind::Blank,
+    }
+}
+
+fn text_kind(s: &str) -> Kind {
+    let t = s.trim();
+    if t.is_empty() {
+        return Kind::Blank;
+    }
+    if t.len() <= 5 && MISSING_TOKENS.iter().any(|m| t.eq_ignore_ascii_case(m)) {
+        return Kind::Missing;
+    }
+    if looks_numeric(t) { Kind::Num } else { Kind::Text }
+}
+
+/// "1,200.50", "(500)", "12%", "$ 3.4", "1.200,50 RSD"-ish, "01/02/2001", "-7".
+fn looks_numeric(t: &str) -> bool {
+    if t.len() > 40 {
+        return false;
+    }
+    let mut digits = 0usize;
+    let mut other = 0usize;
+    for ch in t.chars() {
+        match ch {
+            '0'..='9' => digits += 1,
+            ',' | '.' | ' ' | '\u{a0}' | '\'' | '(' | ')' | '-' | '+' | '/' | '%' | '$' | '€' | '£' => {}
+            _ => other += 1,
+        }
+    }
+    digits > 0 && other == 0
+}
+
+/// Integer year or a date value — numbers that commonly label columns ("2023", Jan-01).
+pub(crate) fn is_label_number(cell: &Cell) -> bool {
+    match &cell.value {
+        Some(Value::DateTime(_)) => true,
+        Some(Value::Number(n)) => n.fract() == 0.0 && (YEAR_MIN..=YEAR_MAX).contains(n),
+        Some(Value::Text(s)) => {
+            let t = s.trim();
+            t.len() == 4 && t.parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n))
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn text_of(cell: &Cell) -> Option<&str> {
+    match &cell.value {
+        Some(Value::Text(s)) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+fn tokens(s: &str) -> Vec<String> {
+    s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(|w| w.to_lowercase()).collect()
+}
+
+/// "Total", "Grand total", "Ukupno Vojvodina", "Subtotal:", "УКУПНО", "Σ".
+pub(crate) fn is_total_label(s: &str) -> bool {
+    let t = s.trim();
+    if t.starts_with('Σ') || t.starts_with('∑') {
+        return true;
+    }
+    let toks = tokens(t);
+    match toks.first() {
+        None => false,
+        Some(first) if TOTAL_WORDS.contains(&first.as_str()) => true,
+        Some(_) => {
+            toks.len() <= TOTAL_LABEL_MAX_TOKENS && toks.iter().any(|w| TOTAL_WORDS.contains(&w.as_str()))
+        }
+    }
+}
+
+/// "Source: …", "Napomena", "* preliminary", "(1) …", "a) …", "Извор: РЗС".
+pub(crate) fn is_note_label(s: &str) -> bool {
+    let t = s.trim();
+    let Some(first) = t.chars().next() else { return false };
+    if matches!(first, '*' | '†' | '‡' | '¹' | '²' | '³' | '⁽') {
+        return true;
+    }
+    // "(1) text", "1) text", "a) text"
+    let head: String = t.chars().take(5).collect();
+    if let Some(close) = head.find(')') {
+        let inner = head[..close].trim_start_matches('(');
+        if (1..=2).contains(&inner.chars().count())
+            && inner.chars().all(|c| c.is_ascii_alphanumeric())
+            && t.chars().count() > close + 2
+        {
+            return true;
+        }
+    }
+    tokens(t).first().is_some_and(|w| NOTE_WORDS.contains(&w.as_str()))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Ref {
+    r1: u32,
+    c1: u32,
+    r2: u32,
+    c2: u32,
+}
+
+/// Classifies `SUM(C5:C9)`, `SUBTOTAL(9,C5:C9)`, `C5+C10+C15` at (row, col). Cross-sheet refs → None.
+pub(crate) fn formula_agg(formula: &str, row: u32, col: u32) -> Agg {
+    let f = formula.to_ascii_uppercase();
+    if f.contains('!') {
+        return Agg::None;
+    }
+    let is_sum = f.contains("SUM(") || f.contains("SUBTOTAL(");
+    let (refs, rest_is_plus) = parse_refs(f.as_bytes());
+    if refs.is_empty() || !(is_sum || rest_is_plus) {
+        return Agg::None;
+    }
+    let cells: u64 = refs.iter().map(|r| (r.r2 - r.r1 + 1) as u64 * (r.c2 - r.c1 + 1) as u64).sum();
+    if cells < 2 {
+        return Agg::None;
+    }
+    if refs.iter().all(|r| r.c1 == col && r.c2 == col && r.r2 < row) {
+        Agg::Vertical
+    } else if refs.iter().all(|r| r.r1 == row && r.r2 == row && r.c2 < col) {
+        Agg::Horizontal
+    } else {
+        Agg::None
+    }
+}
+
+/// Extracts A1 refs/ranges; second value: the formula is only refs joined by `+` (and parens).
+fn parse_refs(b: &[u8]) -> (Vec<Ref>, bool) {
+    let mut refs = Vec::new();
+    let mut only_plus = true;
+    let mut i = 0;
+    while i < b.len() {
+        let prev_ident = i > 0 && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_' || b[i - 1] == b'.');
+        if !prev_ident && let Some((r, c, n)) = cell_ref(&b[i..]) {
+            let mut j = i + n;
+            let mut rf = Ref { r1: r, c1: c, r2: r, c2: c };
+            if j < b.len() && b[j] == b':' && let Some((r2, c2, n2)) = cell_ref(&b[j + 1..]) {
+                rf = Ref { r1: r.min(r2), c1: c.min(c2), r2: r.max(r2), c2: c.max(c2) };
+                j += 1 + n2;
+            }
+            // Function names like LOG10( are not refs.
+            if j < b.len() && (b[j] == b'(' || b[j].is_ascii_alphanumeric() || b[j] == b'_') {
+                only_plus = false;
+                i = j;
+                continue;
+            }
+            refs.push(rf);
+            i = j;
+            continue;
+        }
+        if !matches!(b[i], b'+' | b'(' | b')' | b' ') {
+            only_plus = false;
+        }
+        i += 1;
+    }
+    let plus = only_plus && refs.len() >= 2;
+    (refs, plus)
+}
+
+/// `$A$1`-style reference at the start of `b` → (row, col, bytes consumed), 0-based.
+fn cell_ref(b: &[u8]) -> Option<(u32, u32, usize)> {
+    let mut i = 0;
+    if b.get(i) == Some(&b'$') {
+        i += 1;
+    }
+    let ls = i;
+    while i < b.len() && b[i].is_ascii_uppercase() && i - ls < 3 {
+        i += 1;
+    }
+    if i == ls {
+        return None;
+    }
+    let mut col: u32 = 0;
+    for &ch in &b[ls..i] {
+        col = col * 26 + (ch - b'A' + 1) as u32;
+    }
+    if b.get(i) == Some(&b'$') {
+        i += 1;
+    }
+    let ds = i;
+    while i < b.len() && b[i].is_ascii_digit() && i - ds < 7 {
+        i += 1;
+    }
+    if i == ds {
+        return None;
+    }
+    let row: u32 = std::str::from_utf8(&b[ds..i]).ok()?.parse().ok()?;
+    if row == 0 || col == 0 {
+        return None;
+    }
+    Some((row - 1, col - 1, i))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn totals_and_notes() {
+        for s in ["Total", "Grand Total", "Ukupno Vojvodina", "SUBTOTAL:", "УКУПНО", "Σ", "Svega", "Total revenue"] {
+            assert!(is_total_label(s), "{s}");
+        }
+        for s in ["Totally unrelated long label with many many words total", "Region", "Beograd"] {
+            assert!(!is_total_label(s), "{s}");
+        }
+        for s in ["Source: RZS", "Napomena: preliminarno", "* preliminary", "(1) estimated", "a) excl. VAT", "Извор: РЗС"] {
+            assert!(is_note_label(s), "{s}");
+        }
+        for s in ["Beograd", "Q1", "(500)"] {
+            assert!(!is_note_label(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn formula_shapes() {
+        assert_eq!(formula_agg("SUM(C5:C9)", 9, 2), Agg::Vertical);
+        assert_eq!(formula_agg("SUBTOTAL(9,$C$5:$C$9)", 9, 2), Agg::Vertical);
+        assert_eq!(formula_agg("C5+C10+C15", 20, 2), Agg::Vertical);
+        assert_eq!(formula_agg("SUM(B5:D5)", 4, 4), Agg::Horizontal);
+        assert_eq!(formula_agg("C4+D5", 4, 2), Agg::None);
+        assert_eq!(formula_agg("C5*1.1", 9, 2), Agg::None);
+        assert_eq!(formula_agg("SUM(Sheet2!C5:C9)", 9, 2), Agg::None);
+        assert_eq!(formula_agg("SUM(C5:C9)", 3, 2), Agg::None);
+        assert_eq!(formula_agg("LOG10(C5)+C6", 9, 2), Agg::None);
+    }
+
+    #[test]
+    fn numeric_text() {
+        assert_eq!(text_kind("1,200.50"), Kind::Num);
+        assert_eq!(text_kind("(500)"), Kind::Num);
+        assert_eq!(text_kind("n/a"), Kind::Missing);
+        assert_eq!(text_kind("Q1 2003"), Kind::Text);
+    }
+}

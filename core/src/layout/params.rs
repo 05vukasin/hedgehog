@@ -1,0 +1,69 @@
+//! Every tunable threshold of the layout rules, in one place, so DECO scores can drive tuning.
+
+// --- Blocks & gap tolerance -------------------------------------------------------------------
+
+/// Max blank rows between two blocks that may still be one table (spacer rows, L5).
+pub const MAX_ROW_GAP: u32 = 2;
+/// Max blank columns between two blocks that may still be one table (spacer columns, L5).
+pub const MAX_COL_GAP: u32 = 1;
+/// Vertical gap merge: column overlap / wider block width must reach this.
+pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
+/// Horizontal gap merge: row overlap / taller block height must reach this.
+pub const GAP_MIN_ROW_OVERLAP: f32 = 0.8;
+/// Vertical gap merge: share of shared columns whose majority type (text/number) agrees.
+pub const GAP_MIN_TYPE_AGREE: f32 = 0.6;
+/// A column counts as a row-label column when this share of its body entries is text.
+pub const LABEL_COL_TEXT_FRAC: f32 = 0.5;
+
+// --- Tables -----------------------------------------------------------------------------------
+
+/// Minimum rows (header + body) and columns for a region to be a table.
+pub const MIN_TABLE_ROWS: usize = 2;
+pub const MIN_TABLE_COLS: u32 = 2;
+/// Minimum filled share of the table rectangle.
+pub const MIN_TABLE_DENSITY: f32 = 0.2;
+/// Two-column blocks whose first column is mostly `Label:` text are forms, not tables (L12).
+pub const FORM_COLON_FRAC: f32 = 0.6;
+
+// --- Titles & notes ---------------------------------------------------------------------------
+
+/// Max leading single-cell rows inside a block treated as titles.
+pub const MAX_TITLE_ROWS: usize = 6;
+/// A single merged cell spanning at least this share of the block width is a title, wherever it starts.
+pub const TITLE_SPAN_FRAC: f32 = 0.8;
+/// A loose text block at most this many blank rows above a table is its title/metadata.
+pub const TITLE_MAX_GAP: u32 = 5;
+/// A loose text block at most this many blank rows below a table is a note.
+pub const NOTE_MAX_GAP: u32 = 6;
+/// A single text cell at least this long below a table is a note even without a marker.
+pub const NOTE_MIN_LEN: usize = 50;
+
+// --- Headers ----------------------------------------------------------------------------------
+
+/// Max header depth (multi-row / hierarchical headers, H2).
+pub const MAX_HEADER_ROWS: usize = 4;
+/// A header row may hold at most this share of plain numbers (years and dates don't count).
+pub const HEADER_MAX_NUM_FRAC: f32 = 0.25;
+/// Text-only tables: the first row is a header if it fills at least this share of the width.
+pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
+/// Years in this range are header-like labels ("2023") rather than measures.
+pub const YEAR_MIN: f64 = 1900.0;
+pub const YEAR_MAX: f64 = 2100.0;
+
+// --- Totals -----------------------------------------------------------------------------------
+
+/// A row is a total when at least this share of its numeric cells aggregate cells above (`SUM(`).
+pub const TOTAL_FORMULA_FRAC: f32 = 0.5;
+/// Mark cells with a `SUM(` over cells to their left (total columns, R3) as Total.
+pub const MARK_ROW_SUM_CELLS_AS_TOTAL: bool = true;
+/// Labels with more tokens than this only count as total when the keyword is the first token.
+pub const TOTAL_LABEL_MAX_TOKENS: usize = 6;
+
+// --- Confidence -------------------------------------------------------------------------------
+
+pub const CONF_BASE: f32 = 0.35;
+pub const CONF_HEADER: f32 = 0.25;
+pub const CONF_TYPE: f32 = 0.25;
+pub const CONF_SIZE: f32 = 0.15;
+/// Body cells at which the size bonus saturates.
+pub const CONF_SIZE_CELLS: f32 = 30.0;
