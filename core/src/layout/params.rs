@@ -28,6 +28,8 @@ pub const MIN_TABLE_COLS: u32 = 2;
 /// Tables without a header need at least this many columns and rows.
 pub const HEADERLESS_MIN_COLS: u32 = 3;
 pub const HEADERLESS_MIN_ROWS: usize = 8;
+/// Tables with a header need at least this many body rows.
+pub const MIN_BODY_ROWS: usize = 1;
 /// Minimum filled share of the table rectangle.
 pub const MIN_TABLE_DENSITY: f32 = 0.2;
 /// Two-column blocks whose first column is mostly `Label:` text are forms, not tables (L12).
