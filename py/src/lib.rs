@@ -268,9 +268,41 @@ fn open(path: &str) -> PyResult<Workbook> {
     hh_core::open(path).map(Workbook).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
+/// Writes `<stem>.normalized.xlsx` + `<stem>.manifest.json` (+ CSVs) into `out_dir`; see
+/// `hh_core::normalize`. Returns `{xlsx_path, manifest_path, csv_paths, manifest_json}`.
+#[pyfunction]
+#[pyo3(signature = (path, out_dir, keep_totals = false, csv = false, locale = None))]
+fn normalize<'py>(
+    py: Python<'py>,
+    path: &str,
+    out_dir: &str,
+    keep_totals: bool,
+    csv: bool,
+    locale: Option<&str>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let locale = match locale {
+        Some(tag) => Some(
+            hh_core::values::Locale::parse(tag).ok_or_else(|| PyValueError::new_err(format!("unknown locale {tag:?}")))?,
+        ),
+        None => None,
+    };
+    let opts = hh_core::normalize::Options { keep_totals, csv, locale };
+    let (path, out_dir) = (path.to_string(), out_dir.to_string());
+    let out = py
+        .detach(move || hh_core::normalize_file(&path, &out_dir, &opts))
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let d = PyDict::new(py);
+    d.set_item("xlsx_path", out.xlsx_path.to_string_lossy())?;
+    d.set_item("manifest_path", out.manifest_path.to_string_lossy())?;
+    d.set_item("csv_paths", out.csv_paths.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>())?;
+    d.set_item("manifest_json", out.manifest_json)?;
+    Ok(d)
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Workbook>()?;
     m.add_function(wrap_pyfunction!(open, m)?)?;
+    m.add_function(wrap_pyfunction!(normalize, m)?)?;
     Ok(())
 }
