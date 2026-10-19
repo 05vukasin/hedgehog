@@ -4,6 +4,11 @@ Goal: take any messy spreadsheet → find the tables, understand what every cell
 normalize the data, add the formulas/metrics it obviously needs, and hand the next AI agent a short
 summary plus tools it can call (MCP-style) to get exact, cell-traceable answers instantly.
 
+**Main deliverable:** a transformed, normalized copy of the workbook (tidy typed tables, flat headers,
+totals separated and verified, provenance back to the original cells) plus a machine-readable manifest,
+so a downstream agent with a code sandbox (pandas/openpyxl) can load and manipulate it directly.
+Summaries, LLM formatting and agent tools are built on top of that output. See `docs/NORMALIZE.md`.
+
 Rule for every milestone: **it ships with a number.** Each step is measured on the eval harness
 (M1) before and after, so we always know whether a change helped.
 
@@ -32,7 +37,7 @@ Test corpora stay outside the repo (`../testdata`, path via `HEDGEHOG_DATA`), th
 | M1 | Eval harness | One label schema (cell roles + table ranges); converter from DECO (local, Enron); metrics: table-detection P@IoU, cell-role macro F1; `hedgehog eval` | Baseline score of the current flood-fill printed for DECO |
 | M2 | Layout rules v0 | Table detection with gap tolerance; titles/notes above & below; multi-row + merged headers (unmerge, fill, `Parent / Child` names); total & subtotal rows (keywords + `SUM(` + arithmetic check); group-header rows → new column | DECO table-detection & role F1 beat M1 baseline; published next to literature numbers (~0.8 P@IoU, ~0.9 role F1) |
 | M3 | Value normalizer v0 | Locale-aware numbers (`1.200,50`, `(500)`), units/currency (`1.200 RSD`, "in thousands"), dates (mixed formats, serials, dd/mm inference), missing tokens (`-`, `n/a`, `#N/A`), whitespace/case/Cyrillic↔Latin | Unit tests generated per operator all pass; typed columns on DECO tables |
-| M4 | Output v0 (first thing agents use) | `hedgehog.open(path)` → tables as Arrow/pandas; JSON **workbook map**; markdown **summary** (tables, columns, key numbers with cell refs, warnings like wrong totals) | Summary of a 10k-row Enron file < 1k tokens, generated in < 1 s |
+| M4 | **Normalized export (main deliverable)** + summary | `hedgehog.open(path)` → tables as Arrow/pandas; JSON **workbook map**; markdown **summary** (tables, columns, key numbers with cell refs, warnings like wrong totals) | Summary of a 10k-row Enron file < 1k tokens, generated in < 1 s |
 | M5 | Noise generator v0 | ~15 operators (missing, categorical variants, numbers-as-text, locale, units, dates, whitespace; hierarchical headers, subtotals, group rows; offset, title, notes, multi-table; merges/styles) with full provenance labels; frequencies calibrated to Enron profile + DECO | 10k labelled synthetic sheets generated from `testdata/clean`; M2/M3 scored on them |
 | M6 | Learned cell-role model | Gradient-boosted trees (XGBoost or LightGBM — whichever scores higher, both export trees) on ~65 features; trained in Python, inference in Rust with our own tree evaluator; tables derived from cell roles | Beats M2 rules on real DECO test split (train on synthetic+DECO train) |
 | M7 | Semantic column types | City/country/municipality (GeoNames + Serbian list), currency amount, date/period, ID/tax ID (PIB/MB), person/company, category, percent…; value detectors + header embeddings + boosted-tree classifier | Column-type F1 measured on synthetic (known types) + small hand-labelled real set |
