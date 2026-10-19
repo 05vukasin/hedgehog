@@ -41,6 +41,11 @@ pub const TAIL_MIN_ROWS: usize = 3;
 pub const MAX_TITLE_ROWS: usize = 6;
 /// A single merged cell spanning at least this share of the block width is a title, wherever it starts.
 pub const TITLE_SPAN_FRAC: f32 = 0.8;
+/// Extend a table's range over title rows directly above it (no blank row), as DECO does.
+pub const TABLE_INCLUDES_ADJACENT_TITLES: bool = true;
+/// A lone label off the left edge directly over a number is a header cell, not a title
+/// (tried: slightly worse on DECO dev, so off).
+pub const TITLE_HEADER_OVER_NUMBER: bool = false;
 /// A loose text block at most this many blank rows above a table is its title/metadata.
 pub const TITLE_MAX_GAP: u32 = 5;
 /// A loose text block at most this many blank rows below a table is a note.

@@ -301,7 +301,7 @@ impl Profile {
 fn profile(sheet: &Sheet, region: &Region) -> Profile {
     let rows = &region.rows;
     let mut s = 0;
-    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && super::tables::is_title_row(sheet, &rows[s], region.rect) {
+    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && super::tables::is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1)) {
         s += 1;
     }
     let starts_with_header = s < rows.len()

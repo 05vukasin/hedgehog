@@ -84,7 +84,8 @@ fn title_directly_above_header() {
     });
     let l = run(&s);
     assert_eq!(l.tables.len(), 1);
-    assert_eq!(l.tables[0].rect, rect(1, 0, 4, 3));
+    // DECO convention: a title touching the table is inside its range (header_rows counts from it).
+    assert_eq!(l.tables[0].rect, rect(0, 0, 4, 3));
     assert_eq!(role(&s, &l, 0, 0), Role::Title);
     assert_eq!(role(&s, &l, 1, 0), Role::Header);
 }
@@ -124,7 +125,7 @@ fn stacked_tables_without_blank_row_split() {
     let l = run(&s);
     assert_eq!(l.tables.len(), 2, "{:?}", l.tables);
     assert_eq!(l.tables[0].rect, rect(0, 0, 4, 2));
-    assert_eq!(l.tables[1].rect, rect(6, 0, 9, 2));
+    assert_eq!(l.tables[1].rect, rect(5, 0, 9, 2));
     assert_eq!(role(&s, &l, 5, 0), Role::Title);
 }
 

@@ -30,13 +30,24 @@ fn single_text<'a>(r: &'a Row) -> Option<&'a Entry> {
 
 /// Sparse row above a table: one text cell (anywhere), or one merged cell over most of the width
 /// starting at the left edge. A partial merge (e.g. "Revenue" over C:E) is a parent header instead.
-pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect) -> bool {
+/// A lone label off the left edge, directly over a number in the next row, is a header cell of a
+/// narrow table ("Monthly volume" over its column), not a title.
+pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect, next: Option<&Row>) -> bool {
     let width = rect.right - rect.left + 1;
     if width < 2 {
         return false;
     }
     let Some(e) = single_text(r) else { return false };
     if is_total_label(text(sheet, e)) {
+        return false;
+    }
+    if TITLE_HEADER_OVER_NUMBER
+        && e.left > rect.left
+        && let Some(n) = next
+        && n.row == r.row + 1
+        && n.n_measure() > 0
+        && n.entries.iter().any(|x| x.left <= e.right && x.right >= e.left && x.kind == Kind::Num)
+    {
         return false;
     }
     let span = e.right - e.left + 1;
@@ -231,7 +242,8 @@ struct Seg {
 
 fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<Seg> {
     let mut segs = Vec::new();
-    let (mut start, mut titles) = (s, s..s);
+    // Leading title rows of the region belong to the first table.
+    let (mut start, mut titles) = (s, 0..s);
     while start < e {
         let h = header_depth(sheet, rows, start, e, rect);
         let body = start + h;
@@ -261,7 +273,7 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
         let mut seg_end = sp;
         while seg_end > body + 1
             && sp - seg_end < 2
-            && is_title_row(sheet, &rows[seg_end - 1], rect)
+            && is_title_row(sheet, &rows[seg_end - 1], rect, rows.get(seg_end))
             && !is_note_row(sheet, &rows[seg_end - 1])
         {
             seg_end -= 1;
@@ -300,6 +312,18 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         return false;
     }
     let mut rect = bounds(trows);
+    // DECO counts title rows touching the table (no blank row between) as part of its range.
+    if TABLE_INCLUDES_ADJACENT_TITLES {
+        let mut top = rows[seg.start].row;
+        for k in seg.titles.clone().rev() {
+            if rows[k].row + 1 == top {
+                top = rows[k].row;
+            } else {
+                break;
+            }
+        }
+        rect.top = rect.top.min(top);
+    }
     // Clamp a vertical merge hanging off the last row.
     rect.bottom = rect.bottom.max(trows.last().unwrap().row);
     let width = rect.right - rect.left + 1;
@@ -331,7 +355,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
                 }
             }
         }
-        header_rows = last - rect.top + 1;
+        header_rows = last - rows[seg.start].row + 1;
     }
     let sig = if seg.header > 0 { signature(sheet, &rows[body_start - 1]) } else { Vec::new() };
     let has_measures = rows[body_start..seg.end].iter().any(|r| r.n_measure() > 0);
@@ -394,7 +418,7 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         return;
     }
     let mut s = 0;
-    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && is_title_row(sheet, &rows[s], region.rect) {
+    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1)) {
         s += 1;
     }
     let mut e = rows.len();
@@ -416,14 +440,10 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         }
     }
     if any {
-        for r in &rows[..s] {
-            set(out, r, Role::Title);
-        }
         for r in &rows[e..] {
             set(out, r, Role::Note);
         }
     } else {
-        loose_rows.splice(0..0, rows[..s].iter().cloned());
         loose_rows.extend(rows[e..].iter().cloned());
     }
     if !loose_rows.is_empty() {
