@@ -40,12 +40,13 @@ use std::path::PathBuf;
 use crate::analysis::SheetLayout;
 use crate::grid::Grid;
 
-/// Anything that turns a sheet into a layout. Implemented for every `Fn(&Grid) -> SheetLayout`.
-pub trait Analyzer {
+/// Anything that turns a sheet into a layout. Implemented for every `Fn(&Grid) -> SheetLayout`
+/// that is `Sync` (so [`run::evaluate_parallel`] can share it between worker threads).
+pub trait Analyzer: Sync {
     fn analyze(&self, grid: &Grid) -> SheetLayout;
 }
 
-impl<F: Fn(&Grid) -> SheetLayout> Analyzer for F {
+impl<F: Fn(&Grid) -> SheetLayout + Sync> Analyzer for F {
     fn analyze(&self, grid: &Grid) -> SheetLayout {
         self(grid)
     }
