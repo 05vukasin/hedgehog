@@ -109,6 +109,8 @@ pub const KEY_MIN_START_FRAC: f32 = 0.5;
 
 /// A group-header row must be followed by at least this many multi-cell rows.
 pub const GROUP_MIN_RUN: usize = 2;
+/// … or, for a label of at most this many characters (≤ 3 words), one multi-cell row.
+pub const GROUP_SHORT_LABEL: usize = 24;
 
 // --- Change points (stacked tables with different schemas) ------------------------------------
 
