@@ -22,7 +22,7 @@ fn text<'a>(sheet: &'a Sheet, e: &Entry) -> &'a str {
     e.cell.and_then(|i| text_of(&sheet.cells[i])).unwrap_or("")
 }
 
-fn single_text<'a>(r: &'a Row) -> Option<&'a Entry> {
+fn single_text(r: &Row) -> Option<&Entry> {
     let mut it = r.filled();
     let e = it.next()?;
     (it.next().is_none() && e.kind == Kind::Text).then_some(e)
@@ -420,13 +420,18 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
 
     // Column type purity over data rows, for confidence.
     let mut col_counts: std::collections::HashMap<u32, (u32, u32)> = std::collections::HashMap::new();
+    // Formula totals on most rows are a running/computed column, not total rows.
+    let body_len = seg.end - body_start;
+    let formula_totals =
+        rows[body_start..seg.end].iter().filter(|r| !has_total_label(sheet, r) && is_total_row(sheet, r)).count();
+    let formula_totals_ok = (formula_totals as f32) <= TOTAL_MAX_ROW_FRAC * body_len as f32 || body_len < 4;
     let mut body_cells = 0usize;
     for k in body_start..seg.end {
         let r = &rows[k];
         let last_body = k + 1 == seg.end;
         let role = if !sig.is_empty() && r.n() >= 2 && signature(sheet, r) == sig {
             Role::Header
-        } else if is_total_row(sheet, r) {
+        } else if has_total_label(sheet, r) || (formula_totals_ok && is_total_row(sheet, r)) {
             Role::Total
         } else if is_note_row(sheet, r) && (last_body || is_note_label(text(sheet, single_text(r).unwrap()))) {
             Role::Note

@@ -95,6 +95,9 @@ pub const GROUP_MIN_RUN: usize = 2;
 
 /// A row is a total when at least this share of its numeric cells aggregate cells above (`SUM(`).
 pub const TOTAL_FORMULA_FRAC: f32 = 0.5;
+/// If more than this share of a table's body rows are formula-only totals, they are a running
+/// or computed column instead, and stay Data.
+pub const TOTAL_MAX_ROW_FRAC: f32 = 0.4;
 /// Mark cells with a `SUM(` over cells to their left (total columns, R3) as Total.
 pub const MARK_ROW_SUM_CELLS_AS_TOTAL: bool = false;
 /// Cells outside tables with an aggregate formula (SUM/AVERAGE/MAX… over ≥2 cells) or a total

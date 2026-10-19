@@ -231,7 +231,8 @@ fn deco_quick_eval() {
         let rect = hh_core::Rect { top: r0, left: c0, bottom: r1, right: c1 };
         gt.entry((f[0].clone(), f[1].clone())).or_default().push((f[4].clone(), rect));
     }
-    let mut by_file: BTreeMap<String, Vec<(String, Vec<(String, hh_core::Rect)>)>> = BTreeMap::new();
+    type Anns = Vec<(String, hh_core::Rect)>;
+    let mut by_file: BTreeMap<String, Vec<(String, Anns)>> = BTreeMap::new();
     for ((file, sheet), v) in gt {
         by_file.entry(file).or_default().push((sheet, v));
     }
