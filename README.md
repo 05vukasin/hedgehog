@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="assets/logo/logo.png" alt="hedgehog logo: a hedgehog whose back is a gear" width="160">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/logo-dark.png">
+    <img src="assets/logo/logo.png" alt="hedgehog logo: a hedgehog whose back is a gear" width="160">
+  </picture>
 </p>
 
 <h1 align="center">hedgehog</h1>
