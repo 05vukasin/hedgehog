@@ -91,6 +91,31 @@ pub const YEAR_MAX: f64 = 2100.0;
 /// A group-header row must be followed by at least this many multi-cell rows.
 pub const GROUP_MIN_RUN: usize = 2;
 
+// --- Change points (stacked tables with different schemas) ------------------------------------
+
+/// Each side of a cut needs at least this many data rows (not header-like, not totals).
+pub const CP_MIN_ROWS: usize = 3;
+/// Columns at least this filled on both sides count for the shared-content distance.
+pub const CP_SHARED_MIN_FILL: f32 = 0.2;
+/// Text at least this long is "long text" (notes, descriptions) in row signatures.
+pub const CP_LONG_TEXT: usize = 25;
+/// Skip blocks with more distinct columns / more rows × columns than this.
+pub const CP_MAX_COLS: usize = 256;
+pub const CP_MAX_WORK: usize = 4_000_000;
+pub const CP_MAX_CUTS: usize = 16;
+/// Column distance = this × coarse (empty/text/date/number) + rest × fine class distance.
+pub const CP_COARSE_WEIGHT: f32 = 0.8;
+/// Distance shrinkage for small sides: × m / (m + CP_SHRINK), m = smaller side's rows.
+pub const CP_SHRINK: f32 = 2.0;
+/// … only while the smaller side has fewer rows than this (so it never moves the cut).
+pub const CP_SHRINK_ROWS: f32 = 8.0;
+/// A cut needs this profile distance with a cue (header row, gap, total above, column range
+/// change), or `CP_STRONG` without one.
+pub const CP_WEAK: f32 = 0.3;
+/// A cue (header row, gap) at most this many rows from the largest change takes the cut.
+pub const CP_SNAP: usize = 2;
+pub const CP_STRONG: f32 = 0.55;
+
 // --- Totals -----------------------------------------------------------------------------------
 
 /// A row is a total when at least this share of its numeric cells aggregate cells above (`SUM(`).

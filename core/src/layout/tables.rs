@@ -54,6 +54,11 @@ pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect, next: Option<&Row
     span == 1 || (e.left == rect.left && span as f32 >= TITLE_SPAN_FRAC * width as f32)
 }
 
+/// One text cell alone on its row, not a total label.
+pub(crate) fn is_title_row_simple(sheet: &Sheet, r: &Row) -> bool {
+    single_text(r).is_some_and(|e| !is_total_label(text(sheet, e)))
+}
+
 pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
     let Some(e) = single_text(r) else { return false };
     let t = text(sheet, e);
@@ -109,7 +114,7 @@ fn has_total_label(sheet: &Sheet, r: &Row) -> bool {
     r.entries.iter().filter(|e| e.kind == Kind::Text).take(3).any(|e| is_total_label(text(sheet, e)))
 }
 
-fn is_total_row(sheet: &Sheet, r: &Row) -> bool {
+pub(crate) fn is_total_row(sheet: &Sheet, r: &Row) -> bool {
     if has_total_label(sheet, r) {
         return true;
     }
@@ -129,9 +134,9 @@ fn is_form(sheet: &Sheet, region: &Region) -> bool {
     colon as f32 >= FORM_COLON_FRAC * region.rows.len() as f32
 }
 
-type Signature = Vec<(u32, String)>;
+pub(crate) type Signature = Vec<(u32, String)>;
 
-fn signature(sheet: &Sheet, r: &Row) -> Signature {
+pub(crate) fn signature(sheet: &Sheet, r: &Row) -> Signature {
     r.filled().map(|e| (e.left, text(sheet, e).trim().to_lowercase())).collect()
 }
 
@@ -260,15 +265,17 @@ fn is_group_header(rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
 
 struct Seg {
     titles: Range<usize>,
+    /// Piece cut off by a change point (a narrow headerless table is still a table).
+    split: bool,
     start: usize,
     header: usize,
     end: usize,
 }
 
-fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<Seg> {
+fn segment(sheet: &Sheet, rows: &[Row], titles: Range<usize>, s: usize, e: usize, rect: Rect, cut: bool) -> Vec<Seg> {
     let mut segs = Vec::new();
-    // Leading title rows of the region belong to the first table.
-    let (mut start, mut titles) = (s, 0..s);
+    // Leading title rows belong to the first table.
+    let (mut start, mut titles) = (s, titles);
     while start < e {
         let mut h = header_depth(sheet, rows, start, e, rect);
         // Metadata rows (dates, labels) between titles and the header: skip up to a few sparse rows.
@@ -305,7 +312,7 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
             numeric_cols.extend(num_counts.iter().filter(|&(_, &n)| n * 2 >= seen).map(|(&c, _)| c));
         }
         let Some(sp) = split else {
-            segs.push(Seg { titles, start, header: h, end: e });
+            segs.push(Seg { titles, split: cut, start, header: h, end: e });
             break;
         };
         // Title rows just above the next header belong to the next table.
@@ -317,7 +324,7 @@ fn segment(sheet: &Sheet, rows: &[Row], s: usize, e: usize, rect: Rect) -> Vec<S
         {
             seg_end -= 1;
         }
-        segs.push(Seg { titles, start, header: h, end: seg_end });
+        segs.push(Seg { titles, split: cut, start, header: h, end: seg_end });
         titles = seg_end..sp;
         start = sp;
     }
@@ -376,7 +383,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     }
     // Without a header, a narrow or short block is a key/value list or stray numbers, not a table.
     if seg.header == 0
-        && (width < HEADERLESS_MIN_COLS || (seg.end - seg.start) < HEADERLESS_MIN_ROWS)
+        && ((width < HEADERLESS_MIN_COLS && !seg.split) || (seg.end - seg.start) < HEADERLESS_MIN_ROWS)
     {
         return false;
     }
@@ -489,7 +496,28 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     while e > s + 1 && is_note_row(sheet, &rows[e - 1]) {
         e -= 1;
     }
-    let segs = segment(sheet, rows, s, e, region.rect);
+    let h0 = header_depth(sheet, rows, s, e, region.rect);
+    let hsig = if h0 > 0 { signature(sheet, &rows[s + h0 - 1]) } else { Vec::new() };
+    let cuts = super::changepoint::boundaries(sheet, rows, s + h0, e, &hsig);
+    let mut segs = Vec::new();
+    let mut ps = s;
+    for pe in cuts.iter().copied().chain(std::iter::once(e)) {
+        if ps == s {
+            segs.extend(segment(sheet, rows, 0..s, s, pe, region.rect, false));
+        } else {
+            // Title rows at the top of a piece belong to its table.
+            let mut q = ps;
+            while q + 2 < pe
+                && q - ps < 2
+                && is_title_row(sheet, &rows[q], region.rect, rows.get(q + 1))
+                && !is_note_row(sheet, &rows[q])
+            {
+                q += 1;
+            }
+            segs.extend(segment(sheet, rows, ps..q, q, pe, region.rect, true));
+        }
+        ps = pe;
+    }
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
     for seg in &segs {

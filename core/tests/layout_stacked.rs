@@ -129,12 +129,12 @@ fn stack_b_wider() {
     assert_eq!(role(&s, &l, 31, 3), Role::Header);
 }
 
-/// (c) Second table narrower, no header, no blank row.
+/// (c) Second table narrower with other content, no header, no blank row.
 #[test]
 fn stack_c_narrower() {
     let s = fixture("c", |ws| {
         first(ws);
-        write_rows(ws, 31, 0, &[Col::Code, Col::Big], 20, 4);
+        write_rows(ws, 31, 0, &[Col::Date, Col::Code], 20, 4);
     });
     let l = run(&s);
     assert_two(&l, rect(0, 0, 30, 3), rect(31, 0, 50, 1));

@@ -10,6 +10,7 @@
 //! All thresholds live in [`params`]. Cost is O(cells + merge perimeters), never O(used range area).
 
 mod blocks;
+mod changepoint;
 mod cells;
 pub mod params;
 mod tables;
