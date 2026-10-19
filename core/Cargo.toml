@@ -7,6 +7,4 @@ license.workspace = true
 [dependencies]
 calamine.workspace = true
 zip.workspace = true
-
-[dev-dependencies]
 rust_xlsxwriter.workspace = true

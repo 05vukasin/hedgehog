@@ -6,6 +6,7 @@ use hh_core::eval::{self, run::RunOptions, split::Split, Analyzer};
 
 const USAGE: &str = "usage:
   hedgehog describe <file>
+  hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG]
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress]
 
 eval: data root from $HEDGEHOG_DATA (default /home/vukasin/projects/excell-lib-project/testdata);
@@ -31,6 +32,13 @@ fn main() -> ExitCode {
             }
             Err(e) => {
                 eprintln!("{path}: {e}");
+                ExitCode::FAILURE
+            }
+        },
+        ["normalize", rest @ ..] => match normalize(rest) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("{e}\n{USAGE}");
                 ExitCode::FAILURE
             }
         },
@@ -92,6 +100,49 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
         }
         std::fs::write(&path, report.to_json()).map_err(|e| format!("{}: {e}", path.display()))?;
         println!("report: {}", path.display());
+    }
+    Ok(())
+}
+
+/// `hedgehog normalize in.xlsx -o out/`: one clean typed sheet per table + manifest JSON.
+fn normalize(args: &[&str]) -> Result<(), String> {
+    let mut opts = hh_core::normalize::Options::default();
+    let mut input: Option<&str> = None;
+    let mut out_dir: Option<PathBuf> = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
+        match *a {
+            "-o" | "--out" => out_dir = Some(PathBuf::from(val()?)),
+            "--keep-totals" => opts.keep_totals = true,
+            "--csv" => opts.csv = true,
+            "--locale" => {
+                let tag = val()?;
+                opts.locale = Some(hh_core::values::Locale::parse(tag).ok_or(format!("unknown locale `{tag}`"))?);
+            }
+            s if s.starts_with('-') => return Err(format!("unknown argument `{s}`")),
+            s if input.is_none() => input = Some(s),
+            s => return Err(format!("unexpected argument `{s}`")),
+        }
+    }
+    let input = input.ok_or("normalize needs an input file")?;
+    let out_dir = out_dir.ok_or("normalize needs -o <out_dir>")?;
+    let t = Instant::now();
+    let out = hh_core::normalize_file(input, &out_dir, &opts).map_err(|e| e.to_string())?;
+    let c = out.cells;
+    println!(
+        "{input}: {} tables, {} cells ({} in tables, {} totals, {} notes) in {:.0} ms",
+        out.tables,
+        c.total,
+        c.in_tables,
+        c.in_totals,
+        c.in_notes,
+        t.elapsed().as_secs_f64() * 1000.0
+    );
+    println!("  {}", out.xlsx_path.display());
+    println!("  {}", out.manifest_path.display());
+    for p in &out.csv_paths {
+        println!("  {}", p.display());
     }
     Ok(())
 }
