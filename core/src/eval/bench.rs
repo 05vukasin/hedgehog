@@ -375,6 +375,12 @@ pub mod synth {
         sheet("giant_merge", cells, merges)
     }
 
+    /// Cells in the opposite corners of the sheet, joined by one merge over the whole sheet.
+    pub fn giant_merge_sparse() -> Sheet {
+        let cells = vec![text(0, 0, "title".into()), num(0, 1, 1.0), num(1_048_575, 16_383, 2.0)];
+        sheet("giant_merge_sparse", cells, vec![Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }])
+    }
+
     /// Every generated case: short name and generator (sheets are built on demand).
     pub fn all() -> Vec<(&'static str, fn() -> Sheet)> {
         vec![
@@ -385,6 +391,7 @@ pub mod synth {
             ("tall_1m", || tall(1_000_000)),
             ("wide_16k", wide),
             ("giant_merge", giant_merge),
+            ("giant_merge_sparse", giant_merge_sparse),
         ]
     }
 }
