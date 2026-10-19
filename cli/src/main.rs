@@ -4,14 +4,30 @@ use std::time::Instant;
 
 use hh_core::eval::{self, run::RunOptions, split::Split, Analyzer};
 
+mod bench;
+
+fn report(r: Result<(), String>) -> ExitCode {
+    match r {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 const USAGE: &str = "usage:
   hedgehog describe <file>
   hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG]
-  hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress]
+  hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
+  hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
+  hedgehog bench --synthetic [--case NAME]
+  hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 
-eval: data root from $HEDGEHOG_DATA (default /home/vukasin/projects/excell-lib-project/testdata);
+eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
+      data root from $HEDGEHOG_DATA (default /home/vukasin/projects/excell-lib-project/testdata);
       JSON report defaults to $HEDGEHOG_SCORES or <data root>/../docs/research/scores/<analyzer>_deco_<split>.json
-      analyzers: baseline";
+      analyzers: baseline, layout";
 
 /// Analyzer registry. The integrator adds `"layout" => Some(&|g: &Grid| layout::analyze(g))`.
 fn analyzer(name: &str) -> Option<&'static dyn Analyzer> {
@@ -35,13 +51,9 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        ["normalize", rest @ ..] => match normalize(rest) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => {
-                eprintln!("{e}\n{USAGE}");
-                ExitCode::FAILURE
-            }
-        },
+        ["normalize", rest @ ..] => report(normalize(rest)),
+        ["bench", rest @ ..] => report(bench::bench(rest)),
+        ["golden", rest @ ..] => report(bench::golden(rest)),
         ["eval", "deco", rest @ ..] => match eval_deco(rest) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -61,6 +73,7 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
     let mut analyzer_name = "baseline".to_string();
     let mut json: Option<PathBuf> = None;
     let mut write_json = true;
+    let mut threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(4);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
@@ -71,6 +84,7 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
             "--json" => json = Some(PathBuf::from(val()?)),
             "--no-json" => write_json = false,
             "--progress" => opts.progress = true,
+            "--threads" => threads = val()?.parse::<usize>().map_err(|_| "--threads needs a number")?.max(1),
             _ => return Err(format!("unknown argument `{a}`")),
         }
     }
@@ -81,7 +95,7 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
     let corpus = eval::deco::load(&root).map_err(|e| e.to_string())?;
     let load_ms = t.elapsed().as_secs_f64() * 1000.0;
 
-    let mut report = eval::run::evaluate(&corpus, an, &analyzer_name, &opts);
+    let mut report = eval::run::evaluate_parallel(&corpus, an, &analyzer_name, &opts, threads);
     drop(corpus);
     report.timing.load_ms = load_ms;
     print!("{}", report.scoreboard());

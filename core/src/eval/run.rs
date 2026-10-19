@@ -2,9 +2,11 @@
 //! the analyzer on every annotated sheet, and aggregates a [`Report`].
 
 use std::fmt::Write;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Condvar, Mutex};
 use std::time::Instant;
 
-use super::gt::Corpus;
+use super::gt::{Corpus, GtFile};
 use super::json;
 use super::metrics::{Confusion, FileMacro, Prf, TABLE_CRITERIA};
 use super::split::Split;
@@ -104,6 +106,104 @@ fn find_sheet(wb: &Workbook, name: &str, index: Option<usize>) -> Option<(usize,
 }
 
 pub fn evaluate(corpus: &Corpus, analyzer: &dyn Analyzer, analyzer_name: &str, opts: &RunOptions) -> Report {
+    evaluate_parallel(corpus, analyzer, analyzer_name, opts, 1)
+}
+
+/// What one file contributes to the report (computed on a worker, merged in file order).
+struct FileOutcome {
+    via_fallback: Option<String>,
+    failed: Option<String>,
+    open_ms: f64,
+    /// Annotated sheets in ground-truth order: a result, or `None` if the sheet was not found.
+    sheets: Vec<(String, Option<SheetResult>)>,
+}
+
+fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
+    let t = Instant::now();
+    let mut out = FileOutcome { via_fallback: None, failed: None, open_ms: 0.0, sheets: Vec::new() };
+    let mut opened = crate::reader::open(&file.path);
+    if opened.is_err() {
+        for alt in &file.fallback_paths {
+            if let Ok(wb) = crate::reader::open(alt) {
+                out.via_fallback = Some(opened.err().map(|e| e.to_string()).unwrap_or_default());
+                opened = Ok(wb);
+                break;
+            }
+        }
+    }
+    let wb = match opened {
+        Ok(wb) => wb,
+        Err(e) => {
+            out.failed = Some(e.to_string());
+            out.open_ms = ms(t);
+            return out;
+        }
+    };
+    out.open_ms = ms(t);
+
+    for gs in &file.sheets {
+        let Some((si, matched_by)) = find_sheet(&wb, &gs.name, gs.index) else {
+            out.sheets.push((gs.name.clone(), None));
+            continue;
+        };
+        let sheet = &wb.sheets[si];
+        let grid = Grid::new(sheet);
+        let t = Instant::now();
+        let layout = analyzer.analyze(&grid);
+        let analyze_ms = ms(t);
+
+        let pred: Vec<Rect> = layout.tables.iter().map(|t| t.rect).collect();
+        let table_tp = TABLE_CRITERIA.map(|c| super::metrics::table_matches(&gs.tables, &pred, c));
+
+        let error = (layout.roles.len() != sheet.cells.len()).then(|| {
+            format!("analyzer returned {} roles for {} cells", layout.roles.len(), sheet.cells.len())
+        });
+        let mut confusion = Confusion::default();
+        let mut missing = 0;
+        for gc in &gs.cells {
+            let idx = grid.cell_index(gc.row, gc.col).or_else(|| {
+                let m = grid.merge_at(gc.row, gc.col)?;
+                grid.cell_index(m.top, m.left)
+            });
+            match idx {
+                Some(i) => {
+                    let pred = if error.is_none() { layout.roles[i] } else { Role::Other };
+                    confusion.add(gc.role, pred);
+                }
+                None => missing += 1,
+            }
+        }
+        out.sheets.push((
+            gs.name.clone(),
+            Some(SheetResult {
+                file: file.id.clone(),
+                sheet: gs.name.clone(),
+                matched_by,
+                gt_tables: gs.tables.len(),
+                pred_tables: pred.len(),
+                table_tp,
+                gt_cells: gs.cells.len(),
+                scored_cells: gs.cells.len() - missing,
+                missing_cells: missing,
+                confusion,
+                analyze_ms,
+                error,
+            }),
+        ));
+    }
+    out
+}
+
+/// [`evaluate`] on up to `threads` worker threads (each holds one workbook at a time). Files are
+/// merged into the report in split order, so everything except the timings is identical to the
+/// single-threaded run; `timing.open_ms` / `analyze_ms` are then summed over threads.
+pub fn evaluate_parallel(
+    corpus: &Corpus,
+    analyzer: &dyn Analyzer,
+    analyzer_name: &str,
+    opts: &RunOptions,
+    threads: usize,
+) -> Report {
     let start = Instant::now();
     let in_split: Vec<_> = corpus.files.iter().filter(|f| opts.split.contains(&f.id)).collect();
     let files_in_split = in_split.len();
@@ -132,92 +232,78 @@ pub fn evaluate(corpus: &Corpus, analyzer: &dyn Analyzer, analyzer_name: &str, o
         timing: Timing::default(),
     };
 
-    for (n, file) in in_split.into_iter().take(take).enumerate() {
-        let t = Instant::now();
-        let mut opened = crate::reader::open(&file.path);
-        if opened.is_err() {
-            for alt in &file.fallback_paths {
-                if let Ok(wb) = crate::reader::open(alt) {
-                    let e = opened.err().map(|e| e.to_string()).unwrap_or_default();
-                    rep.files_via_fallback.push((file.id.clone(), e));
-                    opened = Ok(wb);
-                    break;
-                }
-            }
+    let files: Vec<&GtFile> = in_split.into_iter().take(take).collect();
+    let total = files.len();
+    let merge = |rep: &mut Report, n: usize, file: &GtFile, o: FileOutcome| {
+        rep.timing.open_ms += o.open_ms;
+        if let Some(e) = o.via_fallback {
+            rep.files_via_fallback.push((file.id.clone(), e));
         }
-        let wb = match opened {
-            Ok(wb) => wb,
-            Err(e) => {
-                rep.files_failed.push((file.id.clone(), e.to_string()));
-                rep.timing.open_ms += ms(t);
-                continue;
-            }
-        };
-        rep.timing.open_ms += ms(t);
+        if let Some(e) = o.failed {
+            rep.files_failed.push((file.id.clone(), e));
+            return;
+        }
         rep.files_evaluated += 1;
-
-        for gs in &file.sheets {
-            let Some((si, matched_by)) = find_sheet(&wb, &gs.name, gs.index) else {
-                rep.sheets_not_found.push((file.id.clone(), gs.name.clone()));
+        for (name, res) in o.sheets {
+            let Some(res) = res else {
+                rep.sheets_not_found.push((file.id.clone(), name));
                 continue;
             };
-            let sheet = &wb.sheets[si];
-            let grid = Grid::new(sheet);
-            let t = Instant::now();
-            let layout = analyzer.analyze(&grid);
-            let analyze_ms = ms(t);
-            rep.timing.analyze_ms += analyze_ms;
-
-            let pred: Vec<Rect> = layout.tables.iter().map(|t| t.rect).collect();
-            let table_tp = TABLE_CRITERIA.map(|c| super::metrics::table_matches(&gs.tables, &pred, c));
+            rep.timing.analyze_ms += res.analyze_ms;
             if corpus.has_tables {
-                for (k, tp) in table_tp.iter().enumerate() {
-                    rep.tables[k].add(Prf::from_matches(*tp, gs.tables.len(), pred.len()));
-                }
-            }
-
-            let error = (layout.roles.len() != sheet.cells.len()).then(|| {
-                format!("analyzer returned {} roles for {} cells", layout.roles.len(), sheet.cells.len())
-            });
-            let mut confusion = Confusion::default();
-            let mut missing = 0;
-            for gc in &gs.cells {
-                let idx = grid.cell_index(gc.row, gc.col).or_else(|| {
-                    let m = grid.merge_at(gc.row, gc.col)?;
-                    grid.cell_index(m.top, m.left)
-                });
-                match idx {
-                    Some(i) => {
-                        let pred = if error.is_none() { layout.roles[i] } else { Role::Other };
-                        confusion.add(gc.role, pred);
-                    }
-                    None => missing += 1,
+                for (k, tp) in res.table_tp.iter().enumerate() {
+                    rep.tables[k].add(Prf::from_matches(*tp, res.gt_tables, res.pred_tables));
                 }
             }
             if corpus.has_roles {
-                rep.confusion.merge(&confusion);
-                rep.file_macro.add_sheet(&confusion);
+                rep.confusion.merge(&res.confusion);
+                rep.file_macro.add_sheet(&res.confusion);
             }
-            rep.sheets.push(SheetResult {
-                file: file.id.clone(),
-                sheet: gs.name.clone(),
-                matched_by,
-                gt_tables: gs.tables.len(),
-                pred_tables: pred.len(),
-                table_tp,
-                gt_cells: gs.cells.len(),
-                scored_cells: gs.cells.len() - missing,
-                missing_cells: missing,
-                confusion,
-                analyze_ms,
-                error,
-            });
+            rep.sheets.push(res);
         }
         rep.file_macro.end_file();
         if opts.progress {
             eprintln!("[{}/{}] {}", n + 1, files_in_split.min(take), file.id);
         }
-        drop(wb);
+    };
+
+    let threads = threads.clamp(1, total.max(1));
+    if threads == 1 {
+        for (n, file) in files.iter().enumerate() {
+            let o = evaluate_file(file, analyzer);
+            merge(&mut rep, n, file, o);
+        }
+    } else {
+        // Workers take files in order; the merger consumes outcomes in order as they arrive, so
+        // at most a few small outcomes wait in memory.
+        let next = AtomicUsize::new(0);
+        let slots: Vec<Mutex<Option<FileOutcome>>> = (0..total).map(|_| Mutex::new(None)).collect();
+        let ready = Condvar::new();
+        let lock = Mutex::new(());
+        std::thread::scope(|s| {
+            for _ in 0..threads {
+                s.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(file) = files.get(i) else { break };
+                    let o = evaluate_file(file, analyzer);
+                    *slots[i].lock().unwrap() = Some(o);
+                    let _g = lock.lock().unwrap();
+                    ready.notify_all();
+                });
+            }
+            for (n, file) in files.iter().enumerate() {
+                let o = {
+                    let mut g = lock.lock().unwrap();
+                    loop {
+                        if let Some(o) = slots[n].lock().unwrap().take() {
+                            break o;
+                        }
+                        g = ready.wait(g).unwrap();
+                    }
+                };
+                merge(&mut rep, n, file, o);
+            }
+        });
     }
     rep.timing.total_ms = ms(start);
     rep
