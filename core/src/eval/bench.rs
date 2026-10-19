@@ -375,16 +375,16 @@ pub mod synth {
         sheet("giant_merge", cells, merges)
     }
 
-    /// Every generated case with a short name.
-    pub fn all() -> Vec<(&'static str, Sheet)> {
+    /// Every generated case: short name and generator (sheets are built on demand).
+    pub fn all() -> Vec<(&'static str, fn() -> Sheet)> {
         vec![
-            ("dense_100k", dense(100_000)),
-            ("sparse_huge_20k", sparse_huge(20_000)),
-            ("many_merges_5k", many_merges(5_000)),
-            ("formula_heavy_50k", formula_heavy(50_000)),
-            ("tall_1m", tall(1_000_000)),
-            ("wide_16k", wide()),
-            ("giant_merge", giant_merge()),
+            ("dense_100k", || dense(100_000)),
+            ("sparse_huge_20k", || sparse_huge(20_000)),
+            ("many_merges_5k", || many_merges(5_000)),
+            ("formula_heavy_50k", || formula_heavy(50_000)),
+            ("tall_1m", || tall(1_000_000)),
+            ("wide_16k", wide),
+            ("giant_merge", giant_merge),
         ]
     }
 }

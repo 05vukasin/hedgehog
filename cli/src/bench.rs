@@ -149,10 +149,11 @@ pub fn bench(args: &[&str]) -> Result<(), String> {
 
 fn synthetic(o: &Opts) -> Result<(), String> {
     println!("case                    cells  merges       grid    context     values     totals  det+ver   baseline   peak RSS");
-    for (name, sheet) in synth::all() {
-        if o.case.as_deref().is_some_and(|c| c != name) || (o.case.is_none() && name == "giant_merge") {
-            continue; // TEMP: giant_merge explodes the pre-optimization Grid
+    for (name, make) in synth::all() {
+        if o.case.as_deref().is_some_and(|c| c != name) {
+            continue;
         }
+        let sheet = make();
         let (t, _) = bench::run_sheet(&sheet, false);
         let ms = |i: usize| t.0[i] * 1e3;
         println!(

@@ -53,11 +53,11 @@ fn stages(c: &mut Criterion, group: &str, name: &str, sheet: &Sheet) {
 }
 
 fn synthetic(c: &mut Criterion) {
-    for (name, sheet) in synth::all() {
+    for (name, make) in synth::all() {
         if name == "tall_1m" {
             continue; // one-off worst case, see `hedgehog bench --synthetic`
         }
-        stages(c, "synth", name, &sheet);
+        stages(c, "synth", name, &make());
     }
 }
 
