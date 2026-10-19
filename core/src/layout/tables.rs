@@ -129,7 +129,7 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
     let mut d = 0;
     while d < MAX_HEADER_ROWS && start + d < end {
         let r = &rows[start + d];
-        if !is_header_row(r, &rows[start + d + 1..end]) || has_total_label(sheet, r) || is_note_row(sheet, r) {
+        if !is_header_row(r, &rows[start + d + 1..end]) || is_note_row(sheet, r) {
             break;
         }
         // A lone label below the first header row starts a group, not another header level.
@@ -175,7 +175,7 @@ fn starts_new_table(
     header_sig: &Signature,
 ) -> bool {
     let r = &rows[k];
-    if numeric_cols.is_empty() || r.n() < 2 || !is_header_row(r, &rows[k + 1..end]) || has_total_label(sheet, r) {
+    if numeric_cols.is_empty() || r.n() < 2 || !is_header_row(r, &rows[k + 1..end]) {
         return false;
     }
     if !rows[k + 1..end].iter().take(MAX_HEADER_ROWS).any(|x| x.n_measure() > 0) {

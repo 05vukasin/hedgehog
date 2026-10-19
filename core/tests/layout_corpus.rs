@@ -143,7 +143,9 @@ fn corpus_sanity() {
 #[ignore]
 fn dump_sheet() {
     let Ok(path) = std::env::var("HH_LAYOUT_DUMP") else { return };
-    let want = std::env::var("HH_LAYOUT_SHEET").ok();
+    let want = std::env::var("HH_LAYOUT_SHEET").ok().filter(|w| !w.is_empty());
+    let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    let (r0, c0) = (env("HH_LAYOUT_R0"), env("HH_LAYOUT_C0"));
     let max_rows: u32 = std::env::var("HH_LAYOUT_ROWS").ok().and_then(|v| v.parse().ok()).unwrap_or(80);
     let wb = open(&path).unwrap();
     for sheet in &wb.sheets {
@@ -163,7 +165,7 @@ fn dump_sheet() {
         }
         let mut grid: BTreeMap<u32, BTreeMap<u32, (char, String)>> = BTreeMap::new();
         for (c, r) in sheet.cells.iter().zip(&l.roles) {
-            if c.row >= max_rows || c.col >= 30 {
+            if c.row < r0 || c.row >= r0 + max_rows || c.col < c0 || c.col >= c0 + 30 {
                 continue;
             }
             let ch = match r {

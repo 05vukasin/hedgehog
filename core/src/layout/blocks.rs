@@ -339,7 +339,8 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
         return true;
     }
     let gap = low.rect.top as i64 - up.rect.bottom as i64 - 1;
-    if !(1..=MAX_ROW_GAP as i64).contains(&gap) || low.starts_with_header || low.single_line {
+    let max_gap = if up.header_only { HEADER_ONLY_MAX_GAP } else { MAX_ROW_GAP };
+    if !(1..=max_gap as i64).contains(&gap) || low.starts_with_header || low.single_line {
         return false;
     }
     if inside && !up.single_line {
@@ -417,7 +418,7 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
     // Spacer rows and sparse columns: sweep blocks top-down against groups still "open" above.
     let mut active: Vec<u32> = Vec::new();
     for (i, p) in profiles.iter().enumerate() {
-        active.retain(|&g| dsu.find(g) == g && group[g as usize].rect.bottom as u64 + 1 + MAX_ROW_GAP as u64 >= p.rect.top as u64);
+        active.retain(|&g| dsu.find(g) == g && group[g as usize].rect.bottom as u64 + 1 + MAX_ROW_GAP.max(HEADER_ONLY_MAX_GAP) as u64 >= p.rect.top as u64);
         let mut k = 0;
         while k < active.len() {
             let g = active[k];
