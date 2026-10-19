@@ -25,6 +25,7 @@
 //! ```
 
 pub mod baseline;
+pub mod bench;
 pub mod csv;
 pub mod deco;
 pub mod gt;

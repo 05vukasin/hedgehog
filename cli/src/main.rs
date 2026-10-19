@@ -4,9 +4,24 @@ use std::time::Instant;
 
 use hh_core::eval::{self, run::RunOptions, split::Split, Analyzer};
 
+mod bench;
+
+fn report(r: Result<(), String>) -> ExitCode {
+    match r {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{e}\n{USAGE}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 const USAGE: &str = "usage:
   hedgehog describe <file>
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress]
+  hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K]
+  hedgehog bench --synthetic [--case NAME]
+  hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 
 eval: data root from $HEDGEHOG_DATA (default /home/vukasin/projects/excell-lib-project/testdata);
       JSON report defaults to $HEDGEHOG_SCORES or <data root>/../docs/research/scores/<analyzer>_deco_<split>.json
@@ -33,6 +48,8 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        ["bench", rest @ ..] => report(bench::bench(rest)),
+        ["golden", rest @ ..] => report(bench::golden(rest)),
         ["eval", "deco", rest @ ..] => match eval_deco(rest) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
