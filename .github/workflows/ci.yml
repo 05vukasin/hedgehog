@@ -3,17 +3,29 @@ name: ci
 on:
   push:
     branches: [master]
+    # docs, images and notes don't need a build
+    paths-ignore: ["**.md", "assets/**", "docs/**", "LICENSE", ".env.example"]
   pull_request:
+    paths-ignore: ["**.md", "assets/**", "docs/**", "LICENSE", ".env.example"]
+
+# Free-tier friendly: a newer push cancels the older run of the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          # only master writes the cache; PRs reuse it without adding entries
+          save-if: ${{ github.ref == 'refs/heads/master' }}
       - name: Rust tests
         run: cargo test --workspace --exclude hh_py
       - name: Clippy
