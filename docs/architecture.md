@@ -28,7 +28,7 @@ Design rules:
 - **The bindings are thin.** `py/src/lib.rs` only looks things up and converts results to Python
   dicts and lists.
 - **Python holds the optional and fast-changing parts:** LLM providers, prompts, citation checks,
-  and later connectors and an MCP server.
+  and later an MCP server.
 - **Measured.** Every detection change is scored with `eval` before and after
   ([evaluation.md](evaluation.md)).
 
@@ -113,7 +113,6 @@ Not built yet; see the roadmap in the [README](../README.md#status-and-roadmap):
 - semantic column types (city, country, tax ID, currency amount, period, ...);
 - metric definitions that become Excel formulas;
 - an MCP server exposing the agent tools;
-- connectors (Google Sheets, OneDrive/SharePoint, S3, email attachments) in the Python layer;
 - a style-aware reader (bold, borders, fills, number formats), which calamine does not provide.
 
 ## See also

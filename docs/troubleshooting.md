@@ -26,8 +26,7 @@ source: [installation.md](installation.md#the-hedgehog-command).
 `pip install pandas openpyxl`.
 
 **`MissingDependency: The ... provider needs ...`.** Install the provider extra, for example
-`pip install "hedgehog-sheets[openai]"` ([llm.md](llm.md#install)). The message may say
-`hedgehog[openai]`; the right package name is `hedgehog-sheets[openai]`.
+`pip install "hedgehog-sheets[openai]"` ([llm.md](llm.md#install)).
 
 ## A file does not open
 

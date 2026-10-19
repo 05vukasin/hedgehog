@@ -36,7 +36,7 @@ from .types import ConfigError
 OPENAI_DEFAULT_MODEL = "gpt-4o-mini"
 
 PROVIDERS = ("openai", "openai_compatible", "anthropic", "bedrock")
-PRESETS = ("openai", "openai_compatible", "anthropic", "bedrock", "openrouter", "groq", "vllm")
+PRESETS = ("openai", "openai_compatible", "anthropic", "bedrock", "openrouter", "groq", "vllm", "ollama")
 
 THINKING_OFF_VLLM = {"chat_template_kwargs": {"enable_thinking": False}}
 THINKING_OFF_OPENROUTER = {"reasoning": {"enabled": False}}

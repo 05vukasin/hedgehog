@@ -231,7 +231,6 @@ Planned:
 - [ ] Semantic column types (city, country, tax ID, currency amount, period, ...)
 - [ ] Metrics and formulas (metric definitions that become Excel formulas)
 - [ ] MCP server exposing the agent tools
-- [ ] Connectors (Google Sheets, OneDrive/SharePoint, S3, email attachments)
 - [ ] PyPI release
 
 Milestones and their "done when" criteria: [PLAN.md](PLAN.md). Changes: [CHANGELOG.md](CHANGELOG.md).

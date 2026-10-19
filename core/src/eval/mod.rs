@@ -52,8 +52,9 @@ impl<F: Fn(&Grid) -> SheetLayout + Sync> Analyzer for F {
     }
 }
 
-/// Default location of the test corpora (`HEDGEHOG_DATA` overrides it).
-pub const DEFAULT_DATA_ROOT: &str = "/home/vukasin/projects/excell-lib-project/testdata";
+/// Default location of the test corpora, relative to the working directory (`HEDGEHOG_DATA`
+/// overrides it). The corpora are not part of the repository; see `docs/evaluation.md`.
+pub const DEFAULT_DATA_ROOT: &str = "../testdata";
 
 /// Root of the test corpora: `$HEDGEHOG_DATA` or [`DEFAULT_DATA_ROOT`].
 pub fn data_root() -> PathBuf {

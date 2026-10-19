@@ -25,7 +25,7 @@ const USAGE: &str = "usage:
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 
 eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
-      data root from $HEDGEHOG_DATA (default /home/vukasin/projects/excell-lib-project/testdata);
+      data root from $HEDGEHOG_DATA (default ../testdata);
       JSON report defaults to $HEDGEHOG_SCORES or <data root>/../docs/research/scores/<analyzer>_deco_<split>.json
       analyzers: baseline, layout";
 

@@ -30,7 +30,7 @@ def _import_sdk():
         import openai  # noqa: PLC0415
     except ImportError as e:  # pragma: no cover - depends on environment
         raise MissingDependency(
-            "The OpenAI / OpenAI-compatible provider needs the `openai` package: pip install 'hedgehog[openai]'"
+            "The OpenAI / OpenAI-compatible provider needs the `openai` package: pip install 'hedgehog-sheets[openai]'"
         ) from e
     return openai
 

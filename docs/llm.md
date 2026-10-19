@@ -108,7 +108,7 @@ print(llm.PRESETS)
 ('openai', 'openai_compatible', 'anthropic', 'bedrock', 'openrouter', 'groq', 'vllm')
 ```
 
-(`ollama` is accepted by `connect` but not listed in `PRESETS`.)
+(`ollama` is a preset like `vllm`, pointed at the local Ollama server.)
 
 ## Providers
 
