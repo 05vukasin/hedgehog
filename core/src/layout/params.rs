@@ -98,6 +98,15 @@ pub const SPLIT_MIN_HIT_FRAC: f32 = 0.5;
 pub const YEAR_MIN: f64 = 1900.0;
 pub const YEAR_MAX: f64 = 2100.0;
 
+/// Outline key column (label on the first row of each group only) → GroupHeader cells.
+pub const KEY_COLUMN_GROUPS: bool = true;
+/// Data rows needed, max share of them with a key, share of keys that are text/dates, and share
+/// of keys that start a run (next data row has no key).
+pub const KEY_MIN_ROWS: usize = 4;
+pub const KEY_MAX_FILL: f32 = 0.5;
+pub const KEY_MIN_LABEL_FRAC: f32 = 0.8;
+pub const KEY_MIN_START_FRAC: f32 = 0.5;
+
 /// A group-header row must be followed by at least this many multi-cell rows.
 pub const GROUP_MIN_RUN: usize = 2;
 

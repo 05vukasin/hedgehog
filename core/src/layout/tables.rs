@@ -444,6 +444,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         rows[body_start..seg.end].iter().filter(|r| !has_total_label(sheet, r) && is_total_row(sheet, r)).count();
     let formula_totals_ok = (formula_totals as f32) <= TOTAL_MAX_ROW_FRAC * body_len as f32 || body_len < 4;
     let mut body_cells = 0usize;
+    let mut data_rows: Vec<usize> = Vec::new();
     for k in body_start..seg.end {
         let r = &rows[k];
         let last_body = k + 1 == seg.end;
@@ -460,6 +461,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         };
         set_upto(out, r, role, rect.right);
         if role == Role::Data {
+            data_rows.push(k);
             for e in r.entries.iter().filter(|e| e.left <= rect.right) {
                 body_cells += (e.kind != Kind::Blank) as usize;
                 let c = col_counts.entry(e.left).or_default();
@@ -476,6 +478,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
                 }
             }
         }
+    }
+    if KEY_COLUMN_GROUPS {
+        mark_key_column(rows, &data_rows, rect, out);
     }
     let purities: Vec<f32> = col_counts
         .values()
@@ -552,5 +557,49 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     if !loose_rows.is_empty() {
         loose_rows.sort_by_key(|r| r.row);
         out.loose.push(Region { rect: bounds(&loose_rows), rows: loose_rows });
+    }
+}
+
+/// Outline-style key column: the table's first column holds a label only on the first row of
+/// each group and is blank on the rows that follow ("Management | Kevin Presto | …", then
+/// " | Dana Davis | …"). Those labels are group headers (DECO), and normalize fills them down.
+fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out) {
+    if data_rows.len() < KEY_MIN_ROWS {
+        return;
+    }
+    // The leftmost column used by the data rows.
+    let Some(col) = data_rows.iter().filter_map(|&k| rows[k].filled().next().map(|e| e.left)).min() else {
+        return;
+    };
+    let key = |k: usize| rows[k].filled().find(|e| e.left == col);
+    let (mut filled, mut labels, mut starts) = (0usize, 0usize, 0usize);
+    for (j, &k) in data_rows.iter().enumerate() {
+        let Some(e) = key(k) else { continue };
+        filled += 1;
+        if e.kind == Kind::Text || e.date {
+            labels += 1;
+        }
+        // Starts a run: other cells on its row, and the next data row leaves the key blank.
+        let others = rows[k].filled().any(|x| x.left != col);
+        if others && data_rows.get(j + 1).is_some_and(|&n| key(n).is_none() && rows[n].n() > 0) {
+            starts += 1;
+        }
+    }
+    let n = data_rows.len();
+    if filled < 2
+        || filled as f32 > KEY_MAX_FILL * n as f32
+        || (labels as f32) < KEY_MIN_LABEL_FRAC * filled as f32
+        || (starts as f32) < KEY_MIN_START_FRAC * filled as f32
+        || col > rect.left + 1
+    {
+        return;
+    }
+    for &k in data_rows {
+        if let Some(e) = key(k)
+            && rows[k].filled().any(|x| x.left != col)
+            && let Some(i) = e.cell
+        {
+            out.roles[i] = Role::GroupHeader;
+        }
     }
 }

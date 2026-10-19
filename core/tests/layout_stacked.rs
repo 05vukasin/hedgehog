@@ -347,3 +347,44 @@ fn true_up_is_one_table() {
     assert_eq!(role(&s, &l, 6, 4), Role::Data);
     assert_eq!(role(&s, &l, 53, 6), Role::Total);
 }
+
+/// Outline key column (label only on the first row of each group): the labels are group headers
+/// and normalize fills them down instead of dropping their rows.
+#[test]
+fn outline_key_column_fills_down() {
+    let path: PathBuf = std::env::temp_dir().join(format!("hh_stacked_{}_outline.xlsx", std::process::id()));
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet();
+    header(ws, 0, 0, &["Desk", "Trader", "Seat", "Phone"]);
+    let mut row = 1;
+    for (g, desk) in ["Management", "Northeast", "Midwest", "Texas"].iter().enumerate() {
+        for i in 0..3u32 {
+            if i == 0 {
+                ws.write_string(row, 0, *desk).unwrap();
+            }
+            ws.write_string(row, 1, format!("Trader {g}{i}")).unwrap();
+            ws.write_number(row, 2, (g * 10) as f64 + i as f64).unwrap();
+            ws.write_string(row, 3, format!("555-01{g}{i}")).unwrap();
+            row += 1;
+        }
+    }
+    wb.save(&path).unwrap();
+    let book = open(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let s = &book.sheets[0];
+    let l = run(s);
+    assert_eq!(l.tables.len(), 1, "{:?}", rects(&l));
+    assert_eq!(role(s, &l, 1, 0), Role::GroupHeader);
+    assert_eq!(role(s, &l, 1, 1), Role::Data);
+    let n = hh_core::normalize_workbook(&book, &hh_core::normalize::Options::default());
+    let t = &n.tables[0];
+    assert_eq!(t.src_rows.len(), 12, "every data row is kept");
+    let desk = t.columns.iter().find(|c| c.name == "Desk").expect("Desk column");
+    let text = |k: usize| match &desk.values[k] {
+        hh_core::normalize::Out::Text(s) => s.clone(),
+        other => format!("{other:?}"),
+    };
+    assert_eq!(text(0), "Management");
+    assert_eq!(text(2), "Management");
+    assert_eq!(text(4), "Northeast");
+}

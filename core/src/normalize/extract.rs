@@ -92,7 +92,9 @@ fn row_kind(roles: impl Iterator<Item = Role>) -> RowKind {
     }
     if total {
         RowKind::Total
-    } else if group {
+    } else if group && !data {
+        // A group label alone on its row. With data beside it, the label is an outline key
+        // (first row of its group) and the row is data; the key is filled down below.
         RowKind::Group
     } else if header {
         RowKind::RepeatedHeader
@@ -316,6 +318,7 @@ fn build_table(
     let mut group_labels: Vec<String> = Vec::new();
     let mut removed_totals = Vec::new();
     let mut body_rows_seen = 0u32;
+    let mut key_cols: HashSet<usize> = HashSet::new();
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
         let kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
@@ -391,6 +394,9 @@ fn build_table(
             owner[i] = OWN_TABLE;
             let c = &cells[i];
             let k = (c.col - r.left) as usize;
+            if lay.roles[i] == Role::GroupHeader {
+                key_cols.insert(k);
+            }
             row_slots[k] = match &c.value {
                 Some(v) => {
                     tr.add(T::FormulasReplacedByValues, c.formula.is_some() as usize);
@@ -416,6 +422,26 @@ fn build_table(
     }
     if r.bottom + 1 > body_top {
         tr.add(T::BlankRowsRemoved, (r.bottom + 1 - body_top).saturating_sub(body_rows_seen) as usize);
+    }
+
+    // Outline key columns: each label covers the data rows below it until the next label.
+    for &k in &key_cols {
+        let mut last: Option<&Value> = None;
+        for (j, s) in slots[k].iter_mut().enumerate() {
+            if row_types[j] != RowType::Data {
+                continue;
+            }
+            match s {
+                Slot::Val(v) => last = Some(*v),
+                Slot::Empty => {
+                    if let Some(v) = last {
+                        *s = Slot::Val(v);
+                        tr.add(T::GroupKeysFilledDown, 1);
+                    }
+                }
+                Slot::NoCache => {}
+            }
+        }
     }
 
     // --- Columns -----------------------------------------------------------------------------

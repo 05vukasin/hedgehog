@@ -181,13 +181,14 @@ pub enum T {
     RepeatedHeaderRowsRemoved,
     BlankRowsRemoved,
     GroupHeaderRowsToColumn,
+    GroupKeysFilledDown,
     NoteRowsMoved,
     TitleRowsMoved,
     EmptyColumnsRemoved,
 }
 
 impl T {
-    pub const ALL: [T; 30] = [
+    pub const ALL: [T; 31] = [
         T::NumbersFromText,
         T::PercentFromText,
         T::CurrencyStripped,
@@ -215,6 +216,7 @@ impl T {
         T::RepeatedHeaderRowsRemoved,
         T::BlankRowsRemoved,
         T::GroupHeaderRowsToColumn,
+        T::GroupKeysFilledDown,
         T::NoteRowsMoved,
         T::TitleRowsMoved,
         T::EmptyColumnsRemoved,
@@ -249,6 +251,7 @@ impl T {
             T::RepeatedHeaderRowsRemoved => "repeated_header_rows_removed",
             T::BlankRowsRemoved => "blank_rows_removed",
             T::GroupHeaderRowsToColumn => "group_header_rows_to_column",
+            T::GroupKeysFilledDown => "group_keys_filled_down",
             T::NoteRowsMoved => "note_rows_moved",
             T::TitleRowsMoved => "title_rows_moved",
             T::EmptyColumnsRemoved => "empty_columns_removed",
