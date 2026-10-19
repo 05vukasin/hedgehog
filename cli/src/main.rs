@@ -20,6 +20,7 @@ const USAGE: &str = "usage:
   hedgehog describe <file>
   hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG]
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
+  hedgehog eval synthetic --dir DIR [--analyzer NAME] [--limit N] [--values] [--json OUT.json] [--no-json] [--progress]
   hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
@@ -54,6 +55,7 @@ fn main() -> ExitCode {
         ["normalize", rest @ ..] => report(normalize(rest)),
         ["bench", rest @ ..] => report(bench::bench(rest)),
         ["golden", rest @ ..] => report(bench::golden(rest)),
+        ["eval", "synthetic", rest @ ..] => report(eval_synthetic(rest)),
         ["eval", "deco", rest @ ..] => match eval_deco(rest) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -157,6 +159,56 @@ fn normalize(args: &[&str]) -> Result<(), String> {
     println!("  {}", out.manifest_path.display());
     for p in &out.csv_paths {
         println!("  {}", p.display());
+    }
+    Ok(())
+}
+
+/// Scores an analyzer on a generated corpus (`tools/noise`): the standard report plus a breakdown
+/// per profile, table-boundary operator and noise operator, and optionally the value parsers.
+fn eval_synthetic(args: &[&str]) -> Result<(), String> {
+    let mut opts = RunOptions { split: Split::All, ..RunOptions::default() };
+    let mut analyzer_name = "baseline".to_string();
+    let mut dir: Option<PathBuf> = None;
+    let mut json: Option<PathBuf> = None;
+    let mut write_json = true;
+    let mut values = false;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
+        match *a {
+            "--dir" => dir = Some(PathBuf::from(val()?)),
+            "--split" => opts.split = val()?.parse::<Split>()?,
+            "--limit" => opts.limit = Some(val()?.parse().map_err(|_| "--limit needs a number")?),
+            "--analyzer" => analyzer_name = val()?.to_string(),
+            "--values" => values = true,
+            "--json" => json = Some(PathBuf::from(val()?)),
+            "--no-json" => write_json = false,
+            "--progress" => opts.progress = true,
+            _ => return Err(format!("unknown argument `{a}`")),
+        }
+    }
+    let dir = dir.unwrap_or_else(|| eval::data_root().join("synthetic").join("v0"));
+    let an = analyzer(&analyzer_name).ok_or(format!("unknown analyzer `{analyzer_name}`"))?;
+    let t = Instant::now();
+    let corpus = eval::synthetic::load(&dir).map_err(|e| e.to_string())?;
+    let load_ms = t.elapsed().as_secs_f64() * 1000.0;
+    let mut report = eval::run::evaluate(&corpus, an, &analyzer_name, &opts);
+    drop(corpus);
+    report.timing.load_ms = load_ms;
+    print!("{}", report.scoreboard());
+    let bopts = eval::synthetic::BreakdownOptions { limit: opts.limit, values };
+    let bd = eval::synthetic::breakdown(&dir, an, &bopts).map_err(|e| e.to_string())?;
+    print!("{}", bd.text());
+    if write_json {
+        let lim = opts.limit.map(|l| format!("_n{l}")).unwrap_or_default();
+        let path = json.unwrap_or_else(|| dir.join("scores").join(format!("{analyzer_name}_synthetic{lim}.json")));
+        if let Some(d) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+            std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+        }
+        let body = report.to_json();
+        let merged = format!("{},\"breakdown\":{}}}", body.trim_end().trim_end_matches('}'), bd.to_json());
+        std::fs::write(&path, merged).map_err(|e| format!("{}: {e}", path.display()))?;
+        println!("report: {}", path.display());
     }
     Ok(())
 }
