@@ -17,6 +17,16 @@ pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 pub const GAP_MIN_ROW_OVERLAP: f32 = 0.8;
 /// Vertical gap merge: share of shared columns whose majority type (text/number) agrees.
 pub const GAP_MIN_TYPE_AGREE: f32 = 0.6;
+/// Max blank columns between a narrow text-only block and a numeric block it shares a row with
+/// (row labels / group labels left of the numbers); 0 turns the rule off.
+pub const LABEL_MAX_GAP: u32 = 5;
+/// … and the label block is at most this many columns wide.
+pub const LABEL_MAX_WIDTH: u32 = 2;
+/// Smallest blank-row gap for the vertical gap merge (0: rows touch without being 8-connected).
+pub const VERTICAL_MIN_GAP: i64 = 0;
+/// Merge blocks lying inside another group's bounding box into it.
+pub const ABSORB_CONTAINED: bool = true;
+pub const ABSORB_MAX_GROUPS: usize = 2000;
 /// A column counts as a row-label column when this share of its body entries is text.
 pub const LABEL_COL_TEXT_FRAC: f32 = 0.5;
 

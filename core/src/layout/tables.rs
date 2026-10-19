@@ -390,7 +390,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     if seg.header > 0 && seg.end - body_start < MIN_BODY_ROWS {
         return false;
     }
-    let area = (rect.bottom - rect.top + 1) as f64 * width as f64;
+    // Blank spacer columns (between row labels and numbers) don't count against the density.
+    let used: HashSet<u32> = trows.iter().flat_map(|r| r.filled()).flat_map(|e| e.left..=e.right.min(rect.right)).collect();
+    let area = (rect.bottom - rect.top + 1) as f64 * used.len().max(1) as f64;
     let filled: f64 = trows
         .iter()
         .flat_map(|r| r.filled())

@@ -12,6 +12,9 @@ fn fixture(name: &str, build: impl FnOnce(&mut Worksheet)) -> Sheet {
     let mut wb = Workbook::new();
     build(wb.add_worksheet());
     wb.save(&path).unwrap();
+    if let Some(dir) = std::env::var_os("HH_FIXTURE_DIR") {
+        std::fs::copy(&path, PathBuf::from(dir).join(format!("{name}.xlsx"))).unwrap();
+    }
     let mut book = open(&path).unwrap();
     std::fs::remove_file(&path).ok();
     book.sheets.remove(0)
