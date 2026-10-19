@@ -72,7 +72,7 @@ pub const YEAR_MAX: f64 = 2100.0;
 /// A row is a total when at least this share of its numeric cells aggregate cells above (`SUM(`).
 pub const TOTAL_FORMULA_FRAC: f32 = 0.5;
 /// Mark cells with a `SUM(` over cells to their left (total columns, R3) as Total.
-pub const MARK_ROW_SUM_CELLS_AS_TOTAL: bool = true;
+pub const MARK_ROW_SUM_CELLS_AS_TOTAL: bool = false;
 /// Labels with more tokens than this only count as total when the keyword is the first token.
 pub const TOTAL_LABEL_MAX_TOKENS: usize = 6;
 
