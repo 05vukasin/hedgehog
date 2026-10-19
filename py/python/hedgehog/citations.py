@@ -13,7 +13,7 @@ from ._native import Workbook
 from .facts import known_cells, parse_range, qualify
 
 _CELL = r"\$?([A-Z]{1,3})\$?([1-9]\d{0,6})"
-_ANY_QUALIFIED = re.compile(r"(?:'((?:[^']|'')+)'|([^\s'!(\[{,;:]+))!" + _CELL + r"(?::" + _CELL + r")?")
+_ANY_QUALIFIED = re.compile(r"(?:'((?:[^']|'')+)'|([^\s'!(\[{,;:*_]+))!" + _CELL + r"(?::" + _CELL + r")?")
 _BARE = re.compile(r"(?:\(|\[|\bcells?\s+)" + _CELL + r"(?::" + _CELL + r")?(?=[\s\)\],;.])", re.IGNORECASE)
 _NUMBER = re.compile(
     r"(?<![\w.])[-−]?\(?[$€£]?"
@@ -59,7 +59,8 @@ class CitationReport:
         out = []
         for c in self.invalid:
             if c.status == "mismatch":
-                out.append(f"{c.ref}: text says {c.written:g} but the cell holds {c.actual!r}")
+                actual = f"{c.actual:,.2f}" if isinstance(c.actual, (int, float)) else repr(c.actual)
+                out.append(f"{c.ref}: text gives {c.written:,.2f} for this cell, but it holds {actual}")
             elif c.status == "unknown_sheet":
                 out.append(f"{c.ref}: no such sheet")
             elif c.status == "out_of_range":
@@ -112,7 +113,7 @@ def find_citations(text: str, sheet_names: List[str]) -> List[Citation]:
             out.append(_citation(name, m.groups()[2:], m.start(), m.end()))
             taken.append((m.start(), m.end()))
     for m in _ANY_QUALIFIED.finditer(text):
-        if any(s <= m.start() < e for s, e in taken):
+        if any(s < m.end() and m.start() < e for s, e in taken):
             continue
         name = (m.group(1) or m.group(2) or "").replace("''", "'")
         out.append(_citation(name, m.groups()[2:], m.start(), m.end(), known=False))
@@ -210,20 +211,43 @@ def _in_facts(c: Citation, cells: Dict[Tuple[str, str], Any], ranges: List[Tuple
     return True
 
 
+# Only the joining text allowed between a number and its citation: "24.5 (S!G54)", "24.5 in S!G54"
+# (number first) or "S!G54: 24.5", "S!G54 = 24.5", "S!G54 is 24.5" (citation first).
+_JOIN_BEFORE = re.compile(r"\s*(?:[(\[]|in|at|from|=)?\s*$", re.IGNORECASE)
+_JOIN_AFTER = re.compile(r"^\s*(?:[)\]]\s*)?(?::|=|is|holds|shows|of|[-–—])?\s*$", re.IGNORECASE)
+
+
 def _number_before(text: str, c: Citation, all_cits: List[Citation]) -> Optional[Tuple[float, float]]:
-    """The last number in the ~60 characters before the citation, not inside another citation."""
-    lo = max(0, c.start - 60)
-    prev_end = max([x.end for x in all_cits if x.end <= c.start] + [lo])
-    window = text[prev_end:c.start]
-    best = None
-    for m in _NUMBER.finditer(window):
-        best = m
-    if best is None:
+    """The number written right next to the citation — directly before it ("24.5 (G54)") or, failing
+    that, directly after it ("G54: 24.5") as long as that number isn't itself followed by another
+    citation. Numbers further away are not attributed to this cell."""
+    m = _adjacent_number(text, c, all_cits)
+    if m is None:
         return None
     try:
-        return parse_number(best.group(1), best.group(2))
+        return parse_number(m.group(1), m.group(2))
     except ValueError:
         return None
+
+
+def _plain(join: str) -> str:
+    """Joining text without markdown emphasis: "**G54** shows **24.5**" joins like "G54 shows 24.5"."""
+    return join.replace("*", "").replace("`", "")
+
+
+def _adjacent_number(text: str, c: Citation, all_cits: List[Citation]) -> Optional["re.Match[str]"]:
+    prev_end = max([x.end for x in all_cits if x.end <= c.start] + [max(0, c.start - 60)])
+    before = list(_NUMBER.finditer(text, prev_end, c.start))
+    if before and _JOIN_BEFORE.fullmatch(_plain(text[before[-1].end():c.start])):
+        return before[-1]
+    next_start = min([x.start for x in all_cits if x.start >= c.end] + [min(len(text), c.end + 40)])
+    m = _NUMBER.search(text, c.end, next_start)
+    if m and _JOIN_AFTER.fullmatch(_plain(text[c.end:m.start()])):
+        return m
+    return None
+
+
+_COUNT_WORDS = re.compile(r"\s*(?:cells?|rows?|columns?|cols?|formulas?|sheets?|items?|totals?|tables?)\b", re.IGNORECASE)
 
 
 def _uncited_numbers(text: str, cits: List[Citation]) -> List[str]:
@@ -231,8 +255,11 @@ def _uncited_numbers(text: str, cits: List[Citation]) -> List[str]:
     are not followed by a citation within 40 characters."""
     out = []
     spans = [(c.start, c.end) for c in cits]
+    attached = {m.start() for c in cits if (m := _adjacent_number(text, c, cits)) is not None}
     for m in _NUMBER.finditer(text):
-        if any(s <= m.start() < e for s, e in spans):
+        if any(s <= m.start() < e for s, e in spans) or m.start() in attached:
+            continue
+        if _COUNT_WORDS.match(text, m.end()):  # "111 cells", "36 formulas"
             continue
         raw = m.group(1)
         try:

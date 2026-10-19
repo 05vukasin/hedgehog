@@ -43,7 +43,7 @@ def test_llm_summary_single_call_checked(sales_xlsx):
     assert call["tools"] == [] and call["max_tokens"] == 800 and call["temperature"] == 0.2
     assert "Facts (JSON)" in call["messages"][0].text
     probs = " | ".join(s.warnings)
-    assert "Sales!B2: text says 99" in probs and "Foo!A1: no such sheet" in probs and "4,321.5" in probs
+    assert "Sales!B2: text gives 99.00 for this cell" in probs and "Foo!A1: no such sheet" in probs and "4,321.5" in probs
     ok = {c.ref for c in s.citations.citations if c.status == "ok"}
     assert {"Sales!C5", "Sales!B5"} <= ok
 

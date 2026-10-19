@@ -111,9 +111,15 @@ def markdown_summary(f: Dict[str, Any], max_items: int = 10) -> str:
     return "\n".join(out) + "\n"
 
 
-SYSTEM = """Rewrite spreadsheet facts as a short summary for an AI agent. Use only the given facts; never
-invent numbers or meaning. After every number put its cell in parentheses, e.g. 1,234 (Sales!F43); quote
-sheet names with spaces ('Plan 2026'!B7). Mention totals that do not add up. Under {words} words, {language}, markdown."""
+SYSTEM = """You turn spreadsheet facts into a brief summary for another AI agent. Use only the facts;
+never invent numbers, labels or meaning.
+Order: (1) one sentence on what the workbook holds (sheets, main tables, header labels); (2) problems
+first: each mismatched total with its cell, its value, what it should be and why (name double-counted
+subtotal cells); (3) at most 5 key figures. Skip cell/formula counts and empty sheets.
+Citations: put the source right after each number in parentheses: 24,517,595.83 (Sheet1!G54). An
+expected or recomputed value cites the range it comes from, not the total's cell: 18,981,596.93
+(Sheet1!G6:G53 without G9, G14, G19). Quote sheet names with spaces ('Plan 2026'!B7).
+Under {words} words, {language}, markdown."""
 
 
 def _chars(obj: Any) -> int:
