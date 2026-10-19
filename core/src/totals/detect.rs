@@ -128,11 +128,10 @@ pub fn keyword_rows(grid: &Grid) -> HashMap<u32, (u32, KeywordLevel)> {
                     label = Some((c.row, c.col, level));
                 }
             }
-            (Some((r, lc, lvl)), v) => {
-                if c.formula.is_some() || matches!(v, Some(Value::Number(_))) {
+            (Some((r, lc, lvl)), v)
+                if (c.formula.is_some() || matches!(v, Some(Value::Number(_)))) => {
                     out.insert(*r, (*lc, *lvl));
                 }
-            }
             _ => {}
         }
     }
@@ -210,11 +209,10 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
             // SUBTOTAL skips cells that themselves hold SUBTOTAL formulas.
             for r in &c.ranges {
                 for g in deps.formulas() {
-                    if r.top <= g.row && g.row <= r.bottom && r.left <= g.col && g.col <= r.right {
-                        if g.parsed.functions.iter().any(|n| n == "SUBTOTAL") {
+                    if r.top <= g.row && g.row <= r.bottom && r.left <= g.col && g.col <= r.right
+                        && g.parsed.functions.iter().any(|n| n == "SUBTOTAL") {
                             c.exclude.push((g.row, g.col));
                         }
-                    }
                 }
             }
         }
