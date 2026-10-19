@@ -7,7 +7,7 @@ use std::ops::Range;
 use crate::analysis::{DetectedTable, Role};
 use crate::model::{Rect, Sheet};
 
-use super::blocks::{Entry, Region, Row};
+use super::blocks::{Entry, Region, Row, Ty};
 use super::cells::{is_note_label, is_total_label, text_of, Agg, Kind};
 use super::params::*;
 
@@ -47,6 +47,44 @@ pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
     let Some(e) = single_text(r) else { return false };
     let t = text(sheet, e);
     !is_total_label(t) && (is_note_label(t) || t.trim().chars().count() >= NOTE_MIN_LEN)
+}
+
+/// Header row relative to the rows below it: more of its cells break the column's body type
+/// (text or a year over plain numbers) than repeat it (Pytheas-style signature votes).
+pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
+    if !is_headerish(r) {
+        return false;
+    }
+    let window = &below[..below.len().min(HEADER_VOTE_WINDOW)];
+    let (mut head, mut data) = (0u32, 0u32);
+    for e in r.filled() {
+        let t = e.ty();
+        if t == Ty::None {
+            continue;
+        }
+        let (mut tot, mut same, mut numeric) = (0u32, 0u32, 0u32);
+        for w in window {
+            for x in w.entries.iter().filter(|x| x.left <= e.right && x.right >= e.left) {
+                let xt = x.ty();
+                if xt == Ty::None {
+                    continue;
+                }
+                tot += 1;
+                same += (xt == t) as u32;
+                numeric += (xt != Ty::Text) as u32;
+            }
+        }
+        if tot == 0 {
+            continue;
+        }
+        let share = same as f32 / tot as f32;
+        if t != Ty::Text && share >= HEADER_VOTE_SHARE {
+            data += 1;
+        } else if numeric * 2 >= tot && share < HEADER_VOTE_SHARE {
+            head += 1;
+        }
+    }
+    head > data
 }
 
 /// Mostly labels: text (or years/dates), few plain numbers.
@@ -91,7 +129,7 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
     let mut d = 0;
     while d < MAX_HEADER_ROWS && start + d < end {
         let r = &rows[start + d];
-        if !is_headerish(r) || has_total_label(sheet, r) || is_note_row(sheet, r) {
+        if !is_header_row(r, &rows[start + d + 1..end]) || has_total_label(sheet, r) || is_note_row(sheet, r) {
             break;
         }
         // A lone label below the first header row starts a group, not another header level.
@@ -99,9 +137,6 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             break;
         }
         d += 1;
-    }
-    if d == 0 {
-        return 0;
     }
     if !rows[start + d..end].iter().any(|r| r.n_measure() > 0) {
         // Text-only table (or no body): the first row is a header if it is wide and all text.
@@ -113,6 +148,9 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             && r.n_text() == r.n()
             && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32;
         return ok as usize;
+    }
+    if d == 0 {
+        return 0;
     }
     // Vertical merges in the header (e.g. "Region" over two header rows) push its bottom down.
     let mut last = rows[start + d - 1].row;
@@ -137,7 +175,7 @@ fn starts_new_table(
     header_sig: &Signature,
 ) -> bool {
     let r = &rows[k];
-    if numeric_cols.is_empty() || !is_headerish(r) || r.n() < 2 || has_total_label(sheet, r) {
+    if numeric_cols.is_empty() || r.n() < 2 || !is_header_row(r, &rows[k + 1..end]) || has_total_label(sheet, r) {
         return false;
     }
     if !rows[k + 1..end].iter().take(MAX_HEADER_ROWS).any(|x| x.n_measure() > 0) {

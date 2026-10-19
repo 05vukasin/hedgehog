@@ -44,6 +44,10 @@ pub const NOTE_MIN_LEN: usize = 50;
 pub const MAX_HEADER_ROWS: usize = 4;
 /// A header row may hold at most this share of plain numbers (years and dates don't count).
 pub const HEADER_MAX_NUM_FRAC: f32 = 0.25;
+/// Rows below a candidate header row used for its type votes.
+pub const HEADER_VOTE_WINDOW: usize = 12;
+/// A cell "repeats" its column's body type when that type has at least this share below it.
+pub const HEADER_VOTE_SHARE: f32 = 0.3;
 /// Text-only tables: the first row is a header if it fills at least this share of the width.
 pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
 /// Years in this range are header-like labels ("2023") rather than measures.

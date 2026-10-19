@@ -254,7 +254,12 @@ fn deco_quick_eval() {
     let (mut n_gt, mut n_pred, mut tp5, mut tp9, mut tp10) = (0usize, 0usize, 0usize, 0usize, 0usize);
     let mut conf: BTreeMap<(&str, &str), usize> = BTreeMap::new();
     let mut sheets_eval = 0;
+    let mut cats: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut misses: Vec<String> = Vec::new();
     for (file, sheets) in &by_file {
+        if hh_core::eval::split::split_of(file) != hh_core::eval::split::Split::Dev {
+            continue;
+        }
         let Ok(wb) = open(dir.join("completed").join(file)) else { continue };
         for (sname, anns) in sheets {
             let Some(sheet) = wb.sheets.iter().find(|s| &s.name == sname) else { continue };
@@ -272,6 +277,30 @@ fn deco_quick_eval() {
                     .filter(|(i, _)| !used[*i])
                     .map(|(i, t)| (iou(g, &t.rect), i))
                     .max_by(|a, b| a.0.total_cmp(&b.0));
+                let fmt = |r: &hh_core::Rect| format!("{}:{}", hh_core::a1(r.top, r.left), hh_core::a1(r.bottom, r.right));
+                let bv = best.map_or(0.0, |b| b.0);
+                if bv < 0.999 {
+                    let cat = match best {
+                        None => "no pred",
+                        Some((_, i)) => {
+                            let p = l.tables[i].rect;
+                            let contains = p.top <= g.top && p.left <= g.left && p.bottom >= g.bottom && p.right >= g.right;
+                            let inside = p.top >= g.top && p.left >= g.left && p.bottom <= g.bottom && p.right <= g.right;
+                            match (contains, inside) {
+                                (true, _) => "pred too big",
+                                (_, true) => "pred too small",
+                                _ => "shifted",
+                            }
+                        }
+                    };
+                    *cats.entry(cat).or_default() += 1;
+                    misses.push(format!(
+                        "{cat:>14} iou {bv:.2} gt {} pred {} | {file} [{sname}] ({} pred)",
+                        fmt(g),
+                        best.map_or("-".into(), |b| fmt(&l.tables[b.1].rect)),
+                        l.tables.len()
+                    ));
+                }
                 if let Some((v, i)) = best
                     && v >= 0.5
                 {
@@ -297,6 +326,11 @@ fn deco_quick_eval() {
         let r = tp as f64 / n_gt.max(1) as f64;
         (p, r, 2.0 * p * r / (p + r).max(1e-9))
     };
+    println!("non-exact GT tables by category: {cats:?}");
+    let step = (misses.len() / 50).max(1);
+    for m in misses.iter().step_by(step) {
+        println!("  {m}");
+    }
     println!("sheets {sheets_eval}, gt tables {n_gt}, predicted {n_pred}");
     for (name, tp) in [("IoU>=0.5", tp5), ("IoU>=0.9", tp9), ("IoU=1", tp10)] {
         let (p, r, f) = pr(tp);

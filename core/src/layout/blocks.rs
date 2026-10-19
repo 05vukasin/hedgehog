@@ -20,9 +20,33 @@ pub(crate) struct Entry {
     pub kind: Kind,
     /// Year or date: a number that often labels a column.
     pub label_num: bool,
+    /// Date value (subset of `label_num`).
+    pub date: bool,
     pub agg: Agg,
     /// Index into `sheet.cells`.
     pub cell: Option<usize>,
+}
+
+/// Fine type used for header-vs-body votes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Ty {
+    Text,
+    Plain,
+    Year,
+    Date,
+    None,
+}
+
+impl Entry {
+    pub fn ty(&self) -> Ty {
+        match self.kind {
+            Kind::Text => Ty::Text,
+            Kind::Num if self.date => Ty::Date,
+            Kind::Num if self.label_num => Ty::Year,
+            Kind::Num => Ty::Plain,
+            _ => Ty::None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -116,6 +140,7 @@ fn entries_of(grid: &Grid) -> Vec<Entry> {
             bottom,
             kind: kind_of(c),
             label_num: is_label_number(c),
+            date: matches!(c.value, Some(crate::model::Value::DateTime(_))),
             agg,
             cell: Some(i),
         });
@@ -129,6 +154,7 @@ fn entries_of(grid: &Grid) -> Vec<Entry> {
                 bottom: m.bottom,
                 kind: Kind::Blank,
                 label_num: false,
+                date: false,
                 agg: Agg::None,
                 cell: None,
             });
@@ -233,13 +259,41 @@ fn make_region(mut entries: Vec<Entry>) -> Region {
     Region { rect, rows }
 }
 
-/// Facts about a block used to decide gap merges.
+/// Facts about a block (or a group of merged blocks) used to decide gap merges.
+#[derive(Clone)]
 struct Profile {
     rect: Rect,
     starts_with_header: bool,
-    has_label_col: bool,
-    /// Majority type per column over body rows: true = numeric.
-    col_numeric: BTreeMap<u32, bool>,
+    /// A single row holding a single entry (a title or note line).
+    single_line: bool,
+    /// Only header-like rows (e.g. a header separated from its body by a blank row).
+    header_only: bool,
+    /// Per column: (text, numeric) entry counts over body rows.
+    counts: BTreeMap<u32, (u32, u32)>,
+}
+
+impl Profile {
+    fn has_label_col(&self) -> bool {
+        self.counts.values().any(|&(t, n)| t > 0 && t as f32 >= LABEL_COL_TEXT_FRAC * (t + n) as f32)
+    }
+    fn has_numeric_col(&self) -> bool {
+        self.counts.values().any(|&(t, n)| n > t)
+    }
+    fn absorb(&mut self, other: &Profile) {
+        self.rect = Rect {
+            top: self.rect.top.min(other.rect.top),
+            left: self.rect.left.min(other.rect.left),
+            bottom: self.rect.bottom.max(other.rect.bottom),
+            right: self.rect.right.max(other.rect.right),
+        };
+        self.single_line = false;
+        self.header_only = false;
+        for (c, (t, n)) in &other.counts {
+            let e = self.counts.entry(*c).or_default();
+            e.0 += t;
+            e.1 += n;
+        }
+    }
 }
 
 fn profile(sheet: &Sheet, region: &Region) -> Profile {
@@ -249,9 +303,12 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
         s += 1;
     }
     let starts_with_header = s < rows.len()
-        && super::tables::is_headerish(&rows[s])
         && rows[s].n() >= 2
+        && super::tables::is_header_row(&rows[s], &rows[s + 1..])
         && rows[s + 1..].iter().take(MAX_HEADER_ROWS).any(|r| r.n_measure() > 0);
+    let header_only = rows.len() <= MAX_HEADER_ROWS
+        && rows.iter().all(|r| r.n_measure() == 0 && r.n_text() >= 1)
+        && rows.last().is_some_and(|r| r.n() >= 2);
     let body = if starts_with_header { s + 1 } else { s };
     let mut counts: BTreeMap<u32, (u32, u32)> = BTreeMap::new();
     for r in &rows[body.min(rows.len())..] {
@@ -264,10 +321,8 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
             }
         }
     }
-    let has_label_col =
-        counts.values().any(|&(t, n)| t > 0 && t as f32 >= LABEL_COL_TEXT_FRAC * (t + n) as f32);
-    let col_numeric = counts.into_iter().filter(|(_, (t, n))| t + n > 0).map(|(c, (t, n))| (c, n > t)).collect();
-    Profile { rect: region.rect, starts_with_header, has_label_col, col_numeric }
+    let single_line = rows.len() == 1 && rows[0].n() <= 1;
+    Profile { rect: region.rect, starts_with_header, single_line, header_only, counts }
 }
 
 fn overlap(a0: u32, a1: u32, b0: u32, b1: u32) -> u32 {
@@ -276,10 +331,24 @@ fn overlap(a0: u32, a1: u32, b0: u32, b1: u32) -> u32 {
     if hi >= lo { hi - lo + 1 } else { 0 }
 }
 
+/// Should block `low` join the group `up` that lies above (or around) it?
 fn merge_vertically(up: &Profile, low: &Profile) -> bool {
+    let inside = low.rect.left + 1 >= up.rect.left && low.rect.right <= up.rect.right + 1;
+    // A block within the bounding box of a bigger group (sparse columns of one table).
+    if inside && low.rect.top <= up.rect.bottom {
+        return true;
+    }
     let gap = low.rect.top as i64 - up.rect.bottom as i64 - 1;
-    if !(1..=MAX_ROW_GAP as i64).contains(&gap) || low.starts_with_header {
+    if !(1..=MAX_ROW_GAP as i64).contains(&gap) || low.starts_with_header || low.single_line {
         return false;
+    }
+    if inside && !up.single_line {
+        return true;
+    }
+    if up.header_only && overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right) > 0 {
+        let wl = low.rect.right - low.rect.left + 1;
+        let ov = overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right);
+        return ov as f32 >= GAP_MIN_COL_OVERLAP * wl as f32;
     }
     let (wu, wl) = (up.rect.right - up.rect.left + 1, low.rect.right - low.rect.left + 1);
     let ov = overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right);
@@ -287,10 +356,13 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
         return false;
     }
     let (mut shared, mut agree) = (0u32, 0u32);
-    for (c, num) in &low.col_numeric {
-        if let Some(n2) = up.col_numeric.get(c) {
+    for (c, &(t, n)) in &low.counts {
+        if let Some(&(t2, n2)) = up.counts.get(c)
+            && t + n > 0
+            && t2 + n2 > 0
+        {
             shared += 1;
-            agree += (num == n2) as u32;
+            agree += ((n > t) == (n2 > t2)) as u32;
         }
     }
     shared > 0 && agree as f32 >= GAP_MIN_TYPE_AGREE * shared as f32
@@ -298,10 +370,7 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
 
 fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     let gap = right.rect.left as i64 - left.rect.right as i64 - 1;
-    if !(1..=MAX_COL_GAP as i64).contains(&gap) || right.has_label_col {
-        return false;
-    }
-    if !right.col_numeric.values().any(|&n| n) {
+    if !(1..=MAX_COL_GAP as i64).contains(&gap) || right.has_label_col() || !right.has_numeric_col() {
         return false;
     }
     let (hl, hr) = (left.rect.bottom - left.rect.top + 1, right.rect.bottom - right.rect.top + 1);
@@ -311,51 +380,84 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
 
 /// Connected components, then gap-tolerant merging into regions.
 pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
-    let blocks: Vec<Region> = components(grid).into_iter().map(make_region).collect();
+    let mut blocks: Vec<Region> = components(grid).into_iter().map(make_region).collect();
     if blocks.len() <= 1 {
         return blocks;
     }
+    blocks.sort_by_key(|b| (b.rect.top, b.rect.left));
     let profiles: Vec<Profile> = blocks.iter().map(|b| profile(grid.sheet, b)).collect();
-    let mut by_top: HashMap<u32, Vec<usize>> = HashMap::new();
+    let mut group: Vec<Profile> = profiles.clone();
+    let mut dsu = Dsu::new(blocks.len());
+    let join = |dsu: &mut Dsu, group: &mut Vec<Profile>, a: u32, b: u32| {
+        let (ra, rb) = (dsu.find(a), dsu.find(b));
+        if ra != rb {
+            dsu.union(ra, rb);
+            let (keep, gone) = if dsu.find(ra) == ra { (ra, rb) } else { (rb, ra) };
+            let g = group[gone as usize].clone();
+            group[keep as usize].absorb(&g);
+        }
+    };
+
+    // Spacer columns: pairwise on raw blocks.
     let mut by_left: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, p) in profiles.iter().enumerate() {
-        by_top.entry(p.rect.top).or_default().push(i);
         by_left.entry(p.rect.left).or_default().push(i);
     }
-    let mut dsu = Dsu::new(blocks.len());
     for (i, p) in profiles.iter().enumerate() {
-        for gap in 1..=MAX_ROW_GAP {
-            let Some(t) = p.rect.bottom.checked_add(gap + 1) else { continue };
-            for &j in by_top.get(&t).into_iter().flatten() {
-                if merge_vertically(p, &profiles[j]) {
-                    dsu.union(i as u32, j as u32);
-                }
-            }
-        }
         for gap in 1..=MAX_COL_GAP {
             let Some(l) = p.rect.right.checked_add(gap + 1) else { continue };
             for &j in by_left.get(&l).into_iter().flatten() {
                 if merge_horizontally(p, &profiles[j]) {
-                    dsu.union(i as u32, j as u32);
+                    join(&mut dsu, &mut group, i as u32, j as u32);
                 }
             }
         }
     }
-    let mut groups: BTreeMap<u32, Vec<Entry>> = BTreeMap::new();
-    let mut singles = Vec::new();
-    let mut multi = vec![0u32; blocks.len()];
-    for i in 0..blocks.len() {
-        multi[dsu.find(i as u32) as usize] += 1;
+
+    // Spacer rows and sparse columns: sweep blocks top-down against groups still "open" above.
+    let mut active: Vec<u32> = Vec::new();
+    for (i, p) in profiles.iter().enumerate() {
+        active.retain(|&g| dsu.find(g) == g && group[g as usize].rect.bottom as u64 + 1 + MAX_ROW_GAP as u64 >= p.rect.top as u64);
+        let mut k = 0;
+        while k < active.len() {
+            let g = active[k];
+            let me = dsu.find(i as u32);
+            if dsu.find(g) == g && g != me && merge_vertically(&group[g as usize], &group[me as usize].clone().with_header(p)) {
+                join(&mut dsu, &mut group, g, i as u32);
+            }
+            k += 1;
+        }
+        let me = dsu.find(i as u32);
+        active.retain(|&g| dsu.find(g) == g);
+        if !active.contains(&me) {
+            active.push(me);
+        }
     }
+
+    let mut groups: BTreeMap<u32, Vec<Entry>> = BTreeMap::new();
+    let mut size = vec![0u32; blocks.len()];
+    for i in 0..blocks.len() {
+        size[dsu.find(i as u32) as usize] += 1;
+    }
+    let mut out = Vec::new();
     for (i, b) in blocks.into_iter().enumerate() {
         let root = dsu.find(i as u32);
-        if multi[root as usize] == 1 {
-            singles.push(b);
+        if size[root as usize] == 1 {
+            out.push(b);
         } else {
             groups.entry(root).or_default().extend(b.rows.into_iter().flat_map(|r| r.entries));
         }
     }
-    singles.extend(groups.into_values().map(make_region));
-    singles.sort_by_key(|r| (r.rect.top, r.rect.left));
-    singles
+    out.extend(groups.into_values().map(make_region));
+    out.sort_by_key(|r| (r.rect.top, r.rect.left));
+    out
+}
+
+impl Profile {
+    /// The group's shape, but header/single-line facts of the block being placed.
+    fn with_header(mut self, block: &Profile) -> Profile {
+        self.starts_with_header = block.starts_with_header;
+        self.single_line = block.single_line;
+        self
+    }
 }
