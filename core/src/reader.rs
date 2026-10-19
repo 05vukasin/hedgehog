@@ -8,7 +8,9 @@ use std::fs::File;
 use std::io::{Cursor, Read, Seek, Write};
 use std::path::Path;
 
-use calamine::{open_workbook_auto, open_workbook_auto_from_rs, Data, Dimensions, Range, Reader, Sheets};
+use calamine::{
+    open_workbook_auto, open_workbook_auto_from_rs, Data, DataRef, Dimensions, Range, Reader, Sheets, Xlsx, XlsxError,
+};
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
@@ -47,13 +49,86 @@ fn read_all<RS: Read + Seek>(mut wb: Sheets<RS>) -> Result<Workbook, Error> {
     let names = wb.sheet_names();
     let mut sheets = Vec::with_capacity(names.len());
     for name in names {
-        let values = wb.worksheet_range(&name).map_err(err)?;
-        // Some formats can't report formulas; values alone are still useful.
-        let formulas = wb.worksheet_formula(&name).unwrap_or_default();
-        let merges = merge_cells(&mut wb, &name);
-        sheets.push(build_sheet(name, &values, &formulas, merges));
+        // xlsx: values and formulas in one streaming pass, straight into sparse cells.
+        let cells = match &mut wb {
+            Sheets::Xlsx(x) => read_xlsx_cells(x, &name).ok(),
+            _ => None,
+        };
+        let sheet = match cells {
+            Some(cells) => {
+                let merges = merge_cells(&mut wb, &name);
+                Sheet { name, cells, merges }
+            }
+            None => {
+                let values = wb.worksheet_range(&name).map_err(err)?;
+                // Some formats can't report formulas; values alone are still useful.
+                let formulas = wb.worksheet_formula(&name).unwrap_or_default();
+                let merges = merge_cells(&mut wb, &name);
+                build_sheet(name, &values, &formulas, merges)
+            }
+        };
+        sheets.push(sheet);
     }
     Ok(Workbook { sheets })
+}
+
+/// One xlsx cell record: position, converted value (`None` = blank text), whether the record had
+/// a non-empty value at all, and the formula.
+struct Record {
+    row: u32,
+    col: u32,
+    value: Option<Value>,
+    has_value: bool,
+    formula: Option<String>,
+}
+
+/// Reads values and formulas of an xlsx sheet in a single pass over its XML, producing exactly the
+/// cells [`build_sheet`] makes from `worksheet_range` + `worksheet_formula` — without their two
+/// passes and their dense `rows × cols` grids (which explode on a sheet using A1 and XFD1048576).
+/// Any error (also a non-worksheet part) → `Err`, and the caller takes the generic path.
+fn read_xlsx_cells<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str) -> Result<Vec<Cell>, XlsxError> {
+    let mut reader = x.worksheet_cells_reader(name)?;
+    let mut recs: Vec<Record> = Vec::new();
+    while let Some(rec) = reader.next_cell_with_formula()? {
+        let has_value = !matches!(rec.value, DataRef::Empty);
+        let formula = rec.formula.filter(|f| !f.is_empty()).map(|f| match f.strip_prefix('=') {
+            Some(_) => f.trim_start_matches('=').to_string(),
+            None => f,
+        });
+        if !has_value && formula.is_none() {
+            continue;
+        }
+        let value = if has_value { convert_ref(rec.value) } else { None };
+        recs.push(Record { row: rec.pos.0, col: rec.pos.1, value, has_value, formula });
+    }
+    drop(reader);
+
+    // Usually already in order; otherwise sort (stable) and fold duplicates like the dense ranges
+    // would: the last non-empty value and the last non-empty formula of a position win.
+    if !recs.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col)) {
+        recs.sort_by_key(|r| (r.row, r.col));
+        let mut out: Vec<Record> = Vec::with_capacity(recs.len());
+        for r in recs {
+            match out.last_mut() {
+                Some(last) if (last.row, last.col) == (r.row, r.col) => {
+                    if r.has_value {
+                        last.value = r.value;
+                        last.has_value = true;
+                    }
+                    if r.formula.is_some() {
+                        last.formula = r.formula;
+                    }
+                }
+                _ => out.push(r),
+            }
+        }
+        recs = out;
+    }
+    Ok(recs
+        .into_iter()
+        .filter(|r| r.value.is_some() || r.formula.is_some())
+        .map(|r| Cell { row: r.row, col: r.col, value: r.value, formula: r.formula })
+        .collect())
 }
 
 /// Copies the xlsx zip into memory with `<sheet … r:id="">` entries removed from `xl/workbook.xml`.
@@ -126,6 +201,23 @@ fn build_sheet(name: String, values: &Range<Data>, formulas: &Range<String>, mer
             .formula = Some(f.trim_start_matches('=').to_string());
     }
     Sheet { name, cells: cells.into_values().collect(), merges }
+}
+
+/// [`convert`] for a borrowed xlsx value (shared strings are copied once, not twice).
+fn convert_ref(d: DataRef<'_>) -> Option<Value> {
+    Some(match d {
+        DataRef::Empty => return None,
+        DataRef::SharedString(s) if s.trim().is_empty() => return None,
+        DataRef::SharedString(s) => Value::Text(s.to_string()),
+        DataRef::String(s) if s.trim().is_empty() => return None,
+        DataRef::String(s) => Value::Text(s),
+        DataRef::Int(i) => Value::Number(i as f64),
+        DataRef::Float(f) => Value::Number(f),
+        DataRef::Bool(b) => Value::Bool(b),
+        DataRef::DateTime(dt) => Value::DateTime(dt.as_f64()),
+        DataRef::DateTimeIso(s) | DataRef::DurationIso(s) => Value::Text(s),
+        DataRef::Error(e) => Value::Error(e.to_string()),
+    })
 }
 
 fn convert(d: &Data) -> Option<Value> {

@@ -19,7 +19,7 @@ fn report(r: Result<(), String>) -> ExitCode {
 const USAGE: &str = "usage:
   hedgehog describe <file>
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress]
-  hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K]
+  hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 

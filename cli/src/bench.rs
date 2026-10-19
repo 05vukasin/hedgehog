@@ -16,10 +16,11 @@ struct Opts {
     check: Option<PathBuf>,
     synthetic: bool,
     case: Option<String>,
+    open_only: bool,
 }
 
 fn parse(args: &[&str]) -> Result<Opts, String> {
-    let mut o = Opts { input: None, limit: None, threads: 1, top: 5, check: None, synthetic: false, case: None };
+    let mut o = Opts { input: None, limit: None, threads: 1, top: 5, check: None, synthetic: false, case: None, open_only: false };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
@@ -29,6 +30,7 @@ fn parse(args: &[&str]) -> Result<Opts, String> {
             "--top" => o.top = val()?.parse().map_err(|_| "--top needs a number")?,
             "--check" => o.check = Some(PathBuf::from(val()?)),
             "--synthetic" => o.synthetic = true,
+            "--open-only" => o.open_only = true,
             "--case" => o.case = Some(val()?.to_string()),
             s if !s.starts_with("--") && o.input.is_none() => o.input = Some(PathBuf::from(s)),
             _ => return Err(format!("unknown argument `{a}`")),
@@ -46,8 +48,23 @@ fn inputs(o: &Opts) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-/// Runs `f` over `files` on `threads` workers; results in input order.
-fn run_all(files: &[PathBuf], threads: usize, golden: bool) -> Vec<Result<FileRun, String>> {
+/// Opens `path` only (the `open` stage).
+fn open_only(path: &Path) -> Result<FileRun, String> {
+    let t = Instant::now();
+    let wb = hh_core::open(path).map_err(|e| e.to_string())?;
+    let mut r = FileRun { sheets: wb.sheets.len(), ..Default::default() };
+    for s in &wb.sheets {
+        r.cells += s.cells.len();
+        r.merges += s.merges.len();
+        r.formulas += s.formula_count();
+    }
+    drop(wb);
+    r.times.0[0] = t.elapsed().as_secs_f64();
+    Ok(r)
+}
+
+/// Runs the pipeline (or only `open`) over `files` on `threads` workers; results in input order.
+fn run_all(files: &[PathBuf], threads: usize, golden: bool, open: bool) -> Vec<Result<FileRun, String>> {
     let next = AtomicUsize::new(0);
     let out: Mutex<Vec<Option<Result<FileRun, String>>>> = Mutex::new(vec![None; files.len()].into_iter().collect());
     std::thread::scope(|s| {
@@ -56,7 +73,7 @@ fn run_all(files: &[PathBuf], threads: usize, golden: bool) -> Vec<Result<FileRu
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     let Some(path) = files.get(i) else { break };
-                    let r = bench::run_file(path, golden).map_err(|e| e.to_string());
+                    let r = if open { open_only(path) } else { bench::run_file(path, golden).map_err(|e| e.to_string()) };
                     out.lock().unwrap()[i] = Some(r);
                 }
             });
@@ -76,7 +93,7 @@ pub fn bench(args: &[&str]) -> Result<(), String> {
     }
     let files = inputs(&o)?;
     let wall = Instant::now();
-    let results = run_all(&files, o.threads, false);
+    let results = run_all(&files, o.threads, false, o.open_only);
     let wall = wall.elapsed().as_secs_f64();
 
     let mut times = StageTimes::default();
@@ -157,7 +174,7 @@ fn synthetic(o: &Opts) -> Result<(), String> {
 pub fn golden(args: &[&str]) -> Result<(), String> {
     let o = parse(args)?;
     let files = inputs(&o)?;
-    let results = run_all(&files, o.threads, true);
+    let results = run_all(&files, o.threads, true, false);
     let root = hh_core::eval::data_root();
     let mut lines = Vec::new();
     for (path, r) in files.iter().zip(&results) {
