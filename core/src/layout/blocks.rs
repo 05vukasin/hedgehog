@@ -359,8 +359,9 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
     }
     if up.header_only && overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right) > 0 {
         let wl = low.rect.right - low.rect.left + 1;
+        let wu = up.rect.right - up.rect.left + 1;
         let ov = overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right);
-        return ov as f32 >= GAP_MIN_COL_OVERLAP * wl as f32;
+        return ov as f32 >= GAP_MIN_COL_OVERLAP * wl.min(wu) as f32;
     }
     let (wu, wl) = (up.rect.right - up.rect.left + 1, low.rect.right - low.rect.left + 1);
     let ov = overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right);
