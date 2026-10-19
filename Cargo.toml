@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["core", "py", "cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+hh_core = { path = "core" }
+calamine = "0.37.0"
+pyo3 = "0.30.1"
+rust_xlsxwriter = "0.99.1"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+opt-level = 3

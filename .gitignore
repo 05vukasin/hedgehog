@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+.venv/
+__pycache__/
+*.so
+*.pyd
+# spreadsheets and data never go into git; corpora live in ../testdata
+*.xlsx
+*.xlsm
+*.xls
+*.ods
+*.csv
+*.parquet
+*.jsonl

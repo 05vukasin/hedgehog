@@ -1,0 +1,10 @@
+[package]
+name = "hh_core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+calamine.workspace = true
+
+[dev-dependencies]
+rust_xlsxwriter.workspace = true

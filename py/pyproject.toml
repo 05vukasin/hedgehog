@@ -1,0 +1,12 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "hedgehog"
+requires-python = ">=3.9"
+dynamic = ["version"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "hedgehog._native"

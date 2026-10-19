@@ -1,0 +1,11 @@
+[package]
+name = "hh_cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hedgehog"
+path = "src/main.rs"
+
+[dependencies]
+hh_core.workspace = true
