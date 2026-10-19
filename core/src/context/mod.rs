@@ -48,9 +48,7 @@ mod kind;
 pub use components::{components, label, Component, Labeling};
 pub use kind::{kind_of, Kind};
 
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::features::Features;
 use crate::grid::Grid;
@@ -84,6 +82,13 @@ struct RowAgg {
     formula: u32,
     numeric: u32,
     min_col: u32,
+}
+
+/// One sheet row: its cell count and, for row-major sheets, its (block, row) slots `a..b`.
+struct SheetRow {
+    row: u32,
+    cells: u32,
+    slots: (u32, u32),
 }
 
 #[derive(Default, Clone, Copy)]
@@ -133,15 +138,65 @@ pub fn compute(grid: &Grid, out: &mut Features) {
     };
 
     // ---- aggregates (first pass) ----
-    let mut sheet_rows: HashMap<u32, u32> = HashMap::new();
-    let mut rows: HashMap<(u32, u32), RowAgg> = HashMap::new();
-    let mut cols: HashMap<(u32, u32), ColAgg> = HashMap::new();
-    let mut seen_values: HashSet<(u32, u32, u64)> = HashSet::new();
+    // Every cell gets a slot for its sheet row, its (block, row) and its (block, column), so the
+    // per-cell pass below indexes vectors instead of hashing.
+    let mut sheet_row_slot: Vec<u32> = Vec::with_capacity(n);
+    let mut sheet_rows: Vec<SheetRow> = Vec::new();
+    let mut row_slot: Vec<u32> = Vec::with_capacity(n);
+    let mut row_keys: Vec<(u32, u32)> = Vec::new(); // (block, row)
+    let mut row_aggs: Vec<RowAgg> = Vec::new();
+    // Row-major sheets (what the reader produces) need no maps: a row's cells are contiguous and
+    // its (block, row) slots are the few created since the row started. Otherwise: hash maps.
+    let row_major = cells.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col));
+    let mut sheet_row_index: HashMap<u32, u32> = HashMap::default();
+    let mut row_index: HashMap<(u32, u32), u32> = HashMap::default();
+    let mut last_sheet_row: Option<(u32, u32)> = None;
+    let mut last_row: Option<((u32, u32), u32)> = None;
     for (i, cell) in cells.iter().enumerate() {
         let (k, comp) = (kinds[i], comp_of[i]);
-        *sheet_rows.entry(cell.row).or_default() += 1;
+        let sr = match last_sheet_row {
+            Some((r, slot)) if r == cell.row => slot,
+            _ => {
+                let mut new_row = || {
+                    let first = row_aggs.len() as u32;
+                    sheet_rows.push(SheetRow { row: cell.row, cells: 0, slots: (first, first) });
+                    (sheet_rows.len() - 1) as u32
+                };
+                let slot = if row_major { new_row() } else { *sheet_row_index.entry(cell.row).or_insert_with(new_row) };
+                last_sheet_row = Some((cell.row, slot));
+                slot
+            }
+        };
+        sheet_rows[sr as usize].cells += 1;
+        sheet_row_slot.push(sr);
 
-        let ra = rows.entry((comp, cell.row)).or_insert(RowAgg { min_col: u32::MAX, ..Default::default() });
+        let key = (comp, cell.row);
+        let slot = match last_row {
+            Some((kk, slot)) if kk == key => slot,
+            _ => {
+                let found = if row_major {
+                    let (a, b) = sheet_rows[sr as usize].slots;
+                    (a..b).find(|&s| row_keys[s as usize].0 == comp)
+                } else {
+                    row_index.get(&key).copied()
+                };
+                let slot = found.unwrap_or_else(|| {
+                    row_keys.push(key);
+                    row_aggs.push(RowAgg { min_col: u32::MAX, ..Default::default() });
+                    let s = (row_aggs.len() - 1) as u32;
+                    if row_major {
+                        sheet_rows[sr as usize].slots.1 += 1;
+                    } else {
+                        row_index.insert(key, s);
+                    }
+                    s
+                });
+                last_row = Some((key, slot));
+                slot
+            }
+        };
+        row_slot.push(slot);
+        let ra = &mut row_aggs[slot as usize];
         ra.n += 1;
         ra.text += (k == Kind::Text) as u32;
         ra.num += (k == Kind::Number) as u32;
@@ -149,15 +204,69 @@ pub fn compute(grid: &Grid, out: &mut Features) {
         ra.formula += cell.formula.is_some() as u32;
         ra.numeric += k.is_numeric() as u32;
         ra.min_col = ra.min_col.min(cell.col);
+    }
+    drop(sheet_row_index);
+    // Whether the block's next row has a number/date, per (block, row) slot.
+    let next_numeric: Vec<bool> = if row_major {
+        let mut v = vec![false; row_aggs.len()];
+        for w in sheet_rows.windows(2) {
+            if w[0].row.checked_add(1) != Some(w[1].row) {
+                continue;
+            }
+            for s in w[0].slots.0..w[0].slots.1 {
+                let comp = row_keys[s as usize].0;
+                v[s as usize] = (w[1].slots.0..w[1].slots.1)
+                    .find(|&t| row_keys[t as usize].0 == comp)
+                    .is_some_and(|t| row_aggs[t as usize].numeric > 0);
+            }
+        }
+        v
+    } else {
+        row_keys
+            .iter()
+            .map(|&(comp, r)| {
+                r.checked_add(1)
+                    .and_then(|nr| row_index.get(&(comp, nr)))
+                    .is_some_and(|&s| row_aggs[s as usize].numeric > 0)
+            })
+            .collect()
+    };
+    drop(row_index);
 
-        let ca = cols.entry((comp, cell.col)).or_default();
+    // Columns: visit cells column by column (stable, so each column keeps sheet order — top to
+    // bottom for a row-major sheet), probing the map only when the block changes.
+    let by_col = stable_order_by_col(cells);
+    let mut col_slot: Vec<u32> = vec![0; n];
+    let mut col_keys: Vec<(u32, u32)> = Vec::new(); // (block, col)
+    let mut col_aggs: Vec<ColAgg> = Vec::new();
+    let mut col_index: HashMap<(u32, u32), u32> = HashMap::default();
+    let mut seen_values: HashSet<(u32, u32, ValueKey)> = HashSet::default();
+    let mut last_col: Option<((u32, u32), u32)> = None;
+    for &i in &by_col {
+        let i = i as usize;
+        let cell = &cells[i];
+        let (k, comp) = (kinds[i], comp_of[i]);
+        let key = (comp, cell.col);
+        let slot = match last_col {
+            Some((kk, slot)) if kk == key => slot,
+            _ => {
+                let slot = *col_index.entry(key).or_insert_with(|| {
+                    col_keys.push(key);
+                    col_aggs.push(ColAgg::default());
+                    (col_aggs.len() - 1) as u32
+                });
+                last_col = Some((key, slot));
+                slot
+            }
+        };
+        col_slot[i] = slot;
+        let ca = &mut col_aggs[slot as usize];
         ca.n += 1;
         ca.kinds[k as usize] += 1;
         ca.numeric += k.is_numeric() as u32;
-        if seen_values.insert((comp, cell.col, value_hash(cell.value.as_ref(), cell.formula.as_deref()))) {
+        if seen_values.insert((comp, cell.col, value_key(cell.value.as_ref(), cell.formula.as_deref()))) {
             ca.distinct += 1;
         }
-        // Cells are row-major, so a column's cells arrive top to bottom.
         if let Some(v) = numeric_value(cell) {
             if let Some(last) = ca.last {
                 ca.pairs += 1;
@@ -166,12 +275,12 @@ pub fn compute(grid: &Grid, out: &mut Features) {
             ca.last = Some(v);
         }
     }
-    drop(seen_values);
+    drop((seen_values, col_index, by_col));
 
     // Per block: leftmost text-majority column, rightmost number-majority column.
     let mut text_col = vec![u32::MAX; comps.len()];
     let mut num_col = vec![None::<u32>; comps.len()];
-    for (&(comp, col), ca) in &cols {
+    for (&(comp, col), ca) in col_keys.iter().zip(&col_aggs) {
         let c = comp as usize;
         if ca.kinds[Kind::Text as usize] * 2 > ca.n {
             text_col[c] = text_col[c].min(col);
@@ -188,7 +297,7 @@ pub fn compute(grid: &Grid, out: &mut Features) {
         .collect();
 
     // Runs of consecutive sheet rows that contain anything (cells or merged areas).
-    let mut intervals: Vec<(u32, u32)> = sheet_rows.keys().map(|&r| (r, r)).collect();
+    let mut intervals: Vec<(u32, u32)> = sheet_rows.iter().map(|r| (r.row, r.row)).collect();
     intervals.extend(sheet.merges.iter().map(|m| (m.top, m.bottom)));
     intervals.sort_unstable();
     let mut runs: Vec<(u32, u32)> = Vec::new();
@@ -244,9 +353,9 @@ pub fn compute(grid: &Grid, out: &mut Features) {
         // Row aggregates.
         let width = comp.rect.right - comp.rect.left + 1;
         let height = comp.rect.bottom - comp.rect.top + 1;
-        let ra = rows[&(comp_id, r)];
+        let ra = row_aggs[row_slot[i] as usize];
         let rn = ra.n as f32;
-        f.push("c_row_filled", sheet_rows[&r] as f32);
+        f.push("c_row_filled", sheet_rows[sheet_row_slot[i] as usize].cells as f32);
         f.push("c_row_cells", rn);
         f.push("c_row_fill_ratio", rn / width as f32);
         f.push("c_row_text_ratio", ra.text as f32 / rn);
@@ -255,11 +364,10 @@ pub fn compute(grid: &Grid, out: &mut Features) {
         f.push("c_row_formula_ratio", ra.formula as f32 / rn);
         f.push("c_row_single", b(ra.n == 1));
         f.push("c_row_first", b(ra.min_col == c));
-        let next_numeric = r.checked_add(1).and_then(|nr| rows.get(&(comp_id, nr))).is_some_and(|x| x.numeric > 0);
-        f.push("c_row_text_next_num", b(ra.text == ra.n && next_numeric));
+        f.push("c_row_text_next_num", b(ra.text == ra.n && next_numeric[row_slot[i] as usize]));
 
         // Column aggregates.
-        let ca = cols.get_mut(&(comp_id, c)).unwrap();
+        let ca = &mut col_aggs[col_slot[i] as usize];
         let cn = ca.n as f32;
         let (maj_kind, maj_count) = ca.majority();
         f.push("c_col_cells", cn);
@@ -308,6 +416,32 @@ pub fn compute(grid: &Grid, out: &mut Features) {
     f.finish(out);
 }
 
+/// Cell indices grouped by column (ascending), each column in sheet order.
+fn stable_order_by_col(cells: &[crate::model::Cell]) -> Vec<u32> {
+    let n = cells.len();
+    let max_col = cells.iter().map(|c| c.col).max().unwrap_or(0) as usize;
+    if max_col > 4 * n + 16_384 {
+        let mut order: Vec<u32> = (0..n as u32).collect();
+        order.sort_by_key(|&i| cells[i as usize].col); // stable
+        return order;
+    }
+    // Counting sort: O(cells + columns).
+    let mut start = vec![0u32; max_col + 2];
+    for c in cells {
+        start[c.col as usize + 1] += 1;
+    }
+    for j in 1..start.len() {
+        start[j] += start[j - 1];
+    }
+    let mut order = vec![0u32; n];
+    for (i, c) in cells.iter().enumerate() {
+        let s = &mut start[c.col as usize];
+        order[*s as usize] = i as u32;
+        *s += 1;
+    }
+    order
+}
+
 fn b(x: bool) -> f32 {
     x as u8 as f32
 }
@@ -317,17 +451,27 @@ fn rel(off: u32, span: u32) -> f32 {
     if span > 1 { off as f32 / (span - 1) as f32 } else { 0.0 }
 }
 
-fn value_hash(v: Option<&Value>, formula: Option<&str>) -> u64 {
-    let mut h = DefaultHasher::new();
+/// What makes two cells "the same value" for `c_col_distinct_ratio` (text compared trimmed;
+/// a formula without cached value by its formula).
+#[derive(PartialEq, Eq, Hash)]
+enum ValueKey<'a> {
+    Number(u64),
+    Text(&'a str),
+    Date(u64),
+    Bool(bool),
+    Error(&'a str),
+    Formula(Option<&'a str>),
+}
+
+fn value_key<'a>(v: Option<&'a Value>, formula: Option<&'a str>) -> ValueKey<'a> {
     match v {
-        Some(Value::Number(x)) => (1u8, x.to_bits()).hash(&mut h),
-        Some(Value::DateTime(x)) => (3u8, x.to_bits()).hash(&mut h),
-        Some(Value::Text(s)) => (2u8, s.trim()).hash(&mut h),
-        Some(Value::Bool(x)) => (4u8, x).hash(&mut h),
-        Some(Value::Error(s)) => (5u8, s).hash(&mut h),
-        None => (6u8, formula).hash(&mut h),
+        Some(Value::Number(x)) => ValueKey::Number(x.to_bits()),
+        Some(Value::DateTime(x)) => ValueKey::Date(x.to_bits()),
+        Some(Value::Text(s)) => ValueKey::Text(s.trim()),
+        Some(Value::Bool(x)) => ValueKey::Bool(*x),
+        Some(Value::Error(s)) => ValueKey::Error(s),
+        None => ValueKey::Formula(formula),
     }
-    h.finish()
 }
 
 /// Column-wise builder: every cell pushes the [`FEATURES`] in order, then calls `end_row`.
