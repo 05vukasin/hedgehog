@@ -48,9 +48,6 @@ mod kind;
 pub use components::{components, label, Component, Labeling};
 pub use kind::{kind_of, Kind};
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 use crate::features::Features;
@@ -243,7 +240,7 @@ pub fn compute(grid: &Grid, out: &mut Features) {
     let mut col_keys: Vec<(u32, u32)> = Vec::new(); // (block, col)
     let mut col_aggs: Vec<ColAgg> = Vec::new();
     let mut col_index: HashMap<(u32, u32), u32> = HashMap::default();
-    let mut seen_values: HashSet<(u32, u32, u64)> = HashSet::default();
+    let mut seen_values: HashSet<(u32, u32, ValueKey)> = HashSet::default();
     let mut last_col: Option<((u32, u32), u32)> = None;
     for &i in &by_col {
         let i = i as usize;
@@ -267,7 +264,7 @@ pub fn compute(grid: &Grid, out: &mut Features) {
         ca.n += 1;
         ca.kinds[k as usize] += 1;
         ca.numeric += k.is_numeric() as u32;
-        if seen_values.insert((comp, cell.col, value_hash(cell.value.as_ref(), cell.formula.as_deref()))) {
+        if seen_values.insert((comp, cell.col, value_key(cell.value.as_ref(), cell.formula.as_deref()))) {
             ca.distinct += 1;
         }
         if let Some(v) = numeric_value(cell) {
@@ -454,17 +451,27 @@ fn rel(off: u32, span: u32) -> f32 {
     if span > 1 { off as f32 / (span - 1) as f32 } else { 0.0 }
 }
 
-fn value_hash(v: Option<&Value>, formula: Option<&str>) -> u64 {
-    let mut h = DefaultHasher::new();
+/// What makes two cells "the same value" for `c_col_distinct_ratio` (text compared trimmed;
+/// a formula without cached value by its formula).
+#[derive(PartialEq, Eq, Hash)]
+enum ValueKey<'a> {
+    Number(u64),
+    Text(&'a str),
+    Date(u64),
+    Bool(bool),
+    Error(&'a str),
+    Formula(Option<&'a str>),
+}
+
+fn value_key<'a>(v: Option<&'a Value>, formula: Option<&'a str>) -> ValueKey<'a> {
     match v {
-        Some(Value::Number(x)) => (1u8, x.to_bits()).hash(&mut h),
-        Some(Value::DateTime(x)) => (3u8, x.to_bits()).hash(&mut h),
-        Some(Value::Text(s)) => (2u8, s.trim()).hash(&mut h),
-        Some(Value::Bool(x)) => (4u8, x).hash(&mut h),
-        Some(Value::Error(s)) => (5u8, s).hash(&mut h),
-        None => (6u8, formula).hash(&mut h),
+        Some(Value::Number(x)) => ValueKey::Number(x.to_bits()),
+        Some(Value::DateTime(x)) => ValueKey::Date(x.to_bits()),
+        Some(Value::Text(s)) => ValueKey::Text(s.trim()),
+        Some(Value::Bool(x)) => ValueKey::Bool(*x),
+        Some(Value::Error(s)) => ValueKey::Error(s),
+        None => ValueKey::Formula(formula),
     }
-    h.finish()
 }
 
 /// Column-wise builder: every cell pushes the [`FEATURES`] in order, then calls `end_row`.
