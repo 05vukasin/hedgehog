@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from .base import ChatClient, header_retry_after
+from .base import ChatClient, header_retry_after, quota_exhausted
 from .types import ChatResult, LLMError, Message, MissingDependency, Tool, ToolCall, Usage, extract_json, strip_think
 
 logger = logging.getLogger("hedgehog.llm")
@@ -252,6 +252,8 @@ class OpenAIClient(ChatClient):
         try:
             sdk = _import_sdk()
         except MissingDependency:
+            return None
+        if quota_exhausted(exc):
             return None
         if isinstance(exc, (sdk.RateLimitError, sdk.APIConnectionError)):
             return (header_retry_after(exc),)

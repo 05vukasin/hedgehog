@@ -151,6 +151,19 @@ class ChatClient:
                 self._sleep(delay)
 
 
+_QUOTA_CODES = {"insufficient_quota", "credit_balance_exhausted", "billing_hard_limit_reached"}
+
+
+def quota_exhausted(exc: BaseException) -> bool:
+    """True for "out of credits" errors: they come back as 429 but retrying cannot help."""
+    body = getattr(exc, "body", None)
+    err = body.get("error", body) if isinstance(body, dict) else {}
+    fields = {getattr(exc, "code", None), getattr(exc, "type", None)}
+    if isinstance(err, dict):
+        fields |= {err.get("code"), err.get("type")}
+    return bool(fields & _QUOTA_CODES)
+
+
 def header_retry_after(exc: BaseException) -> Optional[float]:
     """``Retry-After`` seconds from an SDK exception's HTTP response, if any."""
     resp = getattr(exc, "response", None)

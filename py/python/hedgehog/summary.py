@@ -87,10 +87,18 @@ def markdown_summary(f: Dict[str, Any], max_items: int = 10) -> str:
             src = ", ".join(i["sources"]) or "?"
             if i["ok"] is False:
                 diff = (i["value"] or 0) - (i["expected"] or 0)
-                out.append(
-                    f"- {i['cell']}{_label(i)}: {_fmt(i['value'])}, but {src} adds up to {_fmt(i['expected'])} "
-                    f"(diff {diff:+,.6g}; {i['reason']})"
-                )
+                if i.get("double_counted"):
+                    twice = ", ".join(i["double_counted"])
+                    out.append(
+                        f"- {i['cell']}{_label(i)}: {_fmt(i['value'])} sums {src}, which also contains the subtotals "
+                        f"{twice}, so their rows are counted twice; without them the total is "
+                        f"{_fmt(i['expected'])} (overstated by {diff:+,.2f})"
+                    )
+                else:
+                    out.append(
+                        f"- {i['cell']}{_label(i)}: {_fmt(i['value'])}, but {src} adds up to {_fmt(i['expected'])} "
+                        f"(diff {diff:+,.2f}; {i['reason'].replace('_', ' ')})"
+                    )
             elif i["ok"] is True:
                 out.append(f"- {i['cell']}{_label(i)} = {_fmt(i['value'])} = sum of {src}")
             else:

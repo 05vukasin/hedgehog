@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from .base import ChatClient, header_retry_after
+from .base import ChatClient, header_retry_after, quota_exhausted
 from .types import ChatResult, Message, MissingDependency, Tool, ToolCall, Usage, extract_json
 
 logger = logging.getLogger("hedgehog.llm")
@@ -220,6 +220,8 @@ class AnthropicClient(ChatClient):
         try:
             sdk = _import_sdk()
         except MissingDependency:
+            return None
+        if quota_exhausted(exc):
             return None
         if isinstance(exc, (sdk.RateLimitError, sdk.APIConnectionError)):  # APITimeoutError is a subclass
             return (header_retry_after(exc),)
