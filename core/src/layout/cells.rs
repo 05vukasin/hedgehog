@@ -32,8 +32,11 @@ const MISSING_TOKENS: &[&str] = &[
 
 const TOTAL_WORDS: &[&str] = &[
     "total", "totals", "subtotal", "subtotals", "sum", "ukupno", "ukupna", "ukupni", "ukupan", "sveukupno", "svega",
-    "zbir", "zbirno", "укупно", "укупна", "укупни", "укупан", "свеукупно", "свега", "збир", "збирно",
+    "zbir", "zbirno", "укупно", "укупна", "укупни", "укупан", "свеукупно", "свега", "збир", "збирно", "average",
+    "avg", "mean", "maximum", "minimum", "prosek", "prosečno", "просек", "просечно",
 ];
+
+const AGG_FUNCS: &[&str] = &["SUM(", "SUBTOTAL(", "AVERAGE(", "MAX(", "MIN(", "COUNT(", "COUNTA(", "MEDIAN("];
 
 const NOTE_WORDS: &[&str] = &[
     "note", "notes", "source", "sources", "napomena", "napomene", "izvor", "izvori", "напомена", "напомене", "извор",
@@ -140,6 +143,16 @@ pub(crate) fn is_note_label(s: &str) -> bool {
     tokens(t).first().is_some_and(|w| NOTE_WORDS.contains(&w.as_str()))
 }
 
+/// `SUM(`/`AVERAGE(`/`MAX(`… over at least two same-sheet cells, anywhere (loose summary cells).
+pub(crate) fn is_aggregate_formula(formula: &str) -> bool {
+    let f = formula.to_ascii_uppercase();
+    if f.contains('!') || !AGG_FUNCS.iter().any(|a| f.contains(a)) {
+        return false;
+    }
+    let (refs, _) = parse_refs(f.as_bytes());
+    refs.iter().map(|r| (r.r2 - r.r1 + 1) as u64 * (r.c2 - r.c1 + 1) as u64).sum::<u64>() >= 2
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Ref {
     r1: u32,
@@ -154,7 +167,7 @@ pub(crate) fn formula_agg(formula: &str, row: u32, col: u32) -> Agg {
     if f.contains('!') {
         return Agg::None;
     }
-    let is_sum = f.contains("SUM(") || f.contains("SUBTOTAL(");
+    let is_sum = AGG_FUNCS.iter().any(|a| f.contains(a));
     let (refs, rest_is_plus) = parse_refs(f.as_bytes());
     if refs.is_empty() || !(is_sum || rest_is_plus) {
         return Agg::None;

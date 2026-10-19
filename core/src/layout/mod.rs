@@ -18,8 +18,8 @@ use crate::analysis::{Role, SheetLayout};
 use crate::grid::Grid;
 use crate::model::Sheet;
 
-use cells::{is_note_label, text_of, Kind};
-use params::{LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP};
+use cells::{is_aggregate_formula, is_note_label, is_total_label, text_of, Kind};
+use params::{LOOSE_AGGREGATES_AS_TOTAL, LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP};
 use tables::Out;
 
 /// Detects tables and assigns one [`Role`] per entry of `grid.sheet.cells` (same order).
@@ -58,9 +58,14 @@ fn classify_loose(sheet: &Sheet, out: &mut Out) {
         for row in &region.rows {
             for e in &row.entries {
                 let Some(i) = e.cell else { continue };
+                let cell = &sheet.cells[i];
                 out.roles[i] = match e.kind {
+                    _ if LOOSE_AGGREGATES_AS_TOTAL && cell.formula.as_deref().is_some_and(is_aggregate_formula) => {
+                        Role::Total
+                    }
+                    Kind::Text if LOOSE_AGGREGATES_AS_TOTAL && is_total_label(text_of(cell).unwrap_or("")) => Role::Total,
                     Kind::Text => {
-                        let t = text_of(&sheet.cells[i]).unwrap_or("");
+                        let t = text_of(cell).unwrap_or("");
                         if is_note_label(t) || (!above && t.trim().chars().count() >= NOTE_MIN_LEN) {
                             Role::Note
                         } else if above {
