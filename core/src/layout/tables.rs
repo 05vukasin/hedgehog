@@ -391,8 +391,17 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         return false;
     }
     // Blank spacer columns (between row labels and numbers) don't count against the density.
-    let used: HashSet<u32> = trows.iter().flat_map(|r| r.filled()).flat_map(|e| e.left..=e.right.min(rect.right)).collect();
-    let area = (rect.bottom - rect.top + 1) as f64 * used.len().max(1) as f64;
+    let mut spans: Vec<(u32, u32)> = trows.iter().flat_map(|r| r.filled()).map(|e| (e.left, e.right.min(rect.right))).collect();
+    spans.sort_unstable();
+    let (mut used, mut end) = (0u64, None::<u32>);
+    for (l, r) in spans {
+        let l = end.map_or(l, |e| l.max(e + 1));
+        if r >= l {
+            used += (r - l + 1) as u64;
+            end = Some(r);
+        }
+    }
+    let area = (rect.bottom - rect.top + 1) as f64 * used.max(1) as f64;
     let filled: f64 = trows
         .iter()
         .flat_map(|r| r.filled())

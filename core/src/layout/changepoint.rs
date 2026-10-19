@@ -15,9 +15,10 @@
 use std::collections::HashMap;
 
 use crate::model::{Sheet, Value};
-use crate::values::{missing_token, parse_date, parse_number, NumberHint};
+use crate::values::{parse_date, parse_number, NumberHint};
 
-use super::blocks::Row;
+use super::blocks::{Entry, Row};
+use super::cells::Kind;
 use super::params::*;
 use super::tables::{is_header_row, is_headerish, is_title_row_simple, is_total_row, signature, Signature};
 
@@ -38,8 +39,11 @@ fn coarse(k: usize) -> usize {
     }
 }
 
-fn class_of(sheet: &Sheet, cell: Option<usize>) -> u8 {
-    let Some(i) = cell else { return EMPTY };
+fn class_of(sheet: &Sheet, e: &Entry) -> u8 {
+    let Some(i) = e.cell else { return EMPTY };
+    if matches!(e.kind, Kind::Missing | Kind::Blank) {
+        return EMPTY;
+    }
     let c = &sheet.cells[i];
     match &c.value {
         Some(Value::Number(n)) => {
@@ -50,20 +54,38 @@ fn class_of(sheet: &Sheet, cell: Option<usize>) -> u8 {
             }
         }
         Some(Value::DateTime(_)) => DATE,
+        // Plain numeric text ("1,200.50", "(500)", "01/02/2001"): classed by its characters.
+        Some(Value::Text(s)) if e.kind == Kind::Num => {
+            if s.contains('/') {
+                DATE
+            } else if s.contains(['.', ',']) {
+                DEC
+            } else {
+                INT
+            }
+        }
         Some(Value::Text(s)) => {
             let t = s.trim();
-            if t.is_empty() || missing_token(t).is_some() {
-                return EMPTY;
-            }
-            if t.bytes().any(|b| b.is_ascii_digit()) {
-                if let Some(p) = parse_number(t, NumberHint::default()) {
-                    return if p.normalized().fract() == 0.0 { INT } else { DEC };
+            // Only short, digit-heavy text can be a decorated number or a date ("1.234,50 EUR",
+            // "Jan 5, 2001"); addresses and descriptions skip the parsers.
+            if t.len() <= 32 {
+                let (digits, alnum) = t.chars().fold((0usize, 0usize), |(d, a), ch| {
+                    (d + ch.is_ascii_digit() as usize, a + ch.is_alphanumeric() as usize)
+                });
+                if digits > 0 && digits * 2 >= alnum {
+                    if let Some(p) = parse_number(t, NumberHint::default()) {
+                        return if p.normalized().fract() == 0.0 { INT } else { DEC };
+                    }
+                    if parse_date(t, None).is_some() {
+                        return DATE;
+                    }
                 }
-                if parse_date(t, None).is_some() {
-                    return DATE;
-                }
+                TEXT
+            } else if t.chars().count() >= CP_LONG_TEXT {
+                LONG
+            } else {
+                TEXT
             }
-            if t.chars().count() >= CP_LONG_TEXT { LONG } else { TEXT }
         }
         Some(_) => EMPTY,
         None if c.formula.is_some() => DEC,
@@ -82,7 +104,13 @@ struct Sigs {
 }
 
 fn signatures(sheet: &Sheet, rows: &[Row]) -> Option<Sigs> {
+    // Column → index: a flat table over the block's column span (blocks are at most a few
+    // thousand columns wide; wider ones fall back to a map).
+    let lo = rows.iter().map(|r| r.left()).min().unwrap_or(0);
+    let hi = rows.iter().map(|r| r.right()).max().unwrap_or(0);
+    let mut flat: Vec<u16> = if hi - lo < 4096 { vec![u16::MAX; (hi - lo + 1) as usize] } else { Vec::new() };
     let mut idx: HashMap<u32, u16> = HashMap::new();
+    let mut ncols = 0usize;
     let mut col_of = Vec::new();
     let mut out = Vec::with_capacity(rows.len());
     let mut data = Vec::with_capacity(rows.len());
@@ -95,23 +123,28 @@ fn signatures(sheet: &Sheet, rows: &[Row]) -> Option<Sigs> {
             continue;
         }
         for e in &r.entries {
-            let k = class_of(sheet, e.cell);
+            let k = class_of(sheet, e);
             if k == EMPTY {
                 continue;
             }
-            let n = idx.len();
-            if n >= CP_MAX_COLS && !idx.contains_key(&e.left) {
-                return None;
-            }
-            let ci = *idx.entry(e.left).or_insert_with(|| {
+            let slot = if flat.is_empty() {
+                idx.entry(e.left).or_insert(u16::MAX)
+            } else {
+                &mut flat[(e.left - lo) as usize]
+            };
+            if *slot == u16::MAX {
+                if ncols >= CP_MAX_COLS {
+                    return None;
+                }
+                *slot = ncols as u16;
                 col_of.push(e.left);
-                n as u16
-            });
-            v.push((ci, k));
+                ncols += 1;
+            }
+            v.push((*slot, k));
         }
         out.push(v);
     }
-    Some(Sigs { rows: out, data, ncols: idx.len(), col_of })
+    Some(Sigs { rows: out, data, ncols, col_of })
 }
 
 /// Row indices (into `rows`) in `a+1..b` where a new table starts.

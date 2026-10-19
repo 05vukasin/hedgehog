@@ -462,7 +462,6 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
             if !p.is_label_block() {
                 continue;
             }
-            let rows_i: Vec<u32> = blocks[i].rows.iter().map(|r| r.row).collect();
             for gap in 1..=LABEL_MAX_GAP {
                 let Some(l) = p.rect.right.checked_add(gap + 1) else { continue };
                 for &j in by_left.get(&l).into_iter().flatten() {
@@ -471,8 +470,9 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
                         continue;
                     }
                     // Same row (row label) or the row just below (group label above its rows).
-                    let hit = |r: u32| rows_i.binary_search(&r).is_ok();
-                    if blocks[j].rows.iter().any(|r| hit(r.row) || r.row.checked_sub(1).is_some_and(hit)) {
+                    let rows_j = &blocks[j].rows;
+                    let hit = |r: u32| rows_j.binary_search_by_key(&r, |x| x.row).is_ok();
+                    if blocks[i].rows.iter().any(|r| hit(r.row) || hit(r.row + 1)) {
                         join(&mut dsu, &mut group, i as u32, j as u32);
                     }
                 }

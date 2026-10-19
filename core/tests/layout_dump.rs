@@ -35,8 +35,13 @@ fn dump() {
         if only.as_ref().is_some_and(|n| *n != sheet.name) {
             continue;
         }
-        let l = layout::analyze(&Grid::new(sheet));
-        println!("== {} ({} cells)", sheet.name, sheet.cells.len());
+        let grid = Grid::new(sheet);
+        let t = std::time::Instant::now();
+        let l = layout::analyze(&grid);
+        println!("== {} ({} cells, layout {:.2} ms)", sheet.name, sheet.cells.len(), t.elapsed().as_secs_f64() * 1e3);
+        if std::env::var_os("HH_DUMP_QUIET").is_some() {
+            continue;
+        }
         for t in &l.tables {
             println!(
                 "  table {}:{} header_top={} rows={} conf={:.2}",
