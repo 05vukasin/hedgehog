@@ -8,7 +8,8 @@ table, a `Totals` sheet, a `Notes` sheet and a JSON manifest that traces every v
 source cell. The analysis is deterministic Rust; LLMs are optional. Pre-alpha.
 
 ```sh
-pip install hedgehog-sheets                 # prebuilt wheels, no Rust needed
+# prebuilt wheels, no Rust needed
+pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
 pip install "hedgehog-sheets[openai]"       # optional LLM providers: [openai] [anthropic] [bedrock] [llm]
 ```
 

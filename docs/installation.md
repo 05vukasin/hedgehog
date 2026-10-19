@@ -20,8 +20,7 @@ The package is called **`hedgehog-sheets`** on the package index; you import it 
 
 ### From GitHub Releases
 
-Prebuilt wheels are attached to every GitHub Release, starting with the first one (v0.1.0). Point pip
-at the release page:
+Prebuilt wheels are attached to every GitHub Release (latest: v0.1.0). Point pip at the release page:
 
 ```sh
 pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
@@ -33,7 +32,7 @@ lists them. You can also download the `.whl` file for your platform and run `pip
 
 ### From PyPI
 
-Coming soon. Once published, it will be:
+Not published yet. Once it is, this will work:
 
 ```sh
 pip install hedgehog-sheets

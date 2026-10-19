@@ -62,15 +62,14 @@ Prebuilt wheels for Linux, macOS and Windows (CPython 3.9+), no Rust toolchain n
 **`hedgehog-sheets`**; you `import hedgehog`.
 
 ```sh
-# From GitHub Releases (available from the first release, v0.1.0)
+# From GitHub Releases (latest: v0.1.0)
 pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
-
-# From PyPI: coming soon
-pip install hedgehog-sheets
 
 # Optional LLM providers: [openai], [anthropic], [bedrock] or [llm] for all three
 pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
 ```
+
+Not on PyPI yet; a plain `pip install hedgehog-sheets` will work once it is published.
 
 From source (needs Rust): `pip install ./py` in a clone. The `hedgehog` command-line tool is built
 separately: `cargo install --git https://github.com/05vukasin/hedgehog hh_cli`.
