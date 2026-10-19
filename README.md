@@ -63,10 +63,10 @@ wb.sheet_names          # ['PLAN RASHODA']
 print(wb.describe())
 ```
 
-Measured on a random sample of 500 Enron spreadsheets, the reader opened **488 / 500** at
-about **17 ms per file**. The 12 failures are a known calamine issue: the workbook lists a
-`veryHidden` sheet with an empty `r:id` (a leftover VBA module sheet from xls to xlsx
-conversion). A fix is planned (strip those entries before parsing, or our own reader).
+Measured on a random sample of 500 Enron spreadsheets, the reader opens **500 / 500** at about
+**17 ms per file** (including process start). 12 of them list a `veryHidden` sheet with an empty
+`r:id` (a leftover VBA module sheet from xls to xlsx conversion) that calamine rejects; hedgehog
+strips that entry in memory and reads the rest of the workbook.
 
 ## Roadmap
 

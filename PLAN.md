@@ -45,9 +45,8 @@ useful to an agent. ML (M6, M7) comes once there is labelled data (M5) to train 
 the research shows rules reach ~90% and boosted trees close most of the remaining gap.
 
 ## Known issues
-- calamine refuses ~2.4% of Enron xlsx (500-file sample): workbook lists a `veryHidden` sheet with
-  empty `r:id=""` (leftover VBA module sheet from xls→xlsx conversion) → "Relationship not found".
-  Fix: strip such `<sheet>` entries in memory before handing the zip to calamine, or our own reader (M10).
+- ~2.4% of Enron xlsx list a `veryHidden` sheet with empty `r:id=""` that calamine rejects
+  ("Relationship not found"). Fixed in `reader.rs`: the entry is stripped in memory and the file reopened (500/500 open).
 - calamine gives no cell styles (bold, borders, fills, number formats) — needed for M6 features.
 
 ## Not blocking yet (decide by M8–M10)

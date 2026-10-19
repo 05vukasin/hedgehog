@@ -4,9 +4,13 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::fs::File;
+use std::io::{Cursor, Read, Seek, Write};
 use std::path::Path;
 
-use calamine::{open_workbook_auto, Data, Dimensions, Range, Reader, Sheets};
+use calamine::{open_workbook_auto, open_workbook_auto_from_rs, Data, Dimensions, Range, Reader, Sheets};
+use zip::write::SimpleFileOptions;
+use zip::CompressionMethod;
 
 use crate::model::{Cell, Rect, Sheet, Value, Workbook};
 
@@ -26,7 +30,20 @@ fn err(e: impl fmt::Display) -> Error {
 }
 
 pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
-    let mut wb = open_workbook_auto(path).map_err(err)?;
+    let path = path.as_ref();
+    match open_workbook_auto(path) {
+        Ok(wb) => read_all(wb),
+        // Some converted workbooks list a veryHidden sheet with `r:id=""` (a leftover VBA module
+        // sheet); calamine rejects the whole file. Drop those entries and retry from memory.
+        Err(e) if e.to_string().contains("Relationship not found") => {
+            let repaired = repair_unlinked_sheets(path).map_err(|_| err(e))?;
+            read_all(open_workbook_auto_from_rs(Cursor::new(repaired)).map_err(err)?)
+        }
+        Err(e) => Err(err(e)),
+    }
+}
+
+fn read_all<RS: Read + Seek>(mut wb: Sheets<RS>) -> Result<Workbook, Error> {
     let names = wb.sheet_names();
     let mut sheets = Vec::with_capacity(names.len());
     for name in names {
@@ -39,7 +56,45 @@ pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
     Ok(Workbook { sheets })
 }
 
-fn merge_cells<RS: std::io::Read + std::io::Seek>(wb: &mut Sheets<RS>, name: &str) -> Vec<Rect> {
+/// Copies the xlsx zip into memory with `<sheet … r:id="">` entries removed from `xl/workbook.xml`.
+fn repair_unlinked_sheets(path: &Path) -> zip::result::ZipResult<Vec<u8>> {
+    let mut src = zip::ZipArchive::new(File::open(path)?)?;
+    let mut out = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for i in 0..src.len() {
+        let entry = src.by_index(i)?;
+        if entry.name()? == "xl/workbook.xml" {
+            let mut entry = entry;
+            let mut xml = String::new();
+            entry.read_to_string(&mut xml)?;
+            let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            out.start_file("xl/workbook.xml", opts)?;
+            out.write_all(strip_unlinked_sheets(&xml).as_bytes())?;
+        } else {
+            drop(entry);
+            out.raw_copy_file(src.by_index_raw(i)?)?;
+        }
+    }
+    Ok(out.finish()?.into_inner())
+}
+
+fn strip_unlinked_sheets(xml: &str) -> String {
+    let mut out = String::with_capacity(xml.len());
+    let mut rest = xml;
+    while let Some(start) = rest.find("<sheet ") {
+        let Some(len) = rest[start..].find("/>") else { break };
+        let end = start + len + 2;
+        out.push_str(&rest[..start]);
+        let tag = &rest[start..end];
+        if !tag.contains("r:id=\"\"") {
+            out.push_str(tag);
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn merge_cells<RS: Read + Seek>(wb: &mut Sheets<RS>, name: &str) -> Vec<Rect> {
     let dims: Vec<Dimensions> = match wb {
         Sheets::Xlsx(x) => x.merge_cells_by_sheet_name(name).unwrap_or_default(),
         Sheets::Xls(x) => x.merge_cells_by_sheet_name(name).unwrap_or_default(),
