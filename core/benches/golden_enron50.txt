@@ -1,0 +1,50 @@
+fb39f83a8c001c5a	1920196	irregular/enron/kam_keiser__17897__ERMS_MTM_Values Nov 30 2001 v2 JH final.xlsx
+15d1d3db772c937f	24566	irregular/enron/dutch_quigley__9378__modeldutch.xlsx
+f2c8204b9221c85e	890220	irregular/enron/benjamin_rogers__1002__NYISO Price Information version 2.xlsx
+7fc43edb1847e61f	653364	irregular/enron/darron_c_giron__7917__NG-PRICE_FinancialOnly.xlsx
+fdd211ab085364c2	767613	irregular/enron/gstorey__12100__Totals_xx.xlsx
+fb02c234650888aa	804275	irregular/enron/kam_keiser__17851___EYrequest.xlsx
+0a6089bb28a3b970	709503	irregular/enron/larry_may__21911__larryoptmodel.xlsx
+29f4db380b88405d	613548	irregular/enron/daren_farmer__5511__accrued0922.xlsx
+32c4b7ba51176227	637226	irregular/enron/cooper_richey__4042__hydro.xlsx
+22ecad0c9535f79e	581735	irregular/enron/richard_ring__31626__Richard.xlsx
+41ee2bea8bcdac4d	6540	irregular/enron/Backup of kate_symes__18504__New Notification Report 0101.xlsx
+75e3f1916b3858fa	129	irregular/enron/andy_zipper__752__10_23_01LO.xlsx
+663c43d611eda391	12075	irregular/enron/benjamin_rogers__925__NY Gen model..xlsx
+c6bbee91c103b6c8	11802	irregular/enron/chris_germany__1834__NewPower_sales2011.xlsx
+938f084222c9bd8e	56	irregular/enron/chris_germany__2999__4-6-2000 enroncestransactions.xlsx
+f68a7594040f8b15	285	irregular/enron/cooper_richey__4242__enron.xlsx
+1f189c834efe1a78	211	irregular/enron/daren_farmer__5095__Tufco_May01.xlsx
+a201abb487f00f96	4991	irregular/enron/daren_farmer__5653__EnronAvails0101.xlsx
+c9d6d205c4cea219	13649	irregular/enron/daren_farmer__6650__Consolidated_2000.xlsx
+3627688b9416ef03	6076	irregular/enron/darrell_schoolcraft__7663__SUNFLOWER - NNG - HOURLY - 2002.xlsx
+819df99da77a8ca4	84	irregular/enron/debra_perlingiere__8463__Seminole.xlsx
+5dcf8dc51a92f77f	1500	irregular/enron/eric_linder__9653__temp Portland stats.xlsx
+68f099abde7eaeea	1807	irregular/enron/errol_mclaughlin_jr__10132__PGEGAS.xlsx
+49d2d5b2de7c0144	232	irregular/enron/gerald_nemec__11306__Mexicana de Cobre_ENA.xlsx
+daefb704e9a4f2fa	1	irregular/enron/hunter_shively__12410__STOR9831.xlsx
+a30beef4a90f938b	588	irregular/enron/jane_tholt__13332__Enron Pricing Report.xlsx
+2fe71364b07bd6e4	115	irregular/enron/jim_schwieger__14289__STOR9826.xlsx
+ed75864166965ee6	979	irregular/enron/joe_parks__15046__BGM 0612 ngpl.xlsx
+22c9a6bbd1a12409	103	irregular/enron/john_griffith__15792__10_19_01OH.xlsx
+f90d6356fb7d61f9	882	irregular/enron/john_lavorato__16466__lavodeal1.xlsx
+d04c5ce3e2679e98	446	irregular/enron/jonathan_mckay__17400__Quotes2111.xlsx
+2fcd02ec0e72ebc9	1043	irregular/enron/kam_keiser__18060__Netco Curves.xlsx
+a24c16adab0da161	308	irregular/enron/kate_symes__18535__Palo.xlsx
+b6ecac5ad35bc6b1	33	irregular/enron/keith_holst__19352__car.xlsx
+dfe3f6094a8b8409	15401	irregular/enron/kevin_ruscitti__20262__GD 1199-42701-kevin.xlsx
+318da89ae545be77	281	irregular/enron/larry_campbell__21457__NUI-NOM FORMS.xlsx
+9d7b681926a4c498	1	irregular/enron/lisa_gang__22432__Hanson Scheduling Model_5_10_11.xlsx
+f55749daa307ec76	5106	irregular/enron/louise_kitchen__23074__Hall Operations List for NetCo  version 4.xlsx
+dedf75fca7cf1751	86	irregular/enron/marie_heard__24536__Brothers Production #Y43070.xlsx
+274343e10c121f1d	1817	irregular/enron/mary_fischer__25617__37D.xlsx
+ea20e3fa339de581	9905	irregular/enron/michelle_lokay__26659__SOCAL_PERMIAN_SPRD_REPORT.xlsx
+24e33d5a4a9df48a	251	irregular/enron/monika_causholli__28122__Enron_Fiber_Pulp_Properties.xlsx
+ae1a563bb5e76feb	723	irregular/enron/phillip_allen__28928__MAPTTRA.xlsx
+a6ae316ff60efc00	97231	irregular/enron/phillip_platter__31371__ca0912epmi.xlsx
+e071790686d9f5b4	3136	irregular/enron/rick_buy__32779__Sovereign Bonds_070901.xlsx
+2f1ffbdb34af9332	117	irregular/enron/sally_beck__33736__NA GAS AND POWER-REGION BREAKOUT 07-26-00 EM.xlsx
+69ba8466ef70e4da	2069	irregular/enron/sally_beck__35523__MgmtSum-Q201-Global-0601.xlsx
+7371caa5edb23068	4957	irregular/enron/scott_neal__37846__Aga4-7.xlsx
+194fdd5cf2d6d841	409	irregular/enron/stacey_white__39050__Active_Inactive Booklist_1022.xlsx
+4b2e7ddbd95cecc3	744	irregular/enron/tracy_geaccone__40260__C0366-112458.xlsx

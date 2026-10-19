@@ -76,6 +76,15 @@ fn tokens(text: &str) -> Vec<String> {
     out
 }
 
+/// Every ASCII phrase above contains one of these (lower-case) substrings: `total`, `totals`,
+/// `tot`, `grandtotal`, `subtotal` → `tot`; `sum`; `ukupno`, `ukupan`, `ukupna`, `sveukupno` →
+/// `ukup`; `svega`; `zbir`, `medjuzbir`, `meduzbir` → `zbir`. Text without any of them cannot
+/// match (the other phrases need non-ASCII letters).
+fn ascii_may_hold_keyword(b: &[u8]) -> bool {
+    const NEEDLES: [&[u8]; 5] = [b"tot", b"sum", b"ukup", b"svega", b"zbir"];
+    NEEDLES.iter().any(|n| b.windows(n.len()).any(|w| w.eq_ignore_ascii_case(n)))
+}
+
 fn contains_phrase(toks: &[String], phrase: &[&str]) -> bool {
     toks.windows(phrase.len()).any(|w| w.iter().zip(phrase).all(|(a, b)| a == b))
 }
@@ -83,6 +92,9 @@ fn contains_phrase(toks: &[String], phrase: &[&str]) -> bool {
 /// Returns the total level a short label announces ("Ukupno Vojvodina" → Total,
 /// "Sub-total" → Subtotal, "GRAND TOTAL:" → GrandTotal), or `None`.
 pub fn total_keyword(text: &str) -> Option<KeywordLevel> {
+    if text.is_ascii() && !ascii_may_hold_keyword(text.as_bytes()) {
+        return None; // fast path for the vast majority of labels: no allocation
+    }
     let toks = tokens(text);
     if toks.is_empty() || toks.len() > MAX_TOKENS {
         return None;
@@ -119,6 +131,11 @@ mod tests {
         assert_eq!(total_keyword("Sveukupno"), Some(GrandTotal));
         assert_eq!(total_keyword("СВЕУКУПНО"), Some(GrandTotal));
         assert_eq!(total_keyword("Summary"), None);
+        assert_eq!(total_keyword("MEDJUZBIR"), Some(Subtotal));
+        assert_eq!(total_keyword("Overall TOTAL"), Some(GrandTotal));
+        assert_eq!(total_keyword("Sve ukupno:"), Some(GrandTotal));
+        assert_eq!(total_keyword("SUM"), Some(Total));
+        assert_eq!(total_keyword("Price"), None);
         assert_eq!(total_keyword("Totally unrelated sentence"), None);
         assert_eq!(total_keyword("Beograd"), None);
         assert_eq!(

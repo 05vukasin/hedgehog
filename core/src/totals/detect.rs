@@ -3,6 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::grid::Grid;
 use crate::model::{Cell, Rect, Value};
 use crate::totals::deps::DependencyIndex;
@@ -138,18 +140,59 @@ pub fn keyword_rows(grid: &Grid) -> HashMap<u32, (u32, KeywordLevel)> {
     out
 }
 
-/// Nearest text cell left of (row, col) in the same row.
-fn text_left(grid: &Grid, row: u32, col: u32) -> Option<u32> {
-    // Row cells are contiguous in the row-major cell list; scan them via the grid instead of
-    // assuming an order.
-    let used = grid.used_range()?;
-    (used.left..col).rev().find(|&c| text(grid.cell(row, c)).is_some_and(|s| numeric_text(s).is_none()))
+fn is_label(cell: &Cell) -> bool {
+    text(Some(cell)).is_some_and(|s| numeric_text(s).is_none())
 }
 
-/// Nearest text cell above (row, col) in the same column.
-fn text_above(grid: &Grid, row: u32, col: u32) -> Option<u32> {
-    let used = grid.used_range()?;
-    (used.top..row).rev().find(|&r| text(grid.cell(r, col)).is_some_and(|s| numeric_text(s).is_none()))
+/// Nearest label (non-numeric text) cell left of / above a position, memoized per row / column:
+/// for each line, the coordinate of the last label at or before every cell, so a lookup is one
+/// binary search instead of a walk over the whole line.
+struct Labels<'g> {
+    grid: &'g Grid<'g>,
+    rows: FxHashMap<u32, Vec<u32>>,
+    cols: FxHashMap<u32, Vec<u32>>,
+}
+
+impl<'g> Labels<'g> {
+    fn new(grid: &'g Grid<'g>) -> Self {
+        Labels { grid, rows: FxHashMap::default(), cols: FxHashMap::default() }
+    }
+
+    fn nearest(grid: &Grid, line: &[u32], at: impl Fn(&Cell) -> u32, memo: &[u32], before: u32) -> Option<u32> {
+        let cells = &grid.sheet.cells;
+        let end = line.partition_point(|&i| at(&cells[i as usize]) < before);
+        let found = *memo.get(end.checked_sub(1)?)?;
+        (found != u32::MAX).then_some(found)
+    }
+
+    fn prefix(grid: &Grid, line: &[u32], at: impl Fn(&Cell) -> u32) -> Vec<u32> {
+        let mut last = u32::MAX;
+        line.iter()
+            .map(|&i| {
+                let c = &grid.sheet.cells[i as usize];
+                if is_label(c) {
+                    last = at(c);
+                }
+                last
+            })
+            .collect()
+    }
+
+    /// Nearest text cell left of (row, col) in the same row.
+    fn left(&mut self, row: u32, col: u32) -> Option<u32> {
+        let grid = self.grid;
+        let line = grid.row_cells(row);
+        let memo = self.rows.entry(row).or_insert_with(|| Self::prefix(grid, line, |c| c.col));
+        Self::nearest(grid, line, |c| c.col, memo, col)
+    }
+
+    /// Nearest text cell above (row, col) in the same column.
+    fn above(&mut self, row: u32, col: u32) -> Option<u32> {
+        let grid = self.grid;
+        let line = grid.col_cells(col);
+        let memo = self.cols.entry(col).or_insert_with(|| Self::prefix(grid, line, |c| c.row));
+        Self::nearest(grid, line, |c| c.row, memo, row)
+    }
 }
 
 pub fn detect(grid: &Grid) -> Vec<TotalCandidate> {
@@ -160,6 +203,7 @@ pub fn detect(grid: &Grid) -> Vec<TotalCandidate> {
 pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
     let sheet = grid.sheet;
     let kw_rows = keyword_rows(grid);
+    let mut labels = Labels::new(grid);
     let mut out: Vec<TotalCandidate> = Vec::new();
 
     // (a) Aggregate formulas over cells above / to the left.
@@ -184,7 +228,7 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
         let keyword = if vertical {
             kw_rows.get(&f.row).filter(|(lc, _)| *lc < f.col).map(|&(lc, lvl)| ((f.row, lc), lvl))
         } else {
-            text_above(grid, f.row, f.col)
+            labels.above(f.row, f.col)
                 .and_then(|r| total_keyword(text(grid.cell(r, f.col))?).map(|lvl| ((r, f.col), lvl)))
         };
         let area: u64 = p.sum_refs.iter().map(|r| r.area()).sum();
@@ -199,9 +243,9 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
             }
             None => {
                 c.label = if vertical {
-                    text_left(grid, f.row, f.col).map(|lc| (f.row, lc))
+                    labels.left(f.row, f.col).map(|lc| (f.row, lc))
                 } else {
-                    text_above(grid, f.row, f.col).map(|r| (r, f.col))
+                    labels.above(f.row, f.col).map(|r| (r, f.col))
                 };
             }
         }
@@ -219,17 +263,18 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
         out.push(c);
     }
 
-    let formula_total: HashSet<(u32, u32)> = out.iter().map(|c| (c.row, c.col)).collect();
-    let rows_with_cells: HashSet<u32> = sheet.cells.iter().map(|c| c.row).collect();
+    let formula_total: FxHashSet<(u32, u32)> = out.iter().map(|c| (c.row, c.col)).collect();
+    let rows_with_cells: FxHashSet<u32> = sheet.cells.iter().map(|c| c.row).collect();
 
     // (b) Typed numbers in keyword rows → column totals over the cells above.
     let mut kw_sorted: Vec<_> = kw_rows.iter().map(|(&r, &v)| (r, v)).collect();
     kw_sorted.sort_unstable_by_key(|x| x.0);
     for &(row, (lc, lvl)) in &kw_sorted {
-        let cols: Vec<u32> = sheet
-            .cells
+        let cols: Vec<u32> = grid
+            .row_cells(row)
             .iter()
-            .filter(|c| c.row == row && c.col > lc && c.formula.is_none())
+            .map(|&i| &sheet.cells[i as usize])
+            .filter(|c| c.col > lc && c.formula.is_none())
             .filter(|c| matches!(c.value, Some(Value::Number(_))))
             .map(|c| c.col)
             .collect();
@@ -290,7 +335,7 @@ fn group_name(label: &str) -> Option<String> {
 fn typed_group(
     grid: &Grid,
     kw_rows: &HashMap<u32, (u32, KeywordLevel)>,
-    rows_with_cells: &HashSet<u32>,
+    rows_with_cells: &FxHashSet<u32>,
     row: u32,
     col: u32,
     label_col: u32,
@@ -367,8 +412,8 @@ fn typed_group(
 fn typed_vertical(
     grid: &Grid,
     kw_rows: &HashMap<u32, (u32, KeywordLevel)>,
-    formula_total: &HashSet<(u32, u32)>,
-    rows_with_cells: &HashSet<u32>,
+    formula_total: &FxHashSet<(u32, u32)>,
+    rows_with_cells: &FxHashSet<u32>,
     row: u32,
     col: u32,
     label_col: u32,

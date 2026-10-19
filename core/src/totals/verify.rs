@@ -1,5 +1,7 @@
 //! Recomputes a total from the cached values of its source cells and compares.
 
+use rustc_hash::FxHashSet;
+
 use crate::grid::Grid;
 use crate::model::{Rect, Value};
 use crate::totals::detect::{Evidence, TotalCandidate, TotalOrigin};
@@ -139,6 +141,10 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
         check.reason = CheckReason::NoSource;
         return check;
     };
+    let exclude: FxHashSet<(u32, u32)> = cand.exclude.iter().copied().collect();
+    let double_counted: FxHashSet<(u32, u32)> = cand.double_counted.iter().copied().collect();
+    let coerce: FxHashSet<(u32, u32)> = coerce.into_iter().collect();
+    let mut seen_text: FxHashSet<(u32, u32)> = FxHashSet::default();
     let mut sum = 0.0;
     let mut values: Vec<f64> = Vec::new();
     let mut missing = false;
@@ -146,39 +152,39 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
     let mut double = 0.0;
     for r in &cand.ranges {
         let Some(r) = clamp(r, &used) else { continue };
-        for row in r.top..=r.bottom {
-            for col in r.left..=r.right {
-                if cand.exclude.contains(&(row, col)) || (row, col) == (cand.row, cand.col) {
-                    continue;
-                }
-                let Some(c) = grid.cell(row, col) else { continue };
-                let v = match &c.value {
-                    Some(Value::Number(v) | Value::DateTime(v)) => Some(*v),
-                    Some(Value::Text(s)) => match numeric_text(s) {
-                        Some(v) => {
-                            if !check.numbers_as_text.contains(&(row, col)) {
-                                check.numbers_as_text.push((row, col));
-                            }
-                            coerce.contains(&(row, col)).then_some(v)
+        // Only positions holding a cell matter; visit them row-major like a scan of the area.
+        for i in grid.cells_in(r) {
+            let c = &grid.sheet.cells[i as usize];
+            let pos = (c.row, c.col);
+            if pos == (cand.row, cand.col) || exclude.contains(&pos) {
+                continue;
+            }
+            let v = match &c.value {
+                Some(Value::Number(v) | Value::DateTime(v)) => Some(*v),
+                Some(Value::Text(s)) => match numeric_text(s) {
+                    Some(v) => {
+                        if seen_text.insert(pos) {
+                            check.numbers_as_text.push(pos);
                         }
-                        None => None,
-                    },
-                    Some(Value::Error(_)) => {
-                        error = true;
-                        None
+                        coerce.contains(&pos).then_some(v)
                     }
-                    Some(Value::Bool(_)) => None,
-                    None => {
-                        missing |= c.formula.is_some();
-                        None
-                    }
-                };
-                if let Some(v) = v {
-                    sum += v;
-                    values.push(v);
-                    if cand.double_counted.contains(&(row, col)) {
-                        double += v;
-                    }
+                    None => None,
+                },
+                Some(Value::Error(_)) => {
+                    error = true;
+                    None
+                }
+                Some(Value::Bool(_)) => None,
+                None => {
+                    missing |= c.formula.is_some();
+                    None
+                }
+            };
+            if let Some(v) = v {
+                sum += v;
+                values.push(v);
+                if double_counted.contains(&pos) {
+                    double += v;
                 }
             }
         }
