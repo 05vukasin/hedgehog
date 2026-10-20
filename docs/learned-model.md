@@ -73,15 +73,23 @@ On 365 real files (315 European government spreadsheets and 50 Enron files):
 | | Rules only | Rules + model |
 |---|---|---|
 | Typical file (median) | 19 ms | 30 ms |
-| 95% of files under | 1.5 s | 2.2 s |
-| Largest file (4.5M cells) | 17.7 s | 17.4 s (above the model limit: rules) |
-| Peak memory, largest file | 1.3 GB | 1.3 GB |
+| 95% of files under | 1.5 s | 2.5 s |
+| Slowest file (4.5M cells, above the model limit) | 16.7 s | 17.3 s |
+| All 365 files | 129 s | 190 s |
+| Peak memory, 4.5M-cell file | 1.2 GB | 1.2 GB |
+| Peak memory, file with a 947k-cell sheet (just under the limit) | 0.75 GB | 1.4 GB |
+| Peak memory, 5 sheets / 1.5M cells | 0.78 GB | 0.86 GB |
+
+The model's features take about 440 bytes per cell of the sheet being analyzed, so a sheet near
+the 1,000,000-cell limit needs up to about 0.7 GB more than the rules alone; `--model-max-cells`
+lowers the limit on machines with little memory.
 
 What keeps it fast: the model labels rows, not cells (about 25 times fewer predictions); the fine
 model only evaluates the trees of roles inside the family the coarse model chose; trees are
 packed into 16-byte nodes and evaluated a block of rows at a time; repeated texts and numbers are
-parsed once per sheet; on larger sheets the feature groups, and the sheets of a workbook, run on
-parallel threads (bounded so memory stays predictable). A single-core machine runs the same code
+parsed once per sheet; on sheets of 20,000+ cells the feature groups run on parallel threads, and
+the sheets of a workbook are analyzed in parallel when they hold at most 300,000 cells together
+(larger workbooks go one sheet at a time, so peak memory is set by the largest sheet). A single-core machine runs the same code
 sequentially and gets the same result.
 
 ## Using it

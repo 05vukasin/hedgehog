@@ -79,7 +79,7 @@ totals) is kept on separate sheets with the original cell address, so **nothing 
    "Ukupno" and similar is re-calculated from the cells it covers.
 5. **Write** the clean workbook, the manifest and, if asked, a short summary.
 
-hedgehog is written in Rust, so it is fast: a typical file takes about 20 milliseconds,
+hedgehog is written in Rust, so it is fast: a typical file takes about 30 milliseconds,
 and the largest, with 4.5 million cells, takes about 20 seconds. Same file in, same result out; it
 needs no internet and no GPU: the learned model is a set of decision trees built into the library.
 A large language model is optional and only used to phrase a summary.
@@ -123,10 +123,10 @@ Prebuilt for Linux, macOS and Windows (Python 3.9 or newer). **No Rust needed.**
 called **`hedgehog-sheets`**; in Python you `import hedgehog`.
 
 ```sh
-pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.0
+pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.1
 
 # With an optional AI provider for summaries: [openai], [anthropic], [bedrock], or [llm] for all three
-pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.0
+pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.1
 ```
 
 It is not on PyPI yet; once it is, `pip install hedgehog-sheets` will be enough.

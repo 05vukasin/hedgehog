@@ -434,8 +434,8 @@ pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
 
 /// Workbooks whose model sheets hold at most this many cells in total analyze their sheets on
 /// parallel threads (the model's features take memory per cell; larger workbooks go one sheet at
-/// a time).
-const PARALLEL_SHEETS_MAX_CELLS: usize = 2_000_000;
+/// a time, so peak memory is set by the largest sheet).
+const PARALLEL_SHEETS_MAX_CELLS: usize = 300_000;
 
 /// A sheet's layout and, when the model was skipped for its size, a warning.
 type SheetAnalysis = (crate::analysis::SheetLayout, Option<String>);

@@ -6,6 +6,17 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - pre-alpha
+
+### Fixed
+
+- Peak memory with the learned model on multi-sheet workbooks: sheets are analyzed in parallel
+  only when they hold at most 300,000 cells together (was 2,000,000), so peak memory is set by the
+  largest sheet. A 5-sheet, 1.5M-cell workbook: 1.76 GB → 0.86 GB (rules alone: 0.78 GB).
+- Documented speed and memory figures re-measured on this build (365 files: median 30 ms, 95% under
+  2.5 s, slowest 17.3 s; a sheet near the 1M-cell model limit needs up to ~0.7 GB more than the
+  rules alone).
+
 ## [0.3.0] - pre-alpha
 
 ### Added
@@ -31,7 +42,7 @@ All notable changes to hedgehog are listed here. The format follows
 
 - The model adds about 11 ms to a typical file (median 19 → 30 ms on 365 real files); feature
   groups and the sheets of a workbook run on parallel threads within a memory budget; the largest
-  file (4.5M cells) stays at 17 s and 1.3 GB.
+  file (4.5M cells) stays at 17 s and 1.2 GB (see 0.3.1 for multi-sheet memory).
 - Faster value features for the rules path too: repeated texts and numbers are parsed once per
   sheet (golden output identical).
 

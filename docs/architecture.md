@@ -84,7 +84,7 @@ Per sheet, each step computed once and reused:
 2. `learned::analyze(&grid, model)`: tables from `layout::analyze`, a role for every cell from the
    rules refined by the row model (`layout::analyze` alone with `rules_only` or above
    `model_max_cells`). Sheets of a workbook are analyzed on parallel threads when their cells
-   total at most 2 million.
+   total at most 300,000.
 3. `totals::detect` and `totals::verify`: total candidates and their checks.
 4. `values::sheet_column_hints_with(&grid, locale)`: decimal separator and day/month order per
    column, or the explicit locale.
