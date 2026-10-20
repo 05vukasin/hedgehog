@@ -76,9 +76,15 @@ Multi-row headers are flattened into one row with ` / ` between levels:
 
 Before joining, a merged header cell fills its whole area, and a parent label written once over
 several labelled columns is copied to the right. Empty, duplicate and over-long names are fixed so
-the header is valid for an Excel table. The manifest keeps the original header cells of each column
+the header is valid for an Excel table. Names are cleaned for agents: footnote marks glued to a word
+or year are dropped (`20221)` becomes `2022`) and words split by a hyphen at a line break are joined
+(`De-⏎zember` becomes `Dezember`). The manifest keeps the original header cells of each column
 (`original_header`) with their addresses. Details:
 [normalized-output.md](normalized-output.md#header).
+
+A table's title is the title row above it. Navigation links such as `zur Inhaltsübersicht`,
+`Back to contents`, `Retour au sommaire` or `Powrót do spisu tablic` are never a title: the next
+title-like line takes their place, and the link goes to `Notes` as `other`.
 
 ## Group-header rows
 
@@ -127,11 +133,20 @@ Then `ok` is `True`, `False` or `None` and `reason` says why:
 | `no_source` | None | Nothing numeric in the source, and the total is not zero. |
 | `unconfirmed` | None | A typed total disagrees with its guessed source, and nothing confirmed the guess. |
 | `not_verified` | None | Normalized output only: a row the layout marked as a total whose source range was not found. |
+| `not_additive` | None | Normalized output only: a typed total that does not add up, in a column whose header (or a row whose label) names a rate, share, percentage, index, average or per-capita value: `%`, `Anteil`, `Quote`, `Rate`, `Index`, `je Einwohner`, `j.E.`, `pro Kopf`, `per capita`, `Durchschnitt`, `average`, `Gesamt-VPI (2020=100)`. Also given to `not_verified` total rows with such a header or label. |
+| `rounding_difference` | None | Normalized output only: a typed total off by no more than the rounding of its n summed values (√n units of the last decimal shown, at least one) and by under 1%: typical of statistics published "in 1 000". |
+| `average_like` | None | Normalized output only: a typed total that lies between the smallest and the largest of its (non-negative) source values, so it cannot be their sum: an average, a weighted index or a wrong source range. |
+
+The last three only re-judge typed totals that would otherwise be a `mismatch`; a formula total is
+never re-judged, because its formula says what it adds. They keep a weighted average or an index
+row (`Gesamt-VPI`) from being reported as a wrong total.
 
 Recomputation follows Excel: numbers stored as text in the source range are not summed by `SUM`
 (they are listed in `numbers_as_text`), but direct `+` operands are converted, as Excel does.
 
-In the normalized output, `ok`/`False`/`None` appear as `status` `ok`/`mismatch`/`unknown`.
+In the normalized output, `ok`/`False`/`None` appear as `status` `ok`/`mismatch`/`unknown`. The
+manifest counts them for the workbook (`totals`) and per table (`tables[].totals`, which also lists
+each total row's `row` and `label`).
 
 ## Value parsing
 
