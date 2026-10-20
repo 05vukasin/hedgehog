@@ -147,7 +147,7 @@ scores every labelled corpus under `$HEDGEHOG_DATA`, on its test files:
 | Corpus | Source | Labelled cells (test) | Labels |
 |---|---|---:|---|
 | DECO | Enron business spreadsheets | 355,815 | seven roles |
-| StatSheets | 14 statistics publishers (ABS, BEA, INSEE, OECD, WHO, World Bank, Japan, Saudi Arabia, ...), 6 languages, xlsx/xls/ods | 1,702,853 | title, header, data, other |
+| StatSheets | 14 statistics publishers (ABS, BEA, INSEE, OECD, WHO, World Bank, Japan, Saudi Arabia, ...), 6 languages, xlsx/xls/ods/csv | 1,804,833 | title, header, data, other |
 | Strudel | SAUS, CIUS, DeEx and Troy tables, converted to xlsx by `tools/benchmarks/convert_strudel.py` | 261,467 | seven roles |
 | Synthetic | `tools/noise` | 169,127 | seven roles |
 
@@ -155,15 +155,15 @@ Scores are given in the full seven-role space where a corpus has it, and in the 
 corpora share (group headers count as headers, totals as data, notes as other). Two label
 conventions are harmonized: StatSheets marks row labels (stub columns) as headers, which DECO and
 hedgehog treat as data, so a StatSheets header cell with data to its right in the same row is
-scored as data; its grids are stored compressed and are mapped back with hedgehog's reader (587 of
-672 non-CSV sheets align; CSV sheets are skipped).
+scored as data; its grids are stored compressed and are mapped back with hedgehog's reader (652 of
+737 sheets align, all 65 CSV sheets among them).
 
 Rules (`layout`) vs rules + learned model (`model`), test splits:
 
 | | 7 roles pooled | 7 roles per file | 4 roles pooled | 4 roles per file |
 |---|---|---|---|---|
 | DECO rules / model | 57.1 / **67.3** | 53.6 / **59.5** | 65.7 / **80.0** | 64.4 / **70.9** |
-| StatSheets rules / model | — | — | 48.0 / **72.2** | 65.2 / **89.6** |
+| StatSheets rules / model | — | — | 48.1 / **72.3** | 65.6 / **89.6** |
 | Strudel rules / model | 50.6 / **63.2** | 48.6 / **61.6** | 73.9 / **87.5** | 77.1 / **90.5** |
 | Synthetic rules / model | 75.9 / **93.0** | 79.5 / **91.3** | 86.3 / **97.1** | 91.5 / **98.0** |
 

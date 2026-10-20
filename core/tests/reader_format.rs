@@ -1,4 +1,5 @@
-//! The reader picks the format from the file's content, not its extension.
+//! The reader picks the format from the file's content, not its extension; delimited text is
+//! recognized by a text extension or by content that is not a workbook container.
 
 use hh_core::{open, Value};
 
@@ -28,6 +29,32 @@ fn xlsx_with_wrong_extension_opens() {
 fn garbage_is_an_error_not_a_panic() {
     let path = std::env::temp_dir().join(format!("hh_test_{}_garbage.xls", std::process::id()));
     std::fs::write(&path, b"PK\x03\x04 not really a zip").unwrap();
+    let r = open(&path);
+    std::fs::remove_file(&path).ok();
+    assert!(r.is_err());
+}
+
+#[test]
+fn delimited_text_by_extension_or_content() {
+    let csv = b"Grad;Iznos\nNis;42\n";
+    for ext in ["csv", "CSV", "txt", "dat", "asp"] {
+        let path = std::env::temp_dir().join(format!("hh_test_{}_text.{ext}", std::process::id()));
+        std::fs::write(&path, csv).unwrap();
+        let wb = open(&path);
+        std::fs::remove_file(&path).ok();
+        let wb = wb.unwrap_or_else(|e| panic!(".{ext}: {e}"));
+        assert_eq!(wb.sheets.len(), 1);
+        assert_eq!(wb.sheets[0].name, format!("hh_test_{}_text", std::process::id()));
+        assert_eq!(wb.sheets[0].cells[3].value, Some(Value::Number(42.0)));
+    }
+    // A workbook saved as .csv opens as the workbook; text named .xls stays an error.
+    let path = std::env::temp_dir().join(format!("hh_test_{}_book.csv", std::process::id()));
+    std::fs::write(&path, xlsx_bytes()).unwrap();
+    let wb = open(&path);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(wb.unwrap().sheets[0].name, "Data");
+    let path = std::env::temp_dir().join(format!("hh_test_{}_text.xls", std::process::id()));
+    std::fs::write(&path, csv).unwrap();
     let r = open(&path);
     std::fs::remove_file(&path).ok();
     assert!(r.is_err());

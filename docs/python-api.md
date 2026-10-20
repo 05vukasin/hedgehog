@@ -33,7 +33,7 @@ released, so several files can be normalized from threads.
 
 | Parameter | Type | Meaning |
 |---|---|---|
-| `path` | `str` or `os.PathLike` | Input workbook (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.ods`). |
+| `path` | `str` or `os.PathLike` | Input workbook (`.xlsx`, `.xlsm`, `.xlsb`, `.xls`, `.ods`) or CSV / TSV file. |
 | `out_dir` | `str` or `os.PathLike` | Output directory. |
 | `keep_totals` | `bool` | Keep total rows in the table sheets with a `_row_type` column. |
 | `csv` | `bool` | Also write one CSV per table. |

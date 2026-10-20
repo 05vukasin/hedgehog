@@ -109,6 +109,38 @@ def test_normalize_pandas(messy_xlsx, tmp_path):
     assert r.manifest["options"]["locale"] == "rs"
 
 
+def test_normalize_csv(tmp_path):
+    """A semicolon CSV with a title line, European numbers and dates, a total row and a note."""
+    pd = pytest.importorskip("pandas")
+    src = tmp_path / "prodaja.csv"
+    src.write_text(
+        "Prodaja po gradovima 2024;;\n"
+        ";;\n"
+        "Grad;Iznos;Datum\n"
+        "Beograd;1.234,56;31.12.2024.\n"
+        "Niš;2.000,00;15.01.2025.\n"
+        '"Novi Sad; centar";987,10;01.02.2025.\n'
+        "Ukupno;4.221,66;\n"
+        ";;\n"
+        "Izvor: interna evidencija;;\n",
+        encoding="utf-8",
+    )
+    wb = hedgehog.open(src)
+    assert wb.sheet_names == ["prodaja"]
+    r = hedgehog.normalize(src, tmp_path / "out")
+    assert r.xlsx_path.endswith("prodaja.normalized.xlsx")
+    assert r.manifest["source"]["file_name"] == "prodaja.csv"
+    t = r.table("T1")
+    assert t["source"]["sheet"] == "prodaja" and t["source"]["title"] == "Prodaja po gradovima 2024"
+    assert t["transformations"]["total_rows_removed"] == 1
+    df = r.read("T1")
+    assert list(df.columns) == ["Grad", "Iznos", "Datum", "_src_row"]
+    assert df["Grad"].tolist() == ["Beograd", "Niš", "Novi Sad; centar"]
+    assert df["Iznos"].tolist() == [1234.56, 2000.0, 987.1]
+    assert pd.api.types.is_datetime64_any_dtype(df["Datum"])
+    assert df["_src_row"].tolist() == [4, 5, 6]
+
+
 def test_normalize_errors(tmp_path):
     with pytest.raises(ValueError):
         hedgehog.normalize(tmp_path / "missing.xlsx", tmp_path)
