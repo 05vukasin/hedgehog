@@ -1,0 +1,450 @@
+{
+  "about": "Cell-role labels for a sample of European open-data sheets (testdata/irregular/eu_*). Sheets were chosen by tools/benchmarks/select_eu_sheets.py; labels were written by an AI assistant reading the cells the hedgehog reader sees (`hedgehog cells`), before running hedgehog on them, and have not yet been reviewed by a person. build_eu_labels.py expands them into testdata/irregular/eu_labelled/labels.tsv.",
+  "format": "Per sheet, `labels` is a list of A1 ranges (or `*` = every cell) with a role, applied in order; later ranges override earlier ones. Only non-empty cells get a label, and every non-empty cell must end up with one.",
+  "conventions": [
+    "header: every row of a column header, including stub-head cells (`Jahr`, `WYSZCZEGÓLNIENIE`), spanning labels over several columns, unit rows inside the header (`%`, `Mrd. EUR`) and column-number rows (`1 2 3`).",
+    "data: row labels / stub columns, codes, category columns that repeat down the table, and continuation lines of a wrapped or translated row label (`public sector` under `sektor publiczny`).",
+    "group_header: a label alone on its row that starts a section of the table (`eingeleitet durch`, `Hombres`, `ANNO ACCADEMICO 2019/2020`).",
+    "total: a whole row (label and values) that the sheet marks as a total (Total, Totale, Insgesamt, Summe, Ogółem, i alt, samlet, Geheel - Totaal, TOTALES, an unlabelled sum row at the end), or an aggregate of the listed units (country above or below its regions, macro-regions after Italian regions, the EU row, annual averages after the twelve months). Total columns stay data. Parent rows of an indented hierarchy that carry no total wording stay data (they are categories, not summary rows), even where their values happen to be sums.",
+    "title: text above a table that names it, including subtitles, year lines, unit lines (`Unidades: Tasas`), publisher lines at the top and table codes on the title row.",
+    "note: footnotes, sources, `Stand`/as-of dates, copyright and contact lines, URLs, explanatory paragraphs and metadata blocks below or beside a table.",
+    "other: navigation links (`zur Inhaltsübersicht`, `Powrót do spisu tablic`, `Overzicht`) and stray cells away from the table."
+  ],
+  "sheets": [
+    {
+      "file": "eu_at_opendata/018_LHD_Satzaufbau_V26_stand07122010.xls",
+      "sheet": "SA03 Isocodes",
+      "why": "two code lists side by side under one header row",
+      "note": "The second list's `Land` header sits in F (merged over F:G); its values are in G.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:J1", "role": "header"}
+      ]
+    },
+    {
+      "file": "eu_at_opendata/014_Freizeitwohnsitze_20170701.xls",
+      "sheet": "Freizeitwohnsitze_20170701",
+      "why": "title, two-row header with a spanning label, `Summe` row after a blank row",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "A3:F4", "role": "header"},
+        {"range": "A285:F285", "role": "total"}
+      ]
+    },
+    {
+      "file": "eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods",
+      "sheet": "VPI",
+      "why": "long index series whose monthly blocks end in annual-average rows; source line",
+      "note": "Rows Ø 1990..Ø 2011 are the only values for those years (no months), so they are data; the Ø rows after twelve months are the annual averages of those months and are total. Uncertain: whether an average row should count as a total at all.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "A2:Q2", "role": "header"},
+        {"range": "A37:Q37", "role": "total"},
+        {"range": "A50:Q50", "role": "total"},
+        {"range": "A63:Q63", "role": "total"},
+        {"range": "A76:Q76", "role": "total"},
+        {"range": "A89:Q89", "role": "total"},
+        {"range": "A102:Q102", "role": "total"},
+        {"range": "A115:Q115", "role": "total"},
+        {"range": "A128:Q128", "role": "total"},
+        {"range": "A141:Q141", "role": "total"},
+        {"range": "A154:Q154", "role": "total"},
+        {"range": "A167:Q167", "role": "total"},
+        {"range": "A180:Q180", "role": "total"},
+        {"range": "A193:Q193", "role": "total"},
+        {"range": "A206:Q206", "role": "total"},
+        {"range": "A216", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_at_statistik_austria/003_In_OEsterreich_Geborene_nach_Geburtsmonat_Geburtstag_Bundesl_2026.ods",
+      "sheet": "K",
+      "why": "cross-tab with a two-row header, an `Insgesamt` row on top and a source line",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "A2:N3", "role": "header"},
+        {"range": "A4:N4", "role": "total"},
+        {"range": "A36", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_be_opendata/011__download_file.xls",
+      "sheet": "Pagina1",
+      "why": "municipality list with a `Geheel - Totaal` row and a date stamp below",
+      "note": "A305 is a lone date under the total row (extraction date): labelled note.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A3:C3", "role": "header"},
+        {"range": "A304:C304", "role": "total"},
+        {"range": "A305", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_be_opendata/010_Module_2017_NL_02OCT18.XLS",
+      "sheet": "Metadata",
+      "why": "text table with a title, a publisher line and a navigation link",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "A3:G3", "role": "header"},
+        {"range": "A27", "role": "note"},
+        {"range": "A30", "role": "other"}
+      ]
+    },
+    {
+      "file": "eu_ch_bfs/017_36827325_master.xlsx",
+      "sheet": "2025",
+      "why": "BFS layout: title with table code, year line, three-row header, national row, footnotes and source block",
+      "note": "Row 6 (Schweiz) is the national aggregate above the cantons: total.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:I2", "role": "title"},
+        {"range": "A3:I5", "role": "header"},
+        {"range": "A6:I6", "role": "total"},
+        {"range": "A33:A38", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_ch_bfs/002_36827515_master.xlsx",
+      "sheet": "2022",
+      "why": "same publisher, different header shape (spanning label over seven columns, separate last column)",
+      "note": "Row 6 (Schweiz) holds national averages: total by the aggregate-of-listed-units rule.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:J2", "role": "title"},
+        {"range": "A3:J5", "role": "header"},
+        {"range": "A6:J6", "role": "total"},
+        {"range": "A33:A39", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_ch_opendata/005_liste-der-prioritaeren-lebensraeume.xlsx.xls",
+      "sheet": "Habitat_Type",
+      "why": "trilingual title and explanation block above a wide text table",
+      "note": "Rows 5, 7 and 8 (description, URLs, `Stand`) are labelled note; row 3 is the title in three languages.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "B3:I3", "role": "title"},
+        {"range": "B5:I8", "role": "note"},
+        {"range": "B10:Q10", "role": "header"}
+      ]
+    },
+    {
+      "file": "eu_ch_opendata/002_input-tabelle_final_d.xlsx.xls",
+      "sheet": "Inputtabellen",
+      "why": "three-row header, X-flag columns, topic group rows, one stray cell",
+      "note": "M53 (`Wasserst…`) sits alone right of the table: other.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:K3", "role": "header"},
+        {"range": "E11", "role": "group_header"},
+        {"range": "E15", "role": "group_header"},
+        {"range": "E23", "role": "group_header"},
+        {"range": "E31", "role": "group_header"},
+        {"range": "E35", "role": "group_header"},
+        {"range": "E39", "role": "group_header"},
+        {"range": "E46", "role": "group_header"},
+        {"range": "E51", "role": "group_header"},
+        {"range": "E55", "role": "group_header"},
+        {"range": "E66", "role": "group_header"},
+        {"range": "E69", "role": "group_header"},
+        {"range": "E76", "role": "group_header"},
+        {"range": "M53", "role": "other"}
+      ]
+    },
+    {
+      "file": "eu_de_destatis/statistischer-bericht-staatsanwaltschaften-2100260257005.xlsx",
+      "sheet": "24211-26",
+      "why": "five-row header over 30 columns, `insgesamt` row, three section rows, footnotes",
+      "note": "Rows 18, 30, 33 and 44 are parent categories whose values are the sums of the indented rows below them; by the convention they stay data. Total columns (Deutschland, `zusammen`) stay data.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "other"},
+        {"range": "A2", "role": "title"},
+        {"range": "A3:AF7", "role": "header"},
+        {"range": "A9:AF9", "role": "total"},
+        {"range": "B12", "role": "group_header"},
+        {"range": "B17", "role": "group_header"},
+        {"range": "B67", "role": "group_header"},
+        {"range": "A74:A76", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_de_destatis/inlandsprodukt-erste-ergebnisse-xlsx-2180110.xlsx",
+      "sheet": "1.2",
+      "why": "stacked blocks (levels, changes, shares) under one header, each opened by a unit row",
+      "note": "C10, C50 and C90 open the three blocks (group_header); C51:E51 are unit labels under C50 (header).",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A2", "role": "title"},
+        {"range": "A7:I9", "role": "header"},
+        {"range": "C10", "role": "group_header"},
+        {"range": "C50", "role": "group_header"},
+        {"range": "C51:E51", "role": "header"},
+        {"range": "C90", "role": "group_header"}
+      ]
+    },
+    {
+      "file": "eu_de_opendata/033_Ergebnisse_Leitlinienentwicklung_Bürgerbeteiligung_1._Phase.xls",
+      "sheet": "Tabelle1",
+      "why": "long free-text table with a vertically merged category column (206 merges)",
+      "note": "Column A categories are merged down their rows; they are a category column, so data.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "A2:D2", "role": "header"}
+      ]
+    },
+    {
+      "file": "eu_es_ine/003_3996.xlsx",
+      "sheet": "tabla-3996",
+      "why": "INE layout: title block, two-row header, three sex sections each opened by a group row and a national total, notes and source",
+      "note": "`Total Nacional` rows are national rates, not sums, but they are labelled totals: total.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:A5", "role": "title"},
+        {"range": "B7:AK8", "role": "header"},
+        {"range": "A9", "role": "group_header"},
+        {"range": "A63", "role": "group_header"},
+        {"range": "A117", "role": "group_header"},
+        {"range": "A10:AK10", "role": "total"},
+        {"range": "A64:AK64", "role": "total"},
+        {"range": "A118:AK118", "role": "total"},
+        {"range": "A173:A178", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_es_opendata/010_Adquisiciones_Seriadas_2023.xls",
+      "sheet": "2017",
+      "why": "three-row header with spanning labels, three section rows, TOTALES row",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "B10", "role": "title"},
+        {"range": "B12:U14", "role": "header"},
+        {"range": "B15", "role": "group_header"},
+        {"range": "B20", "role": "group_header"},
+        {"range": "B24", "role": "group_header"},
+        {"range": "B27:U27", "role": "total"}
+      ]
+    },
+    {
+      "file": "eu_fr_insee/002_estim-pop-dep-sexe-gca-1975-2023.xls",
+      "sheet": "2011",
+      "why": "two-row header, code + name stub, three aggregate rows in and after the list, source",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:A2", "role": "title"},
+        {"range": "A4:T5", "role": "header"},
+        {"range": "A102:T102", "role": "total"},
+        {"range": "A107:T108", "role": "total"},
+        {"range": "A110", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_fr_insee/007_TCRD_038.xls",
+      "sheet": "REG",
+      "why": "small regional table with two aggregate rows and three note lines",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "C4:H5", "role": "header"},
+        {"range": "A19:H19", "role": "total"},
+        {"range": "A24:H24", "role": "total"},
+        {"range": "A25:A27", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_fr_opendata/002_top100-startups-.xlsx",
+      "sheet": "Feuille 1",
+      "why": "wide sparse company list under a two-row grouped header",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A4:AW5", "role": "header"}
+      ]
+    },
+    {
+      "file": "eu_it_istat/ASI2025_D02_C01_Tavole.xlsx",
+      "sheet": "2.20",
+      "why": "Istat layout: two-line title, two-row header, regions then macro-region and ITALIA aggregates, source",
+      "note": "Trentino-Alto Adige equals Bolzano + Trento listed under it; kept data (a region in the list, no total wording).",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A4:A5", "role": "title"},
+        {"range": "A7:M8", "role": "header"},
+        {"range": "A32:M37", "role": "total"},
+        {"range": "A39", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_it_istat/ASI2025_D07_C07_Tavole.xlsx",
+      "sheet": "7.11",
+      "why": "year sections and nested measure sections as group rows, three Totale rows, eight footnotes",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A4:A6", "role": "title"},
+        {"range": "A8:L9", "role": "header"},
+        {"range": "B11", "role": "group_header"},
+        {"range": "B17", "role": "group_header"},
+        {"range": "B23", "role": "group_header"},
+        {"range": "B29", "role": "group_header"},
+        {"range": "B35", "role": "group_header"},
+        {"range": "B37", "role": "group_header"},
+        {"range": "B47", "role": "group_header"},
+        {"range": "B57", "role": "group_header"},
+        {"range": "A45:L45", "role": "total"},
+        {"range": "A55:L55", "role": "total"},
+        {"range": "A65:L65", "role": "total"},
+        {"range": "A68:A75", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_it_opendata/002_pub.xlsx",
+      "sheet": "classe addetti",
+      "why": "spanning header above size classes, Totale column and row",
+      "note": "B1 spans the size-class columns: header, not title.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:L2", "role": "header"},
+        {"range": "A100:L100", "role": "total"}
+      ]
+    },
+    {
+      "file": "eu_it_opendata/015_avcp_dataset_2016.xls",
+      "sheet": "Elenco SmartCIG",
+      "why": "plain long list with a title line (a common open-data shape)",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "B2", "role": "title"},
+        {"range": "B5:J5", "role": "header"}
+      ]
+    },
+    {
+      "file": "eu_nl_opendata/022_Kerncijfers_Amsterdamse_economie_update_31_januari_2023_9d1cc6b90f.xlsx",
+      "sheet": "data",
+      "why": "four-row grouped header over 60 columns, sparse monthly/quarterly values, URL on the title row",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "K1", "role": "note"},
+        {"range": "A2:BI5", "role": "header"}
+      ]
+    },
+    {
+      "file": "eu_no_ssb/ssb_09189.xlsx",
+      "sheet": "Priser",
+      "why": "SSB PX export: indented hierarchy, `i alt` rows, long metadata block below",
+      "note": "Indented parent rows (`Konsum i husholdninger og ideelle organisasjoner`, `Bruttoinvestering i fast realkapital`) stay data; `… i alt` and `Samlet sluttanvendelse` are total. Uncertain: `Innenlandsk sluttanvendelse` and `Bruttonasjonalprodukt` are aggregates without total wording (data).",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1", "role": "title"},
+        {"range": "C3:Z4", "role": "header"},
+        {"range": "A31:Z31", "role": "total"},
+        {"range": "A35:Z35", "role": "total"},
+        {"range": "A40:Z41", "role": "total"},
+        {"range": "A57:A139", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_pl_dane_gov_pl/023_b5568312-da6b-4b84-9573-bb0470118478.xls",
+      "sheet": "uszczerbek - wypadki przy pracy",
+      "why": "bilingual Polish/English title block, four-row bilingual header, OGÓŁEM row, labels wrapped over two to four rows",
+      "note": "A20 (`IN TOTAL`) continues the OGÓŁEM label: total. English and wrapped label lines under a data row are data.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:A13", "role": "title"},
+        {"range": "A15:E18", "role": "header"},
+        {"range": "A19:E20", "role": "total"}
+      ]
+    },
+    {
+      "file": "eu_pl_dane_gov_pl/008_jaja_38_20.xlsx",
+      "sheet": "Śred_rocz_cen_UE",
+      "why": "two tables side by side with their own titles and EU rows",
+      "note": "AG2 (`By 100 KG`) is the unit line above the right table's year header: header.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "B1", "role": "title"},
+        {"range": "AB1", "role": "title"},
+        {"range": "AG2", "role": "header"},
+        {"range": "A3:Y3", "role": "header"},
+        {"range": "AB3:AH3", "role": "header"},
+        {"range": "A44:Y44", "role": "total"},
+        {"range": "AB31:AH31", "role": "total"}
+      ]
+    },
+    {
+      "file": "eu_pl_gus/pracy2025_Załącznik_5._Dział_IV._Bezrobocie.xlsx",
+      "sheet": "TABL.26",
+      "why": "GUS layout: bilingual title, four-row header with unit row, OGÓŁEM row, `w tym` section row, bilingual labels, footnotes",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A2:A5", "role": "title"},
+        {"range": "A7:K10", "role": "header"},
+        {"range": "A12:K12", "role": "total"},
+        {"range": "A20", "role": "group_header"},
+        {"range": "A63:A66", "role": "note"}
+      ]
+    },
+    {
+      "file": "eu_pl_gus/demograficzny2025_09_zgony_RD'2025.xlsx",
+      "sheet": "Tabl. 96 (120)",
+      "why": "bilingual title, link back to the table list, two stacked blocks (counts, indices)",
+      "note": "C9 (Polish + English in one cell) opens the counts block; A17 and A18 (Polish, then English, each padded with ~50 leading spaces) open the indices block: all group_header.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A2:A3", "role": "title"},
+        {"range": "A4:A5", "role": "other"},
+        {"range": "A6:N7", "role": "header"},
+        {"range": "C9", "role": "group_header"},
+        {"range": "A17:A18", "role": "group_header"}
+      ]
+    },
+    {
+      "file": "eu_pl_opendata/002_44177_regionalne-osrodki-debaty-miedzynarodowej-2022-2024_file.xlsx",
+      "sheet": "Arkusz1",
+      "why": "small contact list starting below an empty first row",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A2:I2", "role": "header"}
+      ]
+    },
+    {
+      "file": "eu_pt_opendata/008_BF_1_2023_beneficiarios_por_tipo_de_imposto_e_beneficio.xlsx",
+      "sheet": "IVA",
+      "why": "long beneficiary list, two-row header, unlabelled sum row at the end",
+      "note": "Row 4324 has numbers only (no label) and sums the columns: total.",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "B2", "role": "title"},
+        {"range": "B4:K5", "role": "header"},
+        {"range": "D4324:K4324", "role": "total"}
+      ]
+    },
+    {
+      "file": "eu_se_opendata/005_dataunderlag-till-diagram-tillstandsklasser-nitrat-1996-2021.xlsx",
+      "sheet": "Nitrat halt",
+      "why": "chart data: title, unit line, year header, sparse series",
+      "note": "",
+      "labels": [
+        {"range": "*", "role": "data"},
+        {"range": "A1:A2", "role": "title"},
+        {"range": "A4:AA4", "role": "header"}
+      ]
+    }
+  ]
+}

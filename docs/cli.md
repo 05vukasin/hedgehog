@@ -7,6 +7,7 @@ The CLI is a thin wrapper over the Rust core. It is built from the `cli/` crate
 
 ```
 hedgehog describe <file>
+hedgehog cells <file> [--sheet NAME]
 hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG]
 hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
 hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
@@ -14,7 +15,7 @@ hedgehog bench --synthetic [--case NAME]
 hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 ```
 
-`describe` and `normalize` are for users; `eval`, `bench` and `golden` are development tools.
+`describe` and `normalize` are for users; `cells`, `eval`, `bench` and `golden` are development tools.
 
 Input files can be `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`. Examples on this page use `sales.xlsx`
 from the [quickstart](quickstart.md#a-sample-messy-workbook).
@@ -122,10 +123,12 @@ $ hedgehog benchmark --analyzer layout --corpora deco,strudel --out scores.tsv
 | Argument | Meaning |
 |---|---|
 | `--analyzer NAME` | `baseline`, `layout` (rules) or `model` (rules + learned model; `$HEDGEHOG_MODEL` = a folder with `coarse.json` and `fine.json` replaces the built-in one). |
-| `--corpora LIST` | Comma-separated subset of `deco,statsheets,strudel,synthetic`. |
+| `--corpora LIST` | Comma-separated subset of `deco,statsheets,strudel,synthetic` (the default), plus `eu`: the hand-labelled [European open-data sample](evaluation.md#european-open-data-sample), always scored whole. |
 | `--split S` | `test` (default; files the model never trained on), `dev` or `all`. |
 | `--threads N`, `--out FILE.tsv` | Worker threads; also write the per-source scores as TSV. |
 
+`hedgehog cells <file> [--sheet NAME]` prints every non-empty cell the reader sees as TSV
+(`sheet row col a1 value`, 0-based row and column), the coordinates labelled corpora use.
 `hedgehog features` exports training data (`--level cell` or `--level row`), and
 `hedgehog pack-model <dir>` turns `row_coarse.json` + `row_fine.json` into the embedded
 `row_model.bin`; see [learned-model.md](learned-model.md#retraining).

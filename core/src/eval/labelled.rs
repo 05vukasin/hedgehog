@@ -1,7 +1,8 @@
 //! Generic ground truth: a directory with `labels.tsv` (header line, then
 //! `corpus  file  sheet  row  col  role`, 0-based row/col, role names as in [`Role::as_str`]) and
-//! the workbooks it names, relative to the directory. Written by converters such as
-//! `tools/benchmarks/convert_strudel.py` and by hand-labelling tools.
+//! the workbooks it names, relative to the directory (`../x/y.xlsx` reaches files kept elsewhere,
+//! as the European sample does). Written by converters such as
+//! `tools/benchmarks/convert_strudel.py` and `tools/benchmarks/build_eu_labels.py`.
 //!
 //! File ids are `<corpus>/<file>` (the corpus part groups per-source scores). No tables: such
 //! corpora score cell roles only.
