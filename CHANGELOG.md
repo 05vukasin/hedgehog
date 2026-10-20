@@ -6,6 +6,25 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Typed totals over a column with missing-value tokens (`n/a`, `-`, `*`, `#N/A`): the tokens were
+  read as header text, so the source range stopped at them and the total could be reported as a
+  false mismatch. They now count as blanks. A typed total also counts numbers stored as text
+  (`"1,200.50"`) in its source, since it was added up by hand, not by Excel's `SUM`.
+- `--keep-totals`: a grand-total row no longer takes the last group's label in the group column
+  (a subtotal keeps its group; a total over several groups belongs to none).
+- A group label written on the first data row of its group after a blank row (`Oct | … | 370,494`
+  under month groups that otherwise have a row of their own) starts that group instead of staying
+  a value under the previous one (rules; the learned model can still call such a row a total).
+- Bedrock: `connect("bedrock", api_key=…)` no longer sets `AWS_BEARER_TOKEN_BEDROCK` in
+  `os.environ`; the key is the bearer token of the client's own botocore session.
+- `llm.ask` tools: `check_totals` and `describe_workbook` items carry the normalize manifest's
+  `status` (`ok` / `mismatch` / `unknown`), `check_totals` reports counts per status and lists
+  mismatches first, and an unverified total's recomputed sum is `recomputed`, not `expected`, so
+  an agent no longer counts unconfirmed totals (averages, percentages) as wrong. `get_cell` on a
+  merged cell gives the merge range and the value it shows.
+
 ## [0.3.1] - pre-alpha
 
 ### Fixed

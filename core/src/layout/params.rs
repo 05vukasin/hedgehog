@@ -117,6 +117,10 @@ pub const KEY_MIN_START_FRAC: f32 = 0.5;
 pub const GROUP_MIN_RUN: usize = 2;
 /// … or, for a label of at most this many characters (≤ 3 words), one multi-cell row.
 pub const GROUP_SHORT_LABEL: usize = 24;
+/// A short label in the group-header column on a data row after a blank row opens a group too.
+pub const INLINE_GROUP_LABELS: bool = true;
+/// … unless more than this share of the data rows has a short label in that column (item names).
+pub const INLINE_GROUP_MAX_LABEL_FRAC: f32 = 0.25;
 
 // --- Change points (stacked tables with different schemas) ------------------------------------
 

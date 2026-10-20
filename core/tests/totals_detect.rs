@@ -117,6 +117,31 @@ fn typed_total_row_with_one_wrong_number() {
 }
 
 #[test]
+fn typed_total_over_missing_tokens() {
+    // "n/a" / "-" in the column are missing values, not header text: the source covers all the
+    // data rows and the total (which skips them) verifies.
+    let sheet = fixture("typed_missing", |ws| {
+        for (j, h) in ["Region", "2023", "2024"].iter().enumerate() {
+            ws.write_string(0, j as u16, *h).unwrap();
+        }
+        rows(ws, 1, &[("North", &[10.0, 11.0]), ("South", &[]), ("East", &[30.0, 31.0]), ("West", &[40.0])]);
+        ws.write_string(2, 1, "n/a").unwrap();
+        ws.write_string(2, 2, "-").unwrap();
+        ws.write_string(4, 2, "N/A").unwrap();
+        rows(ws, 5, &[("Total", &[80.0, 42.0])]);
+    });
+    let grid = Grid::new(&sheet);
+    let c = detect(&grid);
+    assert_eq!(c.len(), 2, "{c:#?}");
+    for col in [1, 2] {
+        let t = at(&c, 5, col);
+        assert_eq!(t.ranges, vec![rect(1, col, 4, col)], "{t:#?}");
+        let chk = verify(&grid, t);
+        assert_eq!((chk.ok, chk.reason), (Some(true), CheckReason::Match), "{chk:#?}");
+    }
+}
+
+#[test]
 fn typed_total_rounded_to_integer_is_ok() {
     let sheet = fixture("rounded", |ws| {
         ws.write_string(0, 0, "Name").unwrap();

@@ -48,7 +48,8 @@ pub struct TotalCheck {
     /// Numeric source cells that were added.
     pub summed: usize,
     /// Source cells holding numbers stored as text — Excel's SUM skips them, so they are noted, not summed
-    /// (except as direct `+` operands, which Excel converts).
+    /// (except as direct `+` operands, which Excel converts, and in typed totals, which were added
+    /// up by hand).
     pub numbers_as_text: Vec<(u32, u32)>,
 }
 
@@ -137,6 +138,7 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
         .map(|p| p.sum_refs.iter().filter(|r| r.kind == RefKind::Cell).map(|r| (r.rect.top, r.rect.left)).collect())
         .unwrap_or_default();
 
+    let typed = cand.origin == TotalOrigin::Typed;
     let Some(used) = grid.used_range() else {
         check.reason = CheckReason::NoSource;
         return check;
@@ -166,7 +168,7 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
                         if seen_text.insert(pos) {
                             check.numbers_as_text.push(pos);
                         }
-                        coerce.contains(&pos).then_some(v)
+                        (typed || coerce.contains(&pos)).then_some(v)
                     }
                     None => None,
                 },
@@ -202,7 +204,6 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
     check.expected = Some(expected);
     let Some(actual) = check.actual else { return check };
     check.diff = Some(actual - expected);
-    let typed = cand.origin == TotalOrigin::Typed;
     if close(actual, expected, false) {
         check.ok = Some(true);
         check.reason = CheckReason::Match;

@@ -265,13 +265,49 @@ fn is_group_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect: Rect
         return true;
     }
     // A short label ("Dec", "Region North") directly over one data row also opens a group.
-    let t = text(sheet, e).trim();
-    j == k + 1
-        && j < end
-        && rows[j].n() >= 2
+    j == k + 1 && j < end && rows[j].n() >= 2 && is_short_label(text(sheet, e))
+}
+
+/// A label short enough to name a group: at most [`GROUP_SHORT_LABEL`] characters and 3 words,
+/// not a numbered item ("1. Recalc …").
+fn is_short_label(t: &str) -> bool {
+    let t = t.trim();
+    !t.is_empty()
         && t.chars().count() <= GROUP_SHORT_LABEL
         && !t.starts_with(|c: char| c.is_ascii_digit())
         && t.split_whitespace().count() <= 3
+}
+
+/// Group labels written on the first data row of their group instead of a row of their own
+/// ("Oct | … | 370,494" after "Sep" had a row to itself): in a table with group-header rows, a data
+/// row that follows a blank row and starts with a short text label in the group labels' column,
+/// where short labels are otherwise rare (not a column of item names). Its label cell becomes a
+/// group header; the rest of the row stays data.
+fn mark_inline_group_labels(sheet: &Sheet, rows: &[Row], body: Range<usize>, data_rows: &[usize], out: &mut Out) {
+    let label_col = |k: usize| rows[k].filled().next().filter(|e| e.kind == Kind::Text).map(|e| e.left);
+    let group_rows = body.clone().filter(|&k| {
+        rows[k].filled().next().and_then(|e| e.cell).is_some_and(|i| out.roles[i] == Role::GroupHeader)
+            && single_text(&rows[k]).is_some()
+    });
+    let mut cols: Vec<u32> = group_rows.filter_map(label_col).collect();
+    cols.sort_unstable();
+    cols.dedup();
+    let [col] = cols[..] else { return };
+    let short = |k: usize| {
+        rows[k].filled().next().filter(|e| e.left == col && e.kind == Kind::Text && is_short_label(text(sheet, e)))
+    };
+    let n_short = data_rows.iter().filter(|&&k| short(k).is_some()).count();
+    if n_short as f32 > INLINE_GROUP_MAX_LABEL_FRAC * data_rows.len() as f32 {
+        return;
+    }
+    for &k in data_rows {
+        if k == body.start || rows[k - 1].bottom() + 1 >= rows[k].row || rows[k].n() < 2 {
+            continue;
+        }
+        if let Some(i) = short(k).and_then(|e| e.cell) {
+            out.roles[i] = Role::GroupHeader;
+        }
+    }
 }
 
 struct Seg {
@@ -504,6 +540,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
                 }
             }
         }
+    }
+    if INLINE_GROUP_LABELS {
+        mark_inline_group_labels(sheet, rows, body_start..seg.end, &data_rows, out);
     }
     if KEY_COLUMN_GROUPS {
         mark_key_column(rows, &data_rows, rect, out);
