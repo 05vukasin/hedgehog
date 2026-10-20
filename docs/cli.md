@@ -83,6 +83,31 @@ budget.normalized.xlsx
 orders.manifest.json
 ```
 
+## `hedgehog-inspect` (Python)
+
+Shows, file by file, what hedgehog makes of a spreadsheet and what an AI agent would receive:
+overview, every table (columns, types, first rows), the totals check, notes, warnings, the files
+and loading code an agent gets (with the manifest's size in tokens), and the summary. Installed
+with the Python package (`python -m hedgehog.inspect` works too).
+
+```console
+$ hedgehog-inspect sales.xlsx                       # everything; free deterministic summary
+$ hedgehog-inspect sales.xlsx --llm                 # summary phrased by the LLM configured in .env
+$ hedgehog-inspect sales.xlsx --ask "Total Q2 revenue?"   # an LLM agent answers with the workbook tools
+$ hedgehog-inspect sales.xlsx --show tables,totals --rows 10
+$ hedgehog-inspect sales.xlsx --compare             # rules + model vs rules alone
+$ hedgehog-inspect sales.xlsx --show manifest       # the full manifest JSON
+$ hedgehog-inspect reports/                         # one line per file
+```
+
+Options: `--show` (sections `overview,tables,totals,notes,warnings,agent,summary,manifest` or
+`all`), `--rows N`, `--tables N|all`, `--llm`, `--ask Q`, `--provider`, `--model`, `--env PATH`
+(default: the nearest `.env`; without `AI_PROVIDER` the first provider with a key is used),
+`--rules-only`, `--compare`, `--keep-totals`, `--locale`, `--model-max-cells`, `--out DIR`,
+`--open`, `--full` (several files in full), `--no-color`. In a clone, the `Makefile` wraps it:
+`make inspect FILE=…`, `make llm FILE=…`, `make ask FILE=… Q="…"`, `make compare FILE=…`,
+`make batch DIR=…` (`make help` lists them).
+
 ## `hedgehog benchmark`
 
 Scores an analyzer on every labelled corpus under `$HEDGEHOG_DATA` (DECO, StatSheets, Strudel,

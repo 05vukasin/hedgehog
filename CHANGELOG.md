@@ -6,6 +6,12 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `hedgehog-inspect` (Python entry point, `python -m hedgehog.inspect`) and a `Makefile`: see, file by
+  file, the tables, totals check, notes, warnings, what an agent receives and the summary, with or
+  without an LLM from `.env`, and ask the agent a question.
+
 ## [0.3.1] - pre-alpha
 
 ### Fixed

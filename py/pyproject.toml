@@ -19,6 +19,9 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Spreadsheet",
 ]
 
+[project.scripts]
+hedgehog-inspect = "hedgehog.inspect:main"
+
 [project.urls]
 Repository = "https://github.com/05vukasin/hedgehog"
 
