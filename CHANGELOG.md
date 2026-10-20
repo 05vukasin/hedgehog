@@ -6,6 +6,14 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- European open-data sample: 31 sheets from 20 sources, every cell labelled (by an AI assistant,
+  not yet reviewed by a person), scored with `hedgehog benchmark --corpora eu` (always the whole
+  sample; rules → model, 7 roles per file 48.0 → 65.4, 4 roles per file 73.2 → 84.8). See
+  [docs/evaluation.md](docs/evaluation.md#european-open-data-sample).
+- `hedgehog cells <file> [--sheet NAME]`: every non-empty cell the reader sees, as TSV.
+
 ## [0.3.1] - pre-alpha
 
 ### Fixed

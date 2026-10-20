@@ -18,13 +18,15 @@ fn report(r: Result<(), String>) -> ExitCode {
 
 const USAGE: &str = "usage:
   hedgehog describe <file>
+  hedgehog cells <file> [--sheet NAME]   (every non-empty cell as TSV: sheet row col a1 value)
   hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG] [--rules-only] [--model-max-cells N]
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
   hedgehog eval synthetic --dir DIR [--analyzer NAME] [--limit N] [--values] [--json OUT.json] [--no-json] [--progress]
   hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
-  hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
+  hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic,eu] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
+                     (eu, the hand-labelled European sample, is opt-in and always scored whole)
   hedgehog pack-model <dir>   (row_coarse.json + row_fine.json → row_model.bin)
   hedgehog features --out FILE.csv [--corpus deco,synthetic,statsheets,strudel] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N] [--level cell|row]
 
@@ -85,6 +87,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        ["cells", path, rest @ ..] => report(cells(path, rest)),
         ["normalize", rest @ ..] => report(normalize(rest)),
         ["bench", rest @ ..] => report(bench::bench(rest)),
         ["golden", rest @ ..] => report(bench::golden(rest)),
@@ -154,6 +157,35 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
         println!("report: {}", path.display());
     }
     Ok(())
+}
+
+/// `hedgehog cells file [--sheet NAME]`: every non-empty cell the reader sees, one TSV line each
+/// (`sheet row col a1 value`, 0-based row/col; tabs and newlines in values become spaces) — the
+/// coordinates labelled corpora use, for labelling tools.
+fn cells(path: &str, args: &[&str]) -> Result<(), String> {
+    use std::io::Write as _;
+    let sheet = match args {
+        [] => None,
+        ["--sheet", name] => Some(*name),
+        _ => return Err("cells takes <file> [--sheet NAME]".into()),
+    };
+    let wb = hh_core::open(path).map_err(|e| format!("{path}: {e}"))?;
+    let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+    for s in wb.sheets.iter().filter(|s| sheet.is_none_or(|n| s.name == n)) {
+        for c in &s.cells {
+            let v = match &c.value {
+                Some(hh_core::Value::Text(t)) => t.replace(['\t', '\n', '\r'], " "),
+                Some(hh_core::Value::Number(n)) => n.to_string(),
+                Some(hh_core::Value::DateTime(d)) => format!("date:{d}"),
+                Some(hh_core::Value::Bool(b)) => b.to_string(),
+                Some(hh_core::Value::Error(e)) => format!("error:{e}"),
+                None => format!("formula:{}", c.formula.as_deref().unwrap_or("")),
+            };
+            writeln!(out, "{}\t{}\t{}\t{}\t{v}", s.name, c.row, c.col, hh_core::a1(c.row, c.col))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    out.flush().map_err(|e| e.to_string())
 }
 
 /// `hedgehog normalize in.xlsx -o out/`: one clean typed sheet per table + manifest JSON.
@@ -321,7 +353,8 @@ fn features(args: &[&str]) -> Result<(), String> {
 }
 
 /// Cross-corpus scores per source (`hh_core::eval::benchmark`), every corpus on `--split` (default
-/// test: the learned models train on the dev files of all corpora).
+/// test: the learned models train on the dev files of all corpora) except `eu`, which is held out
+/// entirely and always scored whole.
 fn benchmark(args: &[&str]) -> Result<(), String> {
     let mut corpora = vec!["deco".to_string(), "statsheets".into(), "strudel".into(), "synthetic".into()];
     let mut analyzer_name = "layout".to_string();
@@ -350,6 +383,9 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
             "synthetic" => (eval::synthetic::load(&root.join("synthetic").join("v0")), split),
             "statsheets" => (eval::statsheets::load(&root), split),
             "strudel" => (eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"), split),
+            // Hand-labelled European open-data sheets (tools/benchmarks/eu_labels.json). No model
+            // ever trains on them, so the whole corpus is scored whatever `--split` says.
+            "eu" => (eval::labelled::load(&root.join("irregular").join("eu_labelled"), "eu"), Split::All),
             other => return Err(format!("unknown corpus `{other}`")),
         };
         let corpus = corpus.map_err(|e| e.to_string())?;

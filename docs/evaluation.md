@@ -171,6 +171,87 @@ Leave-one-corpus-out (`tools/train/rows.py`: train on three corpora, test on the
 roles per file): DECO 73.6 → 74.8, StatSheets 66.7 → 78.0, Strudel 79.1 → 86.6, synthetic
 93.7 → 94.5. More in [learned-model.md](learned-model.md).
 
+## European open-data sample
+
+A check on files none of the corpora above come from: 31 sheets from 20 European open-data
+sources (statistics offices and city/national portals in AT, BE, CH, DE, ES, FR, IT, NL, NO, PL,
+PT, SE), 61,874 non-empty cells, every one labelled with one of the seven roles. No model trains on
+them, so `hedgehog benchmark --corpora eu` always scores the whole sample, whatever `--split`
+says. The corpus is opt-in (not in the default `--corpora`).
+
+**The labels were written by an AI assistant (Claude) reading the sheets, not by the people who
+made them or by domain experts, and have not been reviewed by a person yet.** They were finished
+before hedgehog was run on these sheets, so they are not tuned to its output, but they are a check,
+not ground truth. Corrections go into the spec and are rebuilt:
+
+```bash
+python -I tools/benchmarks/select_eu_sheets.py --data $HEDGEHOG_DATA --bin target/release/hedgehog
+python -I tools/benchmarks/build_eu_labels.py --data $HEDGEHOG_DATA --bin target/release/hedgehog
+hedgehog benchmark --corpora eu --analyzer model
+```
+
+- **Selection** (`select_eu_sheets.py`, deterministic): per source folder in
+  `testdata/irregular/eu_*`, sheets of 40 to 20,000 non-empty cells, ranked by merged ranges
+  (merged titles, multi-row headers) first, then 150 to 6,000 cells, then a hash of file and sheet
+  name; one sheet per workbook, two per source with 30 or more candidates. Two sheets were looked at
+  and skipped (listed with the reason in the script): a leftover link sheet without headers, and a
+  form with forty small M/F/T sub-tables that would have dominated the sample. The sample covers
+  merged titles with table codes, multi-row and bilingual headers, section rows, national and
+  regional aggregate rows, footnote and source blocks, side-by-side tables, stacked blocks, long
+  flat lists and a free-text table.
+- **Labels** (`tools/benchmarks/eu_labels.json`): per sheet, A1 ranges with a role applied in
+  order, plus why the sheet was picked and what was uncertain. `build_eu_labels.py` expands them
+  against the cells hedgehog's reader sees (`hedgehog cells <file> --sheet NAME`) into
+  `testdata/irregular/eu_labelled/labels.tsv`, and fails if any cell is left unlabelled or a range
+  matches nothing. Labels: data 60,248 · total 788 · header 627 · note 116 · title 54 ·
+  group header 36 · other 5. One 17,294-cell list (PT) holds 28% of the cells, so the per-file
+  scores are the fairer summary.
+- **Conventions:** row labels and stub columns are data; every row of a column header is header
+  (including stub-head cells, unit rows and column-number rows); a label alone on its row that
+  starts a section is group header; titles, subtitles, year and unit lines above a table are title;
+  footnotes, sources, as-of dates, contacts, URLs and metadata blocks are note; navigation links
+  (`zur Inhaltsübersicht`) and stray cells are other. A row is total (label and values) when it is
+  marked as one (Total, Insgesamt, Summe, Ogółem, i alt, ...) or aggregates the listed units (the
+  country above its cantons, macro-regions after Italian regions, the EU row, annual averages after
+  twelve months). Parent rows of an indented hierarchy without total wording stay data, and total
+  columns stay data. These last two choices are the least certain.
+
+Rules (`layout`) vs rules + learned model (`model`), whole sample:
+
+| | 7 roles pooled | 7 roles per file | 4 roles pooled | 4 roles per file |
+|---|---|---|---|---|
+| European sample rules / model | 46.4 / **61.4** | 48.0 / **65.4** | 82.2 / **87.2** | 73.2 / **84.8** |
+
+Per role (7 roles pooled F1, rules / model): title 62.4 / 77.1 · header 86.7 / 94.5 · data
+99.3 / 99.3 · group header 26.3 / 33.5 · total 29.0 / 29.7 · note 16.9 / 80.7 · other 4.0 / 14.8.
+Totals and group headers are the weak spots.
+
+Per source (7 roles pooled · 4 roles pooled, rules → model; one or two sheets each, so single
+labels move these a lot):
+
+| Source | Sheets | Cells | 7 roles | 4 roles |
+|---|---:|---:|---|---|
+| eu_at_opendata | 2 | 2,786 | 100.0 → 100.0 | 100.0 → 100.0 |
+| eu_at_statistik_austria | 2 | 4,105 | 52.7 → 81.5 | 66.7 → 100.0 |
+| eu_be_opendata | 2 | 1,071 | 55.6 → 82.8 | 91.6 → 96.4 |
+| eu_ch_bfs | 2 | 558 | 21.1 → 74.9 | 49.3 → 94.1 |
+| eu_ch_opendata | 2 | 2,977 | 47.5 → 57.5 | 47.4 → 74.0 |
+| eu_de_destatis | 2 | 2,891 | 34.5 → 62.8 | 79.0 → 86.5 |
+| eu_de_opendata | 1 | 1,447 | 74.9 → 59.8 | 77.1 → 57.8 |
+| eu_es_ine | 1 | 5,934 | 49.9 → 74.9 | 28.2 → 91.4 |
+| eu_es_opendata | 1 | 232 | 78.9 → 100.0 | 100.0 → 100.0 |
+| eu_fr_insee | 2 | 2,246 | 79.7 → 79.7 | 100.0 → 100.0 |
+| eu_fr_opendata | 1 | 3,348 | 34.9 → 33.8 | 38.8 → 34.7 |
+| eu_it_istat | 2 | 637 | 46.5 → 69.4 | 81.8 → 91.8 |
+| eu_it_opendata | 2 | 7,769 | 75.0 → 91.1 | 100.0 → 88.1 |
+| eu_nl_opendata | 1 | 2,517 | 46.4 → 63.5 | 46.4 → 63.5 |
+| eu_no_ssb | 1 | 1,421 | 49.3 → 64.7 | 100.0 → 100.0 |
+| eu_pl_dane_gov_pl | 2 | 1,245 | 38.9 → 40.5 | 66.9 → 64.8 |
+| eu_pl_gus | 2 | 493 | 64.5 → 68.7 | 81.8 → 80.4 |
+| eu_pl_opendata | 1 | 153 | 100.0 → 100.0 | 100.0 → 100.0 |
+| eu_pt_opendata | 1 | 17,294 | 96.2 → 100.0 | 94.9 → 100.0 |
+| eu_se_opendata | 1 | 2,750 | 100.0 → 100.0 | 100.0 → 100.0 |
+
 ## Other measurements
 
 - **Reader robustness:** on a random sample of 500 Enron spreadsheets, the reader opened 500/500,
