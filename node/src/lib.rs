@@ -10,6 +10,8 @@
 
 use hh_core::totals::{self, Direction, Evidence, RefKind, TotalLevel, TotalOrigin};
 use hh_core::{a1, Cell, Grid, Rect, Sheet, Value};
+use std::sync::{Arc, Mutex};
+
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
@@ -529,4 +531,132 @@ pub fn normalize_sync(path: String, out_dir: String, opts: Option<NormalizeOptio
 #[napi]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+// -- agent tools ----------------------------------------------------------------------------------
+
+type ToolFn = Box<dyn FnOnce(&mut hh_agent::Session) -> hh_agent::ToolResult + Send>;
+
+/// One tool call on the libuv thread pool. Calls of the same session take turns on its mutex
+/// (a session owns SQLite connections, which must not be used from two threads at once).
+pub struct ToolTask {
+    session: Arc<Mutex<hh_agent::Session>>,
+    run: Option<ToolFn>,
+}
+
+fn lock(m: &Mutex<hh_agent::Session>) -> std::sync::MutexGuard<'_, hh_agent::Session> {
+    // A panic inside a tool poisons the mutex; the session holds only caches, so keep going.
+    m.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+impl Task for ToolTask {
+    type Output = String;
+    type JsValue = String;
+
+    fn compute(&mut self) -> Result<Self::Output> {
+        let run = self.run.take().ok_or_else(|| Error::new(Status::GenericFailure, "tool task ran twice"))?;
+        run(&mut lock(&self.session)).map_err(|e| Error::new(Status::GenericFailure, e.0))
+    }
+
+    fn resolve(&mut self, _env: Env, text: Self::Output) -> Result<Self::JsValue> {
+        Ok(text)
+    }
+}
+
+/// Options of the native agent-tools session.
+#[napi(object)]
+pub struct SessionOptions {
+    /// Folder that bounds file access.
+    pub root: String,
+    /// Extra files or folders outside `root`.
+    pub allow: Option<Vec<String>>,
+}
+
+/// The agent tools of `hedgehog mcp` in-process (`hh_agent::Session`). Wrapped by
+/// `HedgehogSession` in index.js; every method resolves to the tool's compact text, and a tool
+/// error rejects with its one-line message.
+#[napi]
+pub struct NativeSession {
+    inner: Arc<Mutex<hh_agent::Session>>,
+}
+
+#[napi]
+impl NativeSession {
+    #[napi(constructor)]
+    pub fn new(options: SessionOptions) -> Result<Self> {
+        let allow: Vec<std::path::PathBuf> = options.allow.unwrap_or_default().into_iter().map(Into::into).collect();
+        let session = hh_agent::Session::new(&options.root, &allow).map_err(|e| invalid(e.0))?;
+        Ok(NativeSession { inner: Arc::new(Mutex::new(session)) })
+    }
+
+    fn task(&self, run: ToolFn) -> AsyncTask<ToolTask> {
+        AsyncTask::new(ToolTask { session: self.inner.clone(), run: Some(run) })
+    }
+
+    /// The canonical root folder.
+    #[napi(getter)]
+    pub fn root(&self) -> String {
+        lock(&self.inner).bounds().root().to_string_lossy().into_owned()
+    }
+
+    /// Allows one more file or folder outside the root.
+    #[napi]
+    pub fn allow(&self, path: String) -> Result<()> {
+        lock(&self.inner).allow(&path).map_err(|e| invalid(e.0))
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn open_file(&self, path: String) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| s.open_file(&path)))
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn describe_table(&self, path: String, table: String) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| s.describe_table(&path, &table)))
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn query(&self, path: String, sql: String, limit: Option<u32>) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| s.query(&path, &sql, limit.map(|n| n as usize))))
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn cells(&self, path: String, sheet: String, range: String) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| s.cells(&path, &sheet, &range)))
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn totals(&self, path: String, table: Option<String>, status: Option<String>) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| s.totals(&path, table.as_deref(), status.as_deref())))
+    }
+
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn list_files(&self, folder: Option<String>, pattern: Option<String>) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| s.list_files(folder.as_deref(), pattern.as_deref())))
+    }
+
+    /// Runs a tool by its MCP name with JSON arguments (`{"path": ..., "sql": ...}`).
+    #[napi(ts_return_type = "Promise<string>")]
+    pub fn call(&self, name: String, args: Option<serde_json::Value>) -> AsyncTask<ToolTask> {
+        let args = args.unwrap_or(serde_json::Value::Null);
+        self.task(Box::new(move |s| s.call(&name, &args)))
+    }
+}
+
+/// The tools as MCP `tools/list` entries: `{name, title, description, inputSchema, annotations}`.
+#[napi(ts_return_type = "Array<ToolSpec>")]
+pub fn tool_specs() -> serde_json::Value {
+    hh_agent::tool_specs()
+}
+
+/// One entry of `toolSpecs()`.
+#[napi(object)]
+pub struct ToolSpec {
+    pub name: String,
+    pub title: String,
+    pub description: String,
+    #[napi(ts_type = "Record<string, any>")]
+    pub input_schema: serde_json::Value,
+    #[napi(ts_type = "Record<string, any>")]
+    pub annotations: serde_json::Value,
 }

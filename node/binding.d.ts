@@ -9,6 +9,27 @@
  */
 export declare const __napiBindingTarget: 'native' | 'wasm32-wasi' | 'wasm32-wasip1'
 
+/**
+ * The agent tools of `hedgehog mcp` in-process (`hh_agent::Session`). Wrapped by
+ * `HedgehogSession` in index.js; every method resolves to the tool's compact text, and a tool
+ * error rejects with its one-line message.
+ */
+export declare class NativeSession {
+  constructor(options: SessionOptions)
+  /** The canonical root folder. */
+  get root(): string
+  /** Allows one more file or folder outside the root. */
+  allow(path: string): void
+  openFile(path: string): Promise<string>
+  describeTable(path: string, table: string): Promise<string>
+  query(path: string, sql: string, limit?: number | undefined | null): Promise<string>
+  cells(path: string, sheet: string, range: string): Promise<string>
+  totals(path: string, table?: string | undefined | null, status?: string | undefined | null): Promise<string>
+  listFiles(folder?: string | undefined | null, pattern?: string | undefined | null): Promise<string>
+  /** Runs a tool by its MCP name with JSON arguments (`{"path": ..., "sql": ...}`). */
+  call(name: string, args?: any | undefined | null): Promise<string>
+}
+
 /** A workbook read into memory: xlsx / xlsm / xlsb / xls / ods, or a CSV / TSV file. */
 export declare class Workbook {
   /** Sheet names in workbook order. */
@@ -112,6 +133,14 @@ export interface RangeValues {
   rows: Array<Array<number | string | boolean | null>>
 }
 
+/** Options of the native agent-tools session. */
+export interface SessionOptions {
+  /** Folder that bounds file access. */
+  root: string
+  /** Extra files or folders outside `root`. */
+  allow?: Array<string>
+}
+
 /** One sheet: name, used range (`A1:F20` or null), rows, cols, cells, formulas, merges. */
 export interface SheetInfo {
   name: string
@@ -122,6 +151,18 @@ export interface SheetInfo {
   formulas: number
   merges: number
 }
+
+/** One entry of `toolSpecs()`. */
+export interface ToolSpec {
+  name: string
+  title: string
+  description: string
+  inputSchema: Record<string, any>
+  annotations: Record<string, any>
+}
+
+/** The tools as MCP `tools/list` entries: `{name, title, description, inputSchema, annotations}`. */
+export declare function toolSpecs(): Array<ToolSpec>
 
 /** A detected total with its verification (`hh_core::totals::{detect, verify}`). */
 export interface TotalInfo {

@@ -46,7 +46,11 @@ async function main(): Promise<void> {
       s.totals('q3.xlsx', { table: 'T1', status: 'mismatch' }),
       s.listFiles('.', '*.xlsx'),
     ])
-    void [catalog, text]
+    const specs: string[] = HedgehogSession.toolSpecs().map((t) => t.name)
+    const viaCall: string = await s.call('query', { path: 'q3.xlsx', sql: 'SELECT 1' })
+    s.allow(new URL('file:///data/'))
+    const root: string = s.root
+    void [catalog, text, specs, viaCall, root]
   }
   void [v, value, kind, rows, hits, ok, coverage, dtypes, paths]
 }

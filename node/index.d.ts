@@ -2,6 +2,7 @@
 // generated `binding.d.ts`; this file adds `URL` paths, a typed manifest and the agent-tools session.
 
 import type {
+  ToolSpec,
   NormalizeOptions,
   NormalizeResult as NativeNormalizeResult,
   Workbook,
@@ -14,8 +15,9 @@ export type {
   RangeValues,
   SheetInfo,
   TotalInfo,
+  ToolSpec,
 } from './binding'
-export { Workbook, version } from './binding'
+export { Workbook, version, toolSpecs } from './binding'
 
 /** A file path, or a `file:` URL (`new URL('./data.xlsx', import.meta.url)`). */
 export type PathLike = string | URL
@@ -133,9 +135,9 @@ export declare function normalizeSync(path: PathLike, outDir: PathLike, opts?: N
 /** Options of `new HedgehogSession(...)`. */
 export interface SessionOptions {
   /** Folder that bounds file access: relative paths resolve against it and must stay inside it. */
-  root: string
-  /** Extra absolute files or folders outside `root` the user referenced explicitly (e.g. with `@`). */
-  allow?: string[]
+  root: PathLike
+  /** Extra files or folders outside `root` the user referenced explicitly (e.g. with `@`). */
+  allow?: PathLike[]
 }
 
 /** Options of `HedgehogSession.totals`. */
@@ -145,18 +147,28 @@ export interface SessionTotalsOptions {
   status?: 'mismatch' | 'ok' | 'unknown'
 }
 
+/** MCP tool names, for `HedgehogSession.call`. */
+export type ToolName = 'open_file' | 'describe_table' | 'query' | 'cells' | 'totals' | 'list_files'
+
 /**
- * The agent tools of `hedgehog mcp`, in-process: every method returns the same compact text an
- * LLM sees from the MCP server (at most ~12,000 characters; a cut ends with a `… cut:` line).
- * Files are normalized once per content hash and kept for the session.
- *
- * NOT AVAILABLE YET: `HedgehogSession.available` is false and the constructor throws
- * `ERR_HEDGEHOG_NOT_IMPLEMENTED` until the Rust session lands in the addon. The signatures are final.
+ * The agent tools of `hedgehog mcp`, in-process: every method resolves to the same compact text
+ * an LLM gets from the MCP server (at most ~12,000 characters; a cut ends with a `… cut:` line).
+ * A tool error rejects with an Error whose `message` is the one-line text an LLM can act on and
+ * whose `code` is `ERR_HEDGEHOG_TOOL`. Files are normalized once per content hash and kept for
+ * the session. Calls run off the main thread; calls of one session take turns.
+ * Paths are relative to `root` (or absolute and allowed). See docs/mcp.md for the texts.
  */
 export declare class HedgehogSession {
   /** Whether this build of the addon contains the agent-tools session. */
   static readonly available: boolean
+  /** The tools as MCP `tools/list` entries, for hosts that register them with an LLM. */
+  static toolSpecs(): ToolSpec[]
+  /** Throws (code `InvalidArg`) when `root` does not exist or an `allow` path is invalid. */
   constructor(options: SessionOptions)
+  /** The canonical root folder. */
+  readonly root: string
+  /** Allows one more file or folder outside the root. */
+  allow(path: PathLike): void
   /** Normalizes the file and returns its catalog (tables, columns, time coverage, totals, notes). */
   openFile(path: string): Promise<string>
   /** All columns of one table (dtype, unit, nulls, min/max), the first rows, header cells, totals. */
@@ -169,4 +181,6 @@ export declare class HedgehogSession {
   totals(path: string, opts?: SessionTotalsOptions): Promise<string>
   /** Spreadsheet files under `folder` (relative to root) with size and modified date. */
   listFiles(folder?: string, pattern?: string): Promise<string>
+  /** Runs a tool by its MCP name with JSON arguments, as an MCP host would. */
+  call(name: ToolName | (string & {}), args?: Record<string, unknown>): Promise<string>
 }

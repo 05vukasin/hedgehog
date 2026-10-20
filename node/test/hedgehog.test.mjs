@@ -3,13 +3,13 @@
 // from content), and the xlsx case opens hedgehog's own normalized output.
 import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { open, openAsync, normalize, normalizeSync, version, Workbook, HedgehogSession } from '../index.js'
+import { open, openAsync, normalize, normalizeSync, version, Workbook, HedgehogSession, toolSpecs } from '../index.js'
 
 const require = createRequire(import.meta.url)
 let dir
@@ -192,9 +192,60 @@ describe('normalize', () => {
   })
 })
 
-describe('HedgehogSession (pending)', () => {
-  test('is marked unavailable and throws a clear error', () => {
-    assert.equal(HedgehogSession.available, false)
-    assert.throws(() => new HedgehogSession({ root: dir }), (e) => e.code === 'ERR_HEDGEHOG_NOT_IMPLEMENTED')
+describe('HedgehogSession (agent tools)', () => {
+  test('is available and lists the six MCP tools', () => {
+    assert.equal(HedgehogSession.available, true)
+    assert.deepEqual(HedgehogSession.toolSpecs().map((t) => t.name), toolSpecs().map((t) => t.name))
+    assert.deepEqual(toolSpecs().map((t) => t.name), ['open_file', 'describe_table', 'query', 'cells', 'totals', 'list_files'])
+    assert.equal(toolSpecs()[0].inputSchema.type, 'object')
+  })
+
+  test('tools return the contract texts', async () => {
+    const s = new HedgehogSession({ root: dir })
+    assert.equal(s.root, realpathSync(dir))
+    const catalog = await s.openFile('sales.csv')
+    assert.match(catalog, /^FILE sales\.csv · 1 sheet/)
+    assert.match(catalog, /^T1 /m)
+    assert.match(await s.describeTable('sales.csv', 'T1'), /Budget \| number/)
+    assert.equal(await s.query('sales.csv', 'SELECT SUM(Budget) AS b FROM T1'), 'b\n1950.5\n(1 row)')
+    assert.match(await s.query('sales.csv', 'SELECT City FROM T1 ORDER BY City', 2), /\(3 rows, showing first 2\)$/)
+    assert.match(await s.cells('sales.csv', 'sales', 'B3'), /B3\tČačak/)
+    assert.match(await s.totals('sales.csv', { status: 'ok' }), /^ok,T1,sales!C5,Total/m)
+    assert.match(await s.listFiles(undefined, '*.csv'), /sales\.csv/)
+    assert.equal(await s.call('query', { path: 'sales.csv', sql: 'SELECT 1 AS x' }), 'x\n1\n(1 row)')
+  })
+
+  test('calls run concurrently without blocking and take turns on the session', async () => {
+    const s = new HedgehogSession({ root: dir })
+    const results = await Promise.all(Array.from({ length: 8 }, (_, i) => s.query('sales.csv', `SELECT ${i} AS n`)))
+    assert.deepEqual(results, Array.from({ length: 8 }, (_, i) => `n\n${i}\n(1 row)`))
+  })
+
+  test('tool errors reject with ERR_HEDGEHOG_TOOL and a one-line message', async () => {
+    const s = new HedgehogSession({ root: dir })
+    const isTool = (re) => (e) => e.code === 'ERR_HEDGEHOG_TOOL' && re.test(e.message) && !e.message.includes('\n')
+    await assert.rejects(s.query('sales.csv', 'SELECT nope FROM T1'), isTool(/no such column: nope.*columns are T1: Region, City, Budget/))
+    await assert.rejects(s.query('sales.csv', 'DELETE FROM T1'), isTool(/./))
+    await assert.rejects(s.describeTable('sales.csv', 'T9'), isTool(/no table "T9"; tables are T1/))
+    await assert.rejects(s.openFile('../outside.csv'), isTool(/no such file: \.\.\/outside\.csv/))
+    await assert.rejects(s.openFile('missing.xlsx'), isTool(/missing\.xlsx/))
+    await assert.rejects(s.call('bogus', {}), isTool(/unknown tool "bogus"/))
+    assert.throws(() => new HedgehogSession({ root: join(dir, 'no-such-dir') }), /no-such-dir/)
+    assert.throws(() => new HedgehogSession({}), TypeError)
+  })
+
+  test('allow: files outside the root', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'hedgehog-node-allow-'))
+    try {
+      writeFileSync(join(outside, 'q3.csv'), SALES)
+      const s = new HedgehogSession({ root: dir })
+      await assert.rejects(s.openFile(join(outside, 'q3.csv')), (e) => e.code === 'ERR_HEDGEHOG_TOOL')
+      s.allow(join(outside, 'q3.csv'))
+      assert.match(await s.openFile(join(outside, 'q3.csv')), /^FILE /)
+      const s2 = new HedgehogSession({ root: dir, allow: [pathToFileURL(outside)] })
+      assert.match(await s2.openFile(join(outside, 'q3.csv')), /^FILE /)
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
   })
 })

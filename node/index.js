@@ -1,6 +1,7 @@
 // hedgehog-sheets: public entry point. The native addon is loaded by the napi-rs generated
 // `binding.js` (prebuilt `hedgehog-sheets-<platform>` package, or a local `hedgehog.<platform>.node`).
-// This file only accepts `URL` paths on top of strings and holds the agent-tools session.
+// This file accepts `URL` paths on top of strings, parses the manifest and wraps the agent-tools
+// session.
 'use strict'
 
 const { fileURLToPath } = require('node:url')
@@ -50,25 +51,85 @@ exports.normalizeSync = function normalizeSync(path, outDir, opts) {
   return withManifest(native.normalizeSync(toPath(path), toPath(outDir), opts))
 }
 
-// TODO(agent-tools): back this with the Rust `Session` of `hedgehog mcp` (open_file,
-// describe_table, query, cells, totals, list_files returning compact text, see
-// docs/research/hedgehog_mcp_contract.md) once that crate is merged to master. The API and its
-// types (index.d.ts) are final; only the native half is missing.
+/** A tool error (one line an LLM can act on) gets code ERR_HEDGEHOG_TOOL. */
+function toolError(e) {
+  if (e && e.code === 'GenericFailure') e.code = 'ERR_HEDGEHOG_TOOL'
+  throw e
+}
+
+/** Promise of a native tool call; argument errors reject too instead of throwing. */
+function tool(fn) {
+  try {
+    return fn().catch(toolError)
+  } catch (e) {
+    return Promise.reject(e)
+  }
+}
+
+/**
+ * The agent tools of `hedgehog mcp` in-process (`hh_agent::Session`): each method resolves to the
+ * compact text the MCP server returns. Calls run on the libuv thread pool; calls of one session
+ * take turns (it owns SQLite connections).
+ */
 class HedgehogSession {
-  /** false until the agent-tools session ships in the native addon. */
+  /** Whether this build of the addon contains the agent-tools session. */
   static get available() {
-    return false
+    return typeof native.NativeSession === 'function'
   }
 
+  /** The tools as MCP `tools/list` entries (name, title, description, inputSchema, annotations). */
+  static toolSpecs() {
+    return native.toolSpecs()
+  }
+
+  #s
+
   constructor(options) {
-    const err = new Error(
-      'HedgehogSession is not available in this version of hedgehog-sheets yet; ' +
-        'use open() / normalize(), or the `hedgehog mcp` server, meanwhile',
-    )
-    err.code = 'ERR_HEDGEHOG_NOT_IMPLEMENTED'
-    void options
-    throw err
+    if (!options || options.root === undefined) throw new TypeError('HedgehogSession needs { root }')
+    const allow = (options.allow || []).map(toPath)
+    this.#s = new native.NativeSession({ root: toPath(options.root), allow })
+  }
+
+  /** The canonical root folder. */
+  get root() {
+    return this.#s.root
+  }
+
+  /** Allows one more file or folder outside the root (e.g. one the user referenced with `@`). */
+  allow(path) {
+    this.#s.allow(toPath(path))
+  }
+
+  openFile(path) {
+    return tool(() => this.#s.openFile(path))
+  }
+
+  describeTable(path, table) {
+    return tool(() => this.#s.describeTable(path, table))
+  }
+
+  query(path, sql, limit) {
+    return tool(() => this.#s.query(path, sql, limit))
+  }
+
+  cells(path, sheet, range) {
+    return tool(() => this.#s.cells(path, sheet, range))
+  }
+
+  totals(path, opts) {
+    const o = opts || {}
+    return tool(() => this.#s.totals(path, o.table, o.status))
+  }
+
+  listFiles(folder, pattern) {
+    return tool(() => this.#s.listFiles(folder, pattern))
+  }
+
+  /** Runs a tool by its MCP name (`open_file`, `query`, ...) with JSON arguments. */
+  call(name, args) {
+    return tool(() => this.#s.call(name, args))
   }
 }
 
 exports.HedgehogSession = HedgehogSession
+exports.toolSpecs = native.toolSpecs
