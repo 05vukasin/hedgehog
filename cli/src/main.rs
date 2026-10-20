@@ -25,7 +25,7 @@ const USAGE: &str = "usage:
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
   hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
-  hedgehog features --out FILE.csv [--corpus deco,synthetic,statsheets,strudel] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N]
+  hedgehog features --out FILE.csv [--corpus deco,synthetic,statsheets,strudel] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N] [--level cell|row]
 
 eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
       data root from $HEDGEHOG_DATA (default ../testdata);
@@ -248,6 +248,7 @@ fn features(args: &[&str]) -> Result<(), String> {
     let mut out: Option<PathBuf> = None;
     let mut corpora = vec!["deco".to_string(), "synthetic".to_string()];
     let mut dir: Option<PathBuf> = None;
+    let mut rows = false;
     let mut opts = eval::export::ExportOptions {
         source: String::new(),
         split: Split::All,
@@ -265,6 +266,7 @@ fn features(args: &[&str]) -> Result<(), String> {
             "--split" => opts.split = val()?.parse::<Split>()?,
             "--data-keep" => opts.data_keep = val()?.parse().map_err(|_| "--data-keep needs a number")?,
             "--limit" => opts.limit = Some(val()?.parse().map_err(|_| "--limit needs a number")?),
+            "--level" => rows = val()? == "row",
             _ => return Err(format!("unknown argument `{a}`")),
         }
     }
@@ -284,7 +286,12 @@ fn features(args: &[&str]) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         opts.source = name.clone();
         eprintln!("{name}: {} files", corpus.files.len());
-        let st = eval::export::export(&corpus, &opts, &mut w, k == 0).map_err(|e| e.to_string())?;
+        let st = if rows {
+            eval::export_rows::export(&corpus, &opts, &mut w, k == 0)
+        } else {
+            eval::export::export(&corpus, &opts, &mut w, k == 0)
+        }
+        .map_err(|e| e.to_string())?;
         let roles: Vec<String> =
             hh_core::Role::ALL.iter().zip(st.per_role).map(|(r, n)| format!("{}={n}", r.as_str())).collect();
         println!(

@@ -30,6 +30,7 @@ pub mod benchmark;
 pub mod csv;
 pub mod deco;
 pub mod export;
+pub mod export_rows;
 pub mod gt;
 pub mod labelled;
 pub mod json;
