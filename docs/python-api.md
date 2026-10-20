@@ -91,6 +91,17 @@ print(df[["Product", "Revenue / Q1", "_src_row", "_row_type"]])
 6  Grand total        4600.0        13     total
 ```
 
+Two manifest fields answer an agent's first questions without a query: which period the data
+covers, and which rows are totals and whether they check out
+([time coverage](normalized-output.md#time-coverage), per-table `totals`):
+
+```python
+r.manifest["time_coverage"]   # e.g. {"from": "2015", "to": "2017", "granularity": "year", "source": "header", ...} or None
+t = r.table("T1")
+t["time_coverage"]            # the same for one table
+t["totals"]                   # {"count": 6, "ok": 5, "mismatch": 1, "unknown": 0, "rows": [{"row": 13, "label": "Grand total", ...}, ...]}
+```
+
 ## `hedgehog.open`
 
 ```
@@ -346,15 +357,30 @@ check_citations(text, wb, facts=None) -> CitationReport
 
 Finds cell references in text written by a model (`Sales!B13`, `'My sheet'!B2:B9`, `(B13)`) and
 checks each one against the workbook: the sheet exists, the cell is inside the used range and not
-empty, and a number written right next to the reference equals the cell's value, allowing for the
+empty, and the number the reference is paired with equals the cell's value, allowing for the
 rounding the text shows. With `facts`, a cell that exists but was not in the facts given to the model
 is flagged `not_in_facts`.
+
+A bare table id in brackets, such as `(T1)` or `[T12]`, is not taken for a cell (write `cell T1` or
+`Sheet!T1` for the cell). A single cited cell is paired with a number in this order:
+
+1. `adjacent`: written right before or after the reference (`1,200 (Sales!B6)`, `Sales!B6: 1,200`);
+2. `table`: in a Markdown table row, a number in the reference's own cell, else in the cell to its
+   left, else to its right (`| Rent | 1,200 | Sales!B6 |`);
+3. `sentence`: the nearest number in the same sentence, preferring one before the reference;
+4. `previous_sentence`: when the sentence has none and starts by referring back ("This value ...",
+   "It ...", "The total ..."), the last number of the previous sentence
+   (`478,737. This value is from cell D7.`).
+
+Years, small plain integers (under 100), counts (`3 rows`) and numbers attached to another
+reference are skipped when pairing. A cited cell whose value differs from its paired number,
+including a text cell paired with a number, is a `mismatch`.
 
 `CitationReport`:
 
 | Member | Meaning |
 |---|---|
-| `citations` | List of `Citation(ref, sheet, rect, start, end, status, written, actual)`. `status` is `ok`, `unknown_sheet`, `empty_cell`, `out_of_range`, `mismatch` or `not_in_facts`. |
+| `citations` | List of `Citation(ref, sheet, rect, start, end, status, written, actual, pairing)`. `status` is `ok`, `unknown_sheet`, `empty_cell`, `out_of_range`, `mismatch` or `not_in_facts`. `written` is the paired number and `pairing` how it was found (`adjacent`, `table`, `sentence`, `previous_sentence`), both `None` when no number was paired. |
 | `uncited_numbers` | Numbers that look like data values but have no citation within 40 characters. |
 | `cited` | Distinct references, in order. |
 | `invalid` | Citations whose status is not `ok`. |
