@@ -1,0 +1,183 @@
+//! Cross-corpus benchmark: one [`run::Report`] per corpus, scored per source (publisher or
+//! sub-corpus: the part of the file id before the first `/`, else the corpus name) in two role
+//! spaces:
+//!
+//! - **full**: the seven hedgehog roles (only for corpora labelled with all of them: DECO,
+//!   Strudel, synthetic);
+//! - **coarse**: title / header / data / other, where group headers count as headers, totals as
+//!   data and notes as other — the label set every corpus shares (StatSheets has only these), so
+//!   scores are comparable across corpora.
+//!
+//! Generalization is judged on the coarse scores of corpora a model was not trained on.
+
+use std::collections::BTreeMap;
+
+use super::metrics::{Confusion, FileMacro, N_ROLES};
+use super::run::Report;
+use crate::analysis::Role;
+
+/// The shared four-role space.
+pub fn coarse(r: Role) -> Role {
+    match r {
+        Role::GroupHeader => Role::Header,
+        Role::Total => Role::Data,
+        Role::Note => Role::Other,
+        r => r,
+    }
+}
+
+pub fn coarse_confusion(c: &Confusion) -> Confusion {
+    let mut out = Confusion::default();
+    for g in 0..N_ROLES {
+        for p in 0..N_ROLES {
+            let n = c.counts[g][p];
+            if n > 0 {
+                out.counts[super::metrics::role_index(coarse(Role::ALL[g]))]
+                    [super::metrics::role_index(coarse(Role::ALL[p]))] += n;
+            }
+        }
+    }
+    out
+}
+
+/// Scores of one source.
+#[derive(Debug, Clone, Default)]
+pub struct SourceScore {
+    pub source: String,
+    pub files: usize,
+    pub sheets: usize,
+    pub cells: u64,
+    /// Pooled macro F1 and file-macro F1 over the seven roles (None for coarse-only corpora).
+    pub full: Option<(f64, f64)>,
+    /// Pooled macro F1 and file-macro F1 in the coarse space.
+    pub coarse: (f64, f64),
+    pub accuracy: f64,
+    /// Coarse per-role pooled F1 ([`Role::ALL`] order; None for roles outside the coarse space).
+    pub coarse_per_role: [Option<f64>; N_ROLES],
+    pub coarse_confusion: Confusion,
+}
+
+fn source_of(file_id: &str, corpus: &str) -> String {
+    file_id.split_once('/').map_or(corpus.to_string(), |(s, _)| s.to_string())
+}
+
+struct Acc {
+    files: usize,
+    sheets: usize,
+    full: Confusion,
+    coarse: Confusion,
+    full_fm: FileMacro,
+    coarse_fm: FileMacro,
+}
+
+/// Per-source scores plus an `ALL` row (last), from a finished report.
+pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
+    let mut acc: BTreeMap<String, Acc> = BTreeMap::new();
+    let mut all = Acc {
+        files: 0,
+        sheets: 0,
+        full: Confusion::default(),
+        coarse: Confusion::default(),
+        full_fm: FileMacro::default(),
+        coarse_fm: FileMacro::default(),
+    };
+    let mut i = 0;
+    let sheets = &report.sheets;
+    while i < sheets.len() {
+        let file = &sheets[i].file;
+        let src = source_of(file, &report.corpus);
+        let a = acc.entry(src).or_insert_with(|| Acc {
+            files: 0,
+            sheets: 0,
+            full: Confusion::default(),
+            coarse: Confusion::default(),
+            full_fm: FileMacro::default(),
+            coarse_fm: FileMacro::default(),
+        });
+        a.files += 1;
+        all.files += 1;
+        while i < sheets.len() && &sheets[i].file == file {
+            let c = &sheets[i].confusion;
+            let cc = coarse_confusion(c);
+            for x in [&mut *a, &mut all] {
+                x.sheets += 1;
+                x.full.merge(c);
+                x.coarse.merge(&cc);
+                x.full_fm.add_sheet(c);
+                x.coarse_fm.add_sheet(&cc);
+            }
+            i += 1;
+        }
+        for x in [&mut *a, &mut all] {
+            x.full_fm.end_file();
+            x.coarse_fm.end_file();
+        }
+    }
+    let score = |source: String, a: &Acc| SourceScore {
+        source,
+        files: a.files,
+        sheets: a.sheets,
+        cells: a.full.total(),
+        full: (!coarse_only).then(|| (a.full.macro_f1().unwrap_or(0.0), a.full_fm.macro_f1().unwrap_or(0.0))),
+        coarse: (a.coarse.macro_f1().unwrap_or(0.0), a.coarse_fm.macro_f1().unwrap_or(0.0)),
+        accuracy: a.full.correct() as f64 / a.full.total().max(1) as f64,
+        coarse_per_role: a.coarse.class_f1(),
+        coarse_confusion: a.coarse.clone(),
+    };
+    let mut out: Vec<SourceScore> = acc.iter().map(|(s, a)| score(s.clone(), a)).collect();
+    out.push(score("ALL".into(), &all));
+    out
+}
+
+/// Plain-text table of [`by_source`] rows (F1 in percent; `—` where a corpus has no full roles).
+pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
+    let mut s = format!(
+        "{corpus} · {analyzer}\n  {:<24} {:>5} {:>6} {:>9}  {:>11} {:>11}  {:>11} {:>11}  {:>6}\n",
+        "source", "files", "sheets", "cells", "full pooled", "full file", "coarse pool", "coarse file", "acc"
+    );
+    for r in rows {
+        let roles: Vec<String> = Role::ALL
+            .iter()
+            .zip(r.coarse_per_role)
+            .filter_map(|(role, f)| f.map(|f| format!("{} {:.1}", role.as_str(), 100.0 * f)))
+            .collect();
+        let (fp, ff) = r.full.map_or(("—".into(), "—".into()), |(a, b)| (format!("{:.1}", 100.0 * a), format!("{:.1}", 100.0 * b)));
+        s.push_str(&format!(
+            "  {:<24} {:>5} {:>6} {:>9}  {:>11} {:>11}  {:>11.1} {:>11.1}  {:>6.1}\n",
+            r.source,
+            r.files,
+            r.sheets,
+            r.cells,
+            fp,
+            ff,
+            100.0 * r.coarse.0,
+            100.0 * r.coarse.1,
+            100.0 * r.accuracy
+        ));
+        if r.source == "ALL" {
+            s.push_str(&format!("  coarse F1 per role: {}\n", roles.join(" · ")));
+            s.push_str("  coarse confusion (rows = truth, cols = predicted; title header data other):\n");
+            let keep = [Role::Title, Role::Header, Role::Data, Role::Other].map(super::metrics::role_index);
+            for &g in &keep {
+                let line: Vec<String> = keep.iter().map(|&p| format!("{:>9}", r.coarse_confusion.counts[g][p])).collect();
+                s.push_str(&format!("    {:<7}{}\n", Role::ALL[g].as_str(), line.join("")));
+            }
+        }
+    }
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn coarse_space_merges_roles() {
+        let mut c = Confusion::default();
+        c.add(Role::Total, Role::Data); // right in coarse space
+        c.add(Role::GroupHeader, Role::Header); // right in coarse space
+        c.add(Role::Note, Role::Title); // wrong in both
+        let cc = coarse_confusion(&c);
+        assert_eq!((c.correct(), cc.correct(), cc.total()), (0, 2, 3));
+    }
+}

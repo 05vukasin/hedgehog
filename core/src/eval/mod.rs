@@ -26,14 +26,17 @@
 
 pub mod baseline;
 pub mod bench;
+pub mod benchmark;
 pub mod csv;
 pub mod deco;
 pub mod export;
 pub mod gt;
+pub mod labelled;
 pub mod json;
 pub mod metrics;
 pub mod run;
 pub mod split;
+pub mod statsheets;
 pub mod synthetic;
 
 use std::fmt;

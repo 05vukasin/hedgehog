@@ -24,6 +24,7 @@ const USAGE: &str = "usage:
   hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
+  hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
   hedgehog features --out FILE.csv [--corpus deco,synthetic] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N]
 
 eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
@@ -82,6 +83,7 @@ fn main() -> ExitCode {
         ["golden", rest @ ..] => report(bench::golden(rest)),
         ["eval", "synthetic", rest @ ..] => report(eval_synthetic(rest)),
         ["features", rest @ ..] => report(features(rest)),
+        ["benchmark", rest @ ..] => report(benchmark(rest)),
         ["eval", "deco", rest @ ..] => match eval_deco(rest) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -294,5 +296,61 @@ fn features(args: &[&str]) -> Result<(), String> {
     }
     w.flush().map_err(|e| e.to_string())?;
     println!("wrote {} in {:.1} s", out.display(), t.elapsed().as_secs_f64());
+    Ok(())
+}
+
+/// Cross-corpus scores per source (`hh_core::eval::benchmark`). DECO and synthetic use `--split`
+/// (the model trains on their dev split); StatSheets and Strudel are external and scored whole.
+fn benchmark(args: &[&str]) -> Result<(), String> {
+    let mut corpora = vec!["deco".to_string(), "statsheets".into(), "strudel".into(), "synthetic".into()];
+    let mut analyzer_name = "layout".to_string();
+    let mut split = Split::Test;
+    let mut threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(4);
+    let mut out: Option<PathBuf> = None;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
+        match *a {
+            "--corpora" => corpora = val()?.split(',').map(str::to_string).collect(),
+            "--analyzer" => analyzer_name = val()?.to_string(),
+            "--split" => split = val()?.parse::<Split>()?,
+            "--threads" => threads = val()?.parse::<usize>().map_err(|_| "--threads needs a number")?.max(1),
+            "--out" => out = Some(PathBuf::from(val()?)),
+            _ => return Err(format!("unknown argument `{a}`")),
+        }
+    }
+    let an = analyzer(&analyzer_name).ok_or(format!("unknown analyzer `{analyzer_name}`"))?;
+    let root = eval::data_root();
+    let mut tsv = String::from("corpus\tsource\tfiles\tsheets\tcells\tfull_pooled\tfull_file\tcoarse_pooled\tcoarse_file\taccuracy\n");
+    for name in &corpora {
+        let t = Instant::now();
+        let (corpus, sp) = match name.as_str() {
+            "deco" => (eval::deco::load(&root), split),
+            "synthetic" => (eval::synthetic::load(&root.join("synthetic").join("v0")), split),
+            "statsheets" => (eval::statsheets::load(&root), Split::All),
+            "strudel" => (eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"), Split::All),
+            other => return Err(format!("unknown corpus `{other}`")),
+        };
+        let corpus = corpus.map_err(|e| e.to_string())?;
+        for n in &corpus.notes {
+            eprintln!("{name}: {n}");
+        }
+        let opts = RunOptions { split: sp, ..RunOptions::default() };
+        let report = eval::run::evaluate_parallel(&corpus, an, &analyzer_name, &opts, threads);
+        let rows = eval::benchmark::by_source(&report, corpus.coarse_roles);
+        print!("{}", eval::benchmark::table(&format!("{name} ({sp})"), &analyzer_name, &rows));
+        println!("  time {:.1} s (analyze {:.1} s)\n", t.elapsed().as_secs_f64(), report.timing.analyze_ms / 1000.0);
+        for r in &rows {
+            let (fp, ff) = r.full.map_or((String::new(), String::new()), |(a, b)| (format!("{:.4}", a), format!("{:.4}", b)));
+            tsv.push_str(&format!(
+                "{name}\t{}\t{}\t{}\t{}\t{fp}\t{ff}\t{:.4}\t{:.4}\t{:.4}\n",
+                r.source, r.files, r.sheets, r.cells, r.coarse.0, r.coarse.1, r.accuracy
+            ));
+        }
+    }
+    if let Some(p) = out {
+        std::fs::write(&p, tsv).map_err(|e| format!("{}: {e}", p.display()))?;
+        println!("wrote {}", p.display());
+    }
     Ok(())
 }

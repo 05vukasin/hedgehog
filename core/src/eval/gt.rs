@@ -64,6 +64,9 @@ pub struct Corpus {
     pub labels: BTreeMap<String, LabelCount>,
     pub has_tables: bool,
     pub has_roles: bool,
+    /// Labels use only title / header / data / other (StatSheets): score in the coarse role space
+    /// (see [`super::benchmark::coarse`]).
+    pub coarse_roles: bool,
     /// Free-form loader notes (fallback paths used, duplicate labels, ...), shown in the report.
     pub notes: Vec<String>,
 }
