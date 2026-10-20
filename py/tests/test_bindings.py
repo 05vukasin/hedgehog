@@ -13,7 +13,7 @@ def test_sheets_and_cells(sales_xlsx):
     assert sheets["My Notes"]["used_range"] == "A1:B3"
 
     c = wb.get_cell("Sales", "B5")
-    assert c == {"sheet": "Sales", "address": "B5", "value": 16.0, "type": "number", "formula": None}
+    assert c == {"sheet": "Sales", "address": "B5", "value": 16.0, "type": "number", "formula": None, "merged": None}
     f = wb.get_cell(None, "Sales!$C$6")
     assert f["formula"] == "=SUM(C2:C4)" and f["type"] == "empty"  # openpyxl saves no cached value
     q = wb.get_cell(None, "'My Notes'!B3")

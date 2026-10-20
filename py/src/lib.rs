@@ -85,6 +85,8 @@ fn cell_dict<'py>(py: Python<'py>, sheet: &Sheet, row: u32, col: u32, cell: Opti
     d.set_item("value", value_py(py, v)?)?;
     d.set_item("type", value_type(v))?;
     d.set_item("formula", cell.and_then(|c| c.formula.as_ref()).map(|f| format!("={f}")))?;
+    let merged = sheet.merges.iter().find(|m| m.top <= row && row <= m.bottom && m.left <= col && col <= m.right);
+    d.set_item("merged", merged.map(|m| range_a1(*m)))?;
     Ok(d)
 }
 
@@ -141,7 +143,8 @@ impl Workbook {
     }
 
     /// `get_cell("Sheet1", "D43")` or `get_cell(None, "Sheet1!D43")` →
-    /// `{sheet, address, value, type, formula}`; an empty cell has value None, type "empty".
+    /// `{sheet, address, value, type, formula, merged}`; an empty cell has value None, type "empty";
+    /// `merged` is the merged range (`B3:C3`) the cell belongs to, or None.
     #[pyo3(signature = (sheet, address))]
     fn get_cell<'py>(&self, py: Python<'py>, sheet: Option<&str>, address: &str) -> PyResult<Bound<'py, PyDict>> {
         let (in_ref, rect) = parse_ref(address, &[RefKind::Cell])?;

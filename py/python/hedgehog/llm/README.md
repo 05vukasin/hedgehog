@@ -27,7 +27,7 @@ print(llm.bench(cases, llm.connect_available()))              # cases: {file, qu
 | `openai` | `openai` | yes | function calling | `response_format` json_schema (`strict_json=`) | in/out/cached | default model `gpt-4o-mini` (`OPENAI_DEFAULT_MODEL`) |
 | `openai_compatible`, `vllm`, `ollama`, `openrouter`, `groq` | `openai` | yes | function calling | json_schema, `strict=False` | in/out | thinking switched off via `extra_body` (vLLM `chat_template_kwargs`, OpenRouter `reasoning`), dropped if the gateway rejects it; `<think>` blocks stripped |
 | `anthropic` | `anthropic` ≥ 1.15 | yes | tool use, `tool_choice` auto | `output_config.format` | in/out/cache read/write | default `claude-opus-5-5`; optional `effort=`; top-level `cache_control`; refusal `stop_details`; server-side refusal fallbacks on opus/sonnet-5-5 and fable-5-1 (`fallbacks=False` to opt out) |
-| `bedrock` | `boto3` | Converse | toolConfig | via a `structured_output` tool (auto choice) | in/out/cache | bearer token exported as `AWS_BEARER_TOKEN_BEDROCK` |
+| `bedrock` | `boto3` | Converse | toolConfig | via a `structured_output` tool (auto choice) | in/out/cache | bearer token set on the client's own botocore session (`os.environ` untouched) |
 
 All providers share `ChatClient.chat(messages, system=, tools=, json_schema=, max_tokens=, temperature=)`
 → `ChatResult(text, tool_calls, stop_reason, usage, raw, json, refusal)`, a per-client concurrency limit

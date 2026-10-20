@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import threading
 from typing import Any, Dict, List, Optional
 
 from .base import ChatClient
@@ -26,22 +24,49 @@ _RETRY_CODES = {
     "ServiceQuotaExceededException",
 }
 JSON_TOOL = "structured_output"
-_env_lock = threading.Lock()
 
 
 def _import_sdk():
     try:
         import boto3  # noqa: PLC0415
+        import botocore.session  # noqa: PLC0415
         from botocore.config import Config  # noqa: PLC0415
+        from botocore.tokens import FrozenAuthToken  # noqa: PLC0415
     except ImportError as e:  # pragma: no cover - depends on environment
         raise MissingDependency("The Bedrock provider needs `boto3`: pip install 'hedgehog-sheets[bedrock]'") from e
-    return boto3, Config
+    return boto3, botocore.session, Config, FrozenAuthToken
+
+
+class _StaticTokenProvider:
+    """botocore token provider that always returns one bearer token (the Bedrock API key)."""
+
+    def __init__(self, token: Any) -> None:
+        self._token = token
+
+    def load_token(self, **kwargs: Any) -> Any:
+        return self._token
+
+
+def _make_client(api_key: Optional[str], region: str, timeout: float) -> Any:
+    """A ``bedrock-runtime`` client. The API key goes to a botocore session of its own as its
+    bearer-token provider, so ``os.environ`` and other boto3 clients are left alone."""
+    boto3, botocore_session, Config, FrozenAuthToken = _import_sdk()
+    retries = {"max_attempts": 1, "mode": "standard"}
+    if not api_key:
+        config = Config(retries=retries, read_timeout=timeout)
+        return boto3.client("bedrock-runtime", region_name=region, config=config)
+    # botocore picks bearer auth on its own only for a token in the environment; ask for it here.
+    config = Config(retries=retries, read_timeout=timeout, signature_version="bearer")
+    core = botocore_session.Session()
+    core.register_component("token_provider", _StaticTokenProvider(FrozenAuthToken(api_key)))
+    session = boto3.Session(botocore_session=core, region_name=region)
+    return session.client("bedrock-runtime", region_name=region, config=config)
 
 
 class BedrockClient(ChatClient):
-    """Bedrock Converse. The API key is exported as ``AWS_BEARER_TOKEN_BEDROCK`` (process-wide, which
-    is how botocore discovers bearer tokens) before the boto3 client is created; with
-    ``use_aws_credentials=True`` and no key, the normal AWS credential chain is used instead.
+    """Bedrock Converse. The API key is the bearer token of this client's own botocore session
+    (``os.environ`` is not modified); with ``use_aws_credentials=True`` and no key, the normal AWS
+    credential chain is used instead.
 
     Structured output (``json_schema``) uses a ``structured_output`` tool with automatic tool choice;
     if the model answers in text instead, the JSON is extracted from the text.
@@ -63,15 +88,7 @@ class BedrockClient(ChatClient):
         super().__init__(model=model, **base_opts)
         self.region = region
         if client is None:
-            boto3, Config = _import_sdk()
-            with _env_lock:
-                if api_key:
-                    os.environ["AWS_BEARER_TOKEN_BEDROCK"] = api_key
-                client = boto3.client(
-                    "bedrock-runtime",
-                    region_name=region,
-                    config=Config(retries={"max_attempts": 1, "mode": "standard"}, read_timeout=timeout),
-                )
+            client = _make_client(api_key, region, timeout)
         self._client = client
 
     def __repr__(self) -> str:
