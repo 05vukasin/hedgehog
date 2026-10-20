@@ -38,7 +38,8 @@ Design rules:
 |---|---|---|
 | `core/` | `hh_core` | The Rust library. Everything below. |
 | `py/` | `hh_py` | PyO3 bindings (`py/src/`, compiled to `hedgehog._native`) and the Python package (`py/python/hedgehog/`). Published as `hedgehog-sheets`. |
-| `cli/` | `hh_cli` | The `hedgehog` command (`cli/src/main.rs`). |
+| `cli/` | `hh_cli` | The `hedgehog` command (`cli/src/main.rs`), including the MCP server `hedgehog mcp` (`cli/src/mcp.rs`). |
+| `agent/` | `hh_agent` | The agent tools as a Rust API (`Session`: catalog, describe_table, read-only SQL over SQLite, cells, totals, list_files, path bounds); used by `hedgehog mcp`. Keeps SQLite out of `hh_core`. |
 | `docs/` | | This documentation. |
 | `assets/` | | Logo. |
 | `.github/workflows/` | | CI and release workflows ([development.md](development.md#continuous-integration)). |
