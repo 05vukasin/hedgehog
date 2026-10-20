@@ -59,7 +59,7 @@ pub const FEATURES: [(&str, &str); 34] = [
 const N: usize = FEATURES.len();
 
 /// Per-column context used to resolve ambiguous values.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct ColumnHints {
     pub decimal: Option<DecimalSep>,
     pub date_order: Option<DateOrder>,
@@ -106,17 +106,23 @@ pub fn sheet_column_hints(grid: &Grid) -> HashMap<u32, ColumnHints> {
 pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u32, ColumnHints> {
     let mut votes: HashMap<u32, (DecimalVotes, DateOrderVotes)> = HashMap::new();
     let mut currency_cols: HashMap<u32, bool> = HashMap::new();
+    // Each text's votes and currency evidence depend only on the text: computed once per text.
+    let mut memo: rustc_hash::FxHashMap<&str, (DecimalVotes, DateOrderVotes, bool)> = rustc_hash::FxHashMap::default();
     for c in &grid.sheet.cells {
         if let Some(Value::Text(s)) = &c.value {
+            let (d, o, cur_ev) = *memo.entry(s.as_str()).or_insert_with(|| {
+                let (mut d, mut o) = (DecimalVotes::default(), DateOrderVotes::default());
+                if locale.is_none() {
+                    d.add(s);
+                    o.add(s);
+                }
+                (d, o, currency_evidence(s))
+            });
             let e = votes.entry(c.col).or_default();
-            if locale.is_none() {
-                e.0.add(s);
-                e.1.add(s);
-            }
+            e.0.merge(&d);
+            e.1.merge(&o);
             let cur = currency_cols.entry(c.col).or_default();
-            if !*cur {
-                *cur = currency_evidence(s);
-            }
+            *cur |= cur_ev;
         }
     }
     let cur = |col: &u32| currency_cols.get(col).copied().unwrap_or(false);
@@ -158,9 +164,26 @@ pub fn compute_with(grid: &Grid, out: &mut Features, locale: Option<Locale>) {
     let cells = &grid.sheet.cells;
     let hints = sheet_column_hints_with(grid, locale);
     let mut cols: Vec<Vec<f32>> = (0..N).map(|_| Vec::with_capacity(cells.len())).collect();
+    // Registers repeat the same values on many rows: a text's or number's features depend only on
+    // the value and its column's hints (and the formula flag, set per cell), so each pair is
+    // computed once.
+    let mut memo: rustc_hash::FxHashMap<(&str, ColumnHints), [f32; N]> = rustc_hash::FxHashMap::default();
+    let mut num_memo: rustc_hash::FxHashMap<(u64, ColumnHints), [f32; N]> = rustc_hash::FxHashMap::default();
     for c in cells {
         let h = hints.get(&c.col).copied().unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
-        let row = cell_features(c, h);
+        let row = match &c.value {
+            Some(Value::Text(t)) => {
+                let mut r = *memo.entry((t.as_str(), h)).or_insert_with(|| cell_features(c, h));
+                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
+                r
+            }
+            Some(Value::Number(x)) => {
+                let mut r = *num_memo.entry((x.to_bits(), h)).or_insert_with(|| cell_features(c, h));
+                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
+                r
+            }
+            _ => cell_features(c, h),
+        };
         for (col, v) in cols.iter_mut().zip(row) {
             col.push(v);
         }

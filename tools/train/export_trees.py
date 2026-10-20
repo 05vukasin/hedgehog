@@ -24,7 +24,7 @@ import numpy as np
 ROLES = ["title", "header", "data", "group_header", "total", "note", "other"]
 
 
-def convert(model_path: Path, rounds: int | None) -> dict:
+def convert(model_path: Path, rounds: int | None, classes: list[str] | None = None) -> dict:
     m = json.loads(model_path.read_text())
     learner = m["learner"]
     n_class = int(learner["learner_model_param"]["num_class"])
@@ -34,20 +34,27 @@ def convert(model_path: Path, rounds: int | None) -> dict:
     trees, info = gb["trees"], gb["tree_info"]
     if rounds is not None:
         trees, info = trees[: rounds * n_class], info[: rounds * n_class]
+    def f32(x) -> float:
+        """The shortest decimal that reads back as the same float32 (smaller files, same model)."""
+        return float(str(np.float32(x)))
+
     out = []
     for tree, cls in zip(trees, info):
         left = tree["left_children"]
         out.append({
             "class": cls,
             "f": [int(x) if left[i] != -1 else 0 for i, x in enumerate(tree["split_indices"])],
-            "t": [float(x) if left[i] != -1 else 0.0 for i, x in enumerate(tree["split_conditions"])],
+            "t": [f32(x) if left[i] != -1 else 0.0 for i, x in enumerate(tree["split_conditions"])],
             "l": left,
             "r": tree["right_children"],
             # A leaf's value is stored in split_conditions.
-            "v": [float(x) if left[i] == -1 else 0.0 for i, x in enumerate(tree["split_conditions"])],
+            "v": [f32(x) if left[i] == -1 else 0.0 for i, x in enumerate(tree["split_conditions"])],
         })
-    return {"format": "hh-trees-1", "classes": ROLES[:n_class], "features": learner["feature_names"],
-            "base": [float(b) for b in base], "trees": out}
+    classes = classes or ROLES[:n_class]
+    if len(classes) != n_class:
+        raise ValueError(f"model has {n_class} classes, {len(classes)} names given")
+    return {"format": "hh-trees-1", "classes": classes, "features": learner["feature_names"],
+            "base": [f32(b) for b in base], "trees": out}
 
 
 def scores(model: dict, X: np.ndarray) -> np.ndarray:
@@ -73,6 +80,7 @@ def main() -> None:
     ap.add_argument("out", type=Path)
     ap.add_argument("--rounds", type=int, help="keep the first N boosting rounds (default: best_iteration + 1)")
     ap.add_argument("--check", type=Path, help="features parquet to verify the scores on")
+    ap.add_argument("--classes", help="comma-separated role names in class order (default: the 7 roles)")
     args = ap.parse_args()
     import xgboost as xgb
 
@@ -82,7 +90,7 @@ def main() -> None:
     if rounds is None:
         best = bst.attributes().get("best_iteration")
         rounds = int(best) + 1 if best is not None else None
-    model = convert(args.model, rounds)
+    model = convert(args.model, rounds, args.classes.split(",") if args.classes else None)
     args.out.write_text(json.dumps(model, separators=(",", ":")))
     print(f"{len(model['trees'])} trees, {sum(len(t['l']) for t in model['trees']):,} nodes, "
           f"{args.out.stat().st_size / 1e6:.2f} MB → {args.out}")

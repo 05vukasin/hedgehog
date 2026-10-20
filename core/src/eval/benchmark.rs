@@ -55,6 +55,8 @@ pub struct SourceScore {
     /// Coarse per-role pooled F1 ([`Role::ALL`] order; None for roles outside the coarse space).
     pub coarse_per_role: [Option<f64>; N_ROLES],
     pub coarse_confusion: Confusion,
+    /// Full per-role pooled F1 (None for coarse-only corpora or absent roles).
+    pub full_per_role: [Option<f64>; N_ROLES],
 }
 
 fn source_of(file_id: &str, corpus: &str) -> String {
@@ -123,6 +125,7 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
         accuracy: a.full.correct() as f64 / a.full.total().max(1) as f64,
         coarse_per_role: a.coarse.class_f1(),
         coarse_confusion: a.coarse.clone(),
+        full_per_role: if coarse_only { [None; N_ROLES] } else { a.full.class_f1() },
     };
     let mut out: Vec<SourceScore> = acc.iter().map(|(s, a)| score(s.clone(), a)).collect();
     out.push(score("ALL".into(), &all));
@@ -156,6 +159,14 @@ pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
         ));
         if r.source == "ALL" {
             s.push_str(&format!("  coarse F1 per role: {}\n", roles.join(" · ")));
+            let full: Vec<String> = Role::ALL
+                .iter()
+                .zip(r.full_per_role)
+                .filter_map(|(role, f)| f.map(|f| format!("{} {:.1}", role.as_str(), 100.0 * f)))
+                .collect();
+            if !full.is_empty() {
+                s.push_str(&format!("  full F1 per role:   {}\n", full.join(" · ")));
+            }
             s.push_str("  coarse confusion (rows = truth, cols = predicted; title header data other):\n");
             let keep = [Role::Title, Role::Header, Role::Data, Role::Other].map(super::metrics::role_index);
             for &g in &keep {

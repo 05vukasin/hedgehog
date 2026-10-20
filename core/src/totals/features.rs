@@ -28,6 +28,11 @@ pub const NAMES: [&str; 9] = [
 /// * `t_in_keyword_total_row` — 1 if the row is labelled with a total keyword
 /// * `t_total_verified` — 1 total verified, 0 total wrong, -1 not a total or unknown
 pub fn compute(grid: &Grid, out: &mut Features) {
+    compute_returning(grid, out);
+}
+
+/// [`compute`], also returning the detected total candidates (so callers need not detect again).
+pub fn compute_returning(grid: &Grid, out: &mut Features) -> Vec<crate::totals::TotalCandidate> {
     let sheet = grid.sheet;
     let n = sheet.cells.len();
     let deps = DependencyIndex::new(grid);
@@ -51,9 +56,10 @@ pub fn compute(grid: &Grid, out: &mut Features) {
         cols[7][i] = kw.contains_key(&c.row) as u8 as f32;
         cols[8][i] = -1.0;
     }
-    for cand in detect_with(grid, &deps) {
+    let cands = detect_with(grid, &deps);
+    for cand in &cands {
         if let Some(i) = grid.cell_index(cand.row, cand.col) {
-            cols[8][i] = match verify(grid, &cand).ok {
+            cols[8][i] = match verify(grid, cand).ok {
                 Some(true) => 1.0,
                 Some(false) => 0.0,
                 None => -1.0,
@@ -63,4 +69,5 @@ pub fn compute(grid: &Grid, out: &mut Features) {
     for (name, col) in NAMES.iter().zip(cols) {
         out.add(name, col);
     }
+    cands
 }

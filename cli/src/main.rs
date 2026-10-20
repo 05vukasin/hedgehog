@@ -30,7 +30,7 @@ const USAGE: &str = "usage:
 eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
       data root from $HEDGEHOG_DATA (default ../testdata);
       JSON report defaults to $HEDGEHOG_SCORES or <data root>/../docs/research/scores/<analyzer>_deco_<split>.json
-      analyzers: baseline, layout, model (cell roles from the trees in $HEDGEHOG_MODEL)";
+      analyzers: baseline, layout, model (rules + learned row model; $HEDGEHOG_MODEL overrides the embedded one)";
 
 /// Analyzer registry. The integrator adds `"layout" => Some(&|g: &Grid| layout::analyze(g))`.
 fn analyzer(name: &str) -> Option<&'static dyn Analyzer> {
@@ -42,20 +42,26 @@ fn analyzer(name: &str) -> Option<&'static dyn Analyzer> {
     }
 }
 
-/// The learned model named by `$HEDGEHOG_MODEL` (an `hh-trees-1` JSON file), loaded once.
-fn model() -> &'static hh_core::learned::TreeModel {
-    static MODEL: std::sync::OnceLock<hh_core::learned::TreeModel> = std::sync::OnceLock::new();
+/// The learned row model: the one embedded in hh_core, or the folder `$HEDGEHOG_MODEL`
+/// (`coarse.json` + `fine.json`, hh-trees-1); loaded once.
+fn model() -> &'static hh_core::learned::RowModel {
+    static MODEL: std::sync::OnceLock<hh_core::learned::RowModel> = std::sync::OnceLock::new();
     MODEL.get_or_init(|| {
-        let path = std::env::var("HEDGEHOG_MODEL").unwrap_or_else(|_| {
-            eprintln!("the `model` analyzer needs HEDGEHOG_MODEL=<model.json>");
-            std::process::exit(2)
-        });
-        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-            eprintln!("{path}: {e}");
-            std::process::exit(2)
-        });
-        hh_core::learned::TreeModel::from_json(&text).unwrap_or_else(|e| {
-            eprintln!("{path}: {e}");
+        let Some(dir) = std::env::var("HEDGEHOG_MODEL").ok().filter(|d| !d.is_empty()) else {
+            return hh_core::learned::embedded().cloned().unwrap_or_else(|| {
+                eprintln!("the embedded model failed to load");
+                std::process::exit(2)
+            });
+        };
+        let read = |name: &str| {
+            let p = std::path::Path::new(&dir).join(name);
+            std::fs::read_to_string(&p).unwrap_or_else(|e| {
+                eprintln!("{}: {e}", p.display());
+                std::process::exit(2)
+            })
+        };
+        hh_core::learned::RowModel::from_json(&read("coarse.json"), &read("fine.json")).unwrap_or_else(|e| {
+            eprintln!("{dir}: {e}");
             std::process::exit(2)
         })
     })
@@ -308,8 +314,8 @@ fn features(args: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-/// Cross-corpus scores per source (`hh_core::eval::benchmark`). DECO and synthetic use `--split`
-/// (the model trains on their dev split); StatSheets and Strudel are external and scored whole.
+/// Cross-corpus scores per source (`hh_core::eval::benchmark`), every corpus on `--split` (default
+/// test: the learned models train on the dev files of all corpora).
 fn benchmark(args: &[&str]) -> Result<(), String> {
     let mut corpora = vec!["deco".to_string(), "statsheets".into(), "strudel".into(), "synthetic".into()];
     let mut analyzer_name = "layout".to_string();
@@ -336,8 +342,8 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
         let (corpus, sp) = match name.as_str() {
             "deco" => (eval::deco::load(&root), split),
             "synthetic" => (eval::synthetic::load(&root.join("synthetic").join("v0")), split),
-            "statsheets" => (eval::statsheets::load(&root), Split::All),
-            "strudel" => (eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"), Split::All),
+            "statsheets" => (eval::statsheets::load(&root), split),
+            "strudel" => (eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"), split),
             other => return Err(format!("unknown corpus `{other}`")),
         };
         let corpus = corpus.map_err(|e| e.to_string())?;

@@ -45,12 +45,20 @@ pub fn role_id(r: Role) -> i32 {
 
 /// Every feature column for one sheet, in a fixed order: core features, then layout features.
 pub fn sheet_features(grid: &Grid) -> Features {
+    sheet_features_with(grid, &crate::layout::analyze(grid))
+}
+
+/// [`sheet_features`] with the rule layout already computed.
+pub fn sheet_features_with(grid: &Grid, lay: &crate::analysis::SheetLayout) -> Features {
     let n = grid.sheet.cells.len();
     let mut f = Features::new(n);
+    let t0 = std::time::Instant::now();
     crate::context::compute(grid, &mut f);
+    crate::normalize::trace("  F:context", t0);
     crate::values::features::compute(grid, &mut f);
-    crate::totals::features::compute(grid, &mut f);
-    let lay = crate::layout::analyze(grid);
+    crate::normalize::trace("  F:values", t0);
+    let cands = crate::totals::features::compute_returning(grid, &mut f);
+    crate::normalize::trace("  F:totals", t0);
     let cells = &grid.sheet.cells;
     let role_at = |r: i64, c: i64| -> f32 {
         if r < 0 || c < 0 {
@@ -78,13 +86,15 @@ pub fn sheet_features(grid: &Grid) -> Features {
     f.add("l_role_left", e);
     f.add("l_role_right", g);
     f.add("l_in_table", h);
-    add_total_context(grid, &mut f);
+    crate::normalize::trace("  F:layout_feats", t0);
+    add_total_context(grid, &cands, &mut f);
+    crate::normalize::trace("  F:total_context", t0);
     f
 }
 
 /// `x_*`: detected totals around the cell. DECO labels a whole total row (its label and every
 /// number), so whether the row holds detected totals matters as much as the cell itself.
-fn add_total_context(grid: &Grid, f: &mut Features) {
+fn add_total_context(grid: &Grid, cands: &[crate::totals::TotalCandidate], f: &mut Features) {
     use crate::totals::{Direction, TotalLevel};
     use rustc_hash::FxHashMap;
     let cells = &grid.sheet.cells;
@@ -93,7 +103,7 @@ fn add_total_context(grid: &Grid, f: &mut Features) {
     let mut level = vec![0f32; n];
     let mut row_v: FxHashMap<u32, u32> = FxHashMap::default();
     let mut col_h: FxHashMap<u32, u32> = FxHashMap::default();
-    for c in crate::totals::detect(grid) {
+    for c in cands {
         let Some(i) = grid.cell_index(c.row, c.col) else { continue };
         let vertical = c.direction == Direction::Vertical;
         cand[i] = if vertical { 1.0 } else { 2.0 };
