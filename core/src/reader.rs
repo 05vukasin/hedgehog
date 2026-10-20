@@ -1,4 +1,5 @@
-//! Reads xlsx / xlsm / xlsb / xls / ods into the [`Workbook`] model via calamine.
+//! Reads xlsx / xlsm / xlsb / xls / ods into the [`Workbook`] model via calamine, and CSV / TSV
+//! with the reader in `reader/csv.rs`.
 //! Calamine gives values, formulas and merges but no styles; a style-aware reader can replace
 //! this module later without changing the model.
 
@@ -16,6 +17,7 @@ use zip::CompressionMethod;
 
 use crate::model::{Cell, Rect, Sheet, Value, Workbook};
 
+mod csv;
 mod merges;
 
 #[derive(Debug)]
@@ -78,6 +80,21 @@ fn sniff(path: &Path) -> Option<Format> {
     }
 }
 
+/// CSV / TSV: any name but a workbook extension (`.csv`, `.tsv`, `.txt`, `.asp`, none, ...) with
+/// content that is not a zip or OLE container (a workbook saved as `.csv` opens as the workbook
+/// it is). Unreadable files go to calamine, which reports the error.
+fn is_delimited_text(path: &Path) -> bool {
+    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+    if matches!(ext.as_deref(), Some("xls" | "xla" | "xlsx" | "xlsm" | "xlam" | "xlsb" | "ods")) {
+        return false;
+    }
+    let mut magic = Vec::with_capacity(4);
+    match File::open(path).and_then(|f| f.take(4).read_to_end(&mut magic)) {
+        Ok(_) => !matches!(magic[..], [0xD0, 0xCF, 0x11, 0xE0] | [b'P', b'K', 3, 4]),
+        Err(_) => false,
+    }
+}
+
 /// Opens the workbook with the reader its content calls for (extension as a fallback).
 fn open_sheets(path: &Path) -> Result<Sheets<BufReader<File>>, calamine::Error> {
     use calamine::{open_workbook, Error as E};
@@ -100,6 +117,9 @@ fn open_sheets(path: &Path) -> Result<Sheets<BufReader<File>>, calamine::Error> 
 
 pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
     let path = path.as_ref();
+    if is_delimited_text(path) {
+        return csv::open(path);
+    }
     match open_sheets(path) {
         Ok(wb) => {
             let scan = || merges::Scanner::new(File::open(path).ok()?);

@@ -5,8 +5,8 @@
 //! The compressed grid is mapped back to sheet coordinates with the empty rows and columns of the
 //! sheet as our reader sees it. Because two readers can disagree about what is empty, every sheet's
 //! alignment is checked: the share of labelled (non-EMPTY) cells that land on a non-empty cell.
-//! Sheets below [`MIN_ALIGNMENT`] are skipped and counted in the corpus notes. CSV sheets are
-//! skipped (the reader has no CSV support yet).
+//! Sheets below [`MIN_ALIGNMENT`] are skipped and counted in the corpus notes. A CSV file is one
+//! sheet; the manifest's `sheet_name` for it is an id, not the file stem, so it is found by index.
 //!
 //! Roles: HEADER → header (includes group/section headers in this corpus), DATA → data, TITLE →
 //! title, OTHER → other (footnotes, sources). Row labels (HEADER cells with DATA to their right)
@@ -264,6 +264,9 @@ fn map_labels(sheet: &Sheet, labels: &[i64], rows: usize, cols: usize, anchor: (
     best
 }
 
+/// A manifest row: sheet name, labels file, whether the file is a CSV.
+type SheetEntry = (String, String, bool);
+
 /// Loads StatSheets from `<data_root>/irregular/statsheets/dataset`. Opens every workbook once to
 /// map the compressed label grids (about a minute).
 pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
@@ -281,26 +284,21 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
     let (c_src, c_file, c_sheet, c_mime, c_labels) =
         (col("source")?, col("file_path")?, col("sheet_name")?, col("mime_type")?, col("labels_path")?);
 
-    let mut by_file: BTreeMap<String, (String, Vec<(String, String)>)> = BTreeMap::new();
-    let mut csv_skipped = 0;
+    let mut by_file: BTreeMap<String, (String, Vec<SheetEntry>)> = BTreeMap::new();
     for r in rows.iter().skip(1) {
         if r.len() <= c_labels.max(c_mime) {
-            continue;
-        }
-        if r[c_mime].contains("csv") {
-            csv_skipped += 1;
             continue;
         }
         by_file
             .entry(r[c_file].clone())
             .or_insert_with(|| (r[c_src].clone(), Vec::new()))
             .1
-            .push((r[c_sheet].clone(), r[c_labels].clone()));
+            .push((r[c_sheet].clone(), r[c_labels].clone(), r[c_mime].contains("csv")));
     }
 
     let mut corpus = Corpus { name: "statsheets".into(), has_tables: true, has_roles: true, coarse_roles: true, ..Corpus::default() };
     let (mut misaligned, mut unreadable, mut align_sum, mut aligned) = (0usize, 0usize, 0.0f64, 0usize);
-    let mut stubs = 0u64;
+    let (mut stubs, mut csv_aligned, mut csv_total) = (0u64, 0usize, 0usize);
     let mut counts: BTreeMap<&'static str, u64> = BTreeMap::new();
     for (file, (source, sheets)) in by_file {
         let path = base.join(&file);
@@ -309,8 +307,10 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
             continue;
         };
         let mut gts = Vec::new();
-        for (name, labels_path) in sheets {
-            let Some((si, _)) = super::run::find_sheet(&wb, &name, None) else {
+        for (name, labels_path, csv) in sheets {
+            csv_total += csv as usize;
+            let index = csv.then_some(0);
+            let Some((si, _)) = super::run::find_sheet(&wb, &name, index) else {
                 unreadable += 1;
                 continue;
             };
@@ -337,6 +337,7 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
             }
             align_sum += align;
             aligned += 1;
+            csv_aligned += csv as usize;
             cells.sort_by_key(|c| (c.row, c.col));
             cells.dedup_by_key(|c| (c.row, c.col));
             for c in &cells {
@@ -349,7 +350,7 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
                 .iter()
                 .filter_map(|s| parse_range(s))
                 .collect();
-            gts.push(GtSheet { name, index: None, tables, cells });
+            gts.push(GtSheet { name, index, tables, cells });
         }
         if !gts.is_empty() {
             corpus.files.push(GtFile { id: format!("{source}/{file}"), path, fallback_paths: Vec::new(), sheets: gts });
@@ -359,8 +360,8 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
         corpus.labels.insert(k.to_uppercase(), LabelCount { role: super::labelled::role_named(k), count: v });
     }
     corpus.notes.push(format!(
-        "{aligned} sheets aligned (mean {:.1}% of labelled cells on filled cells); skipped: {csv_skipped} CSV, \
-         {misaligned} misaligned (< {:.0}%), {unreadable} unreadable; {stubs} row-label HEADER cells scored as data",
+        "{aligned} sheets aligned ({csv_aligned} of {csv_total} CSV; mean {:.1}% of labelled cells on filled cells); \
+         skipped: {misaligned} misaligned (< {:.0}%), {unreadable} unreadable; {stubs} row-label HEADER cells scored as data",
         100.0 * align_sum / aligned.max(1) as f64,
         100.0 * MIN_ALIGNMENT
     ));

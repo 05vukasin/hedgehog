@@ -67,7 +67,8 @@ totals) is kept on separate sheets with the original cell address, so **nothing 
                and formula   what each cell is      or European format     compare               + summary
 ```
 
-1. **Read** the workbook: `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`.
+1. **Read** the workbook: `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`, or a CSV / TSV file (delimiter
+   and encoding detected, numbers left for step 3 to read in the column's format).
 2. **Find the tables.** A sheet can hold several tables, side by side or stacked, even with
    different columns. Every cell is labelled as a title, header, data, group header, total, note
    or other: rules find the tables, then a small built-in model decides what kind of row each row
@@ -231,7 +232,7 @@ hand, cell by cell, on files it never saw while it was built.
 | Benchmark | What it is | Cell types, rules alone | **Cell types, hedgehog 0.3** |
 |---|---|---:|---:|
 | DECO | Enron business spreadsheets | 64.4 | **70.9** |
-| StatSheets | 14 statistics offices (US, France, Japan, Australia, OECD, WHO, ...), 6 languages | 65.2 | **89.6** |
+| StatSheets | 14 statistics offices (US, France, Japan, Australia, OECD, WHO, ...), 6 languages | 65.6 | **89.6** |
 | Strudel | US government and scientific tables | 77.1 | **90.5** |
 | Synthetic | 2,000 generated messy workbooks with known answers | 91.5 | **98.0** |
 
@@ -266,13 +267,14 @@ Done (0.1 to 0.3):
 - [x] Stacked tables with different columns; row-label and group columns
 - [x] A generator of messy test workbooks (51 kinds of mess)
 - [x] Multi-million-cell files with modest memory
+- [x] CSV and TSV input
 - [x] A learned row model (gradient-boosted trees in Rust, no GPU) combined with the rules, tested on
       four independent benchmarks (0.3)
 
 Next:
 
 - [ ] Formatting features (bold, fills, borders, number formats) for the model
-- [ ] Tables rebuilt from the model's cell roles; CSV input
+- [ ] Tables rebuilt from the model's cell roles
 - [ ] Column meaning: city, country, tax ID, amount, period, …
 - [ ] Ready-made formulas and metrics (quarterly totals, year over year)
 - [ ] An MCP server, so agents can call hedgehog as a tool

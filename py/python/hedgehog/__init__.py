@@ -12,7 +12,8 @@ from .summary import Summary, summarize
 
 
 def open(path: "str | _os.PathLike[str]") -> Workbook:  # noqa: A001 - mirrors the native name
-    """Reads an xlsx / xlsm / xlsb / xls / ods file (format detected from content) into a Workbook."""
+    """Reads an xlsx / xlsm / xlsb / xls / ods workbook or a CSV / TSV file (format detected from content)
+    into a Workbook."""
     return _open(_os.fspath(path))
 
 

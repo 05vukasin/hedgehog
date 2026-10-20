@@ -52,7 +52,7 @@ cell once.
 | Benchmark | What it is | Rules (7 roles, pooled / per file) | **Rules + model** | 4 shared roles per file: rules → model |
 |---|---|---|---|---|
 | DECO | Enron business spreadsheets | 57.1 / 53.6 | **67.3 / 59.5** | 64.4 → **70.9** |
-| StatSheets | 14 statistics publishers, 6 languages | — | — | 65.2 → **89.6** |
+| StatSheets | 14 statistics publishers, 6 languages | — | — | 65.6 → **89.6** |
 | Strudel | US government and scientific tables | 50.6 / 48.6 | **63.2 / 61.6** | 77.1 → **90.5** |
 | Synthetic | generated messy workbooks | 75.9 / 79.5 | **93.0 / 91.3** | 91.5 → **98.0** |
 

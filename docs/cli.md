@@ -16,7 +16,10 @@ hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 
 `describe` and `normalize` are for users; `eval`, `bench` and `golden` are development tools.
 
-Input files can be `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`. Examples on this page use `sales.xlsx`
+Input files can be `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`, or delimited text: `.csv`, `.tsv`, `.txt`
+or any other name whose content is not a workbook. A CSV is one sheet named after the file stem; the
+delimiter (`,` `;` tab `|`) and the encoding (UTF-8, UTF-16 with a BOM, else Windows-1252) are
+detected ([troubleshooting](troubleshooting.md#csv-and-tsv-files)). Examples on this page use `sales.xlsx`
 from the [quickstart](quickstart.md#a-sample-messy-workbook).
 
 ## `hedgehog describe`

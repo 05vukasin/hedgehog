@@ -33,12 +33,44 @@ source: [installation.md](installation.md#the-hedgehog-command).
 | Message | Cause | What to do |
 |---|---|---|
 | `Xlsx error: I/O error: No such file or directory` | Wrong path. | Check the path and the working directory. |
-| `Cannot detect file format` | The file is not an xlsx, xlsm, xlsb, xls or ods workbook, for example a CSV. The format is detected from the file's content, so a wrong extension alone is not a problem. | Load CSV files with pandas directly, or convert them to xlsx first. |
+| `Cannot detect file format` | The file is a zip or OLE container that is not an xlsx, xlsm, xlsb, xls or ods workbook (a Word document, for example). The format is detected from the file's content, so a wrong extension alone is not a problem. | Export the data from the program that made the file. |
+| `not a spreadsheet or delimited text file (binary content)` | The file is neither a workbook nor text: it was read as CSV (a text extension, or a name hedgehog does not know) and holds NUL bytes. | Check that it is the file you meant; export it as xlsx or CSV. |
 | `Xlsx error: Zip error: invalid Zip archive` | The file is not really an xlsx: truncated, an HTML or CSV export renamed to `.xlsx`, or password-protected (encrypted files are not zip archives). | Re-export the file from Excel or LibreOffice; remove the password. |
 | `TypeError: ... is not an instance of 'str'` | `hedgehog.open` was given a `pathlib.Path`. | Pass `str(path)`. `normalize` and `summarize` accept both. |
 
 Workbooks that list a hidden sheet with an empty relationship id (a leftover of xls-to-xlsx
 conversion) are repaired in memory and open normally.
+
+## CSV and TSV files
+
+A `.csv`, `.tsv` or `.txt` file, or a file with any other name whose content is not a workbook, is
+read as delimited text: one sheet named after the file stem, one row per record (a quoted field
+may span lines).
+
+**The columns are split wrongly.** The delimiter is detected from the first 200 records: of `,`
+`;` tab and `|`, the one that splits the most of them into the same number of fields wins (quotes
+respected; ties go to tab, then `;`, then `|`). A `.tsv` file always uses tab. A file with very few
+lines and fields that contain the other delimiters can be detected wrongly; re-export it with a
+`.tsv` extension and tabs, or as xlsx.
+
+**Accented letters look wrong (`CafÃ©`, `Caf�`).** The encoding is UTF-8 (with or without a BOM)
+or UTF-16 with a BOM; a file that is not valid UTF-8 is read as Windows-1252 (Western European),
+the default of Excel's "CSV" export on Western Windows. Other legacy encodings (Shift_JIS, Windows-1250
+for Central European, Cyrillic code pages) come out garbled: the table structure is still right,
+the text is not. Re-save the file as "CSV UTF-8" (Excel) or convert it, for example
+`iconv -f CP1250 -t UTF-8 in.csv > out.csv`.
+
+**Numbers stay text in `hedgehog.open`.** Only plain, unambiguous numbers (`42`, `-3.5`, `1e6`) are
+stored as numbers when the file is read. `1.200,50`, `1,200.50`, `12%`, `007`, dates and `1.200`
+(1200 or 1.2?) are kept as text, and `normalize` reads them per column like numbers stored as text
+in a workbook ([above](#numbers-or-dates-are-read-the-wrong-way)); a leading-zero code such as
+`007` stays text. Integers with more than 15 digits (IDs, account numbers) stay text so that no
+digit is lost.
+
+**A total row is not checked.** The totals check reads stored numbers only, as it does for numbers
+stored as text in a workbook. In a CSV with decimal commas or thousands separators (`4.471,66`), total
+rows are still recognized and removed from the table (Notes lists them), but they are not
+re-calculated.
 
 ## Numbers or dates are read the wrong way
 

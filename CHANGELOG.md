@@ -6,6 +6,19 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **CSV and TSV input** for `open`, `normalize`, `describe` and the Python API. A `.csv`, `.tsv` or
+  `.txt` file, or any file whose content is not a workbook, is read as one sheet named after the
+  file stem. The delimiter (`,` `;` tab `|`) is detected with quotes respected (`.tsv` is always
+  tab); RFC 4180 quoting; UTF-8 (BOM stripped), UTF-16 with a BOM, otherwise Windows-1252. Only
+  unambiguous plain numbers (`42`, `-3.5e2`) are stored as numbers; `1.200,50`, `1,200.50`,
+  `1.200`, `12%`, `007` and dates stay text and are read per column by the value normalizer, as
+  for numbers stored as text in a workbook. Streamed: a 5M-cell, 41 MB CSV reads in about 1 s with
+  0.4 GB peak memory. No new dependencies.
+- StatSheets benchmark includes its 65 CSV sheets (all align; 21 in the test split). Test split,
+  4 roles per file, rules / model: 65.2 / 89.6 → 65.6 / 89.6; pooled 48.0 / 72.2 → 48.1 / 72.3.
+
 ## [0.3.1] - pre-alpha
 
 ### Fixed
