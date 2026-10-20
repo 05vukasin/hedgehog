@@ -132,8 +132,9 @@ pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/
 
 It is not on PyPI yet; once it is, `pip install hedgehog-sheets` will be enough.
 
-The command-line tool: `cargo install --git https://github.com/05vukasin/hedgehog hh_cli` (needs
-Rust). From a clone: `pip install ./py`. Details: [docs/installation.md](docs/installation.md).
+The command-line tool: download `hedgehog-<target>` from a
+[release](https://github.com/05vukasin/hedgehog/releases) (from the next release on), or
+`cargo install --git https://github.com/05vukasin/hedgehog hh_cli` (needs Rust). From a clone: `pip install ./py`. Details: [docs/installation.md](docs/installation.md).
 
 ## Use it from the command line
 
@@ -224,6 +225,23 @@ Gizmos Sales!B11
 
 More recipes (types, totals, notes, writing corrections back): [docs/agent-recipes.md](docs/agent-recipes.md).
 
+### As an MCP tool server
+
+An agent that cannot run Python can use hedgehog through the
+[Model Context Protocol](https://modelcontextprotocol.io): `hedgehog mcp --root <folder>` serves six
+tools over stdio — `open_file` (a compact catalog of the tables, time coverage and totals check),
+`describe_table`, `query` (read-only SQL over the normalized tables, `T1_all` with the total rows),
+`cells` (source cells to cite), `totals` and `list_files`. Every answer is at most ~3k tokens, so a
+model can work with files that would never fit in its context. Claude Desktop:
+
+```json
+{ "mcpServers": { "hedgehog": { "command": "hedgehog", "args": ["mcp", "--root", "/path/to/spreadsheets"] } } }
+```
+
+Standalone `hedgehog` binaries for Linux, macOS and Windows are attached to each
+[release](https://github.com/05vukasin/hedgehog/releases). Tools, limits and examples:
+[docs/mcp.md](docs/mcp.md).
+
 ## How good is it?
 
 Accuracy is measured, not guessed: hedgehog is scored against spreadsheets that people labelled by
@@ -250,6 +268,7 @@ up on the `Notes` sheet, so a mistake costs structure, never data. Details:
 | [Installation](docs/installation.md) | wheels, extras, command line, from source |
 | [Quickstart](docs/quickstart.md) | a messy sample workbook, end to end |
 | [Agent recipes](docs/agent-recipes.md) | pandas/openpyxl code for AI agents |
+| [MCP server](docs/mcp.md) | `hedgehog mcp`: tools for AI clients over stdio |
 | [Normalized output](docs/normalized-output.md) | every sheet and manifest field |
 | [CLI](docs/cli.md) · [Python API](docs/python-api.md) | full reference |
 | [LLMs](docs/llm.md) · [Locales](docs/locales.md) | AI providers and keys; numbers, dates, currencies |

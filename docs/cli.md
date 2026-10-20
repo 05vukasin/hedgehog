@@ -9,13 +9,14 @@ The CLI is a thin wrapper over the Rust core. It is built from the `cli/` crate
 hedgehog describe <file>
 hedgehog cells <file> [--sheet NAME]
 hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG]
+hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N]
 hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
 hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
 hedgehog bench --synthetic [--case NAME]
 hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
 ```
 
-`describe` and `normalize` are for users; `cells`, `eval`, `bench` and `golden` are development tools.
+`describe`, `normalize` and `mcp` are for users; `cells`, `eval`, `bench` and `golden` are development tools.
 
 Input files can be `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`, or delimited text: `.csv`, `.tsv`, `.txt`
 or any other name whose content is not a workbook. A CSV is one sheet named after the file stem; the
@@ -86,6 +87,27 @@ budget.manifest.json
 budget.normalized.xlsx
 orders.manifest.json
 ```
+
+## `hedgehog mcp`
+
+Runs an MCP (Model Context Protocol) tool server over stdio for AI clients: `open_file`,
+`describe_table`, `query` (read-only SQL), `cells`, `totals` and `list_files`. It reads files under
+`--root` (default: the current folder) plus `--allow` paths, normalizes them in memory and writes
+nothing. JSON-RPC goes to stdout, one log line per call (time, memory) to stderr.
+
+```console
+$ hedgehog mcp --root ~/spreadsheets
+[hedgehog mcp] serving tools over stdio; root /home/me/spreadsheets
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--root DIR` | current folder | Folder the tools may read; paths are relative to it. |
+| `--allow PATH` | none | Another file or folder outside the root (repeatable). |
+| `--query-timeout-ms N` | `2000` | Time limit of one SQL query. |
+| `--max-file-mb N` | `256` | Larger files are refused. |
+
+Tools, output format, security limits and client configuration: [mcp.md](mcp.md).
 
 ## `hedgehog-inspect` (Python)
 

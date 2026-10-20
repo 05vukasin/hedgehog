@@ -25,6 +25,8 @@ use crate::model::{Rect, Workbook};
 use crate::values::{DateOrder, DecimalSep, Locale};
 
 pub use manifest::SCHEMA_VERSION;
+/// Shortest decimal text of a number and ISO text of an Excel serial date, as the manifest writes them.
+pub use typing::{fmt_num, iso};
 
 /// Options for [`normalize_file`].
 #[derive(Debug, Clone, Copy, Default)]

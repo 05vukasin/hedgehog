@@ -8,6 +8,19 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **`hedgehog mcp`**, an MCP tool server over stdio (JSON-RPC 2.0, protocol `2025-06-18`, older
+  versions accepted) with six tools: `open_file` (compact catalog with time coverage, tables, total
+  rows, columns and totals check), `describe_table`, `query` (read-only SQLite SQL over `T1`… and
+  `T1_all`… with total rows), `cells`, `totals` and `list_files`. Files are normalized in memory and
+  cached per sha256; file access is bounded by `--root` plus allowed paths; SQL runs under an
+  authorizer, `query_only`, a 2 s time limit and row/size caps; every result is at most ~12,000
+  characters. See [docs/mcp.md](docs/mcp.md).
+- New crate `hh_agent` (`agent/`): the same tools as a plain Rust API (`Session::open_file`,
+  `query`, …, or `Session::call(name, json_args)`), for the MCP server and future bindings.
+  SQLite is compiled in (`rusqlite`, bundled); `hh_core` stays free of it.
+- Releases attach standalone `hedgehog` CLI binaries (`hedgehog-<target>[.exe]` for x86_64/aarch64
+  Linux, x86_64/aarch64 macOS and x86_64 Windows) with `SHA256SUMS.txt`.
+
 - `hedgehog-inspect` (Python entry point, `python -m hedgehog.inspect`) and a `Makefile`: see, file by
   file, the tables, totals check, notes, warnings, what an agent receives and the summary, with or
   without an LLM from `.env`, and ask the agent a question.
