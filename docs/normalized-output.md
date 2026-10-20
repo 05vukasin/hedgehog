@@ -147,6 +147,15 @@ One row per detected total or subtotal cell, registered as an Excel table named 
 | `sources` | Source ranges, for example `C6:C7` |
 | `formula` | The formula, if any |
 | `kept_in_data` | The total is also in the table data: `keep_totals` is set, or it is a total column (horizontal) |
+| `count` | Number of totals the row stands for: 1, or the length of a run (below) |
+
+A total column (a row total on every data row, such as `=SUM(H6:M6)` in `N6`, `N7`, ...) would list
+one row per data row. Three or more consecutive row totals in one column that all check out (same
+table, level, origin and label) are listed as **one run**: `cell` is a range such as `AB6:AB10494`,
+`count` is the number of totals, `value` and `recomputed` are empty, and `sources` and `formula`
+are those of the first one. Mismatched and unverified totals are always listed one by one, so
+`status == "mismatch"` still finds every wrong cell. In the manifest, `totals.count`, `ok`,
+`mismatch` and `unknown` count totals (runs counted by their `count`), not items.
 
 For the sample, five totals check out and one does not:
 
@@ -196,7 +205,7 @@ and an empty field for a missing value. The columns are the same as in the table
 
 ## Manifest
 
-`<stem>.manifest.json`, `schema_version` 1. The manifest is deterministic: the same input gives the
+`<stem>.manifest.json`, `schema_version` 2. The manifest is deterministic: the same input gives the
 same bytes. Keys have a fixed order and there are no timestamps, so a diff between two runs is
 meaningful. Rows are 1-based and columns are letters, as in Excel.
 
@@ -205,8 +214,8 @@ file):
 
 ```jsonc
 {
-  "schema_version": 1,
-  "generator": {"name": "hedgehog", "version": "0.1.0"},
+  "schema_version": 2,
+  "generator": {"name": "hedgehog", "version": "0.2.0"},
   "source": {
     "path": "sales.xlsx", "file_name": "sales.xlsx", "sha256": "…", "size_bytes": 5251,
     "sheets": [{"name": "Sales", "used_range": "A1:E15", "cells": 39, "formulas": 0, "merges": 4,
@@ -254,7 +263,7 @@ file):
   }],
   "totals": {"sheet": "Totals", "count": 6, "ok": 5, "mismatch": 1, "unknown": 0,
              "items": [ …,
-               {"table": "T1", "sheet": "Sales", "cell": "B13", "label": "Grand total",
+               {"table": "T1", "sheet": "Sales", "cell": "B13", "count": 1, "label": "Grand total",
                 "level": "grand_total", "direction": "vertical", "origin": "typed",
                 "value": 4600, "recomputed": 4525.5, "status": "mismatch", "reason": "mismatch",
                 "sources": ["B6:B12"], "kept_in_data": false}, …]},
@@ -270,7 +279,7 @@ Field reference:
 
 | Path | Type | Meaning |
 |---|---|---|
-| `schema_version` | int | `1`. Changes when the structure changes incompatibly. |
+| `schema_version` | int | `2` (1 in hedgehog 0.1, before total runs). Changes when the structure changes incompatibly. |
 | `generator` | object | `name` and `version` of hedgehog. |
 | `source` | object | Input file: `path` as given, `file_name`, `sha256`, `size_bytes`, and per sheet `name`, `used_range`, `cells`, `formulas`, `merges`, `tables` (ids). |
 | `output` | object | File names written (relative to the output directory) and the sheet order of the xlsx. |

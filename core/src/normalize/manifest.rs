@@ -13,7 +13,7 @@ use crate::model::{Rect, a1};
 use crate::values::{DateOrder, DecimalSep};
 
 /// Bumped on any incompatible change of the manifest layout.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 pub(super) struct Source {
     pub path: String,

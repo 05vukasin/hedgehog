@@ -138,11 +138,11 @@ counts and corpus-wide operator counts.
 | analyzer | tables F1 @IoU0.5 | EoB-0 F1 | roles macro F1 (pooled) | DECO dev (tables / roles) |
 |---|---|---|---|---|
 | baseline | 68.6 | 50.5 | 30.2 | 17.3 / 19.9 |
-| layout | 95.0 | 76.0 | 74.7 | 74.1 / 50.4 |
+| layout | 98.0 | 80.1 | 76.5 | 75.1 / 54.7 |
 
-Layout per class F1: title 91.7, header 95.1, data 99.0, group_header 60.9, total 76.9, note 83.2,
-other 16.0. Recall @IoU0.5 by boundary: sheet_start 97.0, side-by-side 94.2, stacked 83.8 (gap 0:
-58.8), **stack_schema_change 48.4** — a 87.9, b 33.8, **c 4.0**, d 53.3, e 78.6.
+Layout per class F1 (pooled): title 91.9, header 96.3, data 99.2, group_header 64.6, total 76.8, note 83.5,
+other 23.3. Recall @IoU0.5 by profile (layout v2): side-by-side 93.4, stacked 93.7,
+**stack_schema_change 86.8** — a 94.8, b 89.6, c 68.0, d 86.7, e 96.4 (layout v1: 48.4, c 4.0).
 Value parsers (`--values`): numbers 95.5% (currency/unit text 83.5%, e.g. `3 units`; footnote marks like
 `1994 p` fail), dates 100% (ambiguous dd/mm 78.4%), missing tokens 100%, booleans 90.9%.
 The synthetic set is easier than DECO for whole tables (sources are clean relational tables) but

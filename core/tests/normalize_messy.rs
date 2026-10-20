@@ -198,7 +198,7 @@ fn messy_workbook_round_trip() {
     let m = std::fs::read_to_string(&out.manifest_path).unwrap();
     assert_eq!(m, out.manifest_json);
     for needle in [
-        "\"schema_version\": 1",
+        "\"schema_version\": 2",
         "\"sha256\": \"",
         "\"header_top\": 3",
         "\"header_rows\": 2",

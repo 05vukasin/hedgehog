@@ -26,7 +26,7 @@ sandbox loads it with one `pandas.read_excel` call and can trace every value bac
 
 The analysis is deterministic Rust with Python bindings. LLMs are optional and only phrase summaries.
 
-> **Status: pre-alpha (0.1.0).** Normalization, table detection, value parsing and totals
+> **Status: pre-alpha (0.2.0).** Normalization, table detection, value parsing and totals
 > verification work and are tested; accuracy is measured and [published](docs/evaluation.md). The
 > API may still change.
 
@@ -62,11 +62,11 @@ Prebuilt wheels for Linux, macOS and Windows (CPython 3.9+), no Rust toolchain n
 **`hedgehog-sheets`**; you `import hedgehog`.
 
 ```sh
-# From GitHub Releases (latest: v0.1.0)
-pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
+# From GitHub Releases (latest: v0.2.0)
+pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.2.0
 
 # Optional LLM providers: [openai], [anthropic], [bedrock] or [llm] for all three
-pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.1.0
+pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.2.0
 ```
 
 Not on PyPI yet; a plain `pip install hedgehog-sheets` will work once it is published.
@@ -209,11 +209,13 @@ the code.
 ## Status and roadmap
 
 Measured on the annotated DECO corpus of real Enron spreadsheets ([details](docs/evaluation.md)):
-table detection F1 at IoU ≥ 0.5 is **74.1** on the dev split (flood-fill baseline: 17.3; held-out
-test split: 64.1), cell-role macro F1 **50.4** (baseline 19.9). The reader opened 500 of 500 randomly
-sampled Enron files.
+table detection F1 at IoU ≥ 0.5 is **75.1** on the dev split (flood-fill baseline: 17.3; held-out
+test split: 65.5), cell-role macro F1 **54.7** (baseline 19.9). On 2,000 generated messy workbooks
+([noise generator](docs/noise.md)): tables **98.0**, stacked tables with a schema change 86.8. The
+reader opened 500 of 500 randomly sampled Enron files; `normalize` handles all 315 European
+open-data files in the test set (median 20 ms, largest 4.5M cells in 20 s).
 
-Done in 0.1.0:
+Done (0.1.0 and 0.2.0):
 
 - [x] Reader and cell model; `describe`
 - [x] Evaluation harness (DECO, table and role metrics, `hedgehog eval`)
@@ -222,10 +224,12 @@ Done in 0.1.0:
 - [x] Totals detection and verification
 - [x] Normalized workbook + manifest (`normalize`), deterministic summary
 - [x] Optional LLM layer: summaries, tool loop, model benchmark
+- [x] Noise generator for labelled synthetic messy sheets (51 operators)
+- [x] Layout v2: stacked tables with schema changes, label and group columns
+- [x] Streaming writer and near-linear analysis for multi-million-cell workbooks
 
 Planned:
 
-- [ ] Noise generator for labelled synthetic messy sheets (in progress)
 - [ ] Learned cell-role model (gradient-boosted trees, XGBoost or LightGBM, evaluated in Rust)
 - [ ] Semantic column types (city, country, tax ID, currency amount, period, ...)
 - [ ] Metrics and formulas (metric definitions that become Excel formulas)

@@ -58,11 +58,12 @@ detector that `normalize` uses.
 | Split | Analyzer | Tables F1 @IoU≥0.5 | @IoU≥0.8 | @IoU=1.0 | EoB-2 | Roles file-macro F1 | Roles pooled F1 | Cell accuracy |
 |---|---|---|---|---|---|---|---|---|
 | dev | baseline | 17.3 | 13.0 | 7.1 | 12.6 | 19.9 | 17.3 | 92.6 |
-| dev | layout | **74.1** | 60.7 | 29.4 | 56.4 | **50.4** | 56.4 | 96.8 |
-| test | layout | 64.1 | 50.0 | 34.4 | 50.0 | 50.5 | 55.0 | 95.1 |
+| dev | layout | **75.1** | 62.3 | 29.8 | 57.7 | **54.7** | 63.2 | 96.9 |
+| test | layout | 65.5 | 51.6 | 34.2 | 50.9 | 53.6 | 57.1 | 95.0 |
 
-Per role, `layout` on dev (pooled F1 / file-macro F1): header 89.2 / 83.4, data 98.5 / 90.0,
-total 51.1 / 62.6, title 43.1 / 52.9, note 27.6 / 25.5, group header 11.0 / 16.3, other 74.0 / 22.4.
+Per role, `layout` on dev (pooled F1 / file-macro F1): header 89.7 / 84.6, data 98.5 / 91.3,
+total 51.7 / 63.3, title 44.6 / 53.6, note 29.3 / 26.5, group header 54.8 / 41.4, other 73.8 / 22.3.
+(0.1.0: tables 74.1, roles 50.4; layout v2 mainly fixed group headers, 11.0 → 54.8 pooled.)
 
 What this means in practice:
 
@@ -70,7 +71,7 @@ What this means in practice:
   (IoU ≥ 0.5), less often exact.
 - Titles, notes and especially group-header rows are the weak spots. The normalized output keeps
   every cell (misplaced ones end up on `Notes`), so these errors lose structure, not data.
-- The dev/test gap on tables (74.1 vs 64.1) shows the rules are tuned on dev. Published systems
+- The dev/test gap on tables (75.1 vs 65.5) shows the rules are tuned on dev. Published systems
   report roughly 0.8 table precision at IoU 0.5 and 0.9 role F1 on comparable data; the learned cell
   model on the [roadmap](../README.md#status-and-roadmap) is meant to close that gap.
 
@@ -105,31 +106,31 @@ for any thread count. A full dev run took 25 s with a debug build on the develop
 
 ## Reading the scoreboard
 
-Output of `hedgehog eval deco --split dev --analyzer layout --no-json` (debug build, 4 threads):
+Output of `hedgehog eval deco --split dev --analyzer layout --no-json` (release build, 2 threads):
 
 ```text
 hedgehog eval · deco · split=dev · analyzer=layout
 corpus: 854 files matched (0 unmatched), 854 annotated sheets, 0 unmapped labels
   note: 1 annotated `Range_Annotations_Data` sheet(s) (DECO bookkeeping) ignored
 run: 596/596 files opened (0 failed, 0 via fallback copy) · 596 sheets (0 not found) · 1431296 cells scored (1 missing in reader)
-time: load 8.4s · open 78.2s · analyze 9.13s (15.33 ms/sheet) · eval total 25.0s
+time: load 1.3s · open 3.6s · analyze 0.79s (1.33 ms/sheet) · eval total 2.3s
 
-tables (gt 1087, pred 1202)     P      R     F1
-  IoU>=0.5                70.5  78.0  74.1
-  IoU>=0.8                57.8  63.9  60.7
-  IoU>=1.0                28.0  30.9  29.4
-  EoB-0                   28.0  30.9  29.4
-  EoB-2                   53.7  59.3  56.4
+tables (gt 1087, pred 1194)     P      R     F1
+  IoU>=0.5                71.8  78.8  75.1
+  IoU>=0.8                59.5  65.3  62.3
+  IoU>=1.0                28.5  31.3  29.8
+  EoB-0                   28.5  31.3  29.8
+  EoB-2                   55.1  60.5  57.7
 
 cell roles        support      P      R  F1(pooled)  F1(file-macro)
-  title                730  34.2  58.5        43.1            52.9
-  header             24580  87.9  90.5        89.2            83.4
-  data             1330754  98.3  98.6        98.5            90.0
-  group_header        1338  42.9   6.3        11.0            16.3
-  total              13895  62.9  43.0        51.1            62.6
-  note                 621  33.9  23.3        27.6            25.5
-  other              59378  74.1  74.0        74.0            22.4
-  macro            1431296                56.4            50.4   (accuracy 96.8)
+  title                730  36.1  58.2        44.6            53.6
+  header             24580  88.1  91.3        89.7            84.6
+  data             1330754  98.2  98.8        98.5            91.3
+  group_header        1338  68.6  45.6        54.8            41.4
+  total              13895  63.4  43.6        51.7            63.3
+  note                 621  43.8  22.1        29.3            26.5
+  other              59378  76.5  71.4        73.8            22.3
+  macro            1431296                63.2            54.7   (accuracy 96.9)
 ```
 
 - `corpus`: how many annotated files and sheets were found; unmatched files or unmapped labels would

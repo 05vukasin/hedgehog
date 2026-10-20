@@ -231,20 +231,36 @@ fn keyword_rows_with(grid: &Grid, kw_cells: &[(usize, KeywordLevel)]) -> HashMap
     out
 }
 
+/// Shortest run of adjacent identical total labels read as a category value.
+const MIN_REPEATED_LABEL_RUN: usize = 3;
+
 /// Long-format registers repeat a measure name containing a total word on consecutive rows
 /// ("Totaal van aantal eenheden" on 25k rows of a 163k-row table): a value of a category column,
 /// not total rows. Real total rows are separated by data, or differ in wording.
 fn drop_repeated_labels(grid: &Grid, rows: &mut HashMap<u32, (u32, KeywordLevel)>) {
     let label = |r: u32, lc: u32| text(grid.cell(r, lc)).map(|t| t.trim().to_lowercase());
-    let repeated: Vec<u32> = rows
-        .iter()
-        .filter(|&(&r, &(lc, _))| {
-            let same = |o: u32| rows.get(&o).is_some_and(|&(olc, _)| olc == lc) && label(o, lc) == label(r, lc);
-            (r > 0 && same(r - 1)) || same(r + 1)
-        })
-        .map(|(&r, _)| r)
-        .collect();
-    for r in repeated {
+    let mut sorted: Vec<(u32, u32)> = rows.iter().map(|(&r, &(lc, _))| (r, lc)).collect();
+    sorted.sort_unstable();
+    // Runs of consecutive rows with the same label column and text; a pair ("Total" over a
+    // nested "Total") is still a report, a run of three or more is a column of values.
+    let mut drop = Vec::new();
+    let mut start = 0;
+    while start < sorted.len() {
+        let (r0, lc) = sorted[start];
+        let text0 = label(r0, lc);
+        let mut end = start + 1;
+        while end < sorted.len()
+            && sorted[end] == (sorted[end - 1].0 + 1, lc)
+            && label(sorted[end].0, lc) == text0
+        {
+            end += 1;
+        }
+        if end - start >= MIN_REPEATED_LABEL_RUN {
+            drop.extend(sorted[start..end].iter().map(|x| x.0));
+        }
+        start = end;
+    }
+    for r in drop {
         rows.remove(&r);
     }
 }
@@ -569,7 +585,7 @@ fn typed_group(
 
 /// A typed total whose walk up passes more earlier totals than this is not taken (bounds the work
 /// on sheets where a keyword repeats on thousands of rows).
-const MAX_EARLIER_TOTALS: usize = 200;
+const MAX_EARLIER_TOTALS: usize = 2000;
 
 #[allow(clippy::too_many_arguments)]
 fn typed_vertical(

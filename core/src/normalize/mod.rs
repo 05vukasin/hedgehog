@@ -490,7 +490,7 @@ fn same_file(a: &Path, b: &Path) -> bool {
 pub(crate) fn trace(stage: &str, since: std::time::Instant) {
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
-    if !*ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| v != "0")) {
+    if !*ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0")) {
         return;
     }
     let peak = std::fs::read_to_string("/proc/self/status")

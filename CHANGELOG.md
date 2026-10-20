@@ -6,6 +6,39 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - pre-alpha
+
+### Added
+
+- **Layout v2**: change-point segmentation of stacked tables whose schema changes down the sheet;
+  row-label and group-label columns separated from the numbers by blank columns join their table;
+  outline key columns become group headers and are filled down. DECO dev split: table F1 at
+  IoU ≥ 0.5 75.1 (0.1.0: 74.1), cell-role file-macro F1 54.7 (0.1.0: 50.4); held-out test split
+  65.5 / 53.6. Synthetic corpus: tables 98.0, stacked schema changes found 86.8%.
+- **Noise generator** (`tools/noise`, M5): 51 operators in 4 profiles turn clean tables into messy
+  workbooks with exact ground truth; `hedgehog eval synthetic` scores the analyzers on them.
+- `HEDGEHOG_TRACE=1` prints the time and peak memory of every normalize stage to stderr.
+
+### Changed
+
+- **Manifest schema version 2**: three or more consecutive row totals in one column that all check
+  out are listed as one run (`cell` like `AB6:AB10494`, new `count` field; also a trailing `count`
+  column on the `Totals` sheet). Mismatched and unverified totals are still listed one by one.
+  Summary counts (`totals.count`, `ok`, `mismatch`, `unknown`) count totals, not items.
+- A wide, sparse table (header, key columns filled on at least 90% of 20+ rows) is kept as a table
+  instead of being dropped by the density rule.
+- Identical total labels on three or more adjacent rows ("Totaal van aantal eenheden" in a
+  long-format register) are a category value, not total rows.
+
+### Performance
+
+- The normalized xlsx is streamed to disk row by row (low-memory worksheets, temp file next to the
+  output) instead of being built in memory: peak memory on a workbook with 632k formulas went from
+  3.5 GB to 750 MB, and its manifest from 192 MB to 0.8 MB.
+- Totals detection is near-linear on huge sheets (column views, bitsets, one keyword check per
+  distinct text) and layout block merging only compares blocks that share rows. On the 315 European
+  open-data files: all 315 now normalize (0.1.0: one timed out after 180 s), the slowest in 20 s, median 20 ms.
+
 ## [0.1.0] - pre-alpha
 
 First public version. Python distribution `hedgehog-sheets` (import `hedgehog`), Rust crates
