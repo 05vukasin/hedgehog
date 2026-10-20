@@ -1,8 +1,9 @@
-# Builds prebuilt wheels (no Rust needed by users) and standalone `hedgehog` CLI binaries for
-# Linux, macOS and Windows.
-# - Manual run (Actions tab → release → Run workflow): build and test wheels only.
-# - Push a tag `vX.Y.Z` (matching the workspace version in Cargo.toml): also attach them to a
-#   GitHub Release, and publish to PyPI when the repository variable PUBLISH_PYPI is "true".
+# Builds prebuilt wheels (no Rust needed by users), standalone `hedgehog` CLI binaries and the
+# Node package's native addons for Linux, macOS and Windows.
+# - Manual run (Actions tab → release → Run workflow): build and test only.
+# - Push a tag `vX.Y.Z` (matching the workspace version in Cargo.toml and node/package.json): also
+#   attach them (and the npm tarballs) to a GitHub Release, publish to PyPI when the repository
+#   variable PUBLISH_PYPI is "true", and to npm when PUBLISH_NPM is "true".
 name: release
 
 on:
@@ -122,9 +123,109 @@ jobs:
           path: dist
           retention-days: 1
 
+  # Node package `hedgehog-sheets` (napi-rs): one native addon per platform, published as
+  # hedgehog-sheets-<platform> packages that the main package lists as optionalDependencies.
+  node:
+    name: node ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, runner: ubuntu-22.04, smoke: true }
+          - { target: aarch64-unknown-linux-gnu, runner: ubuntu-22.04-arm, smoke: true }
+          - { target: aarch64-apple-darwin, runner: macos-latest, smoke: true }
+          - { target: x86_64-apple-darwin, runner: macos-latest, smoke: false }
+          - { target: x86_64-pc-windows-msvc, runner: windows-latest, smoke: true }
+    defaults:
+      run:
+        shell: bash
+        working-directory: node
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: node/package-lock.json
+      - run: rustup target add ${{ matrix.target }}
+      - run: npm ci
+      - name: Build the addon
+        run: npm run build -- --target ${{ matrix.target }}
+      - name: The committed JS loader and types are current
+        if: runner.os == 'Linux'
+        run: git diff --exit-code -- binding.js binding.d.ts
+      - name: Test (node --test) and type-check
+        if: matrix.smoke
+        run: npm test && npm run typecheck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-${{ matrix.target }}
+          path: node/hedgehog.*.node
+          if-no-files-found: error
+          retention-days: 1
+
+  # npm tarballs of every platform package and the main package. Published to npm only when the
+  # repository variable PUBLISH_NPM is "true" (secret NPM_TOKEN: an npm automation token); the
+  # tarballs are attached to the GitHub Release either way.
+  npm:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [node]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write  # npm provenance
+    defaults:
+      run:
+        working-directory: node
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: node/package-lock.json
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - name: Version matches the tag
+        run: |
+          v=$(node -p "require('./package.json').version")
+          test "v$v" = "${{ github.ref_name }}" || { echo "node/package.json version $v does not match tag ${{ github.ref_name }}"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: node-*
+          merge-multiple: true
+          path: node/artifacts
+      - name: Platform packages and optionalDependencies
+        run: |
+          cp ../LICENSE .
+          npx napi create-npm-dirs
+          npx napi artifacts
+          npx napi prepublish -t npm --skip-optional-publish --no-gh-release
+      - name: Pack
+        run: |
+          mkdir -p ../dist-npm
+          for d in npm/*/; do (cd "$d" && cp ../../LICENSE . && npm pack --pack-destination ../../../dist-npm); done
+          npm pack --pack-destination ../dist-npm
+          ls -l ../dist-npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: dist-npm
+          retention-days: 1
+      - name: Publish to npm
+        if: vars.PUBLISH_NPM == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for d in npm/*/; do (cd "$d" && npm publish --access public --provenance); done
+          npm publish --access public --provenance --ignore-scripts
+
   github-release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [wheels, sdist, cli]
+    needs: [wheels, sdist, cli, npm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -138,6 +239,10 @@ jobs:
         with:
           pattern: cli-*
           merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
           path: dist
       - name: Checksums
         run: |

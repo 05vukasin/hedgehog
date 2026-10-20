@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { open, openAsync, normalize, normalizeSync, version, Workbook, HedgehogSession, toolSpecs } from '../index.js'
@@ -202,7 +202,8 @@ describe('HedgehogSession (agent tools)', () => {
 
   test('tools return the contract texts', async () => {
     const s = new HedgehogSession({ root: dir })
-    assert.equal(s.root, realpathSync(dir))
+    // canonical root; on Windows a \\?\ path, so only the last part is compared
+    assert.equal(basename(s.root), basename(realpathSync(dir)))
     const catalog = await s.openFile('sales.csv')
     assert.match(catalog, /^FILE sales\.csv · 1 sheet/)
     assert.match(catalog, /^T1 /m)
