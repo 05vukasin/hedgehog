@@ -1,0 +1,42 @@
+{
+  "name": "hedgehog-sheets",
+  "version": "0.3.1",
+  "description": "Understand messy spreadsheets and hand AI agents clean, traceable data (native Rust, prebuilt binaries).",
+  "keywords": ["excel", "xlsx", "spreadsheet", "csv", "normalize", "ai", "agent", "llm", "napi-rs"],
+  "license": "MIT",
+  "homepage": "https://github.com/05vukasin/hedgehog#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/05vukasin/hedgehog.git",
+    "directory": "node"
+  },
+  "bugs": "https://github.com/05vukasin/hedgehog/issues",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "binding.js", "binding.d.ts"],
+  "engines": {
+    "node": ">= 18"
+  },
+  "napi": {
+    "binaryName": "hedgehog",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release --js binding.js --dts binding.d.ts",
+    "build:debug": "napi build --platform --js binding.js --dts binding.d.ts",
+    "test": "node --test test/hedgehog.test.mjs",
+    "typecheck": "tsc -p test/tsconfig.json",
+    "artifacts": "napi artifacts",
+    "prepublishOnly": "napi prepublish -t npm --no-gh-release"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.10.8",
+    "typescript": "5.9.3"
+  }
+}

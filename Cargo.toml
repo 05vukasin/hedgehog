@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "py", "cli"]
+members = ["core", "py", "cli", "node"]
 
 [workspace.package]
 version = "0.3.1"
