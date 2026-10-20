@@ -28,6 +28,7 @@ pub mod baseline;
 pub mod bench;
 pub mod csv;
 pub mod deco;
+pub mod export;
 pub mod gt;
 pub mod json;
 pub mod metrics;

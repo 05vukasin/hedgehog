@@ -94,7 +94,7 @@ pub struct Report {
 
 /// Finds the annotated sheet in the workbook: exact name, then trimmed case-insensitive name,
 /// then position.
-fn find_sheet(wb: &Workbook, name: &str, index: Option<usize>) -> Option<(usize, &'static str)> {
+pub(crate) fn find_sheet(wb: &Workbook, name: &str, index: Option<usize>) -> Option<(usize, &'static str)> {
     if let Some(i) = wb.sheets.iter().position(|s| s.name == name) {
         return Some((i, "name"));
     }

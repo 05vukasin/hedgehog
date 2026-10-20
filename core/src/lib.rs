@@ -10,6 +10,7 @@ pub mod reader;
 pub mod context;
 pub mod eval;
 pub mod layout;
+pub mod learned;
 pub mod normalize;
 pub mod totals;
 pub mod values;

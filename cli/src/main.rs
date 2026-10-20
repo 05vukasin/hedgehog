@@ -24,19 +24,44 @@ const USAGE: &str = "usage:
   hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
+  hedgehog features --out FILE.csv [--corpus deco,synthetic] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N]
 
 eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
       data root from $HEDGEHOG_DATA (default ../testdata);
       JSON report defaults to $HEDGEHOG_SCORES or <data root>/../docs/research/scores/<analyzer>_deco_<split>.json
-      analyzers: baseline, layout";
+      analyzers: baseline, layout, model (cell roles from the trees in $HEDGEHOG_MODEL)";
 
 /// Analyzer registry. The integrator adds `"layout" => Some(&|g: &Grid| layout::analyze(g))`.
 fn analyzer(name: &str) -> Option<&'static dyn Analyzer> {
     match name {
         "baseline" => Some(&eval::baseline::analyze),
         "layout" => Some(&hh_core::layout::analyze),
+        "model" => Some(&model_analyze),
         _ => None,
     }
+}
+
+/// The learned model named by `$HEDGEHOG_MODEL` (an `hh-trees-1` JSON file), loaded once.
+fn model() -> &'static hh_core::learned::TreeModel {
+    static MODEL: std::sync::OnceLock<hh_core::learned::TreeModel> = std::sync::OnceLock::new();
+    MODEL.get_or_init(|| {
+        let path = std::env::var("HEDGEHOG_MODEL").unwrap_or_else(|_| {
+            eprintln!("the `model` analyzer needs HEDGEHOG_MODEL=<model.json>");
+            std::process::exit(2)
+        });
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            eprintln!("{path}: {e}");
+            std::process::exit(2)
+        });
+        hh_core::learned::TreeModel::from_json(&text).unwrap_or_else(|e| {
+            eprintln!("{path}: {e}");
+            std::process::exit(2)
+        })
+    })
+}
+
+fn model_analyze(g: &hh_core::Grid) -> hh_core::SheetLayout {
+    hh_core::learned::analyze(g, model())
 }
 
 fn main() -> ExitCode {
@@ -56,6 +81,7 @@ fn main() -> ExitCode {
         ["bench", rest @ ..] => report(bench::bench(rest)),
         ["golden", rest @ ..] => report(bench::golden(rest)),
         ["eval", "synthetic", rest @ ..] => report(eval_synthetic(rest)),
+        ["features", rest @ ..] => report(features(rest)),
         ["eval", "deco", rest @ ..] => match eval_deco(rest) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -210,5 +236,63 @@ fn eval_synthetic(args: &[&str]) -> Result<(), String> {
         std::fs::write(&path, merged).map_err(|e| format!("{}: {e}", path.display()))?;
         println!("report: {}", path.display());
     }
+    Ok(())
+}
+
+/// Training data for the learned cell-role model: one CSV row per labelled cell (see
+/// `hh_core::eval::export`).
+fn features(args: &[&str]) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut out: Option<PathBuf> = None;
+    let mut corpora = vec!["deco".to_string(), "synthetic".to_string()];
+    let mut dir: Option<PathBuf> = None;
+    let mut opts = eval::export::ExportOptions {
+        source: String::new(),
+        split: Split::All,
+        data_keep: 0.1,
+        limit: None,
+        progress: true,
+    };
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
+        match *a {
+            "--out" | "-o" => out = Some(PathBuf::from(val()?)),
+            "--corpus" => corpora = val()?.split(',').map(str::to_string).collect(),
+            "--dir" => dir = Some(PathBuf::from(val()?)),
+            "--split" => opts.split = val()?.parse::<Split>()?,
+            "--data-keep" => opts.data_keep = val()?.parse().map_err(|_| "--data-keep needs a number")?,
+            "--limit" => opts.limit = Some(val()?.parse().map_err(|_| "--limit needs a number")?),
+            _ => return Err(format!("unknown argument `{a}`")),
+        }
+    }
+    let out = out.ok_or("features needs --out FILE.csv")?;
+    let file = std::fs::File::create(&out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let mut w = std::io::BufWriter::new(file);
+    let root = eval::data_root();
+    let t = Instant::now();
+    for (k, name) in corpora.iter().enumerate() {
+        let corpus = match name.as_str() {
+            "deco" => eval::deco::load(&root),
+            "synthetic" => eval::synthetic::load(&dir.clone().unwrap_or_else(|| root.join("synthetic").join("v0"))),
+            other => return Err(format!("unknown corpus `{other}` (deco, synthetic)")),
+        }
+        .map_err(|e| e.to_string())?;
+        opts.source = name.clone();
+        eprintln!("{name}: {} files", corpus.files.len());
+        let st = eval::export::export(&corpus, &opts, &mut w, k == 0).map_err(|e| e.to_string())?;
+        let roles: Vec<String> =
+            hh_core::Role::ALL.iter().zip(st.per_role).map(|(r, n)| format!("{}={n}", r.as_str())).collect();
+        println!(
+            "{name}: {} files ({} failed), {} sheets, {} rows [{}]",
+            st.files,
+            st.failed,
+            st.sheets,
+            st.rows,
+            roles.join(" ")
+        );
+    }
+    w.flush().map_err(|e| e.to_string())?;
+    println!("wrote {} in {:.1} s", out.display(), t.elapsed().as_secs_f64());
     Ok(())
 }
