@@ -1,0 +1,184 @@
+# MCP server: `hedgehog mcp`
+
+`hedgehog mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) tool server. An AI
+client (Claude Desktop, Claude Code, an IDE, or your own app) starts it as a child process and calls
+its six tools to answer questions about spreadsheets: open a file, read its catalog, run SQL over
+the normalized tables, quote source cells, check totals and find files.
+
+Nothing is written to disk. Each file is normalized in memory (with total rows kept), loaded into its
+own read-only in-memory SQLite database and cached for the session by its content hash (sha256).
+
+- Transport: stdio, JSON-RPC 2.0, one message per line. Logs go to stderr only.
+- Protocol version `2025-06-18`; clients asking for `2025-03-26` or `2024-11-05` get that version.
+- Capabilities: `tools` only. Methods: `initialize`, `ping`, `tools/list`, `tools/call`; notifications
+  (`notifications/initialized`, `notifications/cancelled`, …) are accepted and ignored.
+
+The same tools are available without MCP from Rust through the `hh_agent` crate
+(`hh_agent::Session`), which the server wraps.
+
+## Run it
+
+```sh
+hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N]
+```
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--root DIR` | current folder | Folder the tools may read. Paths are relative to it. |
+| `--allow PATH` | none | One more file or folder outside the root (repeatable). |
+| `--query-timeout-ms N` | `2000` | Time limit of one SQL query. |
+| `--max-file-mb N` | `256` | Larger files are refused. |
+
+Get the binary from a [GitHub release](https://github.com/05vukasin/hedgehog/releases)
+(`hedgehog-<target>`, e.g. `hedgehog-x86_64-unknown-linux-gnu`, `hedgehog-aarch64-apple-darwin`,
+`hedgehog-x86_64-pc-windows-msvc.exe`; checksums in `SHA256SUMS.txt`) or build it:
+`cargo install --git https://github.com/05vukasin/hedgehog hh_cli`.
+
+### Claude Desktop
+
+`claude_desktop_config.json` (Settings → Developer → Edit config):
+
+```json
+{
+  "mcpServers": {
+    "hedgehog": {
+      "command": "/usr/local/bin/hedgehog",
+      "args": ["mcp", "--root", "/Users/me/Documents/spreadsheets"]
+    }
+  }
+}
+```
+
+### Claude Code
+
+```sh
+claude mcp add hedgehog -- hedgehog mcp --root "$PWD"
+```
+
+### Any MCP client
+
+Start `hedgehog mcp --root <folder>` with stdin/stdout as the transport. A client may pass extra
+allowed paths (for files the user referenced outside the root) in the `initialize` request:
+
+```json
+{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+  "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "my-app", "version": "1.0"},
+  "_meta": {"hedgehog": {"allow": ["/home/me/Downloads/report.xlsx"]}}}}
+```
+
+By hand, for a quick test:
+
+```console
+$ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"sh","version":"0"}}}' \
+    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"open_file","arguments":{"path":"sales.xlsx"}}}' \
+  | hedgehog mcp
+```
+
+## Tools
+
+Every result is `content: [{type: "text", text}]` with compact text of at most ~12,000 characters
+(~3k tokens). When something was left out, the text ends with a line
+`… cut: <what was omitted>; ask for <how to get more>`. Errors come back as `isError: true` with one
+line the model can act on (an unknown column lists the closest names; an unknown table lists the
+tables). Tables are named `T1`, `T2`, … per file, as in the [manifest](normalized-output.md).
+
+| Tool | Arguments | Returns |
+|---|---|---|
+| `open_file` | `path` | The catalog: file line, time coverage, tables with source range, rows, total rows, columns (type, unit, value range), group column, totals check, notes, warnings. Long catalogs list tables one line each. |
+| `describe_table` | `path`, `table` | Every column (SQL name, dtype, unit, nulls, distinct, min..max or example, source column ← header cells), source and header range, group column, total rows, first 5 rows as CSV. |
+| `query` | `path`, `sql`, `limit?` | One read-only SQLite `SELECT`/`WITH` as CSV with a header, at most `limit` rows (default 50, max 200), then `(<n> rows)` or `(<n> rows, showing first <k>)`. |
+| `cells` | `path`, `sheet`, `range` | Original source cells (max 200) as `A1<TAB>value` lines, formulas after the value, merged areas marked. |
+| `totals` | `path`, `table?`, `status?` | Counts per status (`ok`, `mismatch`, `unknown`), then up to 50 items, mismatches first: cell, label, value, recomputed, sources, reason. |
+| `list_files` | `folder?`, `pattern?` | Spreadsheets under the folder (xlsx, xlsm, xlsb, xls, ods, csv, tsv) with size and modified date; max 200 lines. `pattern`: a glob (`*.csv`), words that must all appear (`linz 2022`) or alternatives (`preis\|price`). |
+
+### SQL tables
+
+For table *n*:
+
+- `T<n>` — the data rows, one column per normalized column plus `_src_row` (the row number in the
+  source sheet).
+- `T<n>_all` — the same plus total and subtotal rows, with `_row_type` = `data`, `subtotal` or
+  `total`. Use it for overall figures the file states itself (a "Gesamt" or "Total" row); never add
+  those rows to the data rows.
+
+Types: integers `INTEGER`; numbers, currency and percentages `REAL` (a percentage as a fraction,
+0.15 = 15 %); dates ISO text (`2024-03-31`, or `2024-03-31 10:30:00`); booleans 0/1; text `TEXT`.
+Column names are the normalized headers; quote them with double quotes (`"Revenue / Q1"`, `"2024"`,
+`"group"`). The source cell of a value is `<source column><_src_row>` on the table's source sheet;
+query results that include `_src_row` say which column maps to which source column (`cite as:`).
+
+### Example
+
+`eu_at_opendata/003_pen_02_02.xlsx` (Austrian pension supplements, one sheet):
+
+```text
+FILE eu_at_opendata/003_pen_02_02.xlsx · 1 sheet · 244 cells (97% in tables) · 1 table · roles: model
+TIME 2011–2025 (year; column headers 2011–2025; titles/notes/sheet or file names 2017–2020)
+T1  'AUSGLEICHSZULAGEN - alleinstehend/verheiratet' ← '2_2'!A1:R18 · 11 rows (+1 total row: 'Gesamt'@9 — only in T1_all)
+    columns (19): "group"[text group e.g. "Anzahl Bezieher:innen"] Richtsatz[text e.g. "Alleinstehend"] "2011"[number 264.04..234671] … 6 more … "2020/ 2025"[number -0.0794415..0.317943] "2024/ 2025"[number -0.0142203..0.0460032]
+    group column: "group" · totals: 0 ok, 0 mismatch, 30 unknown
+TOTALS 0 ok, 0 mismatch, 30 unknown (call totals for details)
+NOTES 7 cells (note 5, title 2); e.g. '2_2'!A1: "AUSGLEICHSZULAGEN - alleinstehend/verheiratet"
+WARNINGS none
+SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+(normalized in 0.0 s)
+```
+
+`query` with `SELECT "group", Richtsatz, "2024", "2025", _row_type, _src_row FROM T1_all WHERE Richtsatz IN ('Alleinstehend', 'Gesamt') ORDER BY _src_row`:
+
+```text
+group,Richtsatz,2024,2025,_row_type,_src_row
+Anzahl Bezieher:innen,Alleinstehend,163230,162375,data,5
+,Gesamt,190423,189537,total,9
+Durchschnittshöhe in Euro,Alleinstehend,386.9,403.19,data,11
+Durchschnittshöhe in Euro,Gesamt,413.44,430.56,data,15
+Richtsätze in Euro,Alleinstehend,1217.96,1273.99,data,17
+cite as: Richtsatz = '2_2'!A<_src_row>; "2024" = '2_2'!O<_src_row>; "2025" = '2_2'!P<_src_row>
+(5 rows)
+```
+
+An unquoted keyword or a guessed column name gets a hint instead of a bare error:
+
+```text
+SQL error: near "group": syntax error (at character 7) — group is a column name that is also an SQL keyword; quote it: "group"
+SQL error: no such column: "Dezember / 2021" (at character 7) — did you mean T1."De-zember / 20211)", T1."No-vember / 2021", …? (quote names with double quotes)
+```
+
+### The catalog's TIME line
+
+Which years the file covers, and from what: date columns (range, distinct values, monthly/daily…),
+year columns (`Jahr`, `Year`, …), years in column headers, and — weaker — years in titles, notes,
+sheet and file names. When tables differ (a monthly and an annual table) it says `mixed: year,
+month — check what one row is before summing`. An agent should check it before answering a question
+about a period the file may not cover.
+
+## Security limits
+
+The server only reads; it never writes, deletes or executes anything.
+
+- **Files**: every path is resolved against `--root`, canonicalized (`..` and symlinks resolved) and
+  must lie inside the root or be an allowed path (`--allow`, `_meta.hedgehog.allow`; an allowed file
+  does not open its folder). `list_files` follows no symlinked folders and skips hidden entries. Only
+  spreadsheet extensions are opened; files above `--max-file-mb` are refused.
+- **SQL**: each file has its own in-memory database; after loading, the connection is locked down:
+  - an authorizer allows only `SELECT`, reads, recursive CTEs, functions (minus `load_extension` and
+    similar) and the read-only pragmas `table_info`/`table_xinfo`/`table_list`; everything else —
+    `INSERT`/`UPDATE`/`DELETE`, `CREATE`/`DROP`/`ALTER`, `ATTACH`/`DETACH`, other `PRAGMA`s,
+    transactions, `VACUUM` — is denied at prepare time;
+  - `PRAGMA query_only=ON`, defensive mode, no triggers, untrusted schema, no `ATTACH`
+    (`SQLITE_LIMIT_ATTACHED` 0), one statement per call, only `SELECT`/`WITH`/`VALUES` accepted;
+  - double-quoted strings are identifiers only, so a misspelled `"column"` is an error, not a string;
+  - limits: 2 s per query (progress handler), 1 MB per value, 100 KB of SQL, 200 rows returned and
+    counting stops after 1,000,000 rows, SQLite heap capped at the loaded data + 512 MB.
+- **Output**: every result is capped at ~12,000 characters.
+
+These limits are covered by tests (`agent/src/sql.rs`, `agent/src/files.rs`, `cli/tests/mcp.rs`).
+
+## Memory and speed
+
+Opening a file costs what `hedgehog normalize` costs (without writing the output files), plus the
+SQLite copy of the tables. The largest file in the test corpus (`eu_ch_bfs/036_36752511_master.xlsx`,
+7.2 MB, 1.5 million cells, 5 tables) opens in about 20 s with a peak of ~790 MB (`normalize` alone:
+~820 MB peak); a second `open_file` of the same content takes milliseconds. Small files open in
+10–300 ms. At most 8 files stay in memory; the least recently used is dropped. Run
+`hedgehog mcp` with stderr visible to see per-call time and memory.

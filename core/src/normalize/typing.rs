@@ -44,14 +44,14 @@ pub(super) struct Typed {
 }
 
 /// Shortest decimal form, integers without `.0`.
-pub(super) fn fmt_num(v: f64) -> String {
+pub fn fmt_num(v: f64) -> String {
     let mut s = String::new();
     super::json::num(v, &mut s);
     s
 }
 
 /// `2024-03-31` or `2024-03-31 10:30:00` for an Excel serial.
-pub(super) fn iso(serial: f64) -> String {
+pub fn iso(serial: f64) -> String {
     let Some((y, m, d)) = serial_to_ymd(serial) else { return fmt_num(serial) };
     let frac = serial - serial.floor();
     if frac.abs() < 1e-9 {
