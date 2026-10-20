@@ -52,13 +52,54 @@ pub fn sheet_features(grid: &Grid) -> Features {
 pub fn sheet_features_with(grid: &Grid, lay: &crate::analysis::SheetLayout) -> Features {
     let n = grid.sheet.cells.len();
     let mut f = Features::new(n);
-    let t0 = std::time::Instant::now();
     crate::context::compute(grid, &mut f);
-    crate::normalize::trace("  F:context", t0);
     crate::values::features::compute(grid, &mut f);
-    crate::normalize::trace("  F:values", t0);
     let cands = crate::totals::features::compute_returning(grid, &mut f);
-    crate::normalize::trace("  F:totals", t0);
+    finish(grid, lay, &cands, &mut f);
+    f
+}
+
+/// Sheets with at least this many cells compute their feature groups on parallel threads.
+const PARALLEL_MIN_CELLS: usize = 20_000;
+
+/// The rule layout and [`sheet_features`] of a sheet, the independent parts (layout, context,
+/// values, totals) on parallel threads for larger sheets. Same result as the sequential path.
+pub fn layout_and_features(grid: &Grid) -> (crate::analysis::SheetLayout, Features) {
+    let n = grid.sheet.cells.len();
+    if n < PARALLEL_MIN_CELLS {
+        let lay = crate::layout::analyze(grid);
+        let f = sheet_features_with(grid, &lay);
+        return (lay, f);
+    }
+    let (lay, mut f, values, (totals, cands)) = std::thread::scope(|s| {
+        let lay = s.spawn(|| crate::layout::analyze(grid));
+        let values = s.spawn(|| {
+            let mut f = Features::new(n);
+            crate::values::features::compute(grid, &mut f);
+            f
+        });
+        let totals = s.spawn(|| {
+            let mut f = Features::new(n);
+            let c = crate::totals::features::compute_returning(grid, &mut f);
+            (f, c)
+        });
+        let mut ctx = Features::new(n);
+        crate::context::compute(grid, &mut ctx);
+        (join(lay.join()), ctx, join(values.join()), join(totals.join()))
+    });
+    f.append(values);
+    f.append(totals);
+    finish(grid, &lay, &cands, &mut f);
+    (lay, f)
+}
+
+/// A scoped thread's result, re-raising its panic.
+fn join<T>(r: std::thread::Result<T>) -> T {
+    r.unwrap_or_else(|e| std::panic::resume_unwind(e))
+}
+
+/// The `l_*` (rule layout) and `x_*` (detected totals) columns, after the core features.
+fn finish(grid: &Grid, lay: &crate::analysis::SheetLayout, cands: &[crate::totals::TotalCandidate], f: &mut Features) {
     let cells = &grid.sheet.cells;
     let role_at = |r: i64, c: i64| -> f32 {
         if r < 0 || c < 0 {
@@ -86,10 +127,7 @@ pub fn sheet_features_with(grid: &Grid, lay: &crate::analysis::SheetLayout) -> F
     f.add("l_role_left", e);
     f.add("l_role_right", g);
     f.add("l_in_table", h);
-    crate::normalize::trace("  F:layout_feats", t0);
-    add_total_context(grid, &cands, &mut f);
-    crate::normalize::trace("  F:total_context", t0);
-    f
+    add_total_context(grid, cands, f);
 }
 
 /// `x_*`: detected totals around the cell. DECO labels a whole total row (its label and every

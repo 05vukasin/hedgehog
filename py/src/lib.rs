@@ -271,7 +271,8 @@ fn open(path: &str) -> PyResult<Workbook> {
 /// Writes `<stem>.normalized.xlsx` + `<stem>.manifest.json` (+ CSVs) into `out_dir`; see
 /// `hh_core::normalize`. Returns `{xlsx_path, manifest_path, csv_paths, manifest_json}`.
 #[pyfunction]
-#[pyo3(signature = (path, out_dir, keep_totals = false, csv = false, locale = None))]
+#[pyo3(signature = (path, out_dir, keep_totals = false, csv = false, locale = None, rules_only = false, model_max_cells = None))]
+#[allow(clippy::too_many_arguments)] // one per Python keyword argument
 fn normalize<'py>(
     py: Python<'py>,
     path: &str,
@@ -279,6 +280,8 @@ fn normalize<'py>(
     keep_totals: bool,
     csv: bool,
     locale: Option<&str>,
+    rules_only: bool,
+    model_max_cells: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let locale = match locale {
         Some(tag) => Some(
@@ -286,7 +289,7 @@ fn normalize<'py>(
         ),
         None => None,
     };
-    let opts = hh_core::normalize::Options { keep_totals, csv, locale };
+    let opts = hh_core::normalize::Options { keep_totals, csv, locale, rules_only, model_max_cells };
     let (path, out_dir) = (path.to_string(), out_dir.to_string());
     let out = py
         .detach(move || hh_core::normalize_file(&path, &out_dir, &opts))

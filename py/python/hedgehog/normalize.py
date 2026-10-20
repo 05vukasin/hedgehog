@@ -50,6 +50,8 @@ def normalize(
     keep_totals: bool = False,
     csv: bool = False,
     locale: Optional[str] = None,
+    rules_only: bool = False,
+    model_max_cells: Optional[int] = None,
 ) -> NormalizeResult:
     """Normalize ``path`` into ``out_dir`` (created if missing).
 
@@ -57,8 +59,11 @@ def normalize(
     csv: also write one UTF-8 CSV per table.
     locale: e.g. ``"de-DE"``, ``"en-US"``, ``"sr"``; overrides per-column inference of decimal
         separator and day/month order.
+    rules_only: label cells with the layout rules alone, without the built-in learned model.
+    model_max_cells: sheets with more cells use the rules alone (default 1,000,000; the model's
+        features take about 440 bytes per cell).
     """
-    r = _normalize(os.fspath(path), os.fspath(out_dir), keep_totals, csv, locale)
+    r = _normalize(os.fspath(path), os.fspath(out_dir), keep_totals, csv, locale, rules_only, model_max_cells)
     return NormalizeResult(
         xlsx_path=r["xlsx_path"],
         manifest_path=r["manifest_path"],

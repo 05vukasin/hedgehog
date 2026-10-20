@@ -18,13 +18,14 @@ fn report(r: Result<(), String>) -> ExitCode {
 
 const USAGE: &str = "usage:
   hedgehog describe <file>
-  hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG]
+  hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG] [--rules-only] [--model-max-cells N]
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
   hedgehog eval synthetic --dir DIR [--analyzer NAME] [--limit N] [--values] [--json OUT.json] [--no-json] [--progress]
   hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
   hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
+  hedgehog pack-model <dir>   (row_coarse.json + row_fine.json → row_model.bin)
   hedgehog features --out FILE.csv [--corpus deco,synthetic,statsheets,strudel] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N] [--level cell|row]
 
 eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
@@ -90,6 +91,7 @@ fn main() -> ExitCode {
         ["eval", "synthetic", rest @ ..] => report(eval_synthetic(rest)),
         ["features", rest @ ..] => report(features(rest)),
         ["benchmark", rest @ ..] => report(benchmark(rest)),
+        ["pack-model", dir] => report(pack_model(dir)),
         ["eval", "deco", rest @ ..] => match eval_deco(rest) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -166,6 +168,10 @@ fn normalize(args: &[&str]) -> Result<(), String> {
             "-o" | "--out" => out_dir = Some(PathBuf::from(val()?)),
             "--keep-totals" => opts.keep_totals = true,
             "--csv" => opts.csv = true,
+            "--rules-only" => opts.rules_only = true,
+            "--model-max-cells" => {
+                opts.model_max_cells = Some(val()?.parse().map_err(|_| "--model-max-cells needs a number")?)
+            }
             "--locale" => {
                 let tag = val()?;
                 opts.locale = Some(hh_core::values::Locale::parse(tag).ok_or(format!("unknown locale `{tag}`"))?);
@@ -367,5 +373,18 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
         std::fs::write(&p, tsv).map_err(|e| format!("{}: {e}", p.display()))?;
         println!("wrote {}", p.display());
     }
+    Ok(())
+}
+
+/// Packs `<dir>/row_coarse.json` + `<dir>/row_fine.json` (hh-trees-1) into `<dir>/row_model.bin`,
+/// the binary form `hh_core` embeds.
+fn pack_model(dir: &str) -> Result<(), String> {
+    let dir = std::path::Path::new(dir);
+    let read = |n: &str| std::fs::read_to_string(dir.join(n)).map_err(|e| format!("{}: {e}", dir.join(n).display()));
+    let model = hh_core::learned::RowModel::from_json(&read("row_coarse.json")?, &read("row_fine.json")?)?;
+    let bytes = model.to_bytes();
+    let out = dir.join("row_model.bin");
+    std::fs::write(&out, &bytes).map_err(|e| format!("{}: {e}", out.display()))?;
+    println!("{}: {} + {} trees, {} bytes", out.display(), model.coarse.trees(), model.fine.trees(), bytes.len());
     Ok(())
 }

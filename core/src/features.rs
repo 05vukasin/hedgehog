@@ -37,6 +37,13 @@ impl Features {
         self.columns.push(values);
     }
 
+    /// Moves every column of `other` (same row count) to the end of `self`, in order.
+    pub fn append(&mut self, other: Features) {
+        for (name, col) in other.names.into_iter().zip(other.columns) {
+            self.add(name, col);
+        }
+    }
+
     /// Position of column `name` (its index in [`Features::names`]).
     #[inline]
     pub fn index_of(&self, name: &str) -> Option<usize> {

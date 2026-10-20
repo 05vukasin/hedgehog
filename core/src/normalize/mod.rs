@@ -35,7 +35,15 @@ pub struct Options {
     /// Explicit locale for every column (overrides per-column inference of decimal separator and
     /// day/month order).
     pub locale: Option<Locale>,
+    /// Cell roles from the layout rules only, without the learned row model ([`crate::learned`]).
+    pub rules_only: bool,
+    /// Sheets with more cells than this use the rules alone (the model's features take about
+    /// 440 bytes per cell). None: [`DEFAULT_MODEL_MAX_CELLS`].
+    pub model_max_cells: Option<usize>,
 }
+
+/// Default for [`Options::model_max_cells`].
+pub const DEFAULT_MODEL_MAX_CELLS: usize = 1_000_000;
 
 /// One output cell value.
 #[derive(Debug, Clone, PartialEq)]
@@ -417,10 +425,66 @@ impl std::error::Error for Error {}
 /// Analyzes every sheet and builds the normalized tables, totals and notes (no I/O).
 pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
     let mut out = Normalized::default();
-    for sheet in &wb.sheets {
-        extract::process_sheet(sheet, opts, &mut out);
+    let layouts = layouts(wb, opts);
+    for (sheet, lay) in wb.sheets.iter().zip(layouts) {
+        extract::process_sheet(sheet, opts, lay, &mut out);
     }
     out
+}
+
+/// Workbooks whose model sheets hold at most this many cells in total analyze their sheets on
+/// parallel threads (the model's features take memory per cell; larger workbooks go one sheet at
+/// a time).
+const PARALLEL_SHEETS_MAX_CELLS: usize = 2_000_000;
+
+/// A sheet's layout and, when the model was skipped for its size, a warning.
+type SheetAnalysis = (crate::analysis::SheetLayout, Option<String>);
+
+/// Cell roles and tables of every sheet: the rules plus the learned row model for sheets within
+/// [`Options::model_max_cells`], the rules alone otherwise (or with `rules_only`). The second
+/// value is a warning for sheets above the model limit.
+fn layouts(wb: &Workbook, opts: &Options) -> Vec<SheetAnalysis> {
+    let limit = opts.model_max_cells.unwrap_or(DEFAULT_MODEL_MAX_CELLS);
+    let model = crate::learned::embedded().filter(|_| !opts.rules_only);
+    let one = |sheet: &crate::model::Sheet| {
+        let grid = crate::grid::Grid::new(sheet);
+        let n = sheet.cells.len();
+        match model {
+            Some(m) if n <= limit => (crate::learned::analyze(&grid, m), None),
+            Some(_) => (
+                crate::layout::analyze(&grid),
+                Some(format!("{}: {n} cells, more than the model limit of {limit}; cell roles from the rules alone", sheet.name)),
+            ),
+            None => (crate::layout::analyze(&grid), None),
+        }
+    };
+    let model_cells: usize = wb.sheets.iter().map(|s| s.cells.len()).filter(|&n| n <= limit).sum();
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(4).min(wb.sheets.len());
+    if model.is_none() || threads <= 1 || model_cells > PARALLEL_SHEETS_MAX_CELLS {
+        return wb.sheets.iter().map(one).collect();
+    }
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let mut slots: Vec<Option<SheetAnalysis>> = vec![None; wb.sheets.len()];
+    let done: Vec<Vec<(usize, SheetAnalysis)>> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut mine = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(sheet) = wb.sheets.get(i) else { break };
+                        mine.push((i, one(sheet)));
+                    }
+                    mine
+                })
+            })
+            .collect();
+        workers.into_iter().map(|w| w.join().unwrap_or_else(|e| std::panic::resume_unwind(e))).collect()
+    });
+    for (i, r) in done.into_iter().flatten() {
+        slots[i] = Some(r);
+    }
+    slots.into_iter().map(|s| s.expect("every sheet analyzed")).collect()
 }
 
 /// Reads `path`, writes `<stem>.normalized.xlsx`, `<stem>.manifest.json` (and CSVs with

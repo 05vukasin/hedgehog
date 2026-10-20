@@ -13,7 +13,7 @@ use crate::grid::Grid;
 
 /// One tree node, 16 bytes: a split (`x[feat] < thr` → left) or, with `feat == LEAF`, a leaf whose
 /// value is `thr`. Child indices are absolute.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Node {
     feat: u32,
     thr: f32,
@@ -27,7 +27,7 @@ const LEAF: u32 = u32::MAX;
 const BLOCK: usize = 256;
 
 /// A multi-class tree ensemble.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TreeModel {
     pub features: Vec<String>,
     pub classes: Vec<Role>,
@@ -102,6 +102,99 @@ impl TreeModel {
 
     pub fn trees(&self) -> usize {
         self.roots.len()
+    }
+
+    /// Compact binary form (little endian), read back by [`TreeModel::from_bytes`]: loading is a
+    /// copy instead of a JSON parse.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b = b"HHTREE01".to_vec();
+        let u32le = |b: &mut Vec<u8>, x: u32| b.extend(x.to_le_bytes());
+        u32le(&mut b, self.features.len() as u32);
+        for f in &self.features {
+            u32le(&mut b, f.len() as u32);
+            b.extend(f.as_bytes());
+        }
+        u32le(&mut b, self.classes.len() as u32);
+        for (c, base) in self.classes.iter().zip(&self.base) {
+            b.push(crate::eval::export::role_id(*c) as u8);
+            b.extend(base.to_le_bytes());
+        }
+        u32le(&mut b, self.used.len() as u32);
+        for &u in &self.used {
+            u32le(&mut b, u as u32);
+        }
+        u32le(&mut b, self.nodes.len() as u32);
+        for n in &self.nodes {
+            for x in [n.feat, n.thr.to_bits(), n.left, n.right] {
+                u32le(&mut b, x);
+            }
+        }
+        u32le(&mut b, self.roots.len() as u32);
+        for &(root, class) in &self.roots {
+            u32le(&mut b, root);
+            b.push(class);
+        }
+        b
+    }
+
+    /// Reads [`TreeModel::to_bytes`]; returns the model and the bytes after it.
+    pub fn from_bytes(b: &[u8]) -> Result<(TreeModel, &[u8]), String> {
+        struct R<'a>(&'a [u8]);
+        impl<'a> R<'a> {
+            fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
+                if self.0.len() < n {
+                    return Err("model file is truncated".into());
+                }
+                let (a, rest) = self.0.split_at(n);
+                self.0 = rest;
+                Ok(a)
+            }
+            fn u32(&mut self) -> Result<u32, String> {
+                Ok(u32::from_le_bytes(self.take(4)?.try_into().unwrap()))
+            }
+        }
+        let mut r = R(b);
+        if r.take(8)? != b"HHTREE01" {
+            return Err("not an hh tree model".into());
+        }
+        let nf = r.u32()? as usize;
+        let mut features = Vec::with_capacity(nf);
+        for _ in 0..nf {
+            let len = r.u32()? as usize;
+            features.push(String::from_utf8(r.take(len)?.to_vec()).map_err(|e| e.to_string())?);
+        }
+        let nc = r.u32()? as usize;
+        let (mut classes, mut base) = (Vec::with_capacity(nc), Vec::with_capacity(nc));
+        for _ in 0..nc {
+            let id = r.take(1)?[0] as usize;
+            classes.push(*Role::ALL.get(id).ok_or("bad class id")?);
+            base.push(f32::from_bits(r.u32()?));
+        }
+        let nu = r.u32()? as usize;
+        let used = (0..nu).map(|_| r.u32().map(|x| x as usize)).collect::<Result<Vec<_>, _>>()?;
+        if used.iter().any(|&u| u >= features.len()) {
+            return Err("bad feature index".into());
+        }
+        let nn = r.u32()? as usize;
+        let mut nodes = Vec::with_capacity(nn);
+        for _ in 0..nn {
+            let (feat, thr, left, right) = (r.u32()?, f32::from_bits(r.u32()?), r.u32()?, r.u32()?);
+            if feat != LEAF && (feat as usize >= nu || left as usize >= nn || right as usize >= nn) {
+                return Err("bad tree node".into());
+            }
+            nodes.push(Node { feat, thr, left, right });
+        }
+        let nt = r.u32()? as usize;
+        let mut roots = Vec::with_capacity(nt);
+        for _ in 0..nt {
+            let root = r.u32()?;
+            let class = r.take(1)?[0];
+            if root as usize >= nn || class as usize >= nc {
+                return Err("bad tree root".into());
+            }
+            roots.push((root, class));
+        }
+        Ok((TreeModel { features, classes, base, nodes, roots, used }, r.0))
     }
 
     /// Raw class scores, row-major (`rows × classes`). Errors if a model feature is missing.
@@ -194,6 +287,9 @@ impl TreeModel {
             .collect())
     }
 }
+
+/// Rows into a table body from which the mid-table guard of [`analyze`] applies.
+const GUARD_DEPTH: u32 = 10;
 
 /// Empty columns allowed inside one row segment.
 pub const MAX_GAP: u32 = 2;
@@ -316,21 +412,20 @@ pub fn segment_features(grid: &Grid, f: &Features) -> (Vec<Segment>, Features) {
     (segs, out)
 }
 
-/// The row model shipped with hedgehog (`core/models/`, trained by `tools/train/train_rows.py` on
-/// DECO, StatSheets, Strudel and synthetic sheets), parsed on first use. `None` only if the
+/// The row model shipped with hedgehog (`core/models/row_model.bin`, packed from the
+/// `row_coarse.json` / `row_fine.json` that `tools/train/train_rows.py` exports; trained on DECO,
+/// StatSheets, Strudel and synthetic sheets), loaded on first use. `None` only if the
 /// embedded files are broken, which the tests rule out.
 pub fn embedded() -> Option<&'static RowModel> {
     static MODEL: std::sync::OnceLock<Option<RowModel>> = std::sync::OnceLock::new();
     MODEL
-        .get_or_init(|| {
-            RowModel::from_json(include_str!("../models/row_coarse.json"), include_str!("../models/row_fine.json")).ok()
-        })
+        .get_or_init(|| RowModel::from_bytes(include_bytes!("../models/row_model.bin")).ok())
         .as_ref()
 }
 
 /// The two-stage row model: `coarse` (title / header / data / other) chooses the family, `fine`
 /// (the seven roles) chooses inside it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RowModel {
     pub coarse: TreeModel,
     pub fine: TreeModel,
@@ -341,6 +436,22 @@ impl RowModel {
         let (coarse, fine) = (TreeModel::from_json(coarse)?, TreeModel::from_json(fine)?);
         if fine.classes.len() != Role::ALL.len() {
             return Err("the fine model needs all seven roles".into());
+        }
+        Ok(RowModel { coarse, fine })
+    }
+
+    /// Binary form: the coarse model's bytes, then the fine model's ([`TreeModel::to_bytes`]).
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b = self.coarse.to_bytes();
+        b.extend(self.fine.to_bytes());
+        b
+    }
+
+    pub fn from_bytes(b: &[u8]) -> Result<RowModel, String> {
+        let (coarse, rest) = TreeModel::from_bytes(b)?;
+        let (fine, rest) = TreeModel::from_bytes(rest)?;
+        if !rest.is_empty() || fine.classes.len() != Role::ALL.len() {
+            return Err("not a row model".into());
         }
         Ok(RowModel { coarse, fine })
     }
@@ -379,14 +490,44 @@ impl RowModel {
 /// segment (a group label in the key column of a data row): those keep the rules' role.
 pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
     let t0 = std::time::Instant::now();
-    let mut lay = crate::layout::analyze(grid);
-    crate::normalize::trace("M:layout", t0);
-    let f = crate::eval::export::sheet_features_with(grid, &lay);
-    crate::normalize::trace("M:cell_features", t0);
+    let (mut lay, f) = crate::eval::export::layout_and_features(grid);
+    crate::normalize::trace("M:layout+features", t0);
     let (segs, sf) = segment_features(grid, &f);
+    drop(f);
     crate::normalize::trace("M:segment_features", t0);
-    let Ok(pred) = model.predict(&sf) else { return lay };
+    let Ok(mut pred) = model.predict(&sf) else { return lay };
     crate::normalize::trace("M:trees", t0);
+    // Titles and notes sit at the edges of a table, not between its data rows; and a header row
+    // between data rows (a sub-header such as "Males") is much sparser than the data around it. So a row
+    // the rules call data, with data rows directly above and below, stays data when the model calls
+    // it a title or note, or a header while holding at least half as many cells as its neighbours.
+    if let (Some(m), Some(u), Some(d), Some(mc), Some(uc), Some(dc)) = (
+        sf.get("m_l_role"),
+        sf.get("u_l_role"),
+        sf.get("d_l_role"),
+        sf.get("m_c_row_cells"),
+        sf.get("u_c_row_cells"),
+        sf.get("d_c_row_cells"),
+    ) {
+        let data = crate::eval::export::role_id(Role::Data) as f32;
+        // Deep inside a rules table: at least GUARD_DEPTH rows below the start of its body (the
+        // first rows may be a header block the rules missed).
+        let deep = |row: u32, col: u32| {
+            lay.tables.iter().any(|t| {
+                let body = t.header_top + t.header_rows;
+                t.rect.left <= col && col <= t.rect.right && row <= t.rect.bottom && row >= body + GUARD_DEPTH
+            })
+        };
+        for (k, p) in pred.iter_mut().enumerate() {
+            if !(m[k] == data && u[k] == data && d[k] == data && deep(segs[k].row, segs[k].left)) {
+                continue;
+            }
+            let full = 2.0 * mc[k] >= uc[k].min(dc[k]);
+            if matches!(*p, Role::Title | Role::Note) || (*p == Role::Header && full) {
+                *p = Role::Data;
+            }
+        }
+    }
     let rules = lay.roles.clone();
     for (seg, role) in segs.iter().zip(pred) {
         let mut counts = [0u32; Role::ALL.len()];
@@ -405,6 +546,15 @@ pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedded_binary_matches_the_json_models() {
+        let json = RowModel::from_json(include_str!("../models/row_coarse.json"), include_str!("../models/row_fine.json"))
+            .unwrap();
+        assert_eq!(embedded(), Some(&json), "core/models/row_model.bin is stale: run `hedgehog pack-model core/models`");
+        assert_eq!(RowModel::from_bytes(&json.to_bytes()).unwrap(), json);
+        assert!(RowModel::from_bytes(&json.to_bytes()[..100]).is_err());
+    }
 
     #[test]
     fn embedded_model_loads_and_labels_a_table() {

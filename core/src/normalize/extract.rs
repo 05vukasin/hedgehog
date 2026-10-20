@@ -12,7 +12,6 @@ use super::{
 };
 use crate::analysis::{DetectedTable, Role, SheetLayout};
 use crate::grid::Grid;
-use crate::layout;
 use crate::model::{Rect, Sheet, Value, a1};
 use crate::totals::{self, CheckReason, Direction, KeywordLevel, TotalLevel, TotalOrigin};
 use crate::values::{ColumnHints, infer_column, norm_key, sheet_column_hints_with};
@@ -635,7 +634,12 @@ fn associate(tables: &[Table], row: u32, col: u32, title: bool) -> Option<usize>
     best.map(|b| b.1)
 }
 
-pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized) {
+pub(super) fn process_sheet(
+    sheet: &Sheet,
+    opts: &Options,
+    layout: (crate::analysis::SheetLayout, Option<String>),
+    out: &mut Normalized,
+) {
     let grid = Grid::new(sheet);
     let cells = &sheet.cells;
     let mut info = SheetInfo {
@@ -652,7 +656,8 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
     }
     let t0 = std::time::Instant::now();
     super::trace("grid", t0);
-    let lay = layout::analyze(&grid);
+    let (lay, warning) = layout;
+    out.warnings.extend(warning);
     super::trace("layout", t0);
     let mut owner = vec![OWN_NONE; cells.len()];
     let sheet_hints = OnceCell::new();

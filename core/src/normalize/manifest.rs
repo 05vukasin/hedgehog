@@ -297,7 +297,8 @@ pub(super) fn build(
             Json::obj()
                 .with("keep_totals", opts.keep_totals)
                 .with("csv", opts.csv)
-                .with("locale", opts.locale.map(|l| l.as_str())),
+                .with("locale", opts.locale.map(|l| l.as_str()))
+                .with("cell_roles", if opts.rules_only || crate::learned::embedded().is_none() { "rules" } else { "model" }),
         )
         .with("tables", Json::Arr(norm.tables.iter().map(table_json).collect()))
         .with("totals", totals)

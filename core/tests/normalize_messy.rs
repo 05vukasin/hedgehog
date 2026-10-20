@@ -234,7 +234,7 @@ fn keep_totals_csv_and_locale() {
     let dir = tmp_dir("keep");
     let src = dir.join("messy.xlsx");
     build_messy(&src);
-    let opts = Options { keep_totals: true, csv: true, locale: Some(Locale::parse("de-DE").unwrap()) };
+    let opts = Options { keep_totals: true, csv: true, locale: Some(Locale::parse("de-DE").unwrap()), ..Options::default() };
     let out = normalize_file(&src, &dir, &opts).unwrap();
     let wb = open(&out.xlsx_path).unwrap();
     let t1 = sheet(&wb, "T1_sales_report_2024");
