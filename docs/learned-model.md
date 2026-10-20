@@ -72,16 +72,19 @@ On 365 real files (315 European government spreadsheets and 50 Enron files):
 
 | | Rules only | Rules + model |
 |---|---|---|
-| Typical file (median) | 19 ms | 30 ms |
+| Typical file (median) | 19 ms | 29 ms |
 | 95% of files under | 1.5 s | 2.5 s |
-| Slowest file (4.5M cells, above the model limit) | 16.7 s | 17.3 s |
-| All 365 files | 129 s | 190 s |
-| Peak memory, 4.5M-cell file | 1.2 GB | 1.2 GB |
-| Peak memory, file with a 947k-cell sheet (just under the limit) | 0.75 GB | 1.4 GB |
-| Peak memory, 5 sheets / 1.5M cells | 0.78 GB | 0.86 GB |
+| Slowest file (4.5M cells, above the model limit) | 16.8 s | 16.6 s |
+| All 365 files | 126 s | 186 s |
+| Peak memory, 4.5M-cell file | 1.23 GB | 1.24 GB |
+| Peak memory, file with a 947k-cell sheet (just under the limit) | 0.75 GB | 1.48 GB |
+| Peak memory, 5 sheets / 1.5M cells | 0.78 GB | 0.90 GB |
+| Peak memory, 23 sheets / 3.1M cells | 0.51 GB | 0.81 GB |
+
+Measured on v0.3.1, 16-core laptop.
 
 The model's features take about 440 bytes per cell of the sheet being analyzed, so a sheet near
-the 1,000,000-cell limit needs up to about 0.7 GB more than the rules alone; `--model-max-cells`
+the 1,000,000-cell limit needs up to about 0.75 GB more than the rules alone; `--model-max-cells`
 lowers the limit on machines with little memory.
 
 What keeps it fast: the model labels rows, not cells (about 25 times fewer predictions); the fine

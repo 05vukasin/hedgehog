@@ -12,10 +12,10 @@ All notable changes to hedgehog are listed here. The format follows
 
 - Peak memory with the learned model on multi-sheet workbooks: sheets are analyzed in parallel
   only when they hold at most 300,000 cells together (was 2,000,000), so peak memory is set by the
-  largest sheet. A 5-sheet, 1.5M-cell workbook: 1.76 GB → 0.86 GB (rules alone: 0.78 GB).
-- Documented speed and memory figures re-measured on this build (365 files: median 30 ms, 95% under
-  2.5 s, slowest 17.3 s; a sheet near the 1M-cell model limit needs up to ~0.7 GB more than the
-  rules alone).
+  largest sheet. A 5-sheet, 1.5M-cell workbook: 1.76 GB → 0.90 GB (rules alone: 0.78 GB).
+- Documented speed and memory figures re-measured on this build (365 files, rules → model: 0
+  failures, median 19 → 29 ms, 95% under 1.5 → 2.5 s, slowest 16.8 → 16.6 s; a sheet near the
+  1M-cell model limit needs up to ~0.75 GB more than the rules alone).
 
 ## [0.3.0] - pre-alpha
 
