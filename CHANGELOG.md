@@ -26,6 +26,38 @@ All notable changes to hedgehog are listed here. The format follows
   0.4 GB peak memory. No new dependencies.
 - StatSheets benchmark includes its 65 CSV sheets (all align; 21 in the test split). Test split,
   4 roles per file, rules / model: 65.2 / 89.6 → 65.6 / 89.6; pooled 48.0 / 72.2 → 48.1 / 72.3.
+- Manifest **`time_coverage`**, per table and for the workbook: `{from, to, granularity, source,
+  columns}` from date columns, year columns (`Jahr`, `année`, `año`, ...), period text (`2024 Q1`,
+  `Jan 2024`, `2024-03`) or period-like column headers (`2019 | 2020 | 2021`, `Oktober / 2022`).
+  Additive; `schema_version` stays 2. See
+  [normalized-output.md](docs/normalized-output.md#time-coverage).
+- Manifest **per-table `totals`**: counts by status and `rows` (one per total row: `row`, `label`,
+  `level`, `kept_in_data`), so an agent sees which rows are not in a table's data. Every
+  `totals.items[]` entry also has `row`, the 1-based source row.
+- Column names are cleaned for agents (`original_header` unchanged): footnote marks dropped
+  (`20221)` → `2022`, `Rate3)` → `Rate`, `Total²` → `Total`), line-break hyphenation joined
+  (`De-⏎zember` → `Dezember`, `Sep-tember` → `September`, `Benützungs- gebühren` →
+  `Benützungsgebühren`). New transformation count `headers_cleaned`.
+- `check_citations` pairs a cited cell with the number in the neighbouring Markdown table cell, in
+  the same sentence, or in the previous sentence when the text refers back ("478,737. This value is
+  from cell D7"), and flags a cell whose value differs (`Citation.pairing` says how it was paired).
+  A bare table id like `(T1)` / `[T12]` is no longer read as a cell.
+### Changed
+
+- Totals in the normalized output: a typed total that does not add up is `unknown`, not
+  `mismatch`, when its column header or row label names a rate, share, index, average or
+  per-capita value (`not_additive`: `%`, `Anteil`, `Quote`, `je Einwohner`, `j.E.`, `per capita`,
+  `Gesamt-VPI (2020=100)`), when it is off by rounding only (`rounding_difference`: at most √n units
+  of the last decimal and under 1%, as in tables "in 1 000"), or when it lies between its smallest
+  and largest source value (`average_like`). Formula totals are not re-judged. Unverified total rows
+  with such a header or label get reason `not_additive` instead of `not_verified`. On the 315 EU
+  open-data files plus the 50 Enron benchmark files: mismatches 2,701 → 355 (EU 2,696 → 352,
+  Enron 5 → 3); `ok` unchanged. The docs sample's wrong grand total (`B13`) is still a
+  mismatch. Detection and `Workbook.totals()` are unchanged.
+- A navigation link (`zur Inhaltsübersicht`, `Back to contents`, `Retour au sommaire`, `Powrót do
+  spisu tablic`, `Inhalt`, ...) is never a table title; the next title-like line is, and the link is
+  a Notes row of kind `other` (15 of the 31 tables of a destatis migration report were titled
+  "zur Inhaltsübersicht").
 ### Fixed
 
 - Typed totals over a column with missing-value tokens (`n/a`, `-`, `*`, `#N/A`): the tokens were

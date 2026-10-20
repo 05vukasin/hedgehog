@@ -10,7 +10,9 @@
 //!
 //! The source file is only read, never modified.
 
+mod coverage;
 mod extract;
+mod headers;
 pub mod json;
 mod manifest;
 pub mod sha256;
@@ -180,6 +182,7 @@ pub enum T {
     UnparsedKeptAsText,
     TextTruncated,
     HeadersFlattened,
+    HeadersCleaned,
     HeaderCellsForwardFilled,
     MergedCellsFilled,
     DuplicateHeadersRenamed,
@@ -196,7 +199,7 @@ pub enum T {
 }
 
 impl T {
-    pub const ALL: [T; 31] = [
+    pub const ALL: [T; 32] = [
         T::NumbersFromText,
         T::PercentFromText,
         T::CurrencyStripped,
@@ -215,6 +218,7 @@ impl T {
         T::UnparsedKeptAsText,
         T::TextTruncated,
         T::HeadersFlattened,
+        T::HeadersCleaned,
         T::HeaderCellsForwardFilled,
         T::MergedCellsFilled,
         T::DuplicateHeadersRenamed,
@@ -250,6 +254,7 @@ impl T {
             T::UnparsedKeptAsText => "unparsed_kept_as_text",
             T::TextTruncated => "text_truncated",
             T::HeadersFlattened => "headers_flattened",
+            T::HeadersCleaned => "headers_cleaned",
             T::HeaderCellsForwardFilled => "header_cells_forward_filled",
             T::MergedCellsFilled => "merged_cells_filled",
             T::DuplicateHeadersRenamed => "duplicate_headers_renamed",

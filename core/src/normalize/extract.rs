@@ -5,6 +5,7 @@
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 
+use super::headers::{clean_header, is_nav_link, not_additive};
 use super::typing::{Slot, display, fit, type_column};
 use super::{
     CellCounts, ColRole, Column, Dtype, Normalized, NoteItem, Options, Out, RowType, SheetInfo, T, Table, TotalItem,
@@ -13,7 +14,7 @@ use super::{
 use crate::analysis::{DetectedTable, Role, SheetLayout};
 use crate::grid::Grid;
 use crate::model::{Rect, Sheet, Value, a1};
-use crate::totals::{self, CheckReason, Direction, KeywordLevel, TotalLevel, TotalOrigin};
+use crate::totals::{self, CheckReason, Direction, KeywordLevel, TotalCandidate, TotalCheck, TotalLevel, TotalOrigin};
 use crate::values::{ColumnHints, infer_column, norm_key, sheet_column_hints_with};
 
 const OWN_NONE: u8 = 0;
@@ -145,6 +146,23 @@ pub(super) fn slug(s: &str, max: usize) -> String {
     out.trim_matches('_').to_string()
 }
 
+/// Flat column name from its header parts: each part cleaned from the raw cell text (footnote
+/// marks, line-break hyphenation, whitespace; see [`clean_header`]), repeats dropped, joined with
+/// ` / `.
+fn clean_name(grid: &Grid, parts: &[(String, (u32, u32))]) -> String {
+    let mut out: Vec<String> = Vec::with_capacity(parts.len());
+    for (text, (r, c)) in parts {
+        let cleaned = match grid.cell(*r, *c).and_then(|c| c.value.as_ref()) {
+            Some(Value::Text(raw)) => clean_header(raw),
+            _ => text.clone(),
+        };
+        if !cleaned.is_empty() && out.last() != Some(&cleaned) {
+            out.push(cleaned);
+        }
+    }
+    out.join(" / ")
+}
+
 /// Makes `name` unique (case-insensitive, like Excel) by appending ` (2)`, ` (3)`…
 fn unique(name: String, seen: &mut HashSet<String>, tr: &mut Transforms) -> String {
     if seen.insert(name.to_lowercase()) {
@@ -235,8 +253,11 @@ fn build_table(
         title_rows += 1;
         for &i in idxs {
             owner[i] = OWN_NOTES;
-            let it = note(i, "title");
-            if title.is_none() && !it.text.is_empty() {
+            let mut it = note(i, "title");
+            if is_nav_link(&it.text) {
+                // "zur Inhaltsübersicht": a link back to the contents, never the title.
+                it.kind = "other";
+            } else if title.is_none() && !it.text.is_empty() {
                 title = Some((it.text.clone(), (it.row, it.col)));
             }
             notes.push(it);
@@ -513,7 +534,11 @@ fn build_table(
                 parts.push(h.clone());
             }
         }
-        let mut name = parts.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(" / ");
+        let raw_name = parts.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(" / ");
+        let mut name = clean_name(grid, &parts);
+        if name != raw_name {
+            tr.add(T::HeadersCleaned, 1);
+        }
         if name.chars().count() > MAX_HEADER_LEN {
             name = name.chars().take(MAX_HEADER_LEN).collect();
         }
@@ -777,6 +802,8 @@ pub(super) fn process_sheet(
             cells[i].value.as_ref().map(display)
         });
         listed.insert((cand.row, cand.col));
+        let header = k.and_then(|k| column_name(&tables[k], cand.col));
+        let (status, reason) = judge(&grid, cand, check, header, label.as_deref());
         items.push(TotalItem {
             table: k.map(|k| first + k + 1),
             sheet: sheet.name.clone(),
@@ -797,12 +824,8 @@ pub(super) fn process_sheet(
             },
             value: check.actual,
             recomputed: check.expected,
-            status: match check.ok {
-                Some(true) => "ok",
-                Some(false) => "mismatch",
-                None => "unknown",
-            },
-            reason: if check.reason == CheckReason::Match { "match".into() } else { snake(check.reason) },
+            status,
+            reason,
             sources: cand.ranges.iter().map(|r| range_a1(*r)).collect(),
             formula: grid.cell(cand.row, cand.col).and_then(|c| c.formula.as_ref()).map(|f| format!("={f}")),
             kept_in_data,
@@ -827,6 +850,8 @@ pub(super) fn process_sheet(
             } else if num.is_some() || (c.value.is_none() && c.formula.is_some()) {
                 owner[i] = OWN_TOTALS;
                 if listed.insert((c.row, c.col)) {
+                    let header = n.checked_sub(first + 1).and_then(|k| tables.get(k)).and_then(|t| column_name(t, c.col));
+                    let rate = header.is_some_and(not_additive) || label.as_deref().is_some_and(not_additive);
                     items.push(TotalItem {
                         table: Some(*n),
                         sheet: sheet.name.clone(),
@@ -842,7 +867,7 @@ pub(super) fn process_sheet(
                         value: num,
                         recomputed: None,
                         status: "unknown",
-                        reason: "not_verified".into(),
+                        reason: if rate { "not_additive" } else { "not_verified" }.into(),
                         sources: Vec::new(),
                         formula: c.formula.as_ref().map(|f| format!("={f}")),
                         kept_in_data: false,
@@ -866,17 +891,24 @@ pub(super) fn process_sheet(
     items.sort_by_key(|t| (t.row, t.col));
 
     // Everything not yet placed → Notes; titles / notes are attached to the nearest table.
+    let mut nav_cells: Vec<(u32, u32)> = Vec::new();
     for (i, c) in cells.iter().enumerate() {
         if owner[i] != OWN_NONE {
             continue;
         }
         owner[i] = OWN_NOTES;
+        let text = c.value.as_ref().map(display).unwrap_or_default();
+        let nav = is_nav_link(&text);
         let kind = match lay.roles[i] {
+            _ if nav => "other",
             Role::Title => "title",
             Role::Note => "note",
             Role::Total => "total",
             _ => "other",
         };
+        if nav {
+            nav_cells.push((c.row, c.col));
+        }
         let table = match kind {
             "title" => associate(tables, c.row, c.col, true),
             "note" => associate(tables, c.row, c.col, false),
@@ -888,11 +920,37 @@ pub(super) fn process_sheet(
             col: c.col,
             kind,
             table: table.map(|k| first + k + 1),
-            text: c.value.as_ref().map(display).unwrap_or_default(),
+            text,
             formula: c.formula.as_ref().map(|f| format!("={f}")),
         });
     }
     notes.sort_by_key(|n| (n.row, n.col));
+    // A table under a navigation link and without a title: the first title-like line between the
+    // link and the table is its title ("zur Inhaltsübersicht" in A1, the real title in A2).
+    for t in out.tables[first..].iter() {
+        if t.title.is_some() || notes.iter().any(|x| x.table == Some(t.n) && x.kind == "title" && x.row < t.rect.top) {
+            continue;
+        }
+        let Some(&(nav_row, _)) = nav_cells
+            .iter()
+            .filter(|(r, c)| *r < t.rect.top && t.rect.top - r - 1 <= ASSOC_MAX_GAP && *c <= t.rect.right && c + 2 >= t.rect.left)
+            .max_by_key(|(r, _)| *r)
+        else {
+            continue;
+        };
+        if let Some(x) = notes.iter_mut().find(|x| {
+            x.row > nav_row
+                && x.row < t.rect.top
+                && matches!(x.kind, "title" | "note")
+                && !x.text.is_empty()
+                && x.text.chars().count() <= 300
+                && x.col <= t.rect.right
+                && x.col + 2 >= t.rect.left
+        }) {
+            x.kind = "title";
+            x.table = Some(t.n);
+        }
+    }
 
     // Titles / notes per table, then output names.
     let tables = &mut out.tables[first..];
@@ -938,6 +996,99 @@ pub(super) fn process_sheet(
     out.totals.extend(items);
     out.notes.extend(notes);
     out.sheets.push(info);
+}
+
+/// Flattened name of the table column read from source column `col`.
+fn column_name(t: &Table, col: u32) -> Option<&str> {
+    t.columns.iter().find(|c| c.source_col == Some(col)).map(|c| c.name.as_str())
+}
+
+/// Status and reason of a total from its check, with three cases where a typed total that does
+/// not add up is not reported as wrong (`unknown` with a reason instead of `mismatch`):
+///
+/// * `not_additive`: its column header or row label names a rate, share, percentage, index,
+///   average or per-capita value ("je Einwohner", "j.E.", "%", "Anteil", "Gesamt-VPI (2020=100)");
+///   such values do not add up.
+/// * `rounding_difference`: the difference is what rounding each summed value to the decimals
+///   shown typically adds up to (at most √n units of the last decimal for n values, at least one)
+///   and under 1% of the total, as in statistics published "in 1 000".
+/// * `average_like`: every source value is >= 0 and the total lies between the smallest and the
+///   largest of them, so it cannot be their sum (an average, index or rate).
+///
+/// Formula totals are never re-judged: their formula says what they add.
+fn judge(
+    grid: &Grid,
+    cand: &TotalCandidate,
+    check: &TotalCheck,
+    header: Option<&str>,
+    label: Option<&str>,
+) -> (&'static str, String) {
+    let status = match check.ok {
+        Some(true) => "ok",
+        Some(false) => "mismatch",
+        None => "unknown",
+    };
+    let reason = if check.reason == CheckReason::Match { "match".into() } else { snake(check.reason) };
+    if check.reason != CheckReason::Mismatch || cand.origin != TotalOrigin::Typed {
+        return (status, reason);
+    }
+    if header.is_some_and(not_additive) || label.is_some_and(not_additive) {
+        return ("unknown", "not_additive".into());
+    }
+    let (Some(actual), Some(expected)) = (check.actual, check.expected) else { return (status, reason) };
+    let values = source_values(grid, cand);
+    if values.len() >= 2 {
+        let decimals = values.iter().chain([&actual]).map(|&v| decimals(v)).max().unwrap_or(0);
+        let unit = 10f64.powi(-(decimals as i32));
+        let diff = (actual - expected).abs();
+        if decimals <= 4 && diff <= unit * (values.len() as f64).sqrt().max(1.0) + 1e-9 && diff <= 0.01 * actual.abs() {
+            return ("unknown", "rounding_difference".into());
+        }
+        let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        if min >= 0.0 && actual >= min && actual <= max {
+            return ("unknown", "average_like".into());
+        }
+    }
+    (status, reason)
+}
+
+/// Decimals a value is written with (0-4; 5 for more).
+fn decimals(v: f64) -> u32 {
+    for d in 0..=4 {
+        let x = v * 10f64.powi(d);
+        if (x - x.round()).abs() <= 1e-6 * x.abs().max(1.0) {
+            return d as u32;
+        }
+    }
+    5
+}
+
+/// The numbers a typed total adds (as [`totals::verify`] reads them for a typed total).
+fn source_values(grid: &Grid, cand: &TotalCandidate) -> Vec<f64> {
+    let Some(used) = grid.used_range() else { return Vec::new() };
+    let exclude: HashSet<(u32, u32)> = cand.exclude.iter().copied().collect();
+    let mut out = Vec::new();
+    for r in &cand.ranges {
+        let r = Rect {
+            top: r.top.max(used.top),
+            left: r.left.max(used.left),
+            bottom: r.bottom.min(used.bottom),
+            right: r.right.min(used.right),
+        };
+        for i in grid.cells_in(r) {
+            let c = &grid.sheet.cells[i as usize];
+            if (c.row, c.col) == (cand.row, cand.col) || exclude.contains(&(c.row, c.col)) {
+                continue;
+            }
+            match &c.value {
+                Some(Value::Number(v) | Value::DateTime(v)) => out.push(*v),
+                Some(Value::Text(s)) => out.extend(totals::verify::numeric_text(s)),
+                _ => {}
+            }
+        }
+    }
+    out
 }
 
 /// Shortest run of row totals collapsed into one item.
