@@ -25,7 +25,7 @@ const USAGE: &str = "usage:
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
   hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
-  hedgehog features --out FILE.csv [--corpus deco,synthetic] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N]
+  hedgehog features --out FILE.csv [--corpus deco,synthetic,statsheets,strudel] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N]
 
 eval: files are scored on --threads workers (default: min(4, CPUs); results identical to 1 thread);
       data root from $HEDGEHOG_DATA (default ../testdata);
@@ -277,7 +277,9 @@ fn features(args: &[&str]) -> Result<(), String> {
         let corpus = match name.as_str() {
             "deco" => eval::deco::load(&root),
             "synthetic" => eval::synthetic::load(&dir.clone().unwrap_or_else(|| root.join("synthetic").join("v0"))),
-            other => return Err(format!("unknown corpus `{other}` (deco, synthetic)")),
+            "statsheets" => eval::statsheets::load(&root),
+            "strudel" => eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"),
+            other => return Err(format!("unknown corpus `{other}` (deco, synthetic, statsheets, strudel)")),
         }
         .map_err(|e| e.to_string())?;
         opts.source = name.clone();
