@@ -20,6 +20,16 @@ All notable changes to hedgehog are listed here. The format follows
   SQLite is compiled in (`rusqlite`, bundled); `hh_core` stays free of it.
 - Releases attach standalone `hedgehog` CLI binaries (`hedgehog-<target>[.exe]` for x86_64/aarch64
   Linux, x86_64/aarch64 macOS and x86_64 Windows) with `SHA256SUMS.txt`.
+- **Node.js / TypeScript package `hedgehog-sheets`** (new crate `hh_node`, `node/`, napi-rs 3), with
+  types and prebuilt addons for Linux x64/arm64 (glibc), macOS x64/arm64 and Windows x64 as
+  `hedgehog-sheets-<platform>` optional dependencies: `normalize` (libuv thread pool, returns a
+  Promise with the paths and the parsed, typed manifest) and `normalizeSync`; `open` / `openAsync`
+  and `Workbook` (`sheetNames`, `sheets`, `getCell`, `getRange`, `findText`, `totals`), the Python
+  API in camelCase; `HedgehogSession`, the six `hedgehog mcp` tools in-process over `hh_agent`
+  (`openFile`, `describeTable`, `query`, `cells`, `totals`, `listFiles`, `call`, `toolSpecs`). The
+  release workflow builds and tests the addons, attaches the npm tarballs to the GitHub Release and
+  publishes to npm when the repository variable `PUBLISH_NPM` is `true`. See
+  [docs/node-api.md](docs/node-api.md).
 
 - `hedgehog-inspect` (Python entry point, `python -m hedgehog.inspect`) and a `Makefile`: see, file by
   file, the tables, totals check, notes, warnings, what an agent receives and the summary, with or

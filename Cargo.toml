@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "py", "cli", "agent"]
+members = ["core", "py", "cli", "agent", "node"]
 
 [workspace.package]
 version = "0.3.1"
@@ -23,6 +23,12 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 opt-level = 3
+
+# The Node addon (node/, `npm run build`): a Rust panic must become a JS exception, not abort the
+# host process (an editor, a TUI), so it unwinds.
+[profile.node-release]
+inherits = "release"
+panic = "unwind"
 
 # Release build with symbols and thin LTO: for profilers and fast iteration on perf work.
 [profile.profiling]

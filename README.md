@@ -136,6 +136,13 @@ The command-line tool: download `hedgehog-<target>` from a
 [release](https://github.com/05vukasin/hedgehog/releases) (from the next release on), or
 `cargo install --git https://github.com/05vukasin/hedgehog hh_cli` (needs Rust). From a clone: `pip install ./py`. Details: [docs/installation.md](docs/installation.md).
 
+For Node.js and TypeScript (Node 18 or newer), the same package name on npm, with prebuilt native
+binaries and types (from the next release on; until it is on npm, the release has the tarballs):
+
+```sh
+npm install hedgehog-sheets
+```
+
 ## Use it from the command line
 
 ```console
@@ -197,6 +204,36 @@ s = hedgehog.summarize("sales.xlsx", llm=client)       # one call; s.text, s.usa
 ```
 
 More: [docs/python-api.md](docs/python-api.md), [docs/llm.md](docs/llm.md).
+
+## Use it from TypeScript
+
+The npm package `hedgehog-sheets` has the same core, with camelCase names; slow work runs off the
+event loop and returns a Promise. It also has the agent tools of the [MCP server](#as-an-mcp-tool-server)
+in-process, for a TypeScript agent that registers its own tools:
+
+```ts
+import { normalize, open, HedgehogSession } from 'hedgehog-sheets'
+
+const r = await normalize('sales.xlsx', 'out/')          // same files as the command line
+console.log(r.manifest.tables[0].sheet, r.manifest.totals.mismatch, 'wrong total(s)')
+
+const wb = open('sales.xlsx')                            // look inside the original, read-only
+console.log(wb.getCell('Sales', 'B13').value, wb.totals('Sales').at(-2)?.ok)
+
+const s = new HedgehogSession({ root: '.' })             // open_file, query, cells, totals, ...
+console.log(await s.query('sales.xlsx', 'SELECT Product, "Revenue / Q1" FROM T1 ORDER BY 2 DESC LIMIT 2'))
+```
+
+```text
+T1_sales_report_2024 1 wrong total(s)
+4600 false
+Product,Revenue / Q1
+Gizmos,2045
+Widgets,1200.5
+(2 rows)
+```
+
+More: [docs/node-api.md](docs/node-api.md).
 
 ## Use it with an AI agent
 
@@ -270,7 +307,7 @@ up on the `Notes` sheet, so a mistake costs structure, never data. Details:
 | [Agent recipes](docs/agent-recipes.md) | pandas/openpyxl code for AI agents |
 | [MCP server](docs/mcp.md) | `hedgehog mcp`: tools for AI clients over stdio |
 | [Normalized output](docs/normalized-output.md) | every sheet and manifest field |
-| [CLI](docs/cli.md) · [Python API](docs/python-api.md) | full reference |
+| [CLI](docs/cli.md) · [Python API](docs/python-api.md) · [Node API](docs/node-api.md) | full reference |
 | [LLMs](docs/llm.md) · [Locales](docs/locales.md) | AI providers and keys; numbers, dates, currencies |
 | [Concepts](docs/concepts.md) · [Evaluation](docs/evaluation.md) | how it works; how well it works |
 | [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Troubleshooting](docs/troubleshooting.md) | for contributors and when something goes wrong |

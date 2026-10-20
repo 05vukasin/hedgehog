@@ -20,3 +20,10 @@ __pycache__/
 
 # Claude Code local state (agent worktrees, settings)
 /.claude/
+
+# Node package: dependencies, local addon builds, napi packaging output
+/node/node_modules/
+/node/*.node
+/node/npm/
+/node/artifacts/
+/node/dist/
