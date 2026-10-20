@@ -42,7 +42,7 @@ ea20e3fa339de581	9905	irregular/enron/michelle_lokay__26659__SOCAL_PERMIAN_SPRD_
 24e33d5a4a9df48a	251	irregular/enron/monika_causholli__28122__Enron_Fiber_Pulp_Properties.xlsx
 ae1a563bb5e76feb	723	irregular/enron/phillip_allen__28928__MAPTTRA.xlsx
 a6ae316ff60efc00	97231	irregular/enron/phillip_platter__31371__ca0912epmi.xlsx
-e071790686d9f5b4	3136	irregular/enron/rick_buy__32779__Sovereign Bonds_070901.xlsx
+872481a8aec0e92e	3136	irregular/enron/rick_buy__32779__Sovereign Bonds_070901.xlsx
 2f1ffbdb34af9332	117	irregular/enron/sally_beck__33736__NA GAS AND POWER-REGION BREAKOUT 07-26-00 EM.xlsx
 69ba8466ef70e4da	2069	irregular/enron/sally_beck__35523__MgmtSum-Q201-Global-0601.xlsx
 7371caa5edb23068	4957	irregular/enron/scott_neal__37846__Aga4-7.xlsx

@@ -122,21 +122,61 @@ def test_ai_provider_and_chat_model(monkeypatch):
     assert isinstance(a, AnthropicClient) and a.model == "claude-opus-5-5"
 
 
-def test_bedrock_key_exported_for_boto3(monkeypatch):
-    boto3 = pytest.importorskip("boto3")
+def test_bedrock_key_stays_out_of_os_environ(monkeypatch):
+    """The API key becomes the bearer token of the client's own botocore session; nothing is
+    exported process-wide. A fake SDK stands in for boto3/botocore (no AWS, no boto3 needed)."""
+    from hedgehog.llm import bedrock_provider
 
     seen = {}
 
-    def fake_client(service, **kw):
-        seen["service"] = service
-        seen["token"] = os.environ.get("AWS_BEARER_TOKEN_BEDROCK")
-        seen.update(kw)
-        return FAKE
+    class FakeCoreSession:
+        def register_component(self, name, component):
+            seen[name] = component
 
-    monkeypatch.setattr(boto3, "client", fake_client)
-    connect("bedrock", api_key="bedrock-key", region="eu-west-2", model="m")
-    assert seen["service"] == "bedrock-runtime" and seen["token"] == "bedrock-key"
-    assert seen["region_name"] == "eu-west-2"
+    class FakeSession:
+        def __init__(self, botocore_session=None, region_name=None):
+            seen["core"], seen["session_region"] = botocore_session, region_name
+
+        def client(self, service, **kw):
+            seen["service"] = service
+            seen.update(kw)
+            return FAKE
+
+    def no_global_client(*a, **kw):
+        raise AssertionError("the module-level boto3.client would use the default session")
+
+    boto3 = type("boto3", (), {"Session": FakeSession, "client": staticmethod(no_global_client)})
+    core = type("botocore.session", (), {"Session": FakeCoreSession})
+    config = lambda **kw: ("config", kw)  # noqa: E731
+    token = lambda t: ("token", t)  # noqa: E731
+    monkeypatch.setattr(bedrock_provider, "_import_sdk", lambda: (boto3, core, config, token))
+    before = dict(os.environ)
+    c = connect("bedrock", api_key="bedrock-key", region="eu-west-2", model="m")
+    assert c._client is FAKE
+    assert dict(os.environ) == before and "AWS_BEARER_TOKEN_BEDROCK" not in os.environ
+    assert seen["service"] == "bedrock-runtime" and seen["region_name"] == "eu-west-2"
+    assert isinstance(seen["core"], FakeCoreSession)
+    assert seen["token_provider"].load_token(signing_name="bedrock") == ("token", "bedrock-key")
+
+
+def test_bedrock_real_botocore_sends_bearer_without_env(monkeypatch):
+    pytest.importorskip("boto3")
+    from botocore.awsrequest import AWSResponse
+
+    c = connect("bedrock", api_key="bedrock-key", region="eu-west-2", model="m")
+    assert "AWS_BEARER_TOKEN_BEDROCK" not in os.environ
+    sent = {}
+
+    def capture(request, **kw):  # answer before anything goes on the wire
+        sent["auth"] = request.headers.get("Authorization")
+        body = b'{"output":{"message":{"role":"assistant","content":[{"text":"ok"}]}},"stopReason":"end_turn","usage":{}}'
+        return AWSResponse(request.url, 200, {"content-type": "application/json"}, type("R", (), {"stream": lambda *a, **k: iter([body]), "content": body})())
+
+    c._client.meta.events.register("before-send.bedrock-runtime.Converse", capture)
+    assert c.chat("x").text == "ok"
+    auth = sent["auth"]
+    auth = auth.decode() if isinstance(auth, bytes) else auth
+    assert auth == "Bearer bedrock-key"
 
 
 def test_available_providers(tmp_path, monkeypatch):

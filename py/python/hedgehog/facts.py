@@ -79,12 +79,22 @@ def _rows(rows: List[List[Any]]) -> List[List[Any]]:
     return [[_num(v) for v in row] for row in rows]
 
 
+def total_status(t: Dict[str, Any]) -> str:
+    """The normalize manifest's status words: ``ok`` (verified), ``mismatch`` (does not add up),
+    ``unknown`` (not verified: e.g. the source range could not be confirmed, or the value is an
+    average). Only ``mismatch`` means the total is wrong."""
+    return {True: "ok", False: "mismatch"}.get(t.get("ok"), "unknown")
+
+
 def _total_item(t: Dict[str, Any]) -> Dict[str, Any]:
+    status = total_status(t)
     item: Dict[str, Any] = {
         "cell": qualify(t["sheet"], t["address"]),
         "label": t.get("label"),
         "value": _num(t.get("actual")),
-        "expected": _num(t.get("expected")),
+        "status": status,
+        # An unverified total's recomputed sum is a guess over a guessed range, not what it should be.
+        "expected" if status != "unknown" else "recomputed": _num(t.get("expected")),
         "ok": t.get("ok"),
         "reason": t.get("reason"),
         "sources": t.get("sources") or [],
@@ -100,6 +110,13 @@ def _total_item(t: Dict[str, Any]) -> Dict[str, Any]:
     if t.get("numbers_as_text"):
         item["numbers_as_text"] = t["numbers_as_text"]
     return item
+
+
+def ordered_totals(totals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Mismatches first, then verified totals, then unverified ones (sheet order within each)."""
+    return [t for t in totals if t["ok"] is False] + [t for t in totals if t["ok"] is True] + [
+        t for t in totals if t["ok"] is None
+    ]
 
 
 def all_totals(wb: Workbook, sheet: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -138,7 +155,7 @@ def facts(
     mismatched = [t for t in totals if t["ok"] is False]
     verified = [t for t in totals if t["ok"] is True]
     unchecked = [t for t in totals if t["ok"] is None]
-    ordered = mismatched + verified + unchecked
+    ordered = ordered_totals(totals)
     items = [_total_item(t) for t in ordered[:max_totals]]
     out_totals: Dict[str, Any] = {
         "found": len(totals),

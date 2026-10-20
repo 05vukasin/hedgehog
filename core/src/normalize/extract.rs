@@ -172,6 +172,14 @@ struct Built {
 
 type Head = Option<(String, (u32, u32))>;
 
+/// A total row as detected: its level and the first row of its source (the topmost range start
+/// among the row's vertical totals), when known.
+#[derive(Debug, Clone, Copy)]
+struct RowTotal {
+    level: TotalLevel,
+    top: Option<u32>,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_table(
     grid: &Grid,
@@ -179,7 +187,7 @@ fn build_table(
     t: &DetectedTable,
     n: usize,
     sheet_hints: &OnceCell<HashMap<u32, ColumnHints>>,
-    row_level: &HashMap<u32, TotalLevel>,
+    row_total: &HashMap<u32, RowTotal>,
     opts: &Options,
     owner: &mut [u8],
 ) -> Built {
@@ -313,8 +321,15 @@ fn build_table(
     let mut row_types: Vec<RowType> = Vec::new();
     let mut row_group: Vec<Option<usize>> = Vec::new();
     let mut paths: Vec<Vec<String>> = Vec::new();
+    // The current group path and the rows of its group headers; `run` collects consecutive
+    // group-header rows (label, row) until the next data row places them in the path.
     let mut path: Vec<String> = Vec::new();
-    let mut run: Vec<String> = Vec::new();
+    let mut path_rows: Vec<u32> = Vec::new();
+    let mut run: Vec<(String, u32)> = Vec::new();
+    let mut cur_path: Option<usize> = None;
+    // Column of the group-header rows' labels; a group-header cell there on a data row is a group
+    // label written on the group's first data row (it replaces the innermost group).
+    let mut group_label_col: Option<u32> = None;
     let mut group_labels: Vec<String> = Vec::new();
     let mut removed_totals = Vec::new();
     let mut body_rows_seen = 0u32;
@@ -333,9 +348,12 @@ fn build_table(
                 for &i in idxs {
                     owner[i] = OWN_TABLE;
                 }
+                if let Some(&i) = idxs.iter().find(|&&i| cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty())) {
+                    group_label_col = Some(cells[i].col);
+                }
                 tr.add(T::GroupHeaderRowsToColumn, 1);
                 group_labels.push(label.clone());
-                run.push(label);
+                run.push((label, *row));
                 continue;
             }
             RowKind::RepeatedHeader => {
@@ -356,8 +374,8 @@ fn build_table(
             }
             RowKind::Total | RowKind::Data => {}
         }
-        let rt = if kind == RowKind::Total {
-            let level = row_level.get(row).copied().or_else(|| {
+        let level = if kind == RowKind::Total {
+            row_total.get(row).map(|t| t.level).or_else(|| {
                 idxs.iter()
                     .filter_map(|&i| match &cells[i].value {
                         Some(Value::Text(s)) => totals::total_keyword(s),
@@ -369,10 +387,14 @@ fn build_table(
                         KeywordLevel::GrandTotal => TotalLevel::GrandTotal,
                         KeywordLevel::Total => TotalLevel::Total,
                     })
-            });
-            if level == Some(TotalLevel::Subtotal) { RowType::Subtotal } else { RowType::Total }
+            })
         } else {
-            RowType::Data
+            None
+        };
+        let rt = match (kind, level) {
+            (RowKind::Total, Some(TotalLevel::Subtotal)) => RowType::Subtotal,
+            (RowKind::Total, _) => RowType::Total,
+            _ => RowType::Data,
         };
         if rt != RowType::Data && !opts.keep_totals {
             tr.add(T::TotalRowsRemoved, 1);
@@ -382,16 +404,52 @@ fn build_table(
         if rt != RowType::Data {
             tr.add(T::TotalRowsKept, 1);
         }
+        let inline_label = idxs.iter().copied().find(|&i| {
+            rt == RowType::Data
+                && run.is_empty()
+                && lay.roles[i] == Role::GroupHeader
+                && Some(cells[i].col) == group_label_col
+                && cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty())
+        });
+        if let Some(i) = inline_label {
+            let label = cells[i].value.as_ref().map(display).unwrap_or_default();
+            tr.add(T::GroupHeaderRowsToColumn, 1);
+            group_labels.push(label.clone());
+            run.push((label, *row));
+        }
         if !run.is_empty() {
             let keep = path.len().saturating_sub(run.len());
             path.truncate(keep);
-            path.append(&mut run);
+            path_rows.truncate(keep);
+            for (label, row) in run.drain(..) {
+                path.push(label);
+                path_rows.push(row);
+            }
             paths.push(path.clone());
+            cur_path = Some(paths.len() - 1);
         }
-        row_group.push((!path.is_empty()).then(|| paths.len() - 1));
+        // A kept total row belongs only to the groups that contain its whole source: a subtotal
+        // to its group, a grand total (or a total over several groups) to none of them.
+        let depth = match (level, row_total.get(row).and_then(|t| t.top)) {
+            _ if rt == RowType::Data => path.len(),
+            (Some(TotalLevel::GrandTotal), _) => 0,
+            (_, Some(top)) => path_rows.iter().take_while(|&&h| h <= top).count(),
+            _ => path.len(),
+        };
+        row_group.push(match depth {
+            0 => None,
+            d if d < path.len() => {
+                paths.push(path[..d].to_vec());
+                Some(paths.len() - 1)
+            }
+            _ => cur_path,
+        });
         let mut row_slots: Vec<Slot> = vec![Slot::Empty; ncols];
         for &i in idxs {
             owner[i] = OWN_TABLE;
+            if Some(i) == inline_label {
+                continue;
+            }
             let c = &cells[i];
             let k = (c.col - r.left) as usize;
             if lay.roles[i] == Role::GroupHeader {
@@ -665,12 +723,17 @@ pub(super) fn process_sheet(
     super::trace("totals_detect", t0);
     let checks: Vec<_> = cands.iter().map(|c| totals::verify(&grid, c)).collect();
     super::trace("totals_verify", t0);
-    let mut row_level: HashMap<u32, TotalLevel> = HashMap::new();
+    let mut row_total: HashMap<u32, RowTotal> = HashMap::new();
     for c in cands.iter().filter(|c| c.direction == Direction::Vertical) {
-        let e = row_level.entry(c.row).or_insert(c.level);
+        let top = c.ranges.iter().map(|r| r.top).min();
+        let e = row_total.entry(c.row).or_insert(RowTotal { level: c.level, top });
         if c.level == TotalLevel::Subtotal {
-            *e = TotalLevel::Subtotal;
+            e.level = TotalLevel::Subtotal;
         }
+        e.top = match (e.top, top) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
     }
 
     // Tables.
@@ -680,7 +743,7 @@ pub(super) fn process_sheet(
     let mut notes: Vec<NoteItem> = Vec::new();
     for t in &lay.tables {
         let n = out.tables.len() + 1;
-        let b = build_table(&grid, &lay, t, n, &sheet_hints, &row_level, opts, &mut owner);
+        let b = build_table(&grid, &lay, t, n, &sheet_hints, &row_total, opts, &mut owner);
         info.tables.push(n);
         kept.push(b.kept);
         removed.extend(b.removed_totals.into_iter().map(|(row, rt, idxs)| (n, row, rt, idxs)));

@@ -246,6 +246,13 @@ fn keep_totals_csv_and_locale() {
         [text("data"), text("data"), text("subtotal"), text("data"), text("data"), text("subtotal"), text("total")]
     );
     assert_eq!(row_vals(t1, 7)[6], num(13.0), "_src_row of the grand total");
+    // A subtotal belongs to its group, the grand total to none.
+    assert_eq!(get(t1, 0, 0), text("Region").as_ref());
+    let groups: Vec<Option<Value>> = (1..8).map(|r| row_vals(t1, r)[0].clone()).collect();
+    assert_eq!(
+        groups,
+        [text("North"), text("North"), text("North"), text("South"), text("South"), text("South"), None]
+    );
     // Unambiguous US text numbers are still read correctly; the locale only settles ambiguous ones.
     assert_eq!(get(t1, 1, 2), num(1200.5).as_ref());
     assert!(out.manifest_json.contains("\"locale\": \"de\""));
@@ -362,5 +369,49 @@ fn unparsed_values_are_kept_and_reported() {
     assert_eq!(names(&book)[1], "T1_budget_execution");
     // "1.200" in a comma-decimal sheet: thousands separator.
     assert_eq!(get(t, 1, 2), num(1200.0).as_ref());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn group_label_on_the_first_data_row_opens_a_group() {
+    // Month groups: most labels have a row of their own, "Sep" sits on its group's first data row
+    // after a blank row. It must start group "Sep", not stay a value under group "Aug".
+    let dir = tmp_dir("inline_group");
+    let src = dir.join("months.xlsx");
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.set_name("Months").unwrap();
+    for (c, h) in ["Item", "Amount", "Fee"].iter().enumerate() {
+        ws.write_string(0, 1 + c as u16, *h).unwrap();
+    }
+    let item = |ws: &mut rust_xlsxwriter::Worksheet, r: u32, name: &str, v: f64| {
+        ws.write_string(r, 1, name).unwrap();
+        ws.write_number(r, 2, v).unwrap();
+        ws.write_number(r, 3, v / 10.0).unwrap();
+    };
+    ws.write_string(1, 0, "Jul").unwrap();
+    item(ws, 2, "Gas", 100.0);
+    item(ws, 3, "Power", 200.0);
+    item(ws, 4, "Services", 300.0);
+    ws.write_string(5, 0, "Aug").unwrap();
+    item(ws, 6, "Gas", 110.0);
+    item(ws, 7, "Power", 210.0);
+    item(ws, 8, "Services", 310.0);
+    ws.write_string(10, 0, "Sep").unwrap();
+    item(ws, 10, "Gas", 120.0);
+    item(ws, 11, "Power", 220.0);
+    item(ws, 12, "Services", 320.0);
+    ws.write_string(14, 0, "Oct").unwrap();
+    item(ws, 15, "Gas", 130.0);
+    wb.save(&src).unwrap();
+    let opts = Options { rules_only: true, ..Options::default() };
+    let out = normalize_file(&src, &dir, &opts).unwrap();
+    let book = open(&out.xlsx_path).unwrap();
+    let t = &book.sheets[1];
+    assert_eq!(row_vals(t, 0), [text("group"), text("Item"), text("Amount"), text("Fee"), text("_src_row")]);
+    let groups: Vec<Option<Value>> = (1..row_count(t)).map(|r| get(t, r, 0).cloned()).collect();
+    let expect = ["Jul", "Jul", "Jul", "Aug", "Aug", "Aug", "Sep", "Sep", "Sep", "Oct"];
+    assert_eq!(groups, expect.iter().map(|g| text(g)).collect::<Vec<_>>());
+    assert_eq!(row_vals(t, 7), [text("Sep"), text("Gas"), num(120.0), num(12.0), num(11.0)]);
     std::fs::remove_dir_all(&dir).ok();
 }

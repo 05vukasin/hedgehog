@@ -318,8 +318,10 @@ The compact, deterministic description of a workbook that summaries and the agen
   `{"range": "A1:E3", "rows": [[...], ...]}`.
 - `totals`: counts `found`, `verified`, `mismatched`, `unchecked`, and `items` (mismatches first, at
   most `max_totals`, with `omitted` if more). Each item has `cell` (`"Sales!B13"`), `label`, `value`,
-  `expected`, `ok`, `reason`, `sources`, `level`, `origin`, and when present `formula`, `label_cell`,
-  `double_counted`, `numbers_as_text`.
+  `status` (the manifest's `ok` / `mismatch` / `unknown`), `expected` (`recomputed` when the status is
+  `unknown`: a sum over an unconfirmed range, not what the total should be), `ok`, `reason`,
+  `sources`, `level`, `origin`, and when present `formula`, `label_cell`, `double_counted`,
+  `numbers_as_text`.
 
 `facts_json` returns the same as compact JSON (no spaces, UTF-8 kept).
 
@@ -333,7 +335,7 @@ print(f["totals"]["items"][0])
 
 ```text
 {'found': 6, 'verified': 5, 'mismatched': 1, 'unchecked': 0}
-{'cell': 'Sales!B13', 'label': 'Grand total', 'value': 4600, 'expected': 4525.5, 'ok': False, 'reason': 'mismatch', 'sources': ['B6:B12'], 'level': 'grand_total', 'origin': 'typed', 'label_cell': 'Sales!A13'}
+{'cell': 'Sales!B13', 'label': 'Grand total', 'value': 4600, 'status': 'mismatch', 'expected': 4525.5, 'ok': False, 'reason': 'mismatch', 'sources': ['B6:B12'], 'level': 'grand_total', 'origin': 'typed', 'label_cell': 'Sales!A13'}
 ```
 
 ## `hedgehog.check_citations`

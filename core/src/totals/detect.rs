@@ -11,6 +11,7 @@ use crate::totals::deps::DependencyIndex;
 use crate::totals::formula::FormulaKind;
 use crate::totals::keywords::{KeywordLevel, total_keyword};
 use crate::totals::verify::{close, numeric_text, verify};
+use crate::values::missing_token;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TotalOrigin {
@@ -102,17 +103,20 @@ impl TotalCandidate {
 /// (the cells themselves are row-major, so stepping down a column through them misses the cache).
 struct ColumnView {
     rows: Vec<u32>,
-    /// [`ColumnView::NUMBER`] | [`ColumnView::FORMULA`] | [`ColumnView::LABEL`].
+    /// [`ColumnView::NUMBER`] | [`ColumnView::FORMULA`] | [`ColumnView::LABEL`] |
+    /// [`ColumnView::NUMBER_TEXT`].
     flags: Vec<u8>,
-    /// The number (0 when there is none).
+    /// The number, or the number stored as text (0 when there is none).
     values: Vec<f64>,
 }
 
 impl ColumnView {
     const NUMBER: u8 = 1;
     const FORMULA: u8 = 2;
-    /// Text that is not a number: a header, it ends a walk up.
+    /// Text that is not a number nor a missing token: a header, it ends a walk up.
     const LABEL: u8 = 4;
+    /// A number stored as text ("1,200.50"): a typed total was added up by hand, so it counts.
+    const NUMBER_TEXT: u8 = 8;
 
     fn new(grid: &Grid, col: u32) -> Self {
         let line = grid.col_cells(col);
@@ -123,15 +127,18 @@ impl ColumnView {
         };
         for &i in line {
             let c = &grid.sheet.cells[i as usize];
-            let num = number(Some(c));
+            let mut num = number(Some(c));
             let mut f = 0;
             if num.is_some() {
                 f |= Self::NUMBER;
+            } else if let Some(v) = text(Some(c)).and_then(numeric_text) {
+                num = Some(v);
+                f |= Self::NUMBER_TEXT;
             }
             if c.formula.is_some() {
                 f |= Self::FORMULA;
             }
-            if text(Some(c)).is_some_and(|s| numeric_text(s).is_none()) {
+            if text(Some(c)).is_some_and(header_text) {
                 f |= Self::LABEL;
             }
             v.rows.push(c.row);
@@ -174,6 +181,12 @@ fn text(cell: Option<&Cell>) -> Option<&str> {
         Value::Text(s) => Some(s),
         _ => None,
     }
+}
+
+/// Text that can head a column of numbers: not a number stored as text and not a missing-value
+/// token ("n/a", "-", "#N/A"), which stand in for blank data cells.
+fn header_text(s: &str) -> bool {
+    numeric_text(s).is_none() && missing_token(s).is_none()
 }
 
 fn number(cell: Option<&Cell>) -> Option<f64> {
@@ -562,7 +575,7 @@ fn typed_group(
             }
             continue;
         }
-        if let Some(v) = number(cell) {
+        if let Some(v) = number(cell).or_else(|| text(cell).and_then(numeric_text)) {
             sum += v;
             n += 1;
         }
@@ -644,13 +657,16 @@ fn typed_vertical(
         top = r;
     }
     let end = view.below(row);
-    // First row at or after `from` (and before `row`) holding a number or a formula, else `row`.
-    let first_value = |from: u32| {
-        (view.below(from)..end)
-            .find(|&k| view.flags[k] & (ColumnView::NUMBER | ColumnView::FORMULA) != 0)
-            .map_or(row, |k| view.rows[k])
+    // First row at or after `from` (and before `row`) holding one of `flags`, else `row`.
+    let first_with = |from: u32, flags: u8| {
+        (view.below(from)..end).find(|&k| view.flags[k] & flags != 0).map_or(row, |k| view.rows[k])
     };
-    // Leading blanks and text (a year header "2023" stored as text) are not part of the source.
+    let first_value = |from: u32| first_with(from, ColumnView::NUMBER | ColumnView::FORMULA);
+    let first_value_or_text =
+        |from: u32| first_with(from, ColumnView::NUMBER | ColumnView::NUMBER_TEXT | ColumnView::FORMULA);
+    // Leading blanks and text (a year header "2023" stored as text) are not part of the source,
+    // unless a leading number stored as text is what makes the total add up (checked below).
+    let walk_top = top;
     top = first_value(top);
     if top == row {
         return None;
@@ -660,7 +676,9 @@ fn typed_vertical(
         let mut s = 0.0;
         let mut n = 0;
         for k in view.below(from)..end {
-            if view.flags[k] & ColumnView::NUMBER == 0 || (!skip.is_empty() && skip.contains(&view.rows[k])) {
+            if view.flags[k] & (ColumnView::NUMBER | ColumnView::NUMBER_TEXT) == 0
+                || (!skip.is_empty() && skip.contains(&view.rows[k]))
+            {
                 continue;
             }
             s += view.values[k];
@@ -669,10 +687,25 @@ fn typed_vertical(
         (s, n)
     };
     // Section since the previous total, and everything above except the earlier totals.
-    let section_top = first_value(first_total.map_or(top, |t| t + 1));
-    let (s_section, n_section) =
+    let section_from = first_total.map_or(walk_top, |t| t + 1);
+    let mut section_top = first_value(section_from);
+    let (mut s_section, mut n_section) =
         if section_top < row { sum_rows(section_top, &FxHashSet::default()) } else { (0.0, 0) };
-    let (s_all, n_all) = sum_rows(top, &skip_set);
+    let (mut s_all, mut n_all) = sum_rows(top, &skip_set);
+    let loose_section = first_value_or_text(section_from);
+    if loose_section < section_top && !close(value, s_section, true) {
+        let (s, n) = sum_rows(loose_section, &FxHashSet::default());
+        if close(value, s, true) {
+            (section_top, s_section, n_section) = (loose_section, s, n);
+        }
+    }
+    let loose_top = first_value_or_text(walk_top);
+    if loose_top < top && !close(value, s_all, true) {
+        let (s, n) = sum_rows(loose_top, &skip_set);
+        if close(value, s, true) {
+            (top, s_all, n_all) = (loose_top, s, n);
+        }
+    }
     if n_all == 0 {
         return None;
     }
@@ -804,7 +837,7 @@ fn typed_horizontal(
                         blanks = 0;
                         match &cell.value {
                             Some(Value::Number(x)) => v.push((c, *x)),
-                            Some(Value::Text(s)) if numeric_text(s).is_none() => break,
+                            Some(Value::Text(s)) if header_text(s) => break,
                             _ => {}
                         }
                     }

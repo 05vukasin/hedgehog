@@ -117,7 +117,7 @@ print(llm.PRESETS)
 | `openai` | `openai` | function calling | `response_format` JSON schema (`strict_json=`) | input, output, cached | |
 | `openai_compatible`, `vllm`, `ollama`, `openrouter`, `groq` | `openai` | function calling | JSON schema, non-strict | input, output | "Thinking" is switched off where the server supports it (vLLM `chat_template_kwargs`, OpenRouter `reasoning`) and dropped if the server rejects it; `<think>` blocks are stripped from replies. |
 | `anthropic` | `anthropic` 1.15 or newer | tool use, automatic choice | `output_config.format` | input, output, cache read/write | Models `claude-opus-5-5` (default), `claude-sonnet-5-5`, `claude-haiku-5-5`, `claude-fable-5-1`. Optional `effort`; prompt caching of the stable prefix; refusals reported in `ChatResult.refusal`. |
-| `bedrock` | `boto3` | Converse `toolConfig` | through a `structured_output` tool | input, output, cache | The bearer token is exported as `AWS_BEARER_TOKEN_BEDROCK` for the call. |
+| `bedrock` | `boto3` | Converse `toolConfig` | through a `structured_output` tool | input, output, cache | The bearer token is set on the client's own botocore session; `os.environ` is not modified. |
 
 `llm.list_models(client)` lists the model ids a key can use (OpenAI-style and Anthropic endpoints).
 
@@ -214,10 +214,10 @@ compact JSON with cell addresses:
 | Tool | Arguments | Returns |
 |---|---|---|
 | `describe_workbook` | none | The facts: sheets, sizes, small sheets' values, large sheets' first rows, verified totals. |
-| `get_cell` | `sheet`, `address` | Value, type and formula of one cell. |
+| `get_cell` | `sheet`, `address` | Value, type and formula of one cell; for a merged cell also the merge range and the value it shows. |
 | `get_range` | `sheet`, `range` | Values row by row; at most 400 cells per call. |
 | `find_text` | `query`, optional `sheet`, `limit` (default 20) | Cells containing the text (case-, accent- and Cyrillic/Latin-insensitive). |
-| `check_totals` | optional `sheet` | Totals with source ranges, recomputed sum and status. |
+| `check_totals` | optional `sheet` | Counts per status and the totals (mismatches first) with source ranges, recomputed sum and status: the same `ok` / `mismatch` / `unknown` as the normalize manifest. |
 
 These five tools are the current agent interface; an MCP server exposing them (and more) is
 [planned](../README.md#status-and-roadmap).

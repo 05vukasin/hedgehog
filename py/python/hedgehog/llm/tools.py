@@ -7,10 +7,11 @@ import json
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from .._native import Workbook
-from ..facts import all_totals, facts, parse_range, qualify, _num, _total_item
+from ..facts import all_totals, facts, ordered_totals, parse_range, qualify, _num, _total_item
 from .types import Tool
 
 MAX_RANGE_CELLS = 400
+MAX_TOTAL_ITEMS = 100
 
 TOOLS: List[Tool] = [
     Tool(
@@ -62,7 +63,8 @@ TOOLS: List[Tool] = [
     ),
     Tool(
         "check_totals",
-        "Detected total / subtotal cells with their source ranges, recomputed sum and whether they match.",
+        "Detected total / subtotal cells with their source ranges and recomputed sum. status: ok = adds up, "
+        "mismatch = does not add up, unknown = not verified (not an error). Counts per status, mismatches first.",
         {
             "type": "object",
             "properties": {"sheet": {"type": "string", "description": "Optional: only this sheet"}},
@@ -120,6 +122,13 @@ class WorkbookTools:
         out = {"cell": ref, "value": _num(c["value"]), "type": c["type"]}
         if c["formula"]:
             out["formula"] = c["formula"]
+        merged = c.get("merged")
+        if merged:
+            # A cell covered by a merge is empty; the merge shows its top-left cell's value.
+            out["merged"] = qualify(c["sheet"], merged)
+            anchor = merged.partition(":")[0]
+            if anchor != c["address"]:
+                out["merged_value"] = _num(self.wb.get_cell(c["sheet"], anchor)["value"])
         return out
 
     def get_range(self, args: Dict[str, Any]) -> Any:
@@ -138,6 +147,13 @@ class WorkbookTools:
         return [{"cell": qualify(h["sheet"], h["address"]), "value": _num(h["value"])} for h in hits]
 
     def check_totals(self, args: Dict[str, Any]) -> Any:
-        sheet = args.get("sheet")
-        items = [_total_item(t) for t in all_totals(self.wb, sheet)]
-        return {"found": len(items), "items": items[:100]}
+        """Same detection, verification and status words as the normalize manifest's Totals."""
+        totals = all_totals(self.wb, args.get("sheet"))
+        items = [_total_item(t) for t in ordered_totals(totals)]
+        out: Dict[str, Any] = {"found": len(items)}
+        for status in ("ok", "mismatch", "unknown"):
+            out[status] = sum(1 for i in items if i["status"] == status)
+        out["items"] = items[:MAX_TOTAL_ITEMS]
+        if len(items) > MAX_TOTAL_ITEMS:
+            out["omitted"] = len(items) - MAX_TOTAL_ITEMS
+        return out
