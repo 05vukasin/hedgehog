@@ -215,7 +215,7 @@ file):
 ```jsonc
 {
   "schema_version": 2,
-  "generator": {"name": "hedgehog", "version": "0.2.0"},
+  "generator": {"name": "hedgehog", "version": "0.3.0"},
   "source": {
     "path": "sales.xlsx", "file_name": "sales.xlsx", "sha256": "…", "size_bytes": 5251,
     "sheets": [{"name": "Sales", "used_range": "A1:E15", "cells": 39, "formulas": 0, "merges": 4,
@@ -223,7 +223,7 @@ file):
   },
   "output": {"xlsx": "sales.normalized.xlsx", "manifest": "sales.manifest.json", "csv": [],
              "sheets": ["README", "T1_sales_report_2024", "Totals", "Notes"]},
-  "options": {"keep_totals": false, "csv": false, "locale": null},
+  "options": {"keep_totals": false, "csv": false, "locale": null, "cell_roles": "model"},
   "tables": [{
     "id": "T1",
     "sheet": "T1_sales_report_2024",          // output sheet
@@ -283,7 +283,7 @@ Field reference:
 | `generator` | object | `name` and `version` of hedgehog. |
 | `source` | object | Input file: `path` as given, `file_name`, `sha256`, `size_bytes`, and per sheet `name`, `used_range`, `cells`, `formulas`, `merges`, `tables` (ids). |
 | `output` | object | File names written (relative to the output directory) and the sheet order of the xlsx. |
-| `options` | object | Options used. `locale` is the preset name (`"de"`, `"us"`, ...) or `null` when inferred. |
+| `options` | object | Options used. `locale` is the preset name (`"de"`, `"us"`, ...) or `null` when inferred. `cell_roles` is `"model"` (rules + learned model, the default) or `"rules"` (`--rules-only`); see [learned-model.md](learned-model.md). |
 | `tables[].id` | string | `T1`, `T2`, ... in source order. |
 | `tables[].sheet`, `excel_table` | string | Output sheet and Excel table name (equal). |
 | `tables[].source` | object | Source sheet and ranges, header position, `title` and `title_cell`, attached `notes`. |
@@ -299,7 +299,7 @@ Field reference:
 | `notes` | object | Row count of the `Notes` sheet and counts by `kind`. |
 | `cells` | object | Every non-empty source cell counted once: in a table, in a total, or in Notes. |
 | `unassigned_cells` | int | Notes rows not attached to any table. |
-| `warnings` | list of strings | Workbook-level warnings. |
+| `warnings` | list of strings | Workbook-level warnings, for example a sheet above the model's size limit whose roles came from the rules alone. |
 | `load_hints` | object | The loading snippets from the README sheet, as strings. |
 
 Column fields:

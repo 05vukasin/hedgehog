@@ -6,6 +6,35 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - pre-alpha
+
+### Added
+
+- **Learned row model, on by default** ([docs/learned-model.md](docs/learned-model.md)). The rules
+  find the tables; a two-stage gradient-boosted tree model (176 + 476 trees, built into the
+  library, no GPU or extra dependency) decides what kind of row each table row is, with safeguards
+  that keep the rules' answer where it is the safer call. Test splits, rules → model, cell roles
+  per file: DECO 64.4 → 70.9 (all seven roles pooled 57.1 → 67.3), StatSheets 65.2 → 89.6,
+  Strudel 77.1 → 90.5, synthetic 91.5 → 98.0; no role more than 0.1 below the rules. It also beats
+  the rules on each benchmark when that benchmark is left out of its training.
+- `--rules-only` / `rules_only=True`, and `--model-max-cells` / `model_max_cells` (default
+  1,000,000 cells per sheet; larger sheets use the rules alone and get a manifest warning);
+  manifest `options.cell_roles`.
+- **Cross-corpus benchmark** `hedgehog benchmark`: DECO, StatSheets (14 statistics publishers, 6
+  languages), Strudel (converted with `tools/benchmarks/convert_strudel.py`) and synthetic, per
+  source, in seven roles and in the four roles all corpora share.
+- Training tooling: `hedgehog features [--level row]` (training data, computed by the same code as
+  the library), `hedgehog pack-model`, `tools/train/` (leave-one-corpus-out, two-stage training,
+  tree export verified against XGBoost).
+
+### Performance
+
+- The model adds about 11 ms to a typical file (median 19 → 30 ms on 365 real files); feature
+  groups and the sheets of a workbook run on parallel threads within a memory budget; the largest
+  file (4.5M cells) stays at 17 s and 1.3 GB.
+- Faster value features for the rules path too: repeated texts and numbers are parsed once per
+  sheet (golden output identical).
+
 ## [0.2.0] - pre-alpha
 
 ### Added

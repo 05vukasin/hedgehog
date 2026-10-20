@@ -23,7 +23,8 @@ Contents: [`normalize`](#hedgehognormalize) · [`NormalizeResult`](#normalizeres
 ## `hedgehog.normalize`
 
 ```
-normalize(path, out_dir, *, keep_totals=False, csv=False, locale=None) -> NormalizeResult
+normalize(path, out_dir, *, keep_totals=False, csv=False, locale=None,
+          rules_only=False, model_max_cells=None) -> NormalizeResult
 ```
 
 Writes `<stem>.normalized.xlsx` and `<stem>.manifest.json` (and CSVs with `csv=True`) into `out_dir`,
@@ -37,6 +38,8 @@ released, so several files can be normalized from threads.
 | `keep_totals` | `bool` | Keep total rows in the table sheets with a `_row_type` column. |
 | `csv` | `bool` | Also write one CSV per table. |
 | `locale` | `str` or `None` | Locale preset or tag such as `"de-DE"`, `"en-US"`, `"fr"`, `"iso"`. `None` infers per column. See [locales.md](locales.md). |
+| `rules_only` | `bool` | Label cells with the layout rules alone, without the built-in learned model. See [learned-model.md](learned-model.md). |
+| `model_max_cells` | `int` or `None` | Sheets with more cells use the rules alone (default 1,000,000). |
 
 ```python
 import hedgehog

@@ -30,7 +30,8 @@ New here? Read [installation](installation.md), then the [quickstart](quickstart
 | Page | What it covers |
 |---|---|
 | [concepts.md](concepts.md) | Tables, cell roles, headers, totals and verification, provenance |
-| [evaluation.md](evaluation.md) | The DECO benchmark, metrics, current scores, how to run `hedgehog eval` |
+| [learned-model.md](learned-model.md) | The built-in learned row model: how it works with the rules, accuracy, speed, retraining |
+| [evaluation.md](evaluation.md) | Benchmarks (DECO, StatSheets, Strudel, synthetic), metrics, current scores, how to run them |
 | [architecture.md](architecture.md) | Rust core modules, PyO3 bindings, Python layer, data flow |
 | [development.md](development.md) | Building, testing, test data, CI and the release process |
 | [PERF.md](PERF.md) | Performance work: benchmarks, hotspots found, optimizations (engineering notes) |

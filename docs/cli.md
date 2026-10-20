@@ -49,6 +49,8 @@ sales.xlsx: 1 tables, 39 cells (28 in tables, 9 totals, 2 notes) in 16 ms
 | `--keep-totals` | no | Keep total and subtotal rows in the table sheets, marked in a `_row_type` column (`data`, `subtotal`, `total`). Default: they are removed from the data and listed only on the `Totals` sheet. |
 | `--csv` | no | Also write `<stem>.<table sheet>.csv` per table (UTF-8, ISO dates, empty field = missing). |
 | `--locale TAG` | no | Fix the decimal separator and day/month order for every column instead of inferring them per column. `TAG` is a preset or a language tag: `us`, `en-US`, `uk`, `en-GB`, `de`, `de-AT`, `fr`, `es`, `it`, `nl`, `pt`, `pt-BR`, `pl`, `ch`, `de-CH`, `fr-CH`, `sr`, `hr`, `bs`, `iso`, ... See [locales.md](locales.md#locale-presets). |
+| `--rules-only` | no | Label cells with the layout rules alone, without the built-in learned model ([learned-model.md](learned-model.md)). |
+| `--model-max-cells N` | no | Sheets with more than `N` cells use the rules alone (default 1,000,000; the model's features take about 440 bytes per cell). |
 
 The summary line counts every non-empty source cell once: in a table, in a total row (`Totals`
 sheet), or elsewhere (`Notes` sheet). With `--keep-totals` the total rows stay in the table and
@@ -80,6 +82,28 @@ budget.manifest.json
 budget.normalized.xlsx
 orders.manifest.json
 ```
+
+## `hedgehog benchmark`
+
+Scores an analyzer on every labelled corpus under `$HEDGEHOG_DATA` (DECO, StatSheets, Strudel,
+synthetic), per source and overall, in the full seven-role space and in the four roles all corpora
+share. Used to check that the model stays better than the rules everywhere.
+
+```console
+$ hedgehog benchmark --analyzer model --split test
+$ hedgehog benchmark --analyzer layout --corpora deco,strudel --out scores.tsv
+```
+
+| Argument | Meaning |
+|---|---|
+| `--analyzer NAME` | `baseline`, `layout` (rules) or `model` (rules + learned model; `$HEDGEHOG_MODEL` = a folder with `coarse.json` and `fine.json` replaces the built-in one). |
+| `--corpora LIST` | Comma-separated subset of `deco,statsheets,strudel,synthetic`. |
+| `--split S` | `test` (default; files the model never trained on), `dev` or `all`. |
+| `--threads N`, `--out FILE.tsv` | Worker threads; also write the per-source scores as TSV. |
+
+`hedgehog features` exports training data (`--level cell` or `--level row`), and
+`hedgehog pack-model <dir>` turns `row_coarse.json` + `row_fine.json` into the embedded
+`row_model.bin`; see [learned-model.md](learned-model.md#retraining).
 
 ## `hedgehog eval`
 

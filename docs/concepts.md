@@ -61,6 +61,10 @@ In the normalized output, `data` cells go to the table sheets, `total` cells to 
 `title`, `note` and `other` cells to `Notes`. `header` and `group_header` cells become column names
 and the group column.
 
+Roles come from the layout rules refined by a learned row model, which decides what kind of row
+each row of a table is; see [learned-model.md](learned-model.md). `--rules-only` uses the rules
+alone.
+
 ## Headers
 
 Multi-row headers are flattened into one row with ` / ` between levels:
@@ -159,7 +163,8 @@ The same applies to the Python tools on the source workbook: `get_cell`, `get_ra
 
 ## Determinism
 
-- No randomness, no network, no LLM in the core.
+- No randomness, no network, no LLM in the core. The learned model is a fixed set of decision
+  trees built into the library: the same file gives the same roles on every machine.
 - The manifest has a fixed key order and no timestamps: the same input gives byte-identical output,
   so a diff between two runs shows real changes.
 - The source file is opened read-only and never written.

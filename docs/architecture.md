@@ -58,16 +58,17 @@ built-in `core` library. Users only see `import hedgehog` and the `hedgehog` com
 | `values` | Value parsing: numbers in any convention, currencies (ISO 4217), dates and periods, missing tokens, booleans, text cleanup and Cyrillic transliteration, keyword lists, `Locale` presets, per-column convention inference. |
 | `totals` | A small formula reference parser, total detection (formula, keyword, typed), verification against cached values, and a dependency index for tracing. |
 | `context` | Spatial features of every cell (neighbours, row and column statistics, block geometry). |
-| `features` | Joins the `c_*`, `v_*` and `t_*` per-cell feature columns into one table, for the planned learned cell model. |
+| `features` | Named per-cell feature columns (`c_*` context, `v_*` values, `t_*` totals, `l_*` rule layout, `x_*` total context). |
+| `learned` | The learned row model: row segments and their features, the tree evaluator (packed nodes, block evaluation), the two-stage `RowModel` embedded from `core/models/row_model.bin`, and `analyze()` (rules + model + safeguards). See [learned-model.md](learned-model.md). |
 | `normalize` | Builds the normalized workbook: per table a flat header, typed columns, group column, `_src_row`; the `Totals` and `Notes` sheets; the manifest. Writes xlsx with [rust_xlsxwriter](https://crates.io/crates/rust_xlsxwriter). |
-| `eval` | Ground-truth schema, DECO loader, dev/test split, metrics, baseline analyzer and the runner behind `hedgehog eval`. |
+| `eval` | Ground-truth schema; DECO, StatSheets, Strudel/labelled and synthetic loaders; dev/test split; metrics; baseline analyzer; the runners behind `hedgehog eval` and `hedgehog benchmark`; training-data export (`export`, `export_rows`). |
 
 Public entry points (re-exported in `core/src/lib.rs`):
 
 ```rust
 let wb = hh_core::open("sales.xlsx")?;                         // Workbook
 print!("{}", hh_core::describe(&wb));                          // one line per sheet
-let opts = hh_core::NormalizeOptions { keep_totals: false, csv: false, locale: None };
+let opts = hh_core::NormalizeOptions::default();             // rules + learned model
 let out = hh_core::normalize_file("sales.xlsx", "out/", &opts)?;   // writes files
 let mem = hh_core::normalize_workbook(&wb, &opts);             // same result in memory
 let layout = hh_core::layout::analyze(&hh_core::Grid::new(&wb.sheets[0]));
@@ -80,7 +81,10 @@ The Rust API is not published on crates.io and may change with every release.
 Per sheet, each step computed once and reused:
 
 1. `Grid::new(sheet)`: index the cells.
-2. `layout::analyze(&grid)`: tables and a role for every cell.
+2. `learned::analyze(&grid, model)`: tables from `layout::analyze`, a role for every cell from the
+   rules refined by the row model (`layout::analyze` alone with `rules_only` or above
+   `model_max_cells`). Sheets of a workbook are analyzed on parallel threads when their cells
+   total at most 2 million.
 3. `totals::detect` and `totals::verify`: total candidates and their checks.
 4. `values::sheet_column_hints_with(&grid, locale)`: decimal separator and day/month order per
    column, or the explicit locale.
@@ -108,8 +112,6 @@ Python version. `normalize` releases the GIL while it runs.
 
 Not built yet; see the roadmap in the [README](../README.md#status-and-roadmap):
 
-- a learned cell-role model (gradient-boosted trees trained in Python, evaluated in Rust) on the
-  feature table;
 - semantic column types (city, country, tax ID, currency amount, period, ...);
 - metric definitions that become Excel formulas;
 - an MCP server exposing the agent tools;

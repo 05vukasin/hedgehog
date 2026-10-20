@@ -69,8 +69,11 @@ export HEDGEHOG_DATA=/path/to/testdata
 cargo run -p hh_cli --release -- eval deco --split dev --analyzer layout
 ```
 
-Run it before and after any change to `layout`, `values` or `totals` and compare the scoreboards.
-Metrics and current scores: [evaluation.md](evaluation.md).
+Run it before and after any change to `layout`, `values` or `totals` and compare the scoreboards,
+and `hedgehog benchmark --analyzer model` for the default path across all corpora. Changes to the
+features (`context`, `values`, `totals`, `eval/export.rs`, `learned.rs`) change what the learned
+model sees: retrain it ([learned-model.md](learned-model.md#retraining)) or check that the
+benchmark does not drop. Metrics and current scores: [evaluation.md](evaluation.md).
 
 ## Code layout and conventions
 

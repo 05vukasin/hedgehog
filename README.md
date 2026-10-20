@@ -39,20 +39,21 @@ others) and 50 Enron business spreadsheets. Together: 3,952 sheets and 43.5 mill
 
 | Problem in the original | What hedgehog does | How many | Files |
 |---|---|---:|---:|
-| Numbers stored as text: `"1,200.50"`, `"1.200,50"`, `"1 200"`, `"(500)"` | Reads them as real numbers, in US or European style | 1,154,141 cells | 72 |
-| Extra spaces around values | Trims them | 1,078,139 cells | 214 |
-| Formulas, which other programs may not be able to compute | Keeps the calculated value | 994,177 cells | 73 |
-| Placeholders for "nothing": `-`, `n/a`, `#N/A` | Turns them into proper empty values | 676,906 cells | 155 |
-| Dates written as text: `31.12.2024`, `12/31/24`, `March 2024` | Turns them into real dates | 141,989 cells | 28 |
-| Merged cells (the value is only in the first one) | Fills the value into every cell it covers | 57,412 cells | 123 |
+| Numbers stored as text: `"1,200.50"`, `"1.200,50"`, `"1 200"`, `"(500)"` | Reads them as real numbers, in US or European style | 1,153,826 cells | 70 |
+| Extra spaces around values | Trims them | 1,075,912 cells | 214 |
+| Formulas, which other programs may not be able to compute | Keeps the calculated value | 993,834 cells | 73 |
+| Placeholders for "nothing": `-`, `n/a`, `#N/A` | Turns them into proper empty values | 681,098 cells | 154 |
+| Dates written as text: `31.12.2024`, `12/31/24`, `March 2024` | Turns them into real dates | 141,986 cells | 28 |
+| Merged cells (the value is only in the first one) | Fills the value into every cell it covers | 57,213 cells | 120 |
 | A header spread over two or three rows ("Revenue" above "Q1", "Q2") | One header row: `Revenue / Q1`, `Revenue / Q2` | 20,805 headers | 149 |
-| The same header twice, or no header | Renames to `Code (2)`, names the empty ones | 27,142 headers | 188 |
-| "Region: North" rows splitting a table into groups | Turns them into a `Region` column and fills it down | 5,300 group rows | 125 |
-| Titles, notes and sources mixed in with the data | Moves them to a `Notes` sheet, with their cell address | 3,835 rows | 155 |
-| Blank rows and empty columns inside tables | Removes them | 7,305 | 154 |
-| Total and subtotal rows inside the data | Moves them to a `Totals` sheet and **re-calculates** them | 656,649 totals | 155 |
+| The same header twice, or no header | Renames to `Code (2)`, names the empty ones | 26,975 headers | 187 |
+| "Region: North" rows splitting a table into groups | Turns them into a `Region` column and fills it down | 7,094 group rows | 123 |
+| Titles, notes and sources mixed in with the data | Moves them to a `Notes` sheet, with their cell address | 5,957 rows | 184 |
+| Blank rows and empty columns inside tables | Removes them | 7,472 | 156 |
+| Total and subtotal rows inside the data | Moves them to a `Totals` sheet and **re-calculates** them | 668,029 totals | 184 |
 
-Of those 656,649 totals, 604,939 add up and **4,132 do not** (in 30 files). Each one that does not
+Of those 668,029 totals, 604,939 add up and **4,132 do not** (in 30 files); the rest cannot be
+checked (for example a total without the cells it adds). Each one that does not
 add up is listed with its cell, the value in the file and the value the cells add up to, so a person
 or an agent can check it. 98.3% of all cells ended up in clean tables. The rest (titles, notes,
 totals) is kept on separate sheets with the original cell address, so **nothing is thrown away**.
@@ -69,7 +70,8 @@ totals) is kept on separate sheets with the original cell address, so **nothing 
 1. **Read** the workbook: `.xlsx`, `.xlsm`, `.xlsb`, `.xls` or `.ods`.
 2. **Find the tables.** A sheet can hold several tables, side by side or stacked, even with
    different columns. Every cell is labelled as a title, header, data, group header, total, note
-   or other.
+   or other: rules find the tables, then a small built-in model decides what kind of row each row
+   is ([how](docs/learned-model.md)).
 3. **Read the values** the way a person would. Each column is judged as a whole, so `1.200` is one
    thousand two hundred in a German column and one point two in a US column. When hedgehog cannot be
    sure, it says so in the manifest instead of guessing silently.
@@ -79,7 +81,8 @@ totals) is kept on separate sheets with the original cell address, so **nothing 
 
 hedgehog is written in Rust, so it is fast: a typical file takes about 20 milliseconds,
 and the largest, with 4.5 million cells, takes about 20 seconds. Same file in, same result out; it
-needs no internet and no AI. An AI model is optional and only used to phrase a summary.
+needs no internet and no GPU: the learned model is a set of decision trees built into the library.
+A large language model is optional and only used to phrase a summary.
 
 ## What you get
 
@@ -120,10 +123,10 @@ Prebuilt for Linux, macOS and Windows (Python 3.9 or newer). **No Rust needed.**
 called **`hedgehog-sheets`**; in Python you `import hedgehog`.
 
 ```sh
-pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.2.0
+pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.0
 
 # With an optional AI provider for summaries: [openai], [anthropic], [bedrock], or [llm] for all three
-pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.2.0
+pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.0
 ```
 
 It is not on PyPI yet; once it is, `pip install hedgehog-sheets` will be enough.
@@ -223,18 +226,21 @@ More recipes (types, totals, notes, writing corrections back): [docs/agent-recip
 ## How good is it?
 
 Accuracy is measured, not guessed: hedgehog is scored against spreadsheets that people labelled by
-hand, cell by cell.
+hand, cell by cell, on files it never saw while it was built.
 
-| Benchmark | What it is | Tables found (F1) | Cell types (F1) |
+| Benchmark | What it is | Cell types, rules alone | **Cell types, hedgehog 0.3** |
 |---|---|---:|---:|
-| DECO | 854 real Enron business spreadsheets, labelled by researchers | 75.1 | 54.7 |
-| Synthetic | 2,000 generated messy workbooks with known answers | 98.0 | 79.0 |
+| DECO | Enron business spreadsheets | 64.4 | **70.9** |
+| StatSheets | 14 statistics offices (US, France, Japan, Australia, OECD, WHO, ...), 6 languages | 65.2 | **89.6** |
+| Strudel | US government and scientific tables | 77.1 | **90.5** |
+| Synthetic | 2,000 generated messy workbooks with known answers | 91.5 | **98.0** |
 
-F1 is a score from 0 to 100 that rewards finding the right things without false alarms. For
-comparison, a simple "connected cells" approach scores 17.3 on DECO tables. The weak spots are rare
-cell types such as titles, notes and group headers; a learned model that improves them is in
-development (see the roadmap). A misplaced cell still ends up on the `Notes` sheet, so a mistake
-costs structure, never data. Details: [docs/evaluation.md](docs/evaluation.md).
+Scores are F1 from 0 to 100 (finding the right things without false alarms), averaged per file over
+title, header, data and other. Table detection on DECO: 75.1 (a simple "connected cells" approach:
+17.3). The learned model also beats the rules on each benchmark when that benchmark is left out of
+its training entirely, so the gain carries over to new kinds of files. A misplaced cell still ends
+up on the `Notes` sheet, so a mistake costs structure, never data. Details:
+[docs/learned-model.md](docs/learned-model.md), [docs/evaluation.md](docs/evaluation.md).
 
 ## Documentation
 
@@ -251,7 +257,7 @@ costs structure, never data. Details: [docs/evaluation.md](docs/evaluation.md).
 
 ## Roadmap
 
-Done (0.1 and 0.2):
+Done (0.1 to 0.3):
 
 - [x] Reading every common spreadsheet format; finding tables and labelling every cell
 - [x] Numbers, dates, percentages and currencies in US and European formats
@@ -260,11 +266,13 @@ Done (0.1 and 0.2):
 - [x] Stacked tables with different columns; row-label and group columns
 - [x] A generator of messy test workbooks (51 kinds of mess)
 - [x] Multi-million-cell files with modest memory
+- [x] A learned row model (gradient-boosted trees in Rust, no GPU) combined with the rules, tested on
+      four independent benchmarks (0.3)
 
 Next:
 
-- [ ] A learned model for cell types (gradient-boosted trees, running in Rust without a GPU),
-      combined with the rules and tested on several independent benchmarks
+- [ ] Formatting features (bold, fills, borders, number formats) for the model
+- [ ] Tables rebuilt from the model's cell roles; CSV input
 - [ ] Column meaning: city, country, tax ID, amount, period, …
 - [ ] Ready-made formulas and metrics (quarterly totals, year over year)
 - [ ] An MCP server, so agents can call hedgehog as a tool
