@@ -298,6 +298,17 @@ pub struct Table {
     pub warnings: Vec<String>,
 }
 
+impl TotalItem {
+    /// `B13`, or `AB6:AB10494` for a run.
+    pub fn cell_a1(&self) -> String {
+        if self.row_end > self.row {
+            format!("{}:{}", crate::model::a1(self.row, self.col), crate::model::a1(self.row_end, self.col))
+        } else {
+            crate::model::a1(self.row, self.col)
+        }
+    }
+}
+
 impl Table {
     pub fn id(&self) -> String {
         format!("T{}", self.n)
@@ -313,6 +324,11 @@ pub struct TotalItem {
     pub sheet: String,
     pub row: u32,
     pub col: u32,
+    /// Number of totals this item stands for: 1, or a run of row totals down one column that all
+    /// check out (rows `row..=row_end`; `value` / `recomputed` are then None and `sources` /
+    /// `formula` are those of the first one).
+    pub count: usize,
+    pub row_end: u32,
     pub label: Option<String>,
     pub label_cell: Option<(u32, u32)>,
     /// total | subtotal | grand_total
@@ -416,8 +432,11 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
     let sha = sha256::hex(&bytes);
     let size = bytes.len();
     drop(bytes);
+    let t0 = std::time::Instant::now();
     let wb = crate::reader::open(path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
+    trace("open", t0);
     let norm = normalize_workbook(&wb, opts);
+    trace("analyze", t0);
     drop(wb);
     std::fs::create_dir_all(out_dir).map_err(|e| Error(format!("{}: {e}", out_dir.display())))?;
     let file_name = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
@@ -431,6 +450,7 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
     }
     let src = manifest::Source { path: path.display().to_string(), file_name, sha256: sha, size };
     write::xlsx(&norm, &src, &xlsx_name, &manifest_name, &xlsx_path)?;
+    trace("write_xlsx", t0);
     let mut csv_paths = Vec::new();
     if opts.csv {
         for t in &norm.tables {
@@ -447,7 +467,15 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
     for t in &norm.tables {
         transforms.merge(&t.transforms);
     }
-    Ok(Output { xlsx_path, manifest_path, csv_paths, manifest_json, tables: norm.tables.len(), cells: norm.cells, transforms })
+    Ok(Output {
+        xlsx_path,
+        manifest_path,
+        csv_paths,
+        manifest_json,
+        tables: norm.tables.len(),
+        cells: norm.cells,
+        transforms,
+    })
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -455,4 +483,19 @@ fn same_file(a: &Path, b: &Path) -> bool {
         (Ok(x), Ok(y)) => x == y,
         _ => false,
     }
+}
+
+/// Development aid: with `HEDGEHOG_TRACE=1`, prints elapsed time and peak memory (Linux) per stage
+/// to stderr.
+pub(crate) fn trace(stage: &str, since: std::time::Instant) {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    if !*ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| v != "0")) {
+        return;
+    }
+    let peak = std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM:")).map(|l| l[6..].trim().to_string()))
+        .unwrap_or_default();
+    eprintln!("[trace] {stage:<16} {:>9.1} ms  peak {peak}", since.elapsed().as_secs_f64() * 1000.0);
 }

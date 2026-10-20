@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::grid::Grid;
 use crate::model::{Rect, Sheet};
 
-use super::cells::{formula_agg, is_label_number, kind_of, Agg, Kind};
+use super::cells::{Agg, Kind, formula_agg, is_label_number, kind_of};
 use super::params::*;
 
 /// One filled thing on the sheet: a cell, or an empty merged area. Merged cells span `left..=right`
@@ -306,7 +306,10 @@ impl Profile {
 fn profile(sheet: &Sheet, region: &Region) -> Profile {
     let rows = &region.rows;
     let mut s = 0;
-    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && super::tables::is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1)) {
+    while s + 1 < rows.len()
+        && s < MAX_TITLE_ROWS
+        && super::tables::is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1))
+    {
         s += 1;
     }
     let starts_with_header = s < rows.len()
@@ -439,15 +442,16 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
         }
     };
 
-    // Spacer columns: pairwise on raw blocks.
-    let mut by_left: HashMap<u32, Vec<usize>> = HashMap::new();
-    for (i, p) in profiles.iter().enumerate() {
-        by_left.entry(p.rect.left).or_default().push(i);
-    }
+    // Spacer columns: pairwise on raw blocks that share rows (every horizontal rule needs that).
+    let by_left = ByLeft::new(&profiles);
+    let mut near = Vec::new();
     for (i, p) in profiles.iter().enumerate() {
         for gap in 1..=MAX_COL_GAP.max(MAX_COL_GAP_ALIGNED) {
-            let Some(l) = p.rect.right.checked_add(gap + 1) else { continue };
-            for &j in by_left.get(&l).into_iter().flatten() {
+            let Some(l) = p.rect.right.checked_add(gap + 1) else {
+                continue;
+            };
+            by_left.overlapping(&profiles, l, p.rect.top, p.rect.bottom, &mut near);
+            for &j in &near {
                 if merge_horizontally(p, &profiles[j]) {
                     join(&mut dsu, &mut group, i as u32, j as u32);
                 }
@@ -463,8 +467,11 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
                 continue;
             }
             for gap in 1..=LABEL_MAX_GAP {
-                let Some(l) = p.rect.right.checked_add(gap + 1) else { continue };
-                for &j in by_left.get(&l).into_iter().flatten() {
+                let Some(l) = p.rect.right.checked_add(gap + 1) else {
+                    continue;
+                };
+                by_left.overlapping(&profiles, l, p.rect.top, p.rect.bottom.saturating_add(1), &mut near);
+                for &j in &near {
                     let q = &profiles[j];
                     if !q.has_numeric_col() || q.rect.top > p.rect.bottom + 1 || q.rect.bottom < p.rect.top {
                         continue;
@@ -483,12 +490,19 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
     // Spacer rows and sparse columns: sweep blocks top-down against groups still "open" above.
     let mut active: Vec<u32> = Vec::new();
     for (i, p) in profiles.iter().enumerate() {
-        active.retain(|&g| dsu.find(g) == g && group[g as usize].rect.bottom as u64 + 1 + MAX_ROW_GAP.max(HEADER_ONLY_MAX_GAP) as u64 >= p.rect.top as u64);
+        active.retain(|&g| {
+            dsu.find(g) == g
+                && group[g as usize].rect.bottom as u64 + 1 + MAX_ROW_GAP.max(HEADER_ONLY_MAX_GAP) as u64
+                    >= p.rect.top as u64
+        });
         let mut k = 0;
         while k < active.len() {
             let g = active[k];
             let me = dsu.find(i as u32);
-            if dsu.find(g) == g && g != me && merge_vertically(&group[g as usize], &group[me as usize].clone().with_header(p)) {
+            if dsu.find(g) == g
+                && g != me
+                && merge_vertically(&group[g as usize], &group[me as usize].clone().with_header(p))
+            {
                 join(&mut dsu, &mut group, g, i as u32);
             }
             k += 1;
@@ -541,6 +555,41 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
     out.extend(groups.into_values().map(make_region));
     out.sort_by_key(|r| (r.rect.top, r.rect.left));
     out
+}
+
+/// Blocks by left column, sorted by top (profiles are sorted by (top, left)), with the running
+/// maximum of their bottoms: finds the blocks of one column that share rows with a span in
+/// O(log n + hits) instead of scanning the whole column.
+struct ByLeft {
+    lists: HashMap<u32, (Vec<usize>, Vec<u32>)>,
+}
+
+impl ByLeft {
+    fn new(profiles: &[Profile]) -> Self {
+        let mut lists: HashMap<u32, (Vec<usize>, Vec<u32>)> = HashMap::new();
+        for (i, p) in profiles.iter().enumerate() {
+            let (ids, max_bottom) = lists.entry(p.rect.left).or_default();
+            ids.push(i);
+            max_bottom.push(max_bottom.last().map_or(p.rect.bottom, |&m| m.max(p.rect.bottom)));
+        }
+        ByLeft { lists }
+    }
+
+    /// Blocks starting in column `left` with rows overlapping `top..=bottom`, in profile order.
+    fn overlapping(&self, profiles: &[Profile], left: u32, top: u32, bottom: u32, out: &mut Vec<usize>) {
+        out.clear();
+        let Some((ids, max_bottom)) = self.lists.get(&left) else {
+            return;
+        };
+        let mut k = ids.partition_point(|&j| profiles[j].rect.top <= bottom);
+        while k > 0 && max_bottom[k - 1] >= top {
+            k -= 1;
+            if profiles[ids[k]].rect.bottom >= top {
+                out.push(ids[k]);
+            }
+        }
+        out.reverse();
+    }
 }
 
 fn area(r: &Rect) -> u64 {

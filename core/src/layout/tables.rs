@@ -8,7 +8,7 @@ use crate::analysis::{DetectedTable, Role};
 use crate::model::{Rect, Sheet};
 
 use super::blocks::{Entry, Region, Row, Ty};
-use super::cells::{is_note_label, is_total_label, text_of, Agg, Kind};
+use super::cells::{Agg, Kind, is_note_label, is_total_label, text_of};
 use super::params::*;
 
 pub(crate) struct Out {
@@ -37,7 +37,9 @@ pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect, next: Option<&Row
     if width < 2 {
         return false;
     }
-    let Some(e) = single_text(r) else { return false };
+    let Some(e) = single_text(r) else {
+        return false;
+    };
     if is_total_label(text(sheet, e)) {
         return false;
     }
@@ -60,7 +62,9 @@ pub(crate) fn is_title_row_simple(sheet: &Sheet, r: &Row) -> bool {
 }
 
 pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
-    let Some(e) = single_text(r) else { return false };
+    let Some(e) = single_text(r) else {
+        return false;
+    };
     let t = text(sheet, e);
     !is_total_label(t) && (is_note_label(t) || t.trim().chars().count() >= NOTE_MIN_LEN)
 }
@@ -165,10 +169,8 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         let r = &rows[start];
         let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
         let width = rect.right - rect.left + 1;
-        let ok = end - start >= 2
-            && r.n() >= 2
-            && r.n_text() == r.n()
-            && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32;
+        let ok =
+            end - start >= 2 && r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32;
         return ok as usize;
     }
     if d == 0 {
@@ -211,11 +213,8 @@ fn starts_new_table(
     if !header_sig.is_empty() && signature(sheet, r) == *header_sig {
         return false; // repeated header (H9), stays in the table
     }
-    let hits = r
-        .filled()
-        .skip(1)
-        .filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left))
-        .count();
+    let hits =
+        r.filled().skip(1).filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left)).count();
     hits >= SPLIT_MIN_HITS && hits as f32 >= SPLIT_MIN_HIT_FRAC * numeric_cols.len() as f32
 }
 
@@ -252,7 +251,9 @@ fn trim_tail(sheet: &Sheet, rows: &[Row], seg: &mut Seg) -> Range<usize> {
 /// Single label at the table's left edge (or merged across), followed — possibly after nested
 /// group labels — by a run of at least `GROUP_MIN_RUN` multi-cell rows.
 fn is_group_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
-    let Some(e) = single_text(&rows[k]) else { return false };
+    let Some(e) = single_text(&rows[k]) else {
+        return false;
+    };
     if e.left > rect.left && e.right == e.left {
         return false;
     }
@@ -365,6 +366,22 @@ fn bounds(rows: &[Row]) -> Rect {
     rect
 }
 
+/// Header + many body rows + key columns filled on nearly every row: a sparse but real table.
+fn sparse_register(rows: &[Row], seg: &Seg, body_start: usize) -> bool {
+    let body = &rows[body_start..seg.end];
+    if seg.header == 0 || body.len() < SPARSE_MIN_BODY_ROWS {
+        return false;
+    }
+    let mut per_col: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+    for r in body {
+        for e in r.filled() {
+            *per_col.entry(e.left).or_default() += 1;
+        }
+    }
+    let need = (SPARSE_KEY_FILL * body.len() as f32).ceil() as usize;
+    per_col.values().filter(|&&n| n >= need).count() >= SPARSE_KEY_COLS
+}
+
 /// Emits a table for `seg` if it qualifies; returns false otherwise (caller makes it loose).
 fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     let trows = &rows[seg.start..seg.end];
@@ -392,16 +409,15 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         return false;
     }
     // Without a header, a narrow or short block is a key/value list or stray numbers, not a table.
-    if seg.header == 0
-        && ((width < HEADERLESS_MIN_COLS && !seg.split) || (seg.end - seg.start) < HEADERLESS_MIN_ROWS)
-    {
+    if seg.header == 0 && ((width < HEADERLESS_MIN_COLS && !seg.split) || (seg.end - seg.start) < HEADERLESS_MIN_ROWS) {
         return false;
     }
     if seg.header > 0 && seg.end - body_start < MIN_BODY_ROWS {
         return false;
     }
     // Blank spacer columns (between row labels and numbers) don't count against the density.
-    let mut spans: Vec<(u32, u32)> = trows.iter().flat_map(|r| r.filled()).map(|e| (e.left, e.right.min(rect.right))).collect();
+    let mut spans: Vec<(u32, u32)> =
+        trows.iter().flat_map(|r| r.filled()).map(|e| (e.left, e.right.min(rect.right))).collect();
     spans.sort_unstable();
     let (mut used, mut end) = (0u64, None::<u32>);
     for (l, r) in spans {
@@ -417,7 +433,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         .flat_map(|r| r.filled())
         .map(|e| (e.right.min(rect.right) - e.left + 1) as f64 * (e.bottom.min(rect.bottom) - e.row + 1) as f64)
         .sum();
-    if filled / area < MIN_TABLE_DENSITY as f64 {
+    if filled / area < MIN_TABLE_DENSITY as f64 && !sparse_register(rows, seg, body_start) {
         return false;
     }
 
@@ -492,11 +508,8 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     if KEY_COLUMN_GROUPS {
         mark_key_column(rows, &data_rows, rect, out);
     }
-    let purities: Vec<f32> = col_counts
-        .values()
-        .filter(|(t, n)| t + n >= 2)
-        .map(|&(t, n)| t.max(n) as f32 / (t + n) as f32)
-        .collect();
+    let purities: Vec<f32> =
+        col_counts.values().filter(|(t, n)| t + n >= 2).map(|&(t, n)| t.max(n) as f32 / (t + n) as f32).collect();
     let purity = if purities.is_empty() { 0.5 } else { purities.iter().sum::<f32>() / purities.len() as f32 };
     let confidence = (CONF_BASE
         + if header_rows > 0 { CONF_HEADER } else { 0.0 }

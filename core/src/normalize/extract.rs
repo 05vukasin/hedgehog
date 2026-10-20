@@ -5,17 +5,17 @@
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 
-use super::typing::{display, fit, type_column, Slot};
+use super::typing::{Slot, display, fit, type_column};
 use super::{
-    CellCounts, ColRole, Column, Dtype, NoteItem, Normalized, Options, Out, RowType, SheetInfo, Table, TotalItem, Transforms,
-    T,
+    CellCounts, ColRole, Column, Dtype, Normalized, NoteItem, Options, Out, RowType, SheetInfo, T, Table, TotalItem,
+    Transforms,
 };
 use crate::analysis::{DetectedTable, Role, SheetLayout};
 use crate::grid::Grid;
 use crate::layout;
-use crate::model::{a1, Rect, Sheet, Value};
+use crate::model::{Rect, Sheet, Value, a1};
 use crate::totals::{self, CheckReason, Direction, KeywordLevel, TotalLevel, TotalOrigin};
-use crate::values::{infer_column, norm_key, sheet_column_hints_with, ColumnHints};
+use crate::values::{ColumnHints, infer_column, norm_key, sheet_column_hints_with};
 
 const OWN_NONE: u8 = 0;
 const OWN_TABLE: u8 = 1;
@@ -258,7 +258,8 @@ fn build_table(
             if m.bottom < htop || m.top >= body_top || m.right < r.left || m.left > r.right || m.top < htop {
                 continue;
             }
-            let Some(text) = grid.cell(m.top, m.left).and_then(|c| c.value.as_ref()).map(display).filter(|s| !s.is_empty())
+            let Some(text) =
+                grid.cell(m.top, m.left).and_then(|c| c.value.as_ref()).map(display).filter(|s| !s.is_empty())
             else {
                 continue;
             };
@@ -520,10 +521,8 @@ fn build_table(
         };
         let joined: Vec<String> =
             paths.iter().map(|p| p.iter().map(|l| strip(l)).collect::<Vec<_>>().join(" / ")).collect();
-        let values: Vec<Out> = row_group
-            .iter()
-            .map(|g| g.map_or(Out::Null, |i| Out::Text(fit(joined[i].clone(), &mut tr))))
-            .collect();
+        let values: Vec<Out> =
+            row_group.iter().map(|g| g.map_or(Out::Null, |i| Out::Text(fit(joined[i].clone(), &mut tr)))).collect();
         group_col = Some(Column {
             name: prefix.unwrap_or_else(|| "group".to_string()),
             role: ColRole::Group,
@@ -563,7 +562,12 @@ fn build_table(
         ambiguous: 0,
         values,
     };
-    columns.push(plain(SRC_ROW, ColRole::SrcRow, Dtype::Integer, src_rows.iter().map(|&r| Out::Num(r as f64 + 1.0)).collect()));
+    columns.push(plain(
+        SRC_ROW,
+        ColRole::SrcRow,
+        Dtype::Integer,
+        src_rows.iter().map(|&r| Out::Num(r as f64 + 1.0)).collect(),
+    ));
     if opts.keep_totals {
         let values = row_types.iter().map(|t| Out::Text(t.as_str().to_string())).collect();
         columns.push(plain(ROW_TYPE, ColRole::RowType, Dtype::Text, values));
@@ -646,11 +650,16 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
         out.sheets.push(info);
         return;
     }
+    let t0 = std::time::Instant::now();
+    super::trace("grid", t0);
     let lay = layout::analyze(&grid);
+    super::trace("layout", t0);
     let mut owner = vec![OWN_NONE; cells.len()];
     let sheet_hints = OnceCell::new();
     let cands = totals::detect(&grid);
+    super::trace("totals_detect", t0);
     let checks: Vec<_> = cands.iter().map(|c| totals::verify(&grid, c)).collect();
+    super::trace("totals_verify", t0);
     let mut row_level: HashMap<u32, TotalLevel> = HashMap::new();
     for c in cands.iter().filter(|c| c.direction == Direction::Vertical) {
         let e = row_level.entry(c.row).or_insert(c.level);
@@ -673,9 +682,12 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
         notes.extend(b.notes);
         out.tables.push(b.table);
     }
+    super::trace("build_tables", t0);
     let tables = &out.tables[first..];
     let table_at = |row: u32, col: u32| -> Option<usize> {
-        tables.iter().position(|t| t.rect.top <= row && row <= t.rect.bottom && t.rect.left <= col && col <= t.rect.right)
+        tables
+            .iter()
+            .position(|t| t.rect.top <= row && row <= t.rect.bottom && t.rect.left <= col && col <= t.rect.right)
     };
 
     // Totals: detected candidates with their verification.
@@ -702,6 +714,8 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
             sheet: sheet.name.clone(),
             row: cand.row,
             col: cand.col,
+            count: 1,
+            row_end: cand.row,
             label,
             label_cell: cand.label,
             level: level_str(cand.level),
@@ -750,6 +764,8 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
                         sheet: sheet.name.clone(),
                         row: c.row,
                         col: c.col,
+                        count: 1,
+                        row_end: c.row,
                         label: label.clone(),
                         label_cell: label_idx.map(|j| (cells[j].row, cells[j].col)),
                         level: rt.as_str(),
@@ -778,6 +794,7 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
             }
         }
     }
+    let mut items = collapse_row_totals(items);
     items.sort_by_key(|t| (t.row, t.col));
 
     // Everything not yet placed → Notes; titles / notes are attached to the nearest table.
@@ -812,8 +829,10 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
     // Titles / notes per table, then output names.
     let tables = &mut out.tables[first..];
     for t in tables.iter_mut() {
-        let mine: Vec<&NoteItem> =
-            notes.iter().filter(|x| x.table == Some(t.n) && x.kind != "repeated_header" && !x.text.is_empty()).collect();
+        let mine: Vec<&NoteItem> = notes
+            .iter()
+            .filter(|x| x.table == Some(t.n) && x.kind != "repeated_header" && !x.text.is_empty())
+            .collect();
         if t.title.is_none() {
             // Nearest loose title above the table.
             t.title = mine
@@ -853,6 +872,58 @@ pub(super) fn process_sheet(sheet: &Sheet, opts: &Options, out: &mut Normalized)
     out.sheets.push(info);
 }
 
+/// Shortest run of row totals collapsed into one item.
+const MIN_TOTAL_RUN: usize = 3;
+
+/// A total column (one row total per data row, all checking out) becomes one item per run instead
+/// of one per row: registers with a formula total on each of 60k rows would otherwise list 60k
+/// identical "ok" items. Mismatches and unverified totals are always listed one by one.
+fn collapse_row_totals(items: Vec<TotalItem>) -> Vec<TotalItem> {
+    let collapsible = |t: &TotalItem| t.direction == "horizontal" && t.status == "ok";
+    if items.iter().filter(|t| collapsible(t)).count() < MIN_TOTAL_RUN {
+        return items;
+    }
+    let mut by_col: std::collections::BTreeMap<u32, Vec<TotalItem>> = std::collections::BTreeMap::new();
+    for t in items {
+        by_col.entry(t.col).or_default().push(t);
+    }
+    let same_run = |a: &TotalItem, b: &TotalItem| {
+        a.table == b.table
+            && a.level == b.level
+            && a.origin == b.origin
+            && a.kept_in_data == b.kept_in_data
+            && a.label == b.label
+    };
+    let mut out = Vec::new();
+    for (_, mut col) in by_col {
+        col.sort_by_key(|t| t.row);
+        let mut i = 0;
+        while i < col.len() {
+            let mut j = i + 1;
+            if collapsible(&col[i]) {
+                while j < col.len() && collapsible(&col[j]) && same_run(&col[i], &col[j]) {
+                    j += 1;
+                }
+            }
+            if j - i >= MIN_TOTAL_RUN {
+                let all_match = col[i..j].iter().all(|t| t.reason == "match");
+                let last = col[j - 1].row;
+                let mut run = col[i].clone();
+                run.count = j - i;
+                run.row_end = last;
+                run.value = None;
+                run.recomputed = None;
+                run.reason = if all_match { "match".into() } else { "rounded".into() };
+                out.push(run);
+            } else {
+                out.extend(col[i..j].iter().cloned());
+            }
+            i = j;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -870,5 +941,40 @@ mod tests {
         assert_eq!(group_prefix(&["Region: North", "region: South"]), Some("Region".into()));
         assert_eq!(group_prefix(&["Region: North", "Area: South"]), None);
         assert_eq!(group_prefix(&["North"]), None);
+    }
+
+    fn row_total(row: u32, status: &'static str) -> TotalItem {
+        TotalItem {
+            table: Some(1),
+            sheet: "S".into(),
+            row,
+            col: 5,
+            count: 1,
+            row_end: row,
+            label: Some("Total".into()),
+            label_cell: Some((0, 5)),
+            level: "total",
+            direction: "horizontal",
+            origin: "formula",
+            value: Some(1.0),
+            recomputed: Some(1.0),
+            status,
+            reason: if status == "ok" { "match".into() } else { "mismatch".into() },
+            sources: vec![format!("B{0}:E{0}", row + 1)],
+            formula: None,
+            kept_in_data: true,
+        }
+    }
+
+    #[test]
+    fn row_total_runs_collapse_around_mismatches() {
+        let mut items: Vec<TotalItem> = (1..=6).map(|r| row_total(r, "ok")).collect();
+        items[3].status = "mismatch";
+        items.push(row_total(7, "ok"));
+        let mut out = collapse_row_totals(items);
+        out.sort_by_key(|t| t.row);
+        let cells: Vec<(String, usize)> = out.iter().map(|t| (t.cell_a1(), t.count)).collect();
+        assert_eq!(cells, [("F2:F4".to_string(), 3), ("F5".into(), 1), ("F6:F8".into(), 3)]);
+        assert_eq!((out[0].value, out[0].reason.as_str()), (None, "match"));
     }
 }

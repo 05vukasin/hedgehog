@@ -79,15 +79,81 @@ fn tokens(text: &str) -> Vec<String> {
 /// Every ASCII phrase above contains one of these (lower-case) substrings: `total`, `totals`,
 /// `tot`, `grandtotal`, `subtotal` → `tot`; `sum`; `ukupno`, `ukupan`, `ukupna`, `sveukupno` →
 /// `ukup`; `svega`; `zbir`, `medjuzbir`, `meduzbir` → `zbir`. Text without any of them cannot
-/// match (the other phrases need non-ASCII letters).
+/// match (the other phrases need non-ASCII letters). The last group covers the other languages
+/// handled by `values::total_score` (gesamt/insgesamt, zusammen, somme/soma/som, razem, ogolem,
+/// lacznie, skupaj/skupno).
+#[cfg(test)]
+const NEEDLES: [&[u8]; 12] = [
+    b"tot",
+    b"sum",
+    b"ukup",
+    b"svega",
+    b"zbir",
+    b"gesamt",
+    b"zusammen",
+    b"som",
+    b"razem",
+    b"ogolem",
+    b"lacznie",
+    b"skup",
+];
+
+/// True if `b` contains one of [`NEEDLES`] (ASCII case-insensitive), in one pass dispatched on the
+/// first letter.
 fn ascii_may_hold_keyword(b: &[u8]) -> bool {
-    // The last group covers the other languages handled by `values::total_score`
-    // (gesamt/insgesamt, zusammen, somme/soma/som, razem, ogolem, lacznie, skupaj/skupno).
-    const NEEDLES: [&[u8]; 12] = [
-        b"tot", b"sum", b"ukup", b"svega", b"zbir", b"gesamt", b"zusammen", b"som", b"razem", b"ogolem", b"lacznie",
-        b"skup",
-    ];
-    NEEDLES.iter().any(|n| b.windows(n.len()).any(|w| w.eq_ignore_ascii_case(n)))
+    let at = |rest: &[u8], n: &[u8]| rest.len() >= n.len() && rest[..n.len()].eq_ignore_ascii_case(n);
+    (0..b.len()).any(|i| {
+        let rest = &b[i..];
+        match b[i].to_ascii_lowercase() {
+            b't' => at(rest, b"tot"),
+            b's' => at(rest, b"sum") || at(rest, b"svega") || at(rest, b"som") || at(rest, b"skup"),
+            b'u' => at(rest, b"ukup"),
+            b'z' => at(rest, b"zbir") || at(rest, b"zusammen"),
+            b'g' => at(rest, b"gesamt"),
+            b'r' => at(rest, b"razem"),
+            b'o' => at(rest, b"ogolem"),
+            b'l' => at(rest, b"lacznie"),
+            _ => false,
+        }
+    })
+}
+
+/// [`ascii_may_hold_keyword`] for any text: non-ASCII text is checked on its diacritic- and
+/// script-folded form ("Ogółem" → "ogolem", "Укупно" → "ukupno"), built in a reused buffer.
+fn may_hold_keyword(text: &str) -> bool {
+    if text.is_ascii() {
+        return ascii_may_hold_keyword(text.as_bytes());
+    }
+    if text.contains(['Σ', 'σ', '∑']) {
+        return true;
+    }
+    thread_local! {
+        static FOLDED: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+    }
+    FOLDED.with_borrow_mut(|buf| {
+        buf.clear();
+        crate::values::text::fold_key_into(text, buf);
+        ascii_may_hold_keyword(buf.as_bytes())
+    })
+}
+
+/// True if `text` has more than `max` [`tokens`], counted without allocating.
+fn more_tokens_than(text: &str, max: usize) -> bool {
+    let mut n = 0;
+    let mut in_token = false;
+    for ch in text.chars() {
+        if ch.is_alphanumeric() || ch == 'σ' {
+            n += !in_token as usize;
+            in_token = true;
+        } else {
+            n += (ch == '∑') as usize;
+            in_token = false;
+        }
+        if n > max {
+            return true;
+        }
+    }
+    false
 }
 
 fn contains_phrase(toks: &[String], phrase: &[&str]) -> bool {
@@ -97,8 +163,11 @@ fn contains_phrase(toks: &[String], phrase: &[&str]) -> bool {
 /// Returns the total level a short label announces ("Ukupno Vojvodina" → Total,
 /// "Sub-total" → Subtotal, "GRAND TOTAL:" → GrandTotal), or `None`.
 pub fn total_keyword(text: &str) -> Option<KeywordLevel> {
-    if text.is_ascii() && !ascii_may_hold_keyword(text.as_bytes()) {
+    if !may_hold_keyword(text) {
         return None; // fast path for the vast majority of labels: no allocation
+    }
+    if more_tokens_than(text, MAX_TOKENS) {
+        return None; // a sentence: skip tokenizing it
     }
     let toks = tokens(text);
     if toks.is_empty() || toks.len() > MAX_TOKENS {
@@ -138,7 +207,17 @@ fn other_language_total(text: &str) -> Option<KeywordLevel> {
 
 #[cfg(test)]
 mod tests {
-    use super::{total_keyword, KeywordLevel::*};
+    use super::{KeywordLevel::*, NEEDLES, ascii_may_hold_keyword, total_keyword};
+
+    #[test]
+    fn prefilter_matches_every_needle() {
+        for n in NEEDLES {
+            let mut up = b"x ".to_vec();
+            up.extend(n.to_ascii_uppercase());
+            assert!(ascii_may_hold_keyword(n) && ascii_may_hold_keyword(&up), "{}", String::from_utf8_lossy(n));
+        }
+        assert!(!ascii_may_hold_keyword(b"Revenue / Q1 to"));
+    }
 
     #[test]
     fn keywords() {
@@ -174,9 +253,6 @@ mod tests {
         assert_eq!(total_keyword("Price"), None);
         assert_eq!(total_keyword("Totally unrelated sentence"), None);
         assert_eq!(total_keyword("Beograd"), None);
-        assert_eq!(
-            total_keyword("The total is computed from all rows above minus the returns of last year"),
-            None
-        );
+        assert_eq!(total_keyword("The total is computed from all rows above minus the returns of last year"), None);
     }
 }

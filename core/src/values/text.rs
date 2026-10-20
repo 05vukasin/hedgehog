@@ -210,6 +210,14 @@ fn push_key_char(c: char, out: &mut String) {
     }
 }
 
+/// Appends the [`norm_key`] folding of every character of `s` (no trimming or whitespace
+/// handling) to `out`.
+pub(crate) fn fold_key_into(s: &str, out: &mut String) {
+    for c in s.chars() {
+        push_key_char(c, out);
+    }
+}
+
 /// Case-, script- and diacritic-insensitive key: trimmed, invisible characters removed,
 /// whitespace collapsed, Cyrillic transliterated, lowercased, diacritics folded.
 /// `"  Београд "`, `"BEOGRAD"`, `"beograd"` → `"beograd"`; `"Đorđević"` → `"djordjevic"`.

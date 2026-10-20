@@ -42,6 +42,12 @@ pub const HEADERLESS_MIN_ROWS: usize = 8;
 pub const MIN_BODY_ROWS: usize = 1;
 /// Minimum filled share of the table rectangle.
 pub const MIN_TABLE_DENSITY: f32 = 0.2;
+/// A sparser table is kept when it has a header, at least [`SPARSE_MIN_BODY_ROWS`] body rows and
+/// [`SPARSE_KEY_COLS`] key columns (ID, name…) filled on at least [`SPARSE_KEY_FILL`] of them:
+/// wide registers where most measure columns are blank on most rows.
+pub const SPARSE_MIN_BODY_ROWS: usize = 20;
+pub const SPARSE_KEY_COLS: usize = 2;
+pub const SPARSE_KEY_FILL: f32 = 0.9;
 /// Two-column blocks whose first column is mostly `Label:` text are forms, not tables (L12).
 pub const FORM_COLON_FRAC: f32 = 0.6;
 

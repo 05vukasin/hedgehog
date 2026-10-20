@@ -5,7 +5,7 @@ use std::path::Path;
 
 use rust_xlsxwriter::{Format, Table as XTable, TableColumn, Workbook, Worksheet, XlsxError};
 
-use super::manifest::{load_hints, Source};
+use super::manifest::{Source, load_hints};
 use super::typing::{fmt_num, iso};
 use super::{Error, Normalized, Out, Table};
 use crate::model::a1;
@@ -26,16 +26,68 @@ fn width_of(s: &str) -> f64 {
     s.chars().count().min(60) as f64
 }
 
-/// Writes a header row + rows of cells as an Excel table named `name` (when there is data).
-fn write_grid(ws: &mut Worksheet, name: &str, headers: &[String], formats: &[Option<Format>], rows: &[Vec<Out>]) -> Result<(), Error> {
-    let bold = Format::new().set_bold();
+/// Writes a header row + `nrows` rows as an Excel table named `name` (when there is data). Rows
+/// come from `fill(row, buf)` one at a time, in order, so a low-memory worksheet streams them to
+/// disk instead of holding the whole sheet.
+fn write_grid(
+    ws: &mut Worksheet,
+    name: &str,
+    headers: &[String],
+    formats: &[Option<Format>],
+    nrows: usize,
+    mut fill: impl FnMut(usize, &mut Vec<Out>),
+) -> Result<(), Error> {
+    // Column widths from the header and the first rows, set before any data is written.
+    let sample: Vec<Vec<Out>> = (0..nrows.min(WIDTH_SAMPLE))
+        .map(|r| {
+            let mut row = Vec::with_capacity(headers.len());
+            fill(r, &mut row);
+            row
+        })
+        .collect();
     let mut widths: Vec<f64> = headers.iter().map(|h| width_of(h) + 2.0).collect();
-    for (r, row) in rows.iter().enumerate() {
+    for row in &sample {
+        for (c, v) in row.iter().enumerate().take(widths.len()) {
+            let w = match v {
+                Out::Text(s) => width_of(s),
+                Out::Date(_) => 19.0,
+                Out::Num(x) => fmt_num(*x).len() as f64,
+                _ => 0.0,
+            };
+            if w + 2.0 > widths[c] {
+                widths[c] = w + 2.0;
+            }
+        }
+    }
+    for (c, w) in widths.iter().enumerate() {
+        ws.set_column_width(c as u16, w.clamp(8.0, 62.0)).map_err(xerr)?;
+    }
+    ws.set_freeze_panes(1, 0).map_err(xerr)?;
+    if nrows == 0 || headers.is_empty() {
+        let bold = Format::new().set_bold();
+        for (c, h) in headers.iter().enumerate() {
+            ws.write_string_with_format(0, c as u16, h, &bold).map_err(xerr)?;
+        }
+        return Ok(());
+    }
+    // The table writes the header row; data rows follow in order.
+    let cols: Vec<TableColumn> = headers.iter().map(|h| TableColumn::new().set_header(h)).collect();
+    let table = XTable::new().set_name(name).set_columns(&cols);
+    ws.add_table(0, 0, nrows as u32, (headers.len() - 1) as u16, &table).map_err(xerr)?;
+    let mut buf = Vec::with_capacity(headers.len());
+    for r in 0..nrows {
+        let row = match sample.get(r) {
+            Some(row) => row,
+            None => {
+                buf.clear();
+                fill(r, &mut buf);
+                &buf
+            }
+        };
         let xr = (r + 1) as u32;
         for (c, v) in row.iter().enumerate() {
             let xc = c as u16;
-            let fmt = formats.get(c).and_then(|f| f.as_ref());
-            match (v, fmt) {
+            match (v, formats.get(c).and_then(|f| f.as_ref())) {
                 (Out::Null, _) => {}
                 (Out::Num(x) | Out::Date(x), Some(f)) if x.is_finite() => {
                     ws.write_number_with_format(xr, xc, *x, f).map_err(xerr)?;
@@ -51,47 +103,23 @@ fn write_grid(ws: &mut Worksheet, name: &str, headers: &[String], formats: &[Opt
                     ws.write_string(xr, xc, s).map_err(xerr)?;
                 }
             }
-            if r < WIDTH_SAMPLE {
-                let w = match v {
-                    Out::Text(s) => width_of(s),
-                    Out::Date(_) => 19.0,
-                    Out::Num(x) => fmt_num(*x).len() as f64,
-                    _ => 0.0,
-                };
-                if w + 2.0 > widths[c] {
-                    widths[c] = w + 2.0;
-                }
-            }
         }
     }
-    for (c, w) in widths.iter().enumerate() {
-        ws.set_column_width(c as u16, w.clamp(8.0, 62.0)).map_err(xerr)?;
-    }
-    ws.set_freeze_panes(1, 0).map_err(xerr)?;
-    if rows.is_empty() || headers.is_empty() {
-        for (c, h) in headers.iter().enumerate() {
-            ws.write_string_with_format(0, c as u16, h, &bold).map_err(xerr)?;
-        }
-        return Ok(());
-    }
-    let cols: Vec<TableColumn> = headers.iter().map(|h| TableColumn::new().set_header(h)).collect();
-    let table = XTable::new().set_name(name).set_columns(&cols);
-    ws.add_table(0, 0, rows.len() as u32, (headers.len() - 1) as u16, &table).map_err(xerr)?;
     Ok(())
 }
 
 fn table_sheet(wb: &mut Workbook, t: &Table) -> Result<(), Error> {
-    let ws = wb.add_worksheet();
+    let ws = wb.add_worksheet_with_low_memory();
     ws.set_name(&t.sheet).map_err(xerr)?;
     let ncols = t.columns.len().min(MAX_COLS);
-    let headers: Vec<String> = t.columns[..ncols].iter().map(|c| c.name.clone()).collect();
+    let cols = &t.columns[..ncols];
+    let headers: Vec<String> = cols.iter().map(|c| c.name.clone()).collect();
     let formats: Vec<Option<Format>> =
-        t.columns[..ncols].iter().map(|c| c.dtype.num_format().map(|f| Format::new().set_num_format(f))).collect();
-    let nrows = t.rows().min(MAX_ROWS);
-    // Row-major view for the writer (column-major storage).
-    let rows: Vec<Vec<Out>> =
-        (0..nrows).map(|i| t.columns[..ncols].iter().map(|c| c.values[i].clone()).collect()).collect();
-    write_grid(ws, &t.sheet, &headers, &formats, &rows)
+        cols.iter().map(|c| c.dtype.num_format().map(|f| Format::new().set_num_format(f))).collect();
+    // Column-major storage, written row by row.
+    write_grid(ws, &t.sheet, &headers, &formats, t.rows().min(MAX_ROWS), |i, row| {
+        row.extend(cols.iter().map(|c| c.values[i].clone()))
+    })
 }
 
 fn text(s: impl Into<String>) -> Out {
@@ -110,8 +138,19 @@ fn table_id(n: Option<usize>) -> Out {
     n.map_or(Out::Null, |n| text(format!("T{n}")))
 }
 
-pub(super) fn xlsx(norm: &Normalized, src: &Source, xlsx_name: &str, manifest_name: &str, path: &Path) -> Result<(), Error> {
+pub(super) fn xlsx(
+    norm: &Normalized,
+    src: &Source,
+    xlsx_name: &str,
+    manifest_name: &str,
+    path: &Path,
+) -> Result<(), Error> {
     let mut wb = Workbook::new();
+    // Low-memory sheets stream rows to temp files: put them next to the output, not in a /tmp that
+    // may live in RAM.
+    if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
+        wb.set_tempdir(dir).map_err(xerr)?;
+    }
 
     // README.
     {
@@ -137,7 +176,10 @@ pub(super) fn xlsx(norm: &Normalized, src: &Source, xlsx_name: &str, manifest_na
         ];
         let mut rows: Vec<Vec<String>> = Vec::new();
         rows.push(
-            ["Sheet", "Source sheet", "Source range", "Rows", "Columns", "Title"].iter().map(|s| s.to_string()).collect(),
+            ["Sheet", "Source sheet", "Source range", "Rows", "Columns", "Title"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         );
         for t in &norm.tables {
             rows.push(vec![
@@ -175,7 +217,9 @@ pub(super) fn xlsx(norm: &Normalized, src: &Source, xlsx_name: &str, manifest_na
         r += 1;
         ws.write_string_with_format(r, 0, "How to load (Python)", &bold).map_err(xerr)?;
         r += 1;
-        for l in load_hints(norm, xlsx_name, manifest_name).iter().flat_map(|(_, code)| code.lines().map(str::to_string)) {
+        for l in
+            load_hints(norm, xlsx_name, manifest_name).iter().flat_map(|(_, code)| code.lines().map(str::to_string))
+        {
             ws.write_string(r, 0, &l).map_err(xerr)?;
             r += 1;
         }
@@ -191,64 +235,71 @@ pub(super) fn xlsx(norm: &Normalized, src: &Source, xlsx_name: &str, manifest_na
 
     // Totals.
     {
-        let ws = wb.add_worksheet();
+        let ws = wb.add_worksheet_with_low_memory();
         ws.set_name("Totals").map_err(xerr)?;
         let headers: Vec<String> = [
-            "table", "sheet", "cell", "label", "label_cell", "level", "direction", "origin", "value", "recomputed", "status",
-            "reason", "sources", "formula", "kept_in_data",
+            "table",
+            "sheet",
+            "cell",
+            "label",
+            "label_cell",
+            "level",
+            "direction",
+            "origin",
+            "value",
+            "recomputed",
+            "status",
+            "reason",
+            "sources",
+            "formula",
+            "kept_in_data",
+            "count",
         ]
         .iter()
         .map(|s| s.to_string())
         .collect();
-        let rows: Vec<Vec<Out>> = norm
-            .totals
-            .iter()
-            .take(MAX_ROWS)
-            .map(|x| {
-                vec![
-                    table_id(x.table),
-                    text(&x.sheet),
-                    text(a1(x.row, x.col)),
-                    opt_text(x.label.clone()),
-                    x.label_cell.map_or(Out::Null, |(r, c)| text(a1(r, c))),
-                    text(x.level),
-                    text(x.direction),
-                    text(x.origin),
-                    opt_num(x.value),
-                    opt_num(x.recomputed),
-                    text(x.status),
-                    text(&x.reason),
-                    opt_text(Some(x.sources.join(", "))),
-                    opt_text(x.formula.clone()),
-                    Out::Bool(x.kept_in_data),
-                ]
-            })
-            .collect();
-        write_grid(ws, "Totals", &headers, &[], &rows)?;
+        let totals = &norm.totals;
+        write_grid(ws, "Totals", &headers, &[], totals.len().min(MAX_ROWS), |i, row| {
+            let x = &totals[i];
+            row.extend([
+                table_id(x.table),
+                text(&x.sheet),
+                text(x.cell_a1()),
+                opt_text(x.label.clone()),
+                x.label_cell.map_or(Out::Null, |(r, c)| text(a1(r, c))),
+                text(x.level),
+                text(x.direction),
+                text(x.origin),
+                opt_num(x.value),
+                opt_num(x.recomputed),
+                text(x.status),
+                text(&x.reason),
+                opt_text(Some(x.sources.join(", "))),
+                opt_text(x.formula.clone()),
+                Out::Bool(x.kept_in_data),
+                Out::Num(x.count as f64),
+            ])
+        })?;
     }
 
     // Notes.
     {
-        let ws = wb.add_worksheet();
+        let ws = wb.add_worksheet_with_low_memory();
         ws.set_name("Notes").map_err(xerr)?;
         let headers: Vec<String> =
             ["sheet", "cell", "kind", "table", "text", "formula"].iter().map(|s| s.to_string()).collect();
-        let rows: Vec<Vec<Out>> = norm
-            .notes
-            .iter()
-            .take(MAX_ROWS)
-            .map(|x| {
-                vec![
-                    text(&x.sheet),
-                    text(a1(x.row, x.col)),
-                    text(x.kind),
-                    table_id(x.table),
-                    opt_text(Some(super::typing::fit(x.text.clone(), &mut Default::default()))),
-                    opt_text(x.formula.clone()),
-                ]
-            })
-            .collect();
-        write_grid(ws, "Notes", &headers, &[], &rows)?;
+        let notes = &norm.notes;
+        write_grid(ws, "Notes", &headers, &[], notes.len().min(MAX_ROWS), |i, row| {
+            let x = &notes[i];
+            row.extend([
+                text(&x.sheet),
+                text(a1(x.row, x.col)),
+                text(x.kind),
+                table_id(x.table),
+                opt_text(Some(super::typing::fit(x.text.clone(), &mut Default::default()))),
+                opt_text(x.formula.clone()),
+            ])
+        })?;
     }
 
     wb.save(path).map_err(xerr)

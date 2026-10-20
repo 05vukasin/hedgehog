@@ -8,8 +8,8 @@ use std::collections::{BTreeMap, HashSet};
 use super::extract::{ROW_TYPE, SRC_ROW};
 use super::json::Json;
 use super::typing::{fmt_num, iso};
-use super::{ColRole, Column, Dtype, Normalized, Options, Out, Table, T};
-use crate::model::{a1, Rect};
+use super::{ColRole, Column, Dtype, Normalized, Options, Out, T, Table};
+use crate::model::{Rect, a1};
 use crate::values::{DateOrder, DecimalSep};
 
 /// Bumped on any incompatible change of the manifest layout.
@@ -61,7 +61,8 @@ pub(super) fn load_hints(norm: &Normalized, xlsx_name: &str, manifest_name: &str
         ),
         (
             "trace",
-            "# value at df.loc[i, col] came from source cell <source_column><_src_row> on the table's source sheet".to_string(),
+            "# value at df.loc[i, col] came from source cell <source_column><_src_row> on the table's source sheet"
+                .to_string(),
         ),
     ]
 }
@@ -73,7 +74,8 @@ fn out_json(v: &Out) -> Json {
         Out::Date(x) => Json::Str(iso(*x)),
         Out::Bool(b) => Json::Bool(*b),
         Out::Text(s) => {
-            let s: String = if s.chars().count() > 80 { s.chars().take(80).collect::<String>() + "…" } else { s.clone() };
+            let s: String =
+                if s.chars().count() > 80 { s.chars().take(80).collect::<String>() + "…" } else { s.clone() };
             Json::Str(s)
         }
     }
@@ -152,9 +154,8 @@ fn column_json(c: &Column, index: usize) -> Json {
 
 fn table_json(t: &Table) -> Json {
     let body_top = t.header_top + t.header_rows;
-    let header_range = (t.header_rows > 0).then(|| {
-        range_a1(Rect { top: t.header_top, left: t.rect.left, bottom: body_top - 1, right: t.rect.right })
-    });
+    let header_range = (t.header_rows > 0)
+        .then(|| range_a1(Rect { top: t.header_top, left: t.rect.left, bottom: body_top - 1, right: t.rect.right }));
     let data_range = (body_top <= t.rect.bottom)
         .then(|| range_a1(Rect { top: body_top, left: t.rect.left, bottom: t.rect.bottom, right: t.rect.right }));
     let notes: Vec<Json> =
@@ -222,14 +223,15 @@ pub(super) fn build(
         .iter()
         .map(|x| {
             match x.status {
-                "ok" => ok += 1,
-                "mismatch" => bad += 1,
-                _ => unknown += 1,
+                "ok" => ok += x.count,
+                "mismatch" => bad += x.count,
+                _ => unknown += x.count,
             }
             Json::obj()
                 .with("table", x.table.map(|n| format!("T{n}")))
                 .with("sheet", x.sheet.as_str())
-                .with("cell", a1(x.row, x.col))
+                .with("cell", x.cell_a1())
+                .with("count", x.count)
                 .with("label", x.label.clone())
                 .with("level", x.level)
                 .with("direction", x.direction)
@@ -244,7 +246,7 @@ pub(super) fn build(
         .collect();
     let totals = Json::obj()
         .with("sheet", "Totals")
-        .with("count", norm.totals.len())
+        .with("count", ok + bad + unknown)
         .with("ok", ok)
         .with("mismatch", bad)
         .with("unknown", unknown)
@@ -292,7 +294,10 @@ pub(super) fn build(
         )
         .with(
             "options",
-            Json::obj().with("keep_totals", opts.keep_totals).with("csv", opts.csv).with("locale", opts.locale.map(|l| l.as_str())),
+            Json::obj()
+                .with("keep_totals", opts.keep_totals)
+                .with("csv", opts.csv)
+                .with("locale", opts.locale.map(|l| l.as_str())),
         )
         .with("tables", Json::Arr(norm.tables.iter().map(table_json).collect()))
         .with("totals", totals)
