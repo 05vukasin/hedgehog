@@ -45,6 +45,8 @@ pub fn tool_specs() -> Value {
                 ('data'|'subtotal'|'total') — use those for overall figures, never add them to data rows. Every view has _src_row \
                 (row number in the source sheet) for citing cells. Quote column names with double quotes: \
                 SELECT \"Revenue / Q1\" FROM T1. Dates are ISO text 'YYYY-MM-DD'; percentages are fractions (0.15 = 15%). \
+                This is SQLite, not MySQL/Postgres: month strftime('%m', d), year strftime('%Y', d), \
+                year-month strftime('%Y-%m', d), days between julianday(b) - julianday(a); LIMIT n, not TOP n. \
                 Use SQL for sums, counts, top-N and filters instead of reading rows. At most {QUERY_MAX_LIMIT} rows are returned, \
                 followed by the total row count."),
             "inputSchema": {

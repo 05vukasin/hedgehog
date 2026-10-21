@@ -501,32 +501,6 @@ pub fn numbers_lines(t: &Table, names: &[String], rows: &[usize], ranges_shown: 
 // ------------------------------------------------------------------------------------------------
 // data quality
 
-/// A token of ≥ 5 digits (a tax or company number) followed by ` - `, at `at` in `s`.
-fn id_dash_at(s: &str, at: usize) -> bool {
-    let tok = s[..at].rsplit(' ').next().unwrap_or("");
-    tok.len() <= 20 && tok.bytes().filter(u8::is_ascii_digit).count() >= 5 && tok.chars().all(|c| c.is_alphanumeric() || "./".contains(c))
-}
-
-/// Cells with several `<id> - <name>` entries in a column whose cells start with one.
-fn multi_entity_cells(c: &Column, rows: &[usize]) -> Option<usize> {
-    let texts = || rows.iter().filter_map(|&r| match c.values.get(r) {
-        Some(Out::Text(s)) => Some(s.as_str()),
-        _ => None,
-    });
-    let starts = |s: &str| s.find(" - ").is_some_and(|p| p > 0 && !s[..p].contains(' ') && id_dash_at(s, p));
-    let sample: Vec<&str> = texts().take(300).collect();
-    if sample.len() < 20 || sample.iter().filter(|s| starts(s)).count() * 10 < sample.len() * 8 {
-        return None;
-    }
-    let n = texts()
-        .filter(|s| {
-            let first = s.find(" - ").unwrap_or(0);
-            s.match_indices(" - ").any(|(p, _)| p > first && s[..p].contains(' ') && id_dash_at(s, p))
-        })
-        .count();
-    (n > 0).then_some(n)
-}
-
 /// The label column and values that explain where a date column is empty (most of the empty
 /// rows share one or two labels, and most rows with those labels are empty).
 fn empty_explained(t: &Table, names: &[String], date: &Column, rows: &[usize], empty: usize) -> Option<String> {
@@ -575,7 +549,7 @@ fn empty_explained(t: &Table, names: &[String], date: &Column, rows: &[usize], e
 }
 
 /// The `quality:` line: duplicates in ID columns, empty date cells (and which category they are
-/// in), negative amounts, cells holding several `<id> - <name>` entries.
+/// in), negative amounts. (Cells naming several entities are on the entity line, `entity.rs`.)
 pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) -> Option<String> {
     let n = rows.len();
     if n < 20 {
@@ -636,12 +610,6 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
             .collect();
         if !neg.is_empty() {
             items.push(neg.join(", "));
-        }
-    }
-    // Several entities in one cell.
-    for (i, c) in data_cols(t).filter(|(_, c)| c.dtype == Dtype::Text) {
-        if let Some(k) = multi_entity_cells(c, rows) {
-            items.push(format!("{} cells of {} hold several \"<id> - <name>\" entries", thousands(k), ident(&names[i])));
         }
     }
     (!items.is_empty()).then(|| format!("    quality: {}", items.join(" · ")))
@@ -717,8 +685,6 @@ mod tests {
         assert_eq!(big(352_400_000.0), "352.40 M");
         assert_eq!(pct(26_722, 176_474), "15 %");
         assert_eq!(pct(176_473, 176_474), "99.9 %");
-        assert!(id_dash_at("500900469 - SUCH", 9));
-        assert!(!id_dash_at("Veisil - A", 6));
     }
 
     /// Like the Austrian pension file: 12 rows × 19 columns, a total row in the middle.
@@ -788,7 +754,7 @@ mod tests {
     }
 
     /// Like the Portuguese contracts register: an ID with one duplicate, two price columns, signing
-    /// dates missing for one procedure type, a negative price, multi-winner cells.
+    /// dates missing for one procedure type, a negative price.
     fn register() -> Normalized {
         let rows = 40;
         let ids: Vec<f64> = (0..rows).map(|i| if i == 39 { 1000.0 } else { 1000.0 + i as f64 }).collect();
@@ -826,7 +792,6 @@ mod tests {
             "{q}"
         );
         assert!(q.contains("1 negative precoContratual"), "{q}");
-        assert!(q.contains("4 cells of adjudicatarios hold several \"<id> - <name>\" entries"), "{q}");
         // Too few rows: no column facts.
         let mut small = register();
         let t = &mut small.tables[0];

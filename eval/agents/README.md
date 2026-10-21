@@ -1,7 +1,15 @@
 # Agent comparisons
 
 The benchmarks in [docs/evaluation.md](../../docs/evaluation.md) measure whether hedgehog labels
-cells correctly. This folder measures what users care about: **does an agent with hedgehog's tools
+cells correctly. This folder measures what users care about.
+
+**The headline comparison is the weakest harness with the best tool against the best harness with
+its own tools:** hedgehog-cli (a simple chat loop on a small, cheap model whose only tools are
+hedgehog's) versus Claude Code (the strongest general agent harness on a frontier model, reading the
+file with its own Python). When hedgehog-cli matches Claude Code, the tool is doing the work. The
+third arm, Claude Code with hedgehog's plugin, is extra information, not the headline.
+
+The question: **does an agent with hedgehog's tools
 answer real questions about a real file correctly, quickly and cheaply, compared with a strong
 general agent that has no hedgehog?**
 
@@ -13,7 +21,10 @@ general agent that has no hedgehog?**
 2. **The same prompt goes to every agent**, as `File: <path>` plus the questions:
    - `hedgehog`: hedgehog-cli, one-shot, with its configured model;
    - `claude`: Claude Code with shell and file tools only (it writes its own pandas);
-   - `claude-hh`: Claude Code plus hedgehog's tools over MCP.
+   - `claude-hh`: Claude Code with the [hedgehog plugin](../../integrations/claude-code): its
+     `spreadsheets` skill (`--plugin-dir`) and `hedgehog mcp` (the binary under test, `--hedgehog`),
+     plus the same shell and file tools. Its skill-listing budget is raised (`--skill-budget`, default
+     80000) so the skill keeps its description when many user skills are installed.
 3. **Every run is recorded** in [results.jsonl](results.jsonl): time, turns, tokens, cost, tool calls
    and errors, the answer, and the automatic checks. [RESULTS.md](RESULTS.md) shows the latest run per
    case and agent; the full answers are in [answers/](answers/).

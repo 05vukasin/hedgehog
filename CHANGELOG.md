@@ -15,9 +15,31 @@ All notable changes to hedgehog are listed here. The format follows
   'Deliveries HH' rows are all negative …`); for registers, sums / fill / range of amount columns
   with a line for look-alike money columns (`precoContratual (sum 11.16 bn …) vs PrecoTotalEfetivo
   (sum 4.28 bn …) — different measures; pick deliberately`) and a `quality:` line (duplicate IDs,
-  empty date cells and the category they belong to, negative amounts, multi-entity cells). Added
+  empty date cells and the category they belong to, negative amounts). Added
   within the catalog's cap, total-row and sign lines first. See [docs/mcp.md](docs/mcp.md#the-catalog).
 
+- **Claude Code plugin** (`integrations/claude-code`, marketplace in `.claude-plugin/marketplace.json`):
+  `/plugin marketplace add 05vukasin/hedgehog` then `/plugin install hedgehog@hedgehog` registers
+  `hedgehog mcp` for the project folder and adds a `spreadsheets` skill (open the file first, trust
+  the catalog, SQL for numbers, check what one row is, verify, cite cells, pandas only as a
+  fallback). The agent comparison's `claude-hh` arm now runs Claude Code with this plugin
+  (`--skill-budget` sets the skill-listing budget). See [docs/mcp.md](docs/mcp.md#claude-code).
+- Agent comparison: amounts written as `€2.41B` are read as billions.
+
+- **Entity columns in the agent tools' SQL** (`hedgehog mcp`, Node, hedgehog-cli): a text column
+  whose values are `"<id> - <name>"` (a tax number, a CPV / NUTS code before the name) gets
+  `<col>_id` and `<col>_name` in `T<n>` and `T<n>_all`, and a catalog / `describe_table` line with
+  the number of IDs, how many have several spellings and to group by `<col>_id`. On the Portuguese
+  2020 contracts register (176k rows) the top buyer, written 6 ways, is one group of €737.7 M
+  instead of €507.2 M + €229.0 M; multi-winner cells (943) keep every ID (`"id1 | id2"`); a
+  `GROUP BY adjudicante_id` takes ~0.2 s, like grouping by the text.
+- **SQL error hints for other dialects and row labels**: `no such function: MONTH` (and `YEAR`,
+  `DATE_FORMAT`, `TO_CHAR`, `EXTRACT`, `DATEDIFF`, `NOW`, `CONCAT`, `ISNULL`, `LEN`, `STRING_AGG`,
+  `MEDIAN`, …), `TOP n` and `ILIKE` errors name the SQLite way (`strftime('%m', col)`, `LIMIT n`,
+  `LIKE`); the `query` tool description says it is SQLite with date examples. A column name that is a
+  total-row label (`"Total"`, `"Gesamt"`, …) says the total rows are in `T<n>_all` with
+  `_row_type = 'total'` and which column holds the label; a value of a text column used as a column
+  name says which column to filter.
 - **Tables from the model's row roles** (default path; `--rules-only` unchanged): title and note
   rows at the edges leave the table, header-only blocks join the table below as its header (ABS
   time series), pieces the rules cut off a list rejoin it instead of taking a data row for a
