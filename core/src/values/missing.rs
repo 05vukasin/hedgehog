@@ -65,7 +65,7 @@ pub fn missing_token(s: &str) -> Option<MissingKind> {
             return Some(MissingKind::Placeholder);
         }
     }
-    if matches!(t, "-/-" | "--/--" | "(-)" | "( - )" | "n.p." | "[x]" | "[z]" | "(X)" | "(Z)" | "(NA)" | "[NA]") {
+    if matches!(t, "-/-" | "--/--" | "(-)" | "( - )" | "n.p.") {
         return Some(MissingKind::Placeholder);
     }
     let key = norm_key(t);
@@ -92,7 +92,7 @@ pub fn missing_token(s: &str) -> Option<MissingKind> {
 pub enum NumericAnnotation {
     /// Suppressed or confidential value: `c`, `[c]`, `(D)`, `confidential`, `suppressed`.
     Suppressed,
-    /// A bound instead of a value: `<5`, `> 1000`, `≤ 0.5`.
+    /// A bound instead of a value: `<5`, `> 1000`, `≤ 0.5`, `(Z)` (less than half the unit).
     Censored,
     /// A pointer to a note: `see note`, `see footnote`.
     SeeNote,
@@ -103,6 +103,10 @@ pub fn numeric_annotation(s: &str) -> Option<NumericAnnotation> {
     let t = trim(s);
     if t.is_empty() || t.len() > 24 {
         return None;
+    }
+    // US Census `(Z)`: less than half the unit shown.
+    if t == "(Z)" {
+        return Some(NumericAnnotation::Censored);
     }
     if let Some(rest) = t.strip_prefix(['<', '>', '≤', '≥', '‹', '›']) {
         let rest = rest.strip_prefix('=').unwrap_or(rest);
@@ -126,6 +130,15 @@ pub fn numeric_annotation(s: &str) -> Option<NumericAnnotation> {
         | "siehe anmerkung" | "voir note" | "ver nota" | "vidi napomenu" => Some(NumericAnnotation::SeeNote),
         _ => None,
     }
+}
+
+/// [`missing_token`] plus the bracketed codes of statistical tables: `(X)` / `[x]` not applicable,
+/// `(NA)` / `[NA]` not available, `[z]` not applicable (US Census, ONS). Used when typing table
+/// columns; the cell features (and so the trained row model) keep seeing these as text.
+pub fn table_missing_token(s: &str) -> Option<MissingKind> {
+    missing_token(s).or_else(|| {
+        matches!(trim(s), "(X)" | "(x)" | "[x]" | "[X]" | "(NA)" | "[NA]" | "[z]" | "[Z]").then_some(MissingKind::Placeholder)
+    })
 }
 
 /// Boolean codes: yes/no, true/false, y/n, da/ne (Latin & Cyrillic), ✓/✗.
@@ -183,8 +196,6 @@ mod tests {
             (":", Placeholder),
             (": c", Placeholder),
             (":z", Placeholder),
-            ("[x]", Placeholder),
-            ("(NA)", Placeholder),
             ("k.A.", NotAvailable),
             ("k. A.", NotAvailable),
             ("n.v.", NotAvailable),
@@ -203,6 +214,18 @@ mod tests {
             assert_eq!(missing_token(s), None, "{s:?}");
         }
         assert_eq!(MissingKind::Error.as_str(), "error");
+    }
+
+    #[test]
+    fn table_missing_tokens() {
+        for s in ["(X)", "[x]", "(NA)", "[z]", "-", ":"] {
+            assert_eq!(table_missing_token(s), Some(MissingKind::Placeholder), "{s:?}");
+        }
+        for s in ["(X)", "[x]", "(NA)", "(Z)"] {
+            assert_eq!(missing_token(s), None, "{s:?}");
+        }
+        assert_eq!(table_missing_token("(Z)"), None);
+        assert_eq!(numeric_annotation("(Z)"), Some(NumericAnnotation::Censored));
     }
 
     #[test]

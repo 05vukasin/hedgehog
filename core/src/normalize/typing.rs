@@ -17,7 +17,7 @@ use super::{Dtype, Out, Transforms, T};
 use crate::model::{a1, Value};
 use crate::values::date::is_plausible_serial;
 use crate::values::{
-    missing_token, numeric_annotation, parse_bool, parse_date, parse_number, serial_to_ymd, ColumnHints, DateOrder,
+    numeric_annotation, parse_bool, table_missing_token, parse_date, parse_number, serial_to_ymd, ColumnHints, DateOrder,
     DecimalSep, MissingKind, NativeNumbers, NegativeStyle, ParsedDate, ParsedNumber,
 };
 use crate::values::text::clean;
@@ -136,7 +136,7 @@ pub(super) fn type_column(
     let missing: Vec<Option<bool>> = slots
         .iter()
         .map(|s| match s {
-            Slot::Val(Value::Text(t)) => missing_token(t).map(|k| k == MissingKind::Error),
+            Slot::Val(Value::Text(t)) => table_missing_token(t).map(|k| k == MissingKind::Error),
             Slot::Val(Value::Error(_)) => Some(true),
             _ => None,
         })

@@ -9,7 +9,8 @@ conventions from column to column. Only values that can honestly be read two way
 `03/04/2024`) need a decision, and that decision is made per column from the other values in it.
 
 Contents: [Numbers](#numbers) · [Dates](#dates) · [Currencies](#currencies) ·
-[Missing values and booleans](#missing-values-and-booleans) · [Text](#text) ·
+[Missing values and booleans](#missing-values-and-booleans) ·
+[Footnote marks, censored and suppressed values](#footnote-marks-censored-and-suppressed-values) · [Text](#text) ·
 [Total and note keywords](#total-and-note-keywords) · [Ambiguous values](#ambiguous-values) ·
 [Locale presets](#locale-presets)
 
@@ -27,7 +28,8 @@ phone numbers, codes and dates are not misread.
 | `$1,200`, `1.200,00 €`, `EUR 1,200.00`, `1 200 Kč` | 1200 | currency removed and recorded |
 | `5 kg`, `12 pcs` | 5, 12 | unit removed and recorded |
 | `1,5 mil.`, `5k` | 1500000, 5000 | scale words |
-| `1.234*`, `567 (a)` | 1234, 567 | trailing footnote markers |
+| `1.234*`, `567 (a)`, `123¹`, `12 (r)` | 1234, 567, 123, 12 | trailing footnote marks, kept per column ([below](#footnote-marks-censored-and-suppressed-values)) |
+| `7 p`, `12.3 e`, `5 bep`, `20560.32e` | 7, 12.3, 5, 20560.32 | statistical flag letters ([below](#footnote-marks-censored-and-suppressed-values)) |
 
 ## Dates
 
@@ -71,15 +73,46 @@ table's `warnings`.
 
 These become empty cells in the normalized output:
 
-- placeholders: `-`, `–`, `—`, `/`, `..`, `...`, `?`, `*`, `_`, `x`, `xx`, `n.p.`;
+- placeholders: `-`, `–`, `—`, `/`, `..`, `...`, `…`, `?`, `*`, `_`, `x`, `xx`, `n.p.`, and in table
+  columns the bracketed codes `(X)`, `[x]`, `(NA)`, `[NA]`, `[z]` (US Census, ONS);
+- `:` (Eurostat's "not available"), also with flag letters: `: c`, `:z`, `: bu`;
 - words: `n/a`, `NA`, `n.a.`, `n/d`, `null`, `nil`, `none`, `nan`, `missing`, `unknown`,
-  `not available`, `not applicable`, `no data`, `tbd`, and Serbian/Croatian equivalents (`nema`,
-  `nepoznato`, ...);
+  `not available`, `not applicable`, `no data`, `tbd`, German `k.A.` / `keine Angabe` / `n.v.` /
+  `n.b.`, Dutch `niet beschikbaar`, French `n.c.` / `non disponible` / `non communiqué`, Spanish
+  `s.d.` / `sin datos` / `no disponible`, Italian `non disponibile`, Polish `b.d.` / `brak danych`,
+  and Serbian/Croatian equivalents (`nema`, `nepoznato`, ...);
 - Excel errors: `#N/A`, `#REF!`, `#DIV/0!`, `#VALUE!`, `#NAME?`, `#NUM!`, `#NULL!`, `#SPILL!`,
   `#CALC!`.
 
 Booleans: `yes`/`no`, `y`/`n`, `true`/`false`, `✓`/`✗`, `ja`/`nein`, `oui`/`non`, `si`, `da`/`ne`
 (Latin and Cyrillic). `1`/`0` and `x` are not taken as booleans.
+
+## Footnote marks, censored and suppressed values
+
+Statistical tables mark numbers and leave some cells without a number on purpose. hedgehog reads
+the number, keeps the mark, and does not let these cells turn a numeric column into text.
+
+- **Footnote marks** after a number: `*`, `†`, `‡`, superscript digits (`123¹`, `12¹²`), one or two
+  letters or digits in parentheses (`12 (r)`, `6077.61 (p)`, `567 (a)`), and statistical **flag
+  letters** after a space: `b` break in series, `c` confidential, `d` definition differs,
+  `e` estimated, `f` forecast, `n` not significant, `p` provisional, `r` revised, `s` estimate,
+  `u` low reliability, `z` not applicable, alone or several in alphabetical order as Eurostat
+  writes them (`12.3 bep`). Glued to the digits only `e`, `p` and `r` (`20560.32e`). Units win over
+  flags (`5 s` is 5 seconds), and letter runs that are words (`100 pen`) are not flags. The mark is
+  removed from the value and kept: the column's `footnote_marks` in the manifest lists each mark
+  with how many values carried it and their cells, and the table counts
+  `footnote_marks_stripped` ([normalized output](normalized-output.md#values-and-dtypes)).
+- **Censored values** (`<5`, `> 1000`, `≤ 0,5`, US Census `(Z)` for less than half the unit), **suppressed values** (`c`, `[c]`, `(c)`, `(D)`,
+  `(S)`, `F`, `[low]`, `confidential`, `suppressed`, `withheld`, `vertraulich`, `confidentiel`,
+  `poverljivo`, ...) and **pointers to notes** (`see note`, `see footnote`, `siehe Fußnote`,
+  `voir note`, ...) stay text in the output (an upper bound is not a value), but they do not count
+  against a numeric column: the column is numeric when its numbers reach 90% of the other
+  non-missing values and outnumber these cells (or there is nothing else). The table's `warnings`
+  list them (`column 'Count' (integer): 2 censored, suppressed or see-note value(s) kept as text:
+  E3 '<5', E5 'c'`).
+- **A few words among many numbers** (`approx.` twice in a column of 12 numbers) also keep the column
+  numeric: at most three distinct texts without digits, numbers at least 75% of the values and three
+  times as many as these texts. The texts stay text and are listed in `warnings`.
 
 ## Text
 
@@ -108,8 +141,15 @@ diacritics and script: `Beograd`, ` BEOGRAD ` and `Београд` all match; `�
 2. **The column's own evidence.** A value counts as evidence only when it cannot be read the other
    way: `1.200,50`, `3,25` and `1.200.000` mean decimal comma; `1,200.50`, `3.25` and `1,200,000`
    mean decimal point; `25/12/2024` means day first. The majority wins.
+   When the text values alone do not decide, the column's **numbers stored as numbers** (typed
+   cells in a workbook; plain fields like `12.3` or `500` in a CSV) do: among whole numbers an
+   `x.xxx` groups thousands (`4.405` next to `3178` and `2411` is 4405), among fractions it is read
+   the way that gives the size of the other values (`40.805` next to `12.3` and `8.4` is 40.805, not
+   40805). Plain integers written as text (`500`) also support the thousands reading; integers
+   with leading zeros (`00123`, IDs) do not.
 3. **The sheet's evidence**, when the column has none; then cross-evidence (a sheet with decimal
-   commas writes dates day first; a month-first sheet uses the decimal point).
+   commas writes dates day first; a month-first sheet uses the decimal point; dates written
+   day-first with dots, `31.12.2024`, mean a decimal comma when no number decides).
 4. **The currency in the cell**, for numbers: `1.200 RSD` is 1200 because RSD amounts use a decimal
    comma, `$1,200` is 1200. `€` is used with both conventions and gives no evidence.
 5. **A fixed tie-break, flagged as a guess:** `.` is the decimal point and `,` a thousands separator

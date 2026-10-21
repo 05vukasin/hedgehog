@@ -26,6 +26,8 @@ pub use features::{
     cell_features, compute, compute_with, infer_column, infer_column_with, sheet_column_hints, sheet_column_hints_with, ColumnHints, FEATURES,
 };
 pub use locale::Locale;
-pub use missing::{is_excel_error, missing_token, numeric_annotation, parse_bool, MissingKind, NumericAnnotation};
+pub use missing::{
+    is_excel_error, missing_token, numeric_annotation, parse_bool, table_missing_token, MissingKind, NumericAnnotation,
+};
 pub use number::{currency, infer_decimal, parse_number, DecimalSep, NativeNumbers, NegativeStyle, NumberHint, ParsedNumber};
 pub use text::{clean, cyrillic_to_latin, fingerprint, norm_key};
