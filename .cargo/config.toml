@@ -1,0 +1,4 @@
+# Processes started by cargo (tests, `cargo run`) use a cache inside the build folder, never the
+# user's real ~/.cache/hedgehog. Installed binaries are not affected.
+[env]
+HEDGEHOG_CACHE_DIR = { value = "target/dev-cache", relative = true, force = false }

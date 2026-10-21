@@ -8,13 +8,13 @@ general harness, on a frontier model, reading the file with its own Python. Same
 
 | Case | hedgehog-cli checks (worst) | Claude Code checks | Time: hedgehog / Claude | Cost: hedgehog / Claude | Input tokens: hedgehog / Claude |
 |---|---:|---:|---:|---:|---:|
-| pt-contracts | 9.0/13 (9) | 13.0/13 | 53 s / 101 s | $0.0019 / $0.58 | 14k / 370k |
-| at-pension | 2.0/4 (2) | 4.0/4 | 5 s / 17 s | $0.0011 / $0.29 | 10k / 163k |
-| enron-henry-hub | 5.0/8 (5) | 8.0/8 | 11 s / 30 s | $0.0030 / $0.43 | 27k / 285k |
-| de-truck-toll | 5.0/5 (5) | 5.0/5 | 7 s / 18 s | $0.0014 / $0.32 | 11k / 171k |
-| **all cases** | **21.0/30 (21)** | **30.0/30** | 76 s / 166 s | $0.0074 / $1.62 | 61k / 988k |
+| pt-contracts | 7.0/13 (7) | 13.0/13 | 32 s / 101 s | $0.0024 / $0.58 | 17k / 370k |
+| at-pension | 2.0/4 (2) | 4.0/4 | 7 s / 17 s | $0.0015 / $0.29 | 16k / 163k |
+| enron-henry-hub | 6.0/8 (6) | 8.0/8 | 17 s / 30 s | $0.0058 / $0.43 | 63k / 285k |
+| de-truck-toll | 4.0/5 (4) | 5.0/5 | 11 s / 18 s | $0.0022 / $0.32 | 20k / 171k |
+| **all cases** | **19.0/30 (19)** | **30.0/30** | 66 s / 166 s | $0.0119 / $1.62 | 117k / 988k |
 
-Models: Claude Code: claude-opus-5-5[1m], hedgehog-cli: gpt-4o-mini. hedgehog-cli is 2.2× faster and 218× cheaper; it passes 70 % of the checks vs 100 % for Claude Code.
+Models: Claude Code: claude-opus-5-5[1m], hedgehog-cli: gpt-4o-mini. hedgehog-cli is 2.5× faster and 136× cheaper; it passes 63 % of the checks vs 100 % for Claude Code.
 `claude-hh` (Claude Code plus hedgehog's plugin) is in the table below: the same tool in the best harness.
 
 ## All runs
@@ -26,14 +26,18 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 
 | Case | Agent | Date | Model | Runs | Time | Input / output tokens | Cost (USD) | Tools (errors) | Checks (worst) |
 |---|---|---|---|---:|---:|---:|---:|---:|---:|
-| pt-contracts | hedgehog | 2026-10-21 | gpt-4o-mini | 1 | 53 s | 13,720 / 1,259 | 0.0019 | 6 (1) | 9/13 |
+| pt-contracts | hedgehog | 2026-10-21 | gpt-4o-mini | 3 | 32 s | 17,247 / 1,423 | 0.0024 | 6 (0) | 7.0/13 (7) |
 | pt-contracts | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 101 s | 370,341 / 6,913 | 0.58 | – | 13/13 |
-| at-pension | hedgehog | 2026-10-21 | gpt-4o-mini | 1 | 5 s | 9,679 / 391 | 0.0011 | 5 (0) | 2/4 |
+| pt-contracts | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 67 s | 212,293 / 4,074 | 0.34 | – | 9/13 |
+| at-pension | hedgehog | 2026-10-21 | gpt-4o-mini | 3 | 7 s | 16,226 / 265 | 0.0015 | 3 (0) | 2.0/4 (2) |
 | at-pension | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 17 s | 162,596 / 1,101 | 0.29 | – | 4/4 |
-| enron-henry-hub | hedgehog | 2026-10-21 | gpt-4o-mini | 1 | 11 s | 26,751 / 1,020 | 0.0030 | 15 (8) | 5/8 |
+| at-pension | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 132,222 / 885 | 0.21 | – | 4/4 |
+| enron-henry-hub | hedgehog | 2026-10-21 | gpt-4o-mini | 3 | 17 s | 63,393 / 1,141 | 0.0058 | 16 (9) | 6.0/8 (6) |
 | enron-henry-hub | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 30 s | 284,741 / 2,298 | 0.43 | – | 8/8 |
-| de-truck-toll | hedgehog | 2026-10-21 | gpt-4o-mini | 1 | 7 s | 10,997 / 550 | 0.0014 | 6 (0) | 5/5 |
+| enron-henry-hub | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 11 s | 143,072 / 947 | 0.25 | – | 8/8 |
+| de-truck-toll | hedgehog | 2026-10-21 | gpt-4o-mini | 3 | 11 s | 20,454 / 737 | 0.0022 | 7 (3) | 4.0/5 (4) |
 | de-truck-toll | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 170,773 / 1,693 | 0.32 | – | 5/5 |
+| de-truck-toll | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 15 s | 167,817 / 909 | 0.22 | – | 4/5 |
 
 ## pt-contracts: Portugal's 2020 procurement register (176k contracts, 4.5M cells)
 
@@ -44,26 +48,25 @@ File: `eu_pt_opendata/001_contratos2020.xlsx`
 > Compare direct awards (Ajuste Direto) with public tenders (Concurso público): how many contracts and total value for each?
 > How many contracts were signed per month in 2020? Was there a jump when COVID started in March?
 
-| Check | hedgehog | claude |
-|---|---|---|
-| top body: Infraestruturas de Portugal, €737.7 M (6 spellings merged by tax ID) | ✓ | ✓ |
-| Metro do Porto €352.4 M | ✓ | ✓ |
-| does not list the same body twice under different spellings | (✗) | (✓) |
-| uses the contract price (precoContratual), total €11.16 bn | (✓) | (✓) |
-| ranks suppliers by number of contracts (Medtronic ~1,140–1,152, Generis ~1,130–1,231) | (✗) | (✓) |
-| gives the top-10 suppliers' share of total value (≈ 9–13 %) | ✗ | ✓ |
-| Ajuste Direto Regime Geral: 78,349 contracts (±0.2 %) | ✓ | ✓ |
-| Ajuste Direto Regime Geral: €2.41 bn | ✓ | ✓ |
-| Concurso público: 17,408 contracts | ✓ | ✓ |
-| Concurso público: €5.48 bn | ✓ | ✓ |
-| January: 16,154 contracts (±0.2 %) | ✓ | ✓ |
-| April: 10,682 contracts (±0.2 %) | ✓ | ✓ |
-| no overall jump in March (fall in April–May); COVID purchases rose | (✗) | (✓) |
+| Check | hedgehog | claude | claude-hh |
+|---|---|---|---|
+| top body: Infraestruturas de Portugal, €737.7 M (6 spellings merged by tax ID) | 0/3 | ✓ | ✓ |
+| Metro do Porto €352.4 M | 3/3 | ✓ | ✓ |
+| does not list the same body twice under different spellings | ? | (✓) | ? |
+| uses the contract price (precoContratual), total €11.16 bn | ? | (✓) | ? |
+| ranks suppliers by number of contracts (Medtronic ~1,140–1,152, Generis ~1,130–1,231) | ? | (✓) | ? |
+| gives the top-10 suppliers' share of total value (≈ 9–13 %) | 0/3 | ✓ | ✓ |
+| Ajuste Direto Regime Geral: 78,349 contracts (±0.2 %) | 3/3 | ✓ | ✓ |
+| Ajuste Direto Regime Geral: €2.41 bn | 3/3 | ✓ | ✓ |
+| Concurso público: 17,408 contracts | 3/3 | ✓ | ✓ |
+| Concurso público: €5.48 bn | 3/3 | ✓ | ✓ |
+| January: 16,154 contracts (±0.2 %) | 3/3 | ✓ | ✓ |
+| April: 10,682 contracts (±0.2 %) | 3/3 | ✓ | ✓ |
+| no overall jump in March (fall in April–May); COVID purchases rose | ? | (✓) | ? |
 
-- **hedgehog** (`20261021T070132Z-pt-contracts-hedgehog`): used the contract price this time (totals right), but Infraestruturas de Portugal appears as #1 (€507 M) and again as an unnamed 'Another body' (€229 M); suppliers ranked by value, not count; top-10 share not computed; 'noticeable increase … starting in March' is wrong; invented placeholders ('Another supplier … not named'); 1 SQL error
 - **claude** (`20261021T070316Z-pt-contracts-claude`): grouped by tax ID, removed 20 duplicates, explained 26,723 undated simplified awards, both top-10 shares (4.0 % by count, 11.4 % by value), COVID: no overall jump but COVID purchases surged
 
-Answers (latest run): [hedgehog](answers/pt-contracts.hedgehog.md), [claude](answers/pt-contracts.claude.md)
+Answers (latest run): [hedgehog](answers/pt-contracts.hedgehog.md), [claude](answers/pt-contracts.claude.md), [claude-hh](answers/pt-contracts.claude-hh.md)
 Backlog items from this case: B1, B2, B3, B4, B5, B9
 
 ## at-pension: Austrian pension equalization supplement (small table, mixed measures, total row)
@@ -72,16 +75,14 @@ File: `eu_at_opendata/003_pen_02_02.xlsx`
 
 > How many people received the equalization supplement (Ausgleichszulage) in total in 2024 and in 2025? What was the average monthly amount for single and for married recipients in 2025?
 
-| Check | hedgehog | claude |
-|---|---|---|
-| total recipients 2024: 190,423 (the 'Gesamt' row) | ✓ | ✓ |
-| total recipients 2025: 189,537 | ✓ | ✓ |
-| average 2025, single: €403.19 | ✗ | ✓ |
-| average 2025, married: €594.20 | ✗ | ✓ |
+| Check | hedgehog | claude | claude-hh |
+|---|---|---|---|
+| total recipients 2024: 190,423 (the 'Gesamt' row) | 0/3 | ✓ | ✓ |
+| total recipients 2025: 189,537 | 0/3 | ✓ | ✓ |
+| average 2025, single: €403.19 | 3/3 | ✓ | ✓ |
+| average 2025, married: €594.20 | 3/3 | ✓ | ✓ |
 
-- **hedgehog** (`20261021T070322Z-at-pension-hedgehog`): totals right (Gesamt row); both 2025 averages wrong (€287.27 / €409.79 instead of €403.19 / €594.20) — read the wrong cells
-
-Answers (latest run): [hedgehog](answers/at-pension.hedgehog.md), [claude](answers/at-pension.claude.md)
+Answers (latest run): [hedgehog](answers/at-pension.hedgehog.md), [claude](answers/at-pension.claude.md), [claude-hh](answers/at-pension.claude-hh.md)
 Backlog items from this case: B6, B7
 
 ## enron-henry-hub: Enron Henry Hub gas flows (7 tables, daily grids, labels only in the first table)
@@ -90,20 +91,18 @@ File: `enron/andrea_ring__3__HHmonthlyavg.xlsx`
 
 > This is a Henry Hub natural gas flow report. Which 3 pipelines had the highest month-to-date average receipts in February 2002, and how much each? What were total receipts and total deliveries, and what is the net flow? On which day in January 2002 were total receipts highest, and how much?
 
-| Check | hedgehog | claude |
-|---|---|---|
-| SEA ROBIN 123,367 | ✓ | ✓ |
-| NGPL 105,538 | ✓ | ✓ |
-| MAINLINE 100,733 | ✓ | ✓ |
-| total receipts 424,772 | ✓ | ✓ |
-| total deliveries 214,246 (shown as −214,246) | ✓ | ✓ |
-| net flow +210,526 | ✗ | ✓ |
-| highest January receipts: 606,356 | ✗ | ✓ |
-| on 23 January 2002 | ✗ | ✓ |
+| Check | hedgehog | claude | claude-hh |
+|---|---|---|---|
+| SEA ROBIN 123,367 | 3/3 | ✓ | ✓ |
+| NGPL 105,538 | 3/3 | ✓ | ✓ |
+| MAINLINE 100,733 | 3/3 | ✓ | ✓ |
+| total receipts 424,772 | 3/3 | ✓ | ✓ |
+| total deliveries 214,246 (shown as −214,246) | 3/3 | ✓ | ✓ |
+| net flow +210,526 | 3/3 | ✓ | ✓ |
+| highest January receipts: 606,356 | 0/3 | ✓ | ✓ |
+| on 23 January 2002 | 0/3 | ✓ | ✓ |
 
-- **hedgehog** (`20261021T070353Z-enron-henry-hub-hedgehog`): top 3 and totals right; 8 of 15 tool calls failed querying a 'Total' column that does not exist (total rows are _row_type='total' in T1_all, label in col_C); net flow wrong (added the negative deliveries: 638,018); January max wrong (Jan 31, 201,935): the daily grid T3 has no pipeline or receipts/deliveries labels (B8)
-
-Answers (latest run): [hedgehog](answers/enron-henry-hub.hedgehog.md), [claude](answers/enron-henry-hub.claude.md)
+Answers (latest run): [hedgehog](answers/enron-henry-hub.hedgehog.md), [claude](answers/enron-henry-hub.claude.md), [claude-hh](answers/enron-henry-hub.claude-hh.md)
 Backlog items from this case: B8
 
 ## de-truck-toll: German truck-toll mileage index (daily series 2008–2026, 9 sheets, statistical report)
@@ -112,14 +111,14 @@ File: `eu_de_destatis/statistischer-bericht-lkw-maut-fahrleistungsindex-5421901.
 
 > Using the daily truck-toll mileage index for Germany: what was the highest unadjusted daily value in 2023, and on which date? What was the average calendar- and seasonally-adjusted (KSB) index in 2023 and in 2024, and did it go up or down?
 
-| Check | hedgehog | claude |
-|---|---|---|
-| highest unadjusted 2023 value: 153.0 | ✓ | ✓ |
-| on 31 May 2023 | ✓ | ✓ |
-| KSB average 2023: 95.61 | ✓ | ✓ |
-| KSB average 2024: 94.92 | ✓ | ✓ |
-| says it went down | (✓) | (✓) |
+| Check | hedgehog | claude | claude-hh |
+|---|---|---|---|
+| highest unadjusted 2023 value: 153.0 | 3/3 | ✓ | ✓ |
+| on 31 May 2023 | 3/3 | ✓ | ✓ |
+| KSB average 2023: 95.61 | 3/3 | ✓ | ✓ |
+| KSB average 2024: 94.92 | 3/3 | ✓ | ✓ |
+| says it went down | ? | (✓) | ? |
 
 - **claude** (`20261021T070453Z-de-truck-toll-claude`): also noted the index base (2021=100) and that Destatis calls the daily adjusted series experimental
 
-Answers (latest run): [hedgehog](answers/de-truck-toll.hedgehog.md), [claude](answers/de-truck-toll.claude.md)
+Answers (latest run): [hedgehog](answers/de-truck-toll.hedgehog.md), [claude](answers/de-truck-toll.claude.md), [claude-hh](answers/de-truck-toll.claude-hh.md)

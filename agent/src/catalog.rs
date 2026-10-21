@@ -11,6 +11,7 @@ use hh_core::normalize::{
 };
 
 use crate::facts;
+use crate::types::{self, ColType}; // B21 semantic types (types.rs)
 use crate::text::{csv_row, cut, ident, letter, num, range_a1, sheet_ref, short, thousands, years_in, MAX_CHARS};
 
 /// Tables above this count are always listed one line each.
@@ -308,7 +309,7 @@ fn median_abs(mut v: Vec<f64>) -> Option<f64> {
 /// measures in one table (counts vs amounts vs percentages): by the units / words in the labels,
 /// or by numbers of very different size under each label. Linear in the rows: a column with more
 /// than [`LABEL_VALUES`] labels is left at the first label too many.
-fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
+pub(crate) fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
     let mut cands: Vec<usize> = t.columns.iter().position(|c| c.role == ColRole::Group).into_iter().collect();
     cands.extend(t.columns.iter().enumerate().filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text).map(|(i, _)| i));
     let numeric: Vec<&Column> = data_cols(t).map(|(_, c)| c).filter(|c| is_numeric(c.dtype) && c.dtype != Dtype::Percent).collect();
@@ -499,12 +500,12 @@ fn kind_text(c: &Column) -> String {
 }
 
 /// One column with its range (numbers, dates) or an example (text, unless its values are listed).
-fn col_detail(c: &Column, name: &str, rows: usize, example: bool) -> String {
+fn col_detail(c: &Column, name: &str, rows: usize, example: bool, ty: Option<&ColType>) -> String {
     if c.dtype == Dtype::Empty {
         return format!("{}[empty]", ident(name));
     }
     let st = col_stats(c);
-    let mut kind = kind_text(c);
+    let mut kind = types::kind_with(&kind_text(c), c, ty); // B21
     if let (Some(lo), Some(hi)) = (st.min, st.max)
         && (is_numeric(c.dtype) || is_date(c.dtype))
     {
@@ -522,8 +523,8 @@ fn col_detail(c: &Column, name: &str, rows: usize, example: bool) -> String {
 }
 
 /// One column as `name[dtype unit]` (dates with their range).
-fn col_compact(c: &Column, name: &str) -> String {
-    let mut kind = kind_text(c);
+fn col_compact(c: &Column, name: &str, ty: Option<&ColType>) -> String {
+    let mut kind = types::kind_with(&kind_text(c), c, ty); // B21
     if is_date(c.dtype) {
         let st = col_stats(c);
         if let (Some(lo), Some(hi)) = (st.min, st.max) {
@@ -589,10 +590,13 @@ pub(crate) fn name_period(name: &str) -> Option<(u8, i64, String)> {
 /// Columns compactly: runs of 4+ columns of one type named by consecutive periods (years, months
 /// or days) as `"2011".."2025"[15 × number EUR]` (nothing hidden); with `runs`, also any run of
 /// 3+ same-type columns.
-fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool) -> Vec<String> {
-    let same = |a: &Column, b: &Column| a.dtype == b.dtype && a.role == b.role && a.unit == b.unit && a.currency == b.currency;
+fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &[Option<ColType>]) -> Vec<String> {
+    let ty = |k: usize| tys.get(cols[k].0).and_then(|x| x.as_ref()); // B21
+    let same_col = |a: &Column, b: &Column| a.dtype == b.dtype && a.role == b.role && a.unit == b.unit && a.currency == b.currency;
+    let same = |k: usize, j: usize| same_col(cols[k].1, cols[j].1) && ty(k) == ty(j);
     let run_text = |k: usize, j: usize| {
-        format!("{}..{}[{} × {}]", ident(&names[cols[k].0]), ident(&names[cols[j - 1].0]), j - k, kind_text(cols[k].1))
+        let kind = types::kind_with(&kind_text(cols[k].1), cols[k].1, ty(k));
+        format!("{}..{}[{} × {kind}]", ident(&names[cols[k].0]), ident(&names[cols[j - 1].0]), j - k)
     };
     let periods: Vec<Option<(u8, i64, String)>> = cols.iter().map(|(i, _)| name_period(&names[*i])).collect();
     // Index of period column j if it continues the run started at k with direction `step`.
@@ -609,7 +613,7 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool) -> Vec
         if periods[k].is_some() {
             let step = if k + 1 < n && follows(k, k + 1, -1) { -1 } else { 1 };
             let mut j = k + 1;
-            while j < n && same(cols[k].1, cols[j].1) && follows(k, j, step) {
+            while j < n && same(k, j) && follows(k, j, step) {
                 j += 1;
             }
             if j - k >= 4 {
@@ -620,7 +624,7 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool) -> Vec
         }
         if runs {
             let mut j = k + 1;
-            while j < n && same(cols[k].1, cols[j].1) {
+            while j < n && same(k, j) {
                 j += 1;
             }
             if j - k >= 3 {
@@ -629,13 +633,13 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool) -> Vec
                 continue;
             }
         }
-        out.push(col_compact(cols[k].1, &names[cols[k].0]));
+        out.push(col_compact(cols[k].1, &names[cols[k].0], ty(k)));
         k += 1;
     }
     out
 }
 
-fn columns_line(t: &Table, names: &[String], examples: bool) -> String {
+fn columns_line(t: &Table, names: &[String], examples: bool, tys: &[Option<ColType>]) -> String {
     let all = data_cols(t).count();
     // Empty columns (spacers in the source) take room and say nothing.
     let cols: Vec<(usize, &Column)> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).collect();
@@ -649,10 +653,10 @@ fn columns_line(t: &Table, names: &[String], examples: bool) -> String {
     let data = data_rows(t);
     let mut items: Vec<String> = if n <= DETAIL_COLS {
         cols.iter()
-            .map(|(i, c)| col_detail(c, &names[*i], rows, examples && label_values(c, &data).is_none()))
+            .map(|(i, c)| col_detail(c, &names[*i], rows, examples && label_values(c, &data).is_none(), tys.get(*i).and_then(|x| x.as_ref())))
             .collect()
     } else {
-        compact_items(&cols, names, n > LIST_COLS)
+        compact_items(&cols, names, n > LIST_COLS, tys)
     };
     if items.len() > MAX_COL_ITEMS {
         let more = items.len() - MAX_COL_ITEMS;
@@ -792,6 +796,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             let inline = facts::inline_rows(t, &names);
             if let Some(first) = layouts.get(&cols) {
                 line.push_str(&format!(" · same columns as {first}"));
+                line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
                 out.push(Block::new(vec![line], t, &names, info, inline));
                 continue;
             }
@@ -800,8 +805,9 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             {
                 // The headers that differ, period runs collapsed.
                 let diff: Vec<(usize, &Column)> = data_cols(t).filter(|(i, _)| !first_names.contains(&names[*i])).collect();
-                let items = compact_items(&diff, &names, false);
+                let items = compact_items(&diff, &names, false, &[]);
                 line.push_str(&format!(" · same layout as {first}"));
+                line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
                 if !items.is_empty() {
                     line.push_str(&format!("; headers here: {}", items.iter().take(12).cloned().collect::<Vec<_>>().join(" ")));
                     if items.len() > 12 {
@@ -813,8 +819,15 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             }
             layouts.insert(cols.clone(), t.id());
             shapes.insert(shape, (t.id(), cols.iter().map(|c| c.0.clone()).collect()));
-            let mut lines = vec![line, columns_line(t, &names, inline.is_none())];
             let data = data_rows(t);
+            let mixed = mixed_measures_by(t, &data);
+            let tys = types::classify(t, &names, mixed, &types::summed_cols(norm, t)); // B21
+            let mut lines = vec![line, columns_line(t, &names, inline.is_none(), &tys)];
+            // B2/B18: "<id> - <name>" columns and how to group them, right under the columns.
+            let ents = crate::entity::detect(t);
+            lines.extend(ents.iter().map(|e| crate::entity::line(e, &t.id())));
+            // B19: a share of the total, with the entity (or label) column to rank by.
+            lines.extend(facts::share_line(t, &names, &data, ents.first().map(crate::entity::group_key)));
             // The values to filter on; a small inlined table shows them in its rows.
             if inline.is_none() {
                 for (i, c) in data_cols(t) {
@@ -823,11 +836,14 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                     }
                 }
             }
-            lines.extend(crate::entity::lines(t)); // B2: "<id> - <name>" columns and their <col>_id (entity.rs)
-            let mixed = mixed_measures_by(t, &data);
             if let Some(i) = mixed {
                 lines.push(format!("    rows mix measures by {} — filter before aggregating", ident(&names[i])));
             }
+            // B20 long view (views.rs), B21 do-not-sum hint (types.rs)
+            if let Some(lv) = crate::views::long_view(t, &tys) {
+                lines.push(crate::views::catalog_line(t, &lv, mixed, !info.total_rows.is_empty()));
+            }
+            lines.extend(types::no_sum_line(t, &names, &tys, mixed));
             let mut extra = Vec::new();
             if let Some(g) = t.columns.iter().position(|c| c.role == ColRole::Group) {
                 extra.push(format!("group column: {}", ident(&names[g])));
@@ -852,6 +868,10 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             }
             out.push(b);
         }
+        // B16: a table that is the long form of another, on both of them.
+        for (k, l) in facts::long_forms(&norm.tables) {
+            out[k].lines.push(l);
+        }
         out
     };
     let brief = || -> Vec<String> {
@@ -864,6 +884,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             if cols.len() > 4 {
                 line.push_str(" …");
             }
+            line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
             out.push(line);
         }
         out
@@ -913,6 +934,15 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         ));
     } else {
         tail.push("no tables detected; read values with the cells tool".into());
+    }
+    // B20: the long views (views.rs).
+    let longs: Vec<String> = norm.tables.iter().filter_map(|t| crate::views::table_view(t).map(|lv| lv.name)).collect();
+    if !longs.is_empty() {
+        tail.push(format!(
+            "SQL long {} {} (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)",
+            if longs.len() == 1 { "view" } else { "views" },
+            id_list(&longs, 8)
+        ));
     }
 
     let join = |body: &[String]| -> String {
@@ -991,6 +1021,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
 pub fn find_table<'a>(norm: &'a Normalized, id: &str) -> Result<&'a Table, String> {
     let raw = id.trim().trim_matches('"');
     let key = raw.strip_suffix("_all").unwrap_or(raw);
+    let key = key.strip_suffix("_long").unwrap_or(key); // B20: T<n>_long, T<n>_long_all
     let n = key.trim_start_matches(['T', 't']).parse::<usize>().ok();
     norm.tables
         .iter()
@@ -1062,10 +1093,17 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
             total_rows_text(&info.kept_totals, 12)
         ));
     }
-    if let Some(i) = mixed_measures_by(t, &data_rows(t)) {
+    let mixed = mixed_measures_by(t, &data_rows(t));
+    if let Some(i) = mixed {
         lines.push(format!("rows mix measures by {} — filter before aggregating", ident(&names[i])));
     }
-    lines.push("columns (name | dtype | unit | nulls | distinct | min..max, example or all values | source column ← header cells):".into());
+    // B20 long view, B21 semantic types (views.rs, types.rs)
+    let tys = types::classify(t, &names, mixed, &types::summed_cols(norm, t));
+    if let Some(lv) = crate::views::long_view(t, &tys) {
+        lines.push(crate::views::catalog_line(t, &lv, mixed, !info.total_rows.is_empty()).trim_start().to_string());
+    }
+    lines.extend(types::no_sum_line(t, &names, &tys, mixed).map(|l| l.trim_start().to_string()));
+    lines.push("columns (name | dtype · type | unit | nulls | distinct | min..max, example or all values | source column ← header cells):".into());
     let data = data_rows(t);
     let cols: Vec<(usize, &Column)> = data_cols(t).collect();
     for (k, (i, c)) in cols.iter().enumerate() {
@@ -1097,10 +1135,14 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
             }
             None => c.role.as_str().to_string(),
         };
+        let dtype = match tys[*i].as_ref() {
+            Some(ty) => format!("{} · {}", c.dtype.as_str(), ty.tag()), // B21
+            None => c.dtype.as_str().to_string(),
+        };
         lines.push(format!(
             "  {} | {} | {} | {} | {} | {} | {}",
             ident(&names[*i]),
-            c.dtype.as_str(),
+            dtype,
             unit,
             st.nulls,
             st.distinct,
@@ -1275,7 +1317,7 @@ mod tests {
         assert!(c.starts_with("FILE x.xlsx · 2 sheets · "), "{c}");
         assert!(c.contains("TIME 2001–2003 (year, from column headers in T1, T2)"), "{c}");
         assert!(c.contains("T1  'Table 1 title' ← 'Sheet 1'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T1_all) · time 2001–2003 (year)"), "{c}");
-        assert!(c.contains("columns (4): Region[text] \"2001\"[number 0.25..0.25]"), "{c}");
+        assert!(c.contains("columns (4): Region[text · dim] \"2001\"[number 0.25..0.25]"), "{c}");
         assert!(c.contains("T2  'Table 2 title' ← 'Sheet 2'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T2_all) · time 2001–2003 (year) · same columns as T1"), "{c}");
         // Small tables: all rows inline (total rows marked), so the values to filter on need no
         // extra line.
@@ -1331,11 +1373,11 @@ mod tests {
         assert!(!c.contains("more"), "{c}");
         // Year columns: one run, nothing hidden.
         let c = catalog(&book(1, 15, true), "x.xlsx", MAX_CHARS);
-        assert!(c.contains("columns (16): Region[text] \"2001\"..\"2015\"[15 × number]"), "{c}");
+        assert!(c.contains("columns (16): Region[text · dim] \"2001\"..\"2015\"[15 × number]"), "{c}");
         // Wider than 40: runs of same-type columns.
         let c = catalog(&book(1, 60, false), "x.xlsx", MAX_CHARS);
         assert!(
-            c.contains("columns (62): Region[text] \"Measure 1-0 long header text\"..\"Measure 1-60 long header text\"[61 × number]"),
+            c.contains("columns (62): Region[text · dim] \"Measure 1-0 long header text\"..\"Measure 1-60 long header text\"[61 × number]"),
             "{c}"
         );
     }
@@ -1422,7 +1464,7 @@ mod tests {
         t.row_types = vec![RowType::Data; 31];
         let c = catalog(&many, "x.xlsx", MAX_CHARS);
         assert!(!c.contains("Region values"), "{c}");
-        assert!(c.contains("Region[text e.g. \"r0\"]"), "{c}");
+        assert!(c.contains("Region[text · id e.g. \"r0\"]"), "{c}");
     }
 
     #[test]

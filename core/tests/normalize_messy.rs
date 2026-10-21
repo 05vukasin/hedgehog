@@ -461,3 +461,67 @@ fn register_rows_with_total_in_their_description_stay_in_the_table() {
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn total_rows_take_the_keys_of_their_block() {
+    // B17. Like the Austrian pension table: year headers (numbers), a group-header row, a "Gesamt"
+    // row closing the first group (its sums reach up into the year header), then a second group.
+    // And like the Henry Hub report: a key column repeated on every data row, empty on the total.
+    let dir = tmp_dir("total_keys");
+    let src = dir.join("keys.xlsx");
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.set_name("Pension").unwrap();
+    ws.write_string(0, 0, "Status").unwrap();
+    ws.write_number(0, 1, 2024.0).unwrap();
+    ws.write_number(0, 2, 2025.0).unwrap();
+    ws.write_string(1, 0, "Anzahl").unwrap();
+    for (i, (l, a, b)) in [("Allein", 100.0, 110.0), ("Verheiratet", 50.0, 40.0), ("Witwe", 25.0, 30.0)].iter().enumerate() {
+        ws.write_string(2 + i as u32, 0, *l).unwrap();
+        ws.write_number(2 + i as u32, 1, *a).unwrap();
+        ws.write_number(2 + i as u32, 2, *b).unwrap();
+    }
+    ws.write_string(5, 0, "Gesamt").unwrap();
+    ws.write_formula(5, 1, Formula::new("=SUM(B1:B5)").set_result("2199")).unwrap();
+    ws.write_formula(5, 2, Formula::new("=SUM(C1:C5)").set_result("2205")).unwrap();
+    ws.write_string(6, 0, "Euro").unwrap();
+    for (i, (l, a, b)) in [("Allein", 300.5, 310.5), ("Verheiratet", 400.5, 410.5), ("Witwe", 200.5, 210.5)].iter().enumerate() {
+        ws.write_string(7 + i as u32, 0, *l).unwrap();
+        ws.write_number(7 + i as u32, 1, *a).unwrap();
+        ws.write_number(7 + i as u32, 2, *b).unwrap();
+    }
+    let ws = wb.add_worksheet();
+    ws.set_name("Flows").unwrap();
+    for (c, h) in ["Direction", "Pipeline", "Volume"].iter().enumerate() {
+        ws.write_string(0, c as u16, *h).unwrap();
+    }
+    let mut r = 1;
+    for (dir_name, sign) in [("Receipts", 1.0), ("Deliveries", -1.0)] {
+        for (k, p) in ["ACADIAN", "NGPL", "MAINLINE"].iter().enumerate() {
+            ws.write_string(r, 0, dir_name).unwrap();
+            ws.write_string(r, 1, *p).unwrap();
+            ws.write_number(r, 2, sign * (10.0 + k as f64)).unwrap();
+            r += 1;
+        }
+        ws.write_string(r, 1, "Total").unwrap();
+        ws.write_formula(r, 2, Formula::new(format!("=SUM(C{}:C{})", r - 2, r)).set_result(format!("{}", sign * 33.0))).unwrap();
+        r += 1;
+    }
+    wb.save(&src).unwrap();
+    let opts = Options { keep_totals: true, rules_only: true, ..Options::default() };
+    let out = normalize_file(&src, &dir, &opts).unwrap();
+    let book = open(&out.xlsx_path).unwrap();
+    let names = names(&book);
+    let pension = sheet(&book, names.iter().find(|n| n.starts_with("T1")).unwrap());
+    let rows: Vec<Vec<Option<Value>>> = (0..row_count(pension)).map(|r| row_vals(pension, r)).collect();
+    let gesamt = rows.iter().find(|r| r.contains(&text("Gesamt"))).unwrap_or_else(|| panic!("{rows:?}"));
+    assert_eq!(gesamt[0], text("Anzahl"), "the total row keeps its group: {rows:?}");
+    assert_eq!(gesamt.last().unwrap(), &text("total"), "{rows:?}");
+    let flows = sheet(&book, names.iter().find(|n| n.starts_with("T2")).unwrap());
+    let rows: Vec<Vec<Option<Value>>> = (0..row_count(flows)).map(|r| row_vals(flows, r)).collect();
+    let totals: Vec<&Vec<Option<Value>>> = rows.iter().filter(|r| r.contains(&text("Total"))).collect();
+    assert_eq!(totals.len(), 2, "{rows:?}");
+    assert_eq!(totals[0][0], text("Receipts"), "{rows:?}");
+    assert_eq!(totals[1][0], text("Deliveries"), "{rows:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
