@@ -720,10 +720,15 @@ fn associate(tables: &[Table], row: u32, col: u32, title: bool) -> Option<usize>
 pub(super) fn process_sheet(
     sheet: &Sheet,
     opts: &Options,
-    layout: (crate::analysis::SheetLayout, Option<String>),
+    layout: super::SheetAnalysis,
     out: &mut Normalized,
 ) {
     let grid = Grid::new(sheet);
+    let (lay, warning, detection) = layout;
+    if let Some(d) = detection {
+        grid.set_totals(d);
+    }
+    let layout = (lay, warning);
     let cells = &sheet.cells;
     let mut info = SheetInfo {
         name: sheet.name.clone(),

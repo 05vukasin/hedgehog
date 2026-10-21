@@ -415,3 +415,49 @@ fn group_label_on_the_first_data_row_opens_a_group() {
     assert_eq!(row_vals(t, 7), [text("Sep"), text("Gas"), num(120.0), num(12.0), num(11.0)]);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn register_rows_with_total_in_their_description_stay_in_the_table() {
+    // A 300-contract register whose descriptions and supplier names contain "total"; the last row
+    // is a real total. Rules and model path alike: every contract stays in T1, only the total row
+    // goes, and no contract is listed as a total.
+    let dir = tmp_dir("register_total_word");
+    let src = dir.join("contracts.xlsx");
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.set_name("Contracts").unwrap();
+    for (j, h) in ["id", "type", "description", "supplier", "price"].iter().enumerate() {
+        ws.write_string(0, j as u16, *h).unwrap();
+    }
+    let n = 300u32;
+    let price = |r: u32| 500.0 + (r * 53 % 97) as f64;
+    for r in 1..=n {
+        let desc = match r {
+            30 => "AQUISIÇÃO DE UMA ESTAÇÃO TOTAL".to_string(),
+            150 => "Prótese total anca tumural cimentada".to_string(),
+            _ => format!("Fornecimento de material {r}"),
+        };
+        let supplier = match r {
+            222 => "502700823 - ATM - Assistência Total em Manutenção SA".to_string(),
+            _ => format!("Fornecedor {r} Lda"),
+        };
+        ws.write_number(r, 0, 7_000_000.0 + r as f64).unwrap();
+        ws.write_string(r, 1, if r % 2 == 0 { "Aquisição de serviços" } else { "Aquisição de bens móveis" }).unwrap();
+        ws.write_string(r, 2, &desc).unwrap();
+        ws.write_string(r, 3, &supplier).unwrap();
+        ws.write_number(r, 4, price(r)).unwrap();
+    }
+    ws.write_string(n + 1, 0, "Total").unwrap();
+    ws.write_number(n + 1, 4, (1..=n).map(price).sum::<f64>()).unwrap();
+    wb.save(&src).unwrap();
+    let book = open(&src).unwrap();
+    for rules_only in [true, false] {
+        let norm = hh_core::normalize::normalize_workbook(&book, &Options { rules_only, ..Options::default() });
+        let t = &norm.tables[0];
+        assert_eq!(t.src_rows.len(), n as usize, "rules_only={rules_only}");
+        assert_eq!(t.transforms.get(hh_core::normalize::T::TotalRowsRemoved), 1, "rules_only={rules_only}");
+        let rows: Vec<u32> = hh_core::normalize::table_totals(t, &norm.totals).rows.iter().map(|r| r.row).collect();
+        assert_eq!(rows, vec![n + 2], "rules_only={rules_only}: 1-based row of the real total");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -16,8 +16,11 @@ pub mod keywords;
 pub mod verify;
 
 pub use deps::DependencyIndex;
-pub use detect::{detect, detect_with, keyword_rows, Direction, Evidence, TotalCandidate, TotalLevel, TotalOrigin};
+pub use detect::{
+    detect, detect_rows, detect_with, incidental_rows, keyword_rows, labelled_rows, Detection, Direction, Evidence,
+    IncidentalRows, TotalCandidate, TotalLevel, TotalOrigin,
+};
 pub use features::compute;
 pub use formula::{parse, FormulaKind, ParsedFormula, Ref, RefKind};
-pub use keywords::{total_keyword, KeywordLevel};
+pub use keywords::{incidental_keyword, total_keyword, KeywordLevel};
 pub use verify::{verify, CheckReason, TotalCheck};

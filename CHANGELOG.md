@@ -138,6 +138,21 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Fixed
 
+- **Records whose description says "total" are no longer total rows.** In a register (a sheet of
+  200 rows or more), a total word inside a longer text that has other text to its left (a
+  description, a supplier's name: "AQUISIÇÃO DE UMA ESTAÇÃO TOTAL", "Prótese total anca",
+  "GLOBAL 2 SEGURANÇA TOTAL LDA") no longer makes its row a total row. Such a row is still a total
+  if one of its numbers is the sum of at least two numbers above it, if it closes a group ("X
+  Total" under the row labelled "X"), or if the text starts or ends with the total word and recurs
+  as a category of its column (long-format statistics: "Summe der bezogenen Rohstoffe" in 1 % of
+  the rows, or "Summe aller Produkte" closing each block of identical keys). Short labels
+  ("Total", "Gesamt", "Summe", "Ukupno Vojvodina"), labels in a row's first text cell and short
+  sheets are unchanged. Portugal's 2020 procurement register now keeps all 176,512 contracts in
+  `T1` (38 were removed as totals, 63 more were flagged "exclude before summing"). The rule
+  applies in the totals, the rule layout and to the learned model's output (its features are
+  unchanged, as it was trained on them). Benchmarks: rule layout total F1 66.0 → 68.3 on
+  synthetic, statsheets accuracy 86.2 → 86.7 (model 87.3 → 87.4); nothing drops.
+
 - Tables on one sheet no longer overlap in the default (model) path (Finanzstatistik T2
   `A17:IB43` over T3 `A31:HO43`, from a vertical merge hanging below a table).
 

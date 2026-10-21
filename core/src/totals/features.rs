@@ -3,7 +3,7 @@
 use crate::features::Features;
 use crate::grid::Grid;
 use crate::totals::deps::DependencyIndex;
-use crate::totals::detect::{detect_with, keyword_rows};
+use crate::totals::detect::detect_rows;
 use crate::totals::verify::verify;
 
 /// Names of the columns [`compute`] adds, in order.
@@ -36,7 +36,8 @@ pub fn compute_returning(grid: &Grid, out: &mut Features) -> Vec<crate::totals::
     let sheet = grid.sheet;
     let n = sheet.cells.len();
     let deps = DependencyIndex::new(grid);
-    let kw = keyword_rows(grid);
+    // As the learned row model was trained: every total keyword counts, incidental or not.
+    let crate::totals::Detection { candidates: cands, keyword_rows: kw, .. } = detect_rows(grid, &deps, false);
     let mut cols: Vec<Vec<f32>> = vec![vec![0.0; n]; NAMES.len()];
     for (i, c) in sheet.cells.iter().enumerate() {
         if let Some(p) = deps.formula(c.row, c.col) {
@@ -56,7 +57,6 @@ pub fn compute_returning(grid: &Grid, out: &mut Features) -> Vec<crate::totals::
         cols[7][i] = kw.contains_key(&c.row) as u8 as f32;
         cols[8][i] = -1.0;
     }
-    let cands = detect_with(grid, &deps);
     for cand in &cands {
         if let Some(i) = grid.cell_index(cand.row, cand.col) {
             cols[8][i] = match verify(grid, cand).ok {

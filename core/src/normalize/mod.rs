@@ -517,8 +517,9 @@ pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
 /// a time, so peak memory is set by the largest sheet).
 const PARALLEL_SHEETS_MAX_CELLS: usize = 300_000;
 
-/// A sheet's layout and, when the model was skipped for its size, a warning.
-type SheetAnalysis = (crate::analysis::SheetLayout, Option<String>);
+/// A sheet's layout; when the model was skipped for its size, a warning; and the sheet's total
+/// detection if the layout already ran it (so the extraction does not run it again).
+pub(super) type SheetAnalysis = (crate::analysis::SheetLayout, Option<String>, Option<crate::totals::Detection>);
 
 /// Cell roles and tables of every sheet: the rules plus the learned row model for sheets within
 /// [`Options::model_max_cells`], the rules alone otherwise (or with `rules_only`). The second
@@ -529,14 +530,15 @@ fn layouts(wb: &Workbook, opts: &Options) -> Vec<SheetAnalysis> {
     let one = |sheet: &crate::model::Sheet| {
         let grid = crate::grid::Grid::new(sheet);
         let n = sheet.cells.len();
-        match model {
+        let (lay, warning) = match model {
             Some(m) if n <= limit => (crate::learned::analyze(&grid, m), None),
             Some(_) => (
                 crate::layout::analyze(&grid),
                 Some(format!("{}: {n} cells, more than the model limit of {limit}; cell roles from the rules alone", sheet.name)),
             ),
             None => (crate::layout::analyze(&grid), None),
-        }
+        };
+        (lay, warning, grid.into_totals())
     };
     let model_cells: usize = wb.sheets.iter().map(|s| s.cells.len()).filter(|&n| n <= limit).sum();
     let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(4).min(wb.sheets.len());

@@ -9,7 +9,7 @@ use crate::grid::Grid;
 use crate::model::{Cell, Rect, Value};
 use crate::totals::deps::DependencyIndex;
 use crate::totals::formula::FormulaKind;
-use crate::totals::keywords::{KeywordLevel, total_keyword};
+use crate::totals::keywords::{KeywordLevel, REGISTER_MIN_ROWS, incidental_keyword, keyword_at_edge, total_keyword};
 use crate::totals::verify::{close, numeric_text, verify};
 use crate::values::missing_token;
 
@@ -198,8 +198,56 @@ fn number(cell: Option<&Cell>) -> Option<f64> {
 
 /// Row → (label column, level) for rows whose leftmost keyword text cell names a total and that
 /// hold at least one number or formula right of it (a header row "Name | Q1 | Total" does not).
+/// Rows whose keyword is only an incidental word of a free-text cell in a register
+/// ([`incidental_keyword`]) are left out; [`detect_rows`] adds those whose numbers add up.
 pub fn keyword_rows(grid: &Grid) -> HashMap<u32, (u32, KeywordLevel)> {
-    keyword_rows_with(grid, &keyword_cells(grid))
+    keyword_rows_with(grid, &keyword_cells(grid), true).0
+}
+
+/// Rows whose total word is incidental ([`incidental_keyword`]: free text in a register), sorted.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct IncidentalRows {
+    /// Their numbers do not add up: ordinary records, whatever their text says.
+    pub records: Vec<u32>,
+    /// They add up or close a group: total rows after all.
+    pub totals: Vec<u32>,
+}
+
+/// The rows of `grid` whose total word is incidental, split by whether arithmetic (or the group
+/// they close) confirms them as totals. Cheap when there are none (one pass over the text cells).
+pub fn incidental_rows(grid: &Grid) -> IncidentalRows {
+    let (_, weak) = keyword_rows_with(grid, &keyword_cells(grid), true);
+    if weak.is_empty() {
+        return IncidentalRows::default();
+    }
+    let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
+    IncidentalRows { records: d.incidental_rows.clone(), totals: d.confirmed_rows.clone() }
+}
+
+/// Rows labelled as totals by a total word, sorted: [`keyword_rows`] plus the rows whose
+/// incidental total word is confirmed ([`IncidentalRows::totals`]). Empty on sheets shorter than
+/// a register, where no total word is incidental.
+pub fn labelled_rows(grid: &Grid) -> Vec<u32> {
+    if sheet_rows(grid) < REGISTER_MIN_ROWS {
+        return Vec::new();
+    }
+    let (strong, weak) = keyword_rows_with(grid, &keyword_cells(grid), true);
+    let mut rows: Vec<u32> = if weak.is_empty() {
+        strong.into_keys().collect()
+    } else {
+        let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
+        d.keyword_rows.keys().copied().collect()
+    };
+    rows.sort_unstable();
+    rows
+}
+
+/// Rows from the sheet's first to its last cell (cells are row-major).
+fn sheet_rows(grid: &Grid) -> u32 {
+    match (grid.sheet.cells.first(), grid.sheet.cells.last()) {
+        (Some(a), Some(b)) => b.row - a.row + 1,
+        _ => 0,
+    }
 }
 
 /// Text cells naming a total, by index into `sheet.cells` (ascending).
@@ -217,31 +265,100 @@ fn keyword_cells(grid: &Grid) -> Vec<(usize, KeywordLevel)> {
         .collect()
 }
 
-fn keyword_rows_with(grid: &Grid, kw_cells: &[(usize, KeywordLevel)]) -> HashMap<u32, (u32, KeywordLevel)> {
+type KeywordRows = HashMap<u32, (u32, KeywordLevel)>;
+
+/// A total label that recurs as a category of its column (long-format statistics: "Summe der
+/// bezogenen Rohstoffe" once per industry) is the column's label for its sum rows, not free text:
+/// at least this many times, and either in at least 1 % of the column's cells or at the end of a
+/// block ([`ends_block`]).
+const MIN_CATEGORY_REPEATS: usize = 3;
+
+/// The label text cells left of `col` in `row` (not numbers stored as text), as (column, text).
+fn left_texts<'g>(grid: &Grid<'g>, row: u32, col: u32) -> Vec<(u32, &'g str)> {
+    let cells = &grid.sheet.cells;
+    grid.row_cells(row)
+        .iter()
+        .map(|&i| &cells[i as usize])
+        .take_while(|c| c.col < col)
+        .filter_map(|c| match &c.value {
+            Some(Value::Text(t)) if header_text(t) => Some((c.col, t.as_str())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Row `row` closes a block of long-format data: the text cells left of `col` on the row above (the
+/// keys, "Personalausgaben | Dienstbezüge") hold the same text on this row and change on the row
+/// below, as on the last row of each "Summe aller Produkte" block. Free text never repeats its keys
+/// like this.
+fn ends_block(grid: &Grid, row: u32, col: u32) -> bool {
+    if row == 0 {
+        return false;
+    }
+    let keys = left_texts(grid, row - 1, col);
+    let here = left_texts(grid, row, col);
+    let same = |line: &[(u32, &str)]| keys.iter().all(|k| line.contains(k));
+    !keys.is_empty() && same(&here) && !same(&left_texts(grid, row + 1, col))
+}
+
+/// Keyword rows (see [`keyword_rows`]), split into rows labelled by their keyword cell and rows
+/// whose keyword is incidental ([`incidental_keyword`]; only with `registers`): those need
+/// arithmetic to be totals. A keyword text that starts or ends with the total word and recurs as
+/// a category of its column ([`MIN_CATEGORY_REPEATS`]) is a label, not incidental.
+fn keyword_rows_with(
+    grid: &Grid,
+    kw_cells: &[(usize, KeywordLevel)],
+    registers: bool,
+) -> (KeywordRows, KeywordRows) {
     let kw_of: FxHashMap<usize, KeywordLevel> = kw_cells.iter().copied().collect();
+    let n_rows = if registers { sheet_rows(grid) } else { 0 };
+    let cells = &grid.sheet.cells;
+    let mut repeats: FxHashMap<(u32, &str), usize> = FxHashMap::default();
+    if n_rows >= REGISTER_MIN_ROWS {
+        for &(i, _) in kw_cells {
+            if let Some(Value::Text(t)) = &cells[i].value {
+                *repeats.entry((cells[i].col, t.as_str())).or_default() += 1;
+            }
+        }
+    }
+    let category = |row: u32, col: u32, t: &str| {
+        let n = repeats.get(&(col, t)).copied().unwrap_or(0);
+        n >= MIN_CATEGORY_REPEATS
+            && keyword_at_edge(t)
+            && (n * 100 >= grid.col_cells(col).len() || ends_block(grid, row, col))
+    };
     let mut out = HashMap::new();
-    let mut label: Option<(u32, u32, KeywordLevel)> = None; // (row, col, level) of the current row
+    let mut weak = HashMap::new();
+    let mut label: Option<(u32, u32, KeywordLevel, bool)> = None; // (row, col, level, incidental)
+    let mut cur_row = None;
+    let mut text_left = false; // a label text seen on the current row before `label`
     for (i, c) in grid.sheet.cells.iter().enumerate() {
-        if label.is_some_and(|(r, _, _)| r != c.row) {
+        if cur_row != Some(c.row) {
+            cur_row = Some(c.row);
+            text_left = false;
             label = None;
         }
-        if out.contains_key(&c.row) {
+        if out.contains_key(&c.row) || weak.contains_key(&c.row) {
             continue;
         }
         match (&label, &c.value) {
-            (None, Some(Value::Text(_))) => {
+            (None, Some(Value::Text(s))) => {
                 if let Some(&level) = kw_of.get(&i) {
-                    label = Some((c.row, c.col, level));
+                    let inc = incidental_keyword(s, text_left, n_rows) && !category(c.row, c.col, s);
+                    label = Some((c.row, c.col, level, inc));
+                } else if header_text(s) {
+                    text_left = true;
                 }
             }
-            (Some((r, lc, lvl)), v) if (c.formula.is_some() || matches!(v, Some(Value::Number(_)))) => {
-                out.insert(*r, (*lc, *lvl));
+            (Some((r, lc, lvl, inc)), v) if (c.formula.is_some() || matches!(v, Some(Value::Number(_)))) => {
+                if *inc { &mut weak } else { &mut out }.insert(*r, (*lc, *lvl));
             }
             _ => {}
         }
     }
     drop_repeated_labels(grid, &mut out);
-    out
+    drop_repeated_labels(grid, &mut weak);
+    (out, weak)
 }
 
 /// Shortest run of adjacent identical total labels read as a category value.
@@ -334,14 +451,35 @@ impl<'g> Labels<'g> {
 }
 
 pub fn detect(grid: &Grid) -> Vec<TotalCandidate> {
-    detect_with(grid, &DependencyIndex::new(grid))
+    grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true)).candidates.clone()
 }
 
 /// [`detect`] reusing an already built dependency index.
 pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
+    grid.totals.get_or_init(|| detect_rows(grid, deps, true)).candidates.clone()
+}
+
+/// What [`detect_rows`] finds.
+#[derive(Debug, Clone, Default)]
+pub struct Detection {
+    pub candidates: Vec<TotalCandidate>,
+    /// Row → (label column, level) of the rows labelled as totals by a keyword.
+    pub keyword_rows: HashMap<u32, (u32, KeywordLevel)>,
+    /// Rows with an incidental total word that arithmetic did not confirm (sorted).
+    pub incidental_rows: Vec<u32>,
+    /// Rows with an incidental total word that adds up or closes a group: total rows (sorted).
+    pub confirmed_rows: Vec<u32>,
+}
+
+/// [`detect_with`], also returning the keyword rows. With `registers`, a total word that is
+/// incidental ([`incidental_keyword`]: free text in a register) makes its row a total row only if
+/// one of the row's typed numbers is the sum of at least two numbers above it or the row closes a
+/// group; without, every keyword counts (the behaviour the learned row model's features were
+/// trained on). Totals are cached on the grid only for `registers` (see [`detect`]).
+pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Detection {
     let sheet = grid.sheet;
     let kw_cells = keyword_cells(grid);
-    let kw_rows = keyword_rows_with(grid, &kw_cells);
+    let (mut kw_rows, weak_rows) = keyword_rows_with(grid, &kw_cells, registers);
     let mut labels = Labels::new(grid);
     let mut out: Vec<TotalCandidate> = Vec::new();
 
@@ -421,21 +559,77 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
 
     let formula_total: FxHashSet<(u32, u32)> = out.iter().map(|c| (c.row, c.col)).collect();
     let rows_with_cells = RowSet::new(sheet.cells.iter().map(|c| c.row));
-    let kw_set = RowSet::new(kw_rows.keys().copied());
     let mut columns: FxHashMap<u32, ColumnView> = FxHashMap::default();
-
-    // (b) Typed numbers in keyword rows → column totals over the cells above.
-    let mut kw_sorted: Vec<_> = kw_rows.iter().map(|(&r, &v)| (r, v)).collect();
-    kw_sorted.sort_unstable_by_key(|x| x.0);
-    for &(row, (lc, lvl)) in &kw_sorted {
-        let cols: Vec<u32> = grid
-            .row_cells(row)
+    // Typed numbers right of a keyword row's label.
+    let typed_cols = |row: u32, lc: u32| -> Vec<u32> {
+        grid.row_cells(row)
             .iter()
             .map(|&i| &sheet.cells[i as usize])
             .filter(|c| c.col > lc && c.formula.is_none())
             .filter(|c| matches!(c.value, Some(Value::Number(_))))
             .map(|c| c.col)
-            .collect();
+            .collect()
+    };
+
+    // (b0) A row whose total word is incidental (free text in a register) is a total row only if
+    // one of its typed numbers is the sum of at least two numbers above it (sections bounded by
+    // every keyword row, as for any total, or by the other total rows only), or if it closes a
+    // group: "X Total" under rows whose label column is "X" or empty since the row labelled "X".
+    let mut incidental = Vec::new();
+    let mut confirmed = Vec::new();
+    if !weak_rows.is_empty() {
+        let strong_rows = kw_rows.clone();
+        let strong_set = RowSet::new(strong_rows.keys().copied());
+        let mut all_rows = kw_rows.clone();
+        all_rows.extend(weak_rows.iter().map(|(&r, &v)| (r, v)));
+        let all_set = RowSet::new(all_rows.keys().copied());
+        let mut weak_sorted: Vec<_> = weak_rows.iter().map(|(&r, &v)| (r, v)).collect();
+        weak_sorted.sort_unstable_by_key(|x| x.0);
+        for &(row, (lc, lvl)) in &weak_sorted {
+            let cols = typed_cols(row, lc);
+            let adds_up = |rows: &KeywordRows, set: &RowSet, columns: &mut FxHashMap<u32, ColumnView>| {
+                let group = if cols.is_empty() { None } else { group_start(grid, rows, &rows_with_cells, row, lc) };
+                cols.iter().any(|&col| {
+                    let value = number(grid.cell(row, col)).unwrap_or(0.0);
+                    let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
+                    value != 0.0
+                        && typed_vertical(
+                            grid,
+                            rows,
+                            &formula_total,
+                            &rows_with_cells,
+                            set,
+                            view,
+                            group,
+                            row,
+                            col,
+                            lc,
+                            lvl,
+                            value,
+                        )
+                        .is_some_and(|c| {
+                            c.evidence.contains(&Evidence::ArithmeticMatch) && source_numbers(view, &c) >= 2
+                        })
+                })
+            };
+            if closes_group(grid, row, lc)
+                || adds_up(&all_rows, &all_set, &mut columns)
+                || adds_up(&strong_rows, &strong_set, &mut columns)
+            {
+                confirmed.push(row);
+                kw_rows.insert(row, (lc, lvl));
+            } else {
+                incidental.push(row);
+            }
+        }
+    }
+    let kw_set = RowSet::new(kw_rows.keys().copied());
+
+    // (b) Typed numbers in keyword rows → column totals over the cells above.
+    let mut kw_sorted: Vec<_> = kw_rows.iter().map(|(&r, &v)| (r, v)).collect();
+    kw_sorted.sort_unstable_by_key(|x| x.0);
+    for &(row, (lc, lvl)) in &kw_sorted {
+        let cols = typed_cols(row, lc);
         let group = if cols.is_empty() { None } else { group_start(grid, &kw_rows, &rows_with_cells, row, lc) };
         for col in cols {
             let value = number(grid.cell(row, col)).unwrap_or(0.0);
@@ -472,7 +666,41 @@ pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
     resolve_nesting(grid, &mut out);
     mark_sibling_support(grid, &mut out);
     out.sort_by_key(|c| (c.row, c.col));
-    out
+    Detection { candidates: out, keyword_rows: kw_rows, incidental_rows: incidental, confirmed_rows: confirmed }
+}
+
+/// Rows a group closed by an "X Total" label may span ([`closes_group`]).
+const MAX_GROUP_ROWS: u32 = 10_000;
+
+/// The "X Total" label at (row, label_col) closes a group: going up its column, the first
+/// non-empty cell is "X" (pivot tables and outline reports: the group label, then blanks or the
+/// label repeated). Other columns are not looked at, so a block beside another one (whose own
+/// totals sit on other rows) still closes its groups.
+fn closes_group(grid: &Grid, row: u32, label_col: u32) -> bool {
+    let Some(name) = text(grid.cell(row, label_col)).and_then(group_name) else {
+        return false;
+    };
+    for r in (row.saturating_sub(MAX_GROUP_ROWS)..row).rev() {
+        match grid.cell(r, label_col) {
+            None => continue,
+            Some(c) if c.value.is_none() => continue,
+            Some(c) => return text(Some(c)).is_some_and(|t| same_label(t, &name)),
+        }
+    }
+    false
+}
+
+/// Numbers (typed or stored as text) a vertical candidate in `view`'s column adds.
+fn source_numbers(view: &ColumnView, c: &TotalCandidate) -> usize {
+    c.ranges
+        .iter()
+        .map(|r| {
+            (view.below(r.top)..view.below(r.bottom + 1))
+                .filter(|&k| view.flags[k] & (ColumnView::NUMBER | ColumnView::NUMBER_TEXT) != 0)
+                .filter(|&k| !c.exclude.contains(&(view.rows[k], c.col)))
+                .count()
+        })
+        .sum()
 }
 
 fn level_of(k: KeywordLevel) -> TotalLevel {
