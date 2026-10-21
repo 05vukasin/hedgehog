@@ -3,7 +3,7 @@
 //! manifest per table and for the workbook, so an agent can tell "the file has 2015–2017" before
 //! it queries anything.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 use super::json::Json;
 use super::{ColRole, Dtype, Out, Table};
@@ -284,10 +284,26 @@ fn column_periods(name: &str, role: ColRole, dtype: Dtype, values: &[Out]) -> Op
             if role == ColRole::Group {
                 return None;
             }
-            // Period text: at least 90% of the distinct values parse.
-            let distinct: BTreeSet<&str> = texts.into_iter().collect();
-            let periods: Vec<Period> = distinct.iter().filter_map(|s| period_text(s)).collect();
-            (periods.len() * 10 >= distinct.len() * 9).then_some(periods)
+            // Period text: at least 90% of the distinct values parse. Stops as soon as more than
+            // a tenth of all values failed (then a tenth of the distinct ones fails too).
+            let mut seen: HashSet<&str> = HashSet::new();
+            let mut periods: Vec<Period> = Vec::new();
+            let mut failed = 0;
+            for s in &texts {
+                if !seen.insert(s) {
+                    continue;
+                }
+                match period_text(s) {
+                    Some(p) => periods.push(p),
+                    None => {
+                        failed += 1;
+                        if failed * 10 > texts.len() {
+                            return None;
+                        }
+                    }
+                }
+            }
+            (periods.len() * 10 >= seen.len() * 9).then_some(periods)
         }
         _ => None,
     }

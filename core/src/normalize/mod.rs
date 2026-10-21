@@ -433,6 +433,15 @@ pub fn workbook_time_coverage(norm: &Normalized) -> Option<TimeCoverage> {
     coverage::workbook(&with_cov).map(|c| c.public())
 }
 
+/// Time coverage of every table and of the workbook in one pass (each table's columns read once).
+pub fn time_coverages(norm: &Normalized) -> (Vec<Option<TimeCoverage>>, Option<TimeCoverage>) {
+    let per: Vec<Option<coverage::Coverage>> = norm.tables.iter().map(coverage::table).collect();
+    let with_cov: Vec<(String, coverage::Coverage)> =
+        norm.tables.iter().zip(&per).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
+    let wb = coverage::workbook(&with_cov).map(|c| c.public());
+    (per.into_iter().map(|c| c.map(|c| c.public())).collect(), wb)
+}
+
 /// One total row of a table (the manifest's `tables[].totals.rows[]`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableTotalRow {

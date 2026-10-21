@@ -16,6 +16,7 @@
 
 pub mod catalog;
 pub mod cells;
+pub mod facts;
 pub mod files;
 pub mod sql;
 pub mod text;
