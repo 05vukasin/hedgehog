@@ -12,7 +12,7 @@ use super::locale::Locale;
 use super::keywords::{is_note, starts_with_enumerator, total_score};
 use super::missing::{is_excel_error, missing_token, parse_bool};
 use super::currency::mentions_currency;
-use super::number::{parse_number, DecimalSep, DecimalVotes, NumberHint};
+use super::number::{parse_number, DecimalSep, DecimalVotes, NativeNumbers, NumberHint};
 use super::text::{has_cyrillic, is_padded, trim};
 use crate::features::Features;
 use crate::grid::Grid;
@@ -81,6 +81,11 @@ fn currency_evidence(s: &str) -> bool {
 
 /// Infers decimal convention and day/month order from a column's text values.
 pub fn infer_column<'a>(values: impl IntoIterator<Item = &'a str>) -> ColumnHints {
+    infer_column_with(values, &NativeNumbers::default())
+}
+
+/// [`infer_column`] that also weighs the column's numbers stored as numbers (see [`NativeNumbers`]).
+pub fn infer_column_with<'a>(values: impl IntoIterator<Item = &'a str>, native: &NativeNumbers) -> ColumnHints {
     let mut d = DecimalVotes::default();
     let mut o = DateOrderVotes::default();
     let mut cur = false;
@@ -89,7 +94,7 @@ pub fn infer_column<'a>(values: impl IntoIterator<Item = &'a str>) -> ColumnHint
         o.add(s);
         cur = cur || currency_evidence(s);
     }
-    ColumnHints { decimal: d.decision(), date_order: o.decision(), currency_context: cur }
+    ColumnHints { decimal: d.decision_with(native), date_order: o.decision(), currency_context: cur }
 }
 
 /// Infers [`ColumnHints`] for every column of the sheet, from the data only.
@@ -106,9 +111,16 @@ pub fn sheet_column_hints(grid: &Grid) -> HashMap<u32, ColumnHints> {
 pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u32, ColumnHints> {
     let mut votes: HashMap<u32, (DecimalVotes, DateOrderVotes)> = HashMap::new();
     let mut currency_cols: HashMap<u32, bool> = HashMap::new();
+    let mut natives: HashMap<u32, NativeNumbers> = HashMap::new();
     // Each text's votes and currency evidence depend only on the text: computed once per text.
     let mut memo: rustc_hash::FxHashMap<&str, (DecimalVotes, DateOrderVotes, bool)> = rustc_hash::FxHashMap::default();
     for c in &grid.sheet.cells {
+        if let Some(Value::Number(x)) = &c.value {
+            if locale.is_none() {
+                natives.entry(c.col).or_default().add(*x);
+            }
+            continue;
+        }
         if let Some(Value::Text(s)) = &c.value {
             let (d, o, cur_ev) = *memo.entry(s.as_str()).or_insert_with(|| {
                 let (mut d, mut o) = (DecimalVotes::default(), DateOrderVotes::default());
@@ -148,7 +160,9 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
         .into_iter()
         .map(|(col, (d, o))| {
             let currency_context = cur(&col);
-            (col, ColumnHints { decimal: d.decision().or(sheet_decimal), date_order: o.decision().or(sheet_order), currency_context })
+            let native = natives.get(&col).copied().unwrap_or_default();
+            let decimal = d.decision_with(&native).or(sheet_decimal);
+            (col, ColumnHints { decimal, date_order: o.decision().or(sheet_order), currency_context })
         })
         .collect()
 }

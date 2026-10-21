@@ -81,6 +81,26 @@ fn out_json(v: &Out) -> Json {
     }
 }
 
+/// Cells listed per footnote mark in the manifest (the count is always complete).
+const MAX_MARK_CELLS: usize = 100;
+
+/// `null`, or one entry per footnote mark stripped from the column's numbers:
+/// `{"mark": "¹", "count": 3, "cells": ["B5", "B9", "B12"]}`.
+fn footnote_marks_json(c: &Column) -> Json {
+    if c.footnote_marks.is_empty() {
+        return Json::Null;
+    }
+    Json::Arr(
+        c.footnote_marks
+            .iter()
+            .map(|(m, cells)| {
+                let list: Vec<Json> = cells.iter().take(MAX_MARK_CELLS).map(|(r, col)| Json::Str(a1(*r, *col))).collect();
+                Json::obj().with("mark", m.as_str()).with("count", cells.len()).with("cells", Json::Arr(list))
+            })
+            .collect(),
+    )
+}
+
 fn column_json(c: &Column, index: usize) -> Json {
     let mut nulls = 0usize;
     let mut distinct: HashSet<String> = HashSet::new();
@@ -145,6 +165,7 @@ fn column_json(c: &Column, index: usize) -> Json {
         .with("unit", c.unit.clone())
         .with("currency", c.currency.clone())
         .with("locale", locale)
+        .with("footnote_marks", footnote_marks_json(c))
         .with("nulls", nulls)
         .with("distinct", distinct.len())
         .with("min", bound(min))
