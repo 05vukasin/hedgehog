@@ -298,6 +298,13 @@ its training entirely, so the gain carries over to new kinds of files. A misplac
 up on the `Notes` sheet, so a mistake costs structure, never data. Details:
 [docs/learned-model.md](docs/learned-model.md), [docs/evaluation.md](docs/evaluation.md).
 
+**In practice:** on Portugal's 2020 procurement register (176,000 contracts, 4.5M cells), a chat
+agent using hedgehog's tools with gpt-4o-mini answered four analyst questions in 1 min 05 s, using
+13.9k input tokens (about $0.002). Claude Code needed 3 min 08 s writing its own pandas. hedgehog's
+numbers were exact, but the small model made judgement errors that the stronger model avoided.
+Full comparison and what we're fixing:
+[docs/case-study-contracts.md](docs/case-study-contracts.md).
+
 ## Documentation
 
 | | |
@@ -310,6 +317,7 @@ up on the `Notes` sheet, so a mistake costs structure, never data. Details:
 | [CLI](docs/cli.md) · [Python API](docs/python-api.md) · [Node API](docs/node-api.md) | full reference |
 | [LLMs](docs/llm.md) · [Locales](docs/locales.md) | AI providers and keys; numbers, dates, currencies |
 | [Concepts](docs/concepts.md) · [Evaluation](docs/evaluation.md) | how it works; how well it works |
+| [Case study: 176k contracts](docs/case-study-contracts.md) | hedgehog tools + gpt-4o-mini vs Claude Code on one real file |
 | [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Troubleshooting](docs/troubleshooting.md) | for contributors and when something goes wrong |
 
 ## Roadmap
