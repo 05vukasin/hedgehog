@@ -142,6 +142,9 @@ pub struct Column {
     pub date_order: Option<DateOrder>,
     /// Values whose separator or day/month order was a guess.
     pub ambiguous: usize,
+    /// Footnote marks stripped from numbers in this column (`¹`, `(r)`, `p`, `e`), each with the
+    /// source cells (0-based row, col) that carried it, in mark order.
+    pub footnote_marks: Vec<(String, Vec<(u32, u32)>)>,
     pub values: Vec<Out>,
 }
 
@@ -172,6 +175,7 @@ pub enum T {
     UnitStripped,
     ScaleApplied,
     AccountingNegatives,
+    FootnoteMarksStripped,
     DatesFromText,
     DatesFromSerialNumbers,
     BoolsFromText,
@@ -202,13 +206,14 @@ pub enum T {
 }
 
 impl T {
-    pub const ALL: [T; 33] = [
+    pub const ALL: [T; 34] = [
         T::NumbersFromText,
         T::PercentFromText,
         T::CurrencyStripped,
         T::UnitStripped,
         T::ScaleApplied,
         T::AccountingNegatives,
+        T::FootnoteMarksStripped,
         T::DatesFromText,
         T::DatesFromSerialNumbers,
         T::BoolsFromText,
@@ -246,6 +251,7 @@ impl T {
             T::UnitStripped => "unit_stripped",
             T::ScaleApplied => "scale_applied",
             T::AccountingNegatives => "accounting_negatives",
+            T::FootnoteMarksStripped => "footnote_marks_stripped",
             T::DatesFromText => "dates_from_text",
             T::DatesFromSerialNumbers => "dates_from_serial_numbers",
             T::BoolsFromText => "bools_from_text",
