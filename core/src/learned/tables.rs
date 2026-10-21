@@ -403,6 +403,9 @@ fn extend_down(grid: &Grid, tables: &mut [DetectedTable], roles: &[Role]) {
 /// Step 2: header depth from the model's row roles.
 fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Steps, roles: &mut [Role]) {
     let numbering = |row: u32| numbering_row(grid, t.rect, row) || unit_row(grid, t.rect, row);
+    // A label over period numbers (`Year | 1 | 2 | …`) keeps its header place, but a row of that
+    // shape under a header is data (`Item 0 | 1 | 2 | 3`).
+    let keeps = |row: u32| numbering(row) || labelled_numbering_row(grid, t.rect, row);
     let body = t.header_top + t.header_rows;
     // Index of the first row at or below header_top.
     let first = rows.partition_point(|r| r.row < t.header_top);
@@ -425,7 +428,7 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
         // stays: a piece the rules cut off is handled by `merge_continuations`).
         let start = rows.partition_point(|r| r.row < t.header_top);
         let mut end = rows.partition_point(|r| r.row < body);
-        while end > start + 1 && rows[end - 1].share(Role::Data) >= SHRINK_AGREE && !numbering(rows[end - 1].row) {
+        while end > start + 1 && rows[end - 1].share(Role::Data) >= SHRINK_AGREE && !keeps(rows[end - 1].row) {
             end -= 1;
         }
         if end < rows.partition_point(|r| r.row < body) {
@@ -479,8 +482,17 @@ fn numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
         c.col >= rect.left && c.col <= rect.right && !is_blank(&c.value)
     });
     let vals: Vec<&Value> = vals.filter_map(|c| c.value.as_ref()).collect();
-    vals.len() >= 3
-        && (crate::layout::column_numbering(vals.iter().copied()) || crate::layout::labelled_numbering(vals.into_iter()))
+    vals.len() >= 3 && crate::layout::column_numbering(vals.into_iter())
+}
+
+/// [`numbering_row`] after a text label (`Year | 1 | 2 | …`).
+fn labelled_numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
+    let cells = &grid.sheet.cells;
+    let vals = grid.row_cells(row).iter().map(|&i| &cells[i as usize]).filter(|c| {
+        c.col >= rect.left && c.col <= rect.right && !is_blank(&c.value)
+    });
+    let vals: Vec<&Value> = vals.filter_map(|c| c.value.as_ref()).collect();
+    vals.len() >= 4 && crate::layout::labelled_numbering(vals.into_iter())
 }
 
 /// Step 3: split at a run of model header rows inside the body.
@@ -821,6 +833,27 @@ mod tests {
             (&["Feb", "7", "8"], D),
         ]);
         assert_eq!(run(&h, vec![table(0, 6, 2, 0, 1)], only(|s| s.split = true), &[(4, H)]).tables.len(), 1);
+    }
+
+    #[test]
+    fn records_without_values_stay_data() {
+        let g = Role::GroupHeader;
+        let f = fix(&[
+            (&["Country", "Code", "1960"], H),
+            (&["Aruba", "ABW", "1"], D),
+            (&["Angola", "AGO", "2"], D),
+            (&["Kosovo", "XKX"], g),
+            (&["Zambia", "ZMB", "3"], D),
+            (&["Europe"], g),
+            (&["France", "FRA", "4"], D),
+        ]);
+        let grid = Grid::new(&f.sheet);
+        let roles: Vec<Role> = f.sheet.cells.iter().map(|c| f.row_roles[c.row as usize]).collect();
+        let rules = vec![D; roles.len()];
+        let mut lay = SheetLayout { tables: vec![table(0, 6, 2, 0, 1)], roles };
+        empty_records_are_data(&grid, &mut lay, &rules);
+        assert_eq!(lay.roles[grid.cell_index(3, 0).unwrap()], D);
+        assert_eq!(lay.roles[grid.cell_index(5, 0).unwrap()], g, "a lone label stays a group");
     }
 
     #[test]

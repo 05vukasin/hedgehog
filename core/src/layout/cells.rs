@@ -401,6 +401,37 @@ mod tests {
     }
 
     #[test]
+    fn periods_rules_units_and_marked_numbers() {
+        for s in ["2010-01", "2010/12", "01/2010", "2010-01-31", "31.01.2010", "1/31/2010"] {
+            assert!(is_text_period(s), "{s}");
+        }
+        for s in ["2010.01", "01.2010", "2010-13", "1234-01", "12-34", "2010"] {
+            assert!(!is_text_period(s), "{s}");
+        }
+        for s in ["-----", "=====", "_____", "~~~~~", "*****", "|", "---------------"] {
+            assert!(is_rule_text(s), "{s}");
+        }
+        for s in ["-", "--", "Total", "=-=", "1---"] {
+            assert!(!is_rule_text(s), "{s}");
+        }
+        for s in ["Mrd. EUR", "%", "% 4)", "2020 = 100", "1 000 Personen", "Tsd. EUR", "in 1000 EUR", "EUR"] {
+            assert!(is_unit_text(s), "{s}");
+        }
+        for s in ["Region", "in", "Ursprungswerte", "2020", "Bruttoinlandsprodukt"] {
+            assert!(!is_unit_text(s), "{s}");
+        }
+        for s in ["28472.72*", "1737³", "6077.61 (p)", "20560.32e", "7 p"] {
+            assert_eq!(text_kind(s), Kind::Num, "{s}");
+        }
+        for s in ["<5", "> 1000", "confidential", "[c]", "see note"] {
+            assert_eq!(text_kind(s), Kind::Missing, "{s}");
+        }
+        for s in ["C", "F", "Q1 2003", "Riverbend 2"] {
+            assert_eq!(text_kind(s), Kind::Text, "{s}");
+        }
+    }
+
+    #[test]
     fn numeric_text() {
         assert_eq!(text_kind("1,200.50"), Kind::Num);
         assert_eq!(text_kind("(500)"), Kind::Num);

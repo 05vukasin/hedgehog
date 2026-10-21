@@ -266,9 +266,7 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         let vals: Option<Vec<&Value>> =
             rows[start].filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
         let periods = vals.is_some_and(|v| super::labelled_numbering(v.into_iter()));
-        if periods && end - start >= 2 {
-            d = 1;
-        } else if HEADER_PRIOR && end - start >= 2 && is_wide_text_row(&rows[start], rect) {
+        if end - start >= 2 && (periods || (HEADER_PRIOR && is_wide_text_row(&rows[start], rect))) {
             d = 1;
         } else {
             return 0;
@@ -277,9 +275,11 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
     // A column-numbering row right under the header ("1 2 3 4 …") is part of it, and so is a
     // unit row ("Mrd. EUR | % | 2020 = 100", B45), in either order.
     for _ in 0..2 {
-        if numbers && start + d + 1 < end && is_column_number_row(sheet, &rows[start + d]) {
-            d += 1;
-        } else if UNIT_ROWS && numbers && start + d + 1 < end && is_unit_row(sheet, &rows[start + d]) {
+        if !numbers || start + d + 1 >= end {
+            break;
+        }
+        let r = &rows[start + d];
+        if is_column_number_row(sheet, r) || (UNIT_ROWS && is_unit_row(sheet, r)) {
             d += 1;
         }
     }
