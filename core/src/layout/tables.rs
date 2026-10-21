@@ -286,6 +286,10 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             return 0;
         }
     }
+    // A ruling line drawn under the header (`-------- | -----`) underlines it.
+    while start + d + 1 < end && rows[start + d].n() == 0 && rows[start + d].entries.iter().any(|e| e.kind == Kind::Rule) {
+        d += 1;
+    }
     // A column-numbering row right under the header ("1 2 3 4 …") is part of it, and so is a
     // unit row ("Mrd. EUR | % | 2020 = 100", B45), in either order.
     for _ in 0..2 {
