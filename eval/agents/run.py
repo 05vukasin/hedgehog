@@ -10,6 +10,8 @@ Arms (same prompt text for all):
 - claude:    Claude Code (`claude -p PROMPT --output-format json`) with shell + file tools only;
 - claude-hh: Claude Code with the hedgehog plugin (integrations/claude-code): the `spreadsheets` skill
              and `hedgehog mcp` (tools mcp__hedgehog__*), plus the same shell + file tools.
+- swap-hedgehog, swap-excelmcp, swap-pandas, swap-markdown: the tool-swap benchmark (swap/): one minimal
+             loop on one small model (--swap-model), only the tool set changes. See README "Tool swap".
 
 Each run appends one record to results.jsonl (metrics, answer, automatic checks) and writes the
 answer to answers/<case>.<arm>.md; RESULTS.md shows the latest run per case and arm. Checks in
@@ -28,17 +30,20 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import swap  # noqa: E402  (the tool-swap arms: swap/)
 REPO = HERE.parents[1]
 PLUGIN = REPO / "integrations" / "claude-code"  # the Claude Code plugin the claude-hh arm loads
 OUT = HERE  # --out-dir: where results.jsonl, grades.json, RESULTS.md, answers/ and runs/ go
 RESULTS = OUT / "results.jsonl"
 GRADES = OUT / "grades.json"
-ARMS = ("hedgehog", "claude", "claude-hh")
+ARMS = ("hedgehog", "claude", "claude-hh") + swap.ARMS
 # USD per 1M tokens: input, cached input, output (list prices; an estimate).
 PRICES = {"gpt-4o-mini": (0.15, 0.075, 0.60), "gpt-4o": (2.5, 1.25, 10.0), "gpt-4.1-mini": (0.4, 0.1, 1.6),
           "gpt-4.1": (2.0, 0.5, 8.0)}
@@ -49,6 +54,9 @@ PRICES = {"gpt-4o-mini": (0.15, 0.075, 0.60), "gpt-4o": (2.5, 1.25, 10.0), "gpt-
 def dotenv() -> dict:
     env = {}
     p = REPO / ".env"
+    git = REPO / ".git"
+    if not p.exists() and git.is_file():  # a git worktree: use the main checkout's .env
+        p = Path(git.read_text().split("gitdir:", 1)[-1].strip()).parents[2] / ".env"
     if p.exists():
         for line in p.read_text().splitlines():
             k, sep, v = line.partition("=")
@@ -275,7 +283,68 @@ def report(cases: list[dict]) -> None:
         H += ["", f"Models: {', '.join(sorted(models))}. hedgehog-cli is {c[3] / h[3]:.1f}× faster and {ratio}; "
               f"it passes {100 * h[0] / h[2]:.0f} % of the checks vs {100 * c[0] / c[2]:.0f} % for Claude Code.",
               "`claude-hh` (Claude Code plus hedgehog's plugin) is in the table below: the same tool in the best harness."]
-    (OUT / "RESULTS.md").write_text("\n".join(L + H + [""] + T + detail) + "\n")
+    S = tool_swap(cases, batches)
+    (OUT / "RESULTS.md").write_text("\n".join(L + H + [""] + S + T + detail) + "\n")
+
+
+def tool_swap(cases: list[dict], batches: dict) -> list[str]:
+    """The "Tool swap" table: per tool set, automatic checks (mean and worst run), time, tokens and cost,
+    summed over the cases it ran; hedgehog-cli and Claude Code rows for reference when present."""
+    arms = [a for a in ("hedgehog", "claude", *swap.ARMS) if any(k[1] == a for k in batches)]
+    if not any(a.startswith("swap-") for a in arms):
+        return []
+    label = {"hedgehog": "hedgehog-cli (reference)", "claude": "Claude Code (reference)", "swap-hedgehog": "hedgehog MCP",
+             "swap-excelmcp": "generic Excel MCP", "swap-pandas": "pandas code tool", "swap-markdown": "markdown in context"}
+    auto = {c["id"]: [k for k in c["checks"] if not k.get("judge")] for c in cases}
+    S = ["## Tool swap: same loop, same model, only the tools change", "",
+         "A minimal loop ([swap/agent.py](swap/agent.py): one system prompt plus a one-line tool intro, temperature 0.2,",
+         "at most 20 model calls) on one small model; only the tool set differs. Automatic checks only (judgement",
+         "checks are left out). Mean = mean over the runs, worst = each case's worst run, summed over cases.", "",
+         "| Tool set | Model | Cases | Checks mean | Checks worst | Time | Input / output tokens | Cost | $ / pass | Tokens / pass | Tool calls (errors) |",
+         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    per_case = {}
+    for a in arms:
+        n = mean_c = worst = secs = inp = outp = usd = calls = errs = k = 0
+        model = set()
+        for case in cases:
+            if (case["id"], a) not in batches or not auto[case["id"]]:
+                continue
+            rs = batches[(case["id"], a)][1]
+            sc = [sum(1 for c in auto[case["id"]] if r["checks"].get(c["id"])) for r in rs]
+            avg = lambda f: sum(r.get(f) or 0 for r in rs) / len(rs)
+            k += 1
+            n += len(auto[case["id"]])
+            mean_c += sum(sc) / len(sc)
+            worst += min(sc)
+            secs, inp, outp, usd = secs + avg("seconds"), inp + avg("input_tokens"), outp + avg("output_tokens"), usd + avg("cost_usd")
+            calls, errs = calls + avg("tool_calls"), errs + avg("tool_errors")
+            model |= {r["model"] for r in rs if r.get("model")}
+            per_case[(case["id"], a)] = f"{sum(sc) / len(sc):.1f} ({min(sc)}) / {len(auto[case['id']])}"
+        if not k:
+            continue
+        name = f"**{label[a]}**" if a == "swap-hedgehog" else label[a]
+        tc = f"{calls:.0f} ({errs:.0f})" if calls else "–"
+        S.append(f"| {name} | {', '.join(sorted(model))} | {k} | {mean_c:.1f}/{n} ({100 * mean_c / n:.0f} %) | {worst}/{n} | "
+                 f"{secs:.0f} s | {inp / 1000:,.0f}k / {outp / 1000:,.1f}k | ${usd:.3f} | "
+                 f"{f'${usd / mean_c:.4f}' if mean_c else '–'} | {f'{(inp + outp) / mean_c / 1000:,.1f}k' if mean_c else '–'} | {tc} |")
+    S += ["", "Per case, automatic checks: mean (worst) / n.", "",
+          "| Case | " + " | ".join(label[a] for a in arms) + " |", "|---|" + "---:|" * len(arms)]
+    for case in cases:
+        if any((case["id"], a) in per_case for a in arms):
+            S.append(f"| {case['id']} | " + " | ".join(per_case.get((case["id"], a), "–") for a in arms) + " |")
+    trunc = {}
+    for (cid, a), (_, rs) in batches.items():
+        if a == "swap-markdown":
+            for info in rs[-1].get("markdown") or []:
+                trunc[(cid, info["file"])] = info
+    if trunc:
+        S += ["", "Markdown arm, per file: the converter, the tokens put in the prompt, and whether the file was cut at the budget.", "",
+              "| Case | File | Converter | Tokens in prompt | Whole file (est.) | Truncated |", "|---|---|---|---:|---:|---|"]
+        for (cid, f), i in sorted(trunc.items()):
+            full = i.get("tokens_full_est")
+            S.append(f"| {cid} | `{f}` | {i['converter'][:90]} | {i['tokens_kept']:,} | {'–' if full is None else f'{full:,}'} | "
+                     f"{'yes' if i['truncated'] else 'no'} |")
+    return S + [""]
 
 
 def done_before(case: dict) -> bool:
@@ -315,6 +384,9 @@ def main() -> None:
     ap.add_argument("--hedgehog", default=str(Path.home() / ".hedgehog-cli/bin/hedgehog"))
     ap.add_argument("--claude", default="claude")
     ap.add_argument("--hh-model", default="")
+    ap.add_argument("--swap-model", default="gpt-4.1-mini", help="model of the swap-* arms (OpenAI; OPENAI_API_KEY from hedgehog/.env)")
+    ap.add_argument("--swap-md-tokens", type=int, default=0,
+                    help="swap-markdown: token budget for the file's markdown (0 = the model's context window minus 24k)")
     ap.add_argument("--claude-model", default="")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--max-usd", type=float, default=3.0, help="spending cap per Claude Code run")
@@ -352,18 +424,29 @@ def main() -> None:
         for arm in [a for a in args.arms.split(",") for _ in range(args.repeat)]:
             if arm == "claude" and not args.rerun_claude and done_before(case):
                 print(f"{case['id']}: claude answer already recorded for this file and prompt; reusing it (--rerun-claude to run again)")
-                break
-            cmd, env = command(arm, prompt, args, root)
+                continue  # (not break: the arms after claude still run)
             t0 = time.time()
-            p = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=args.timeout)
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            run = f"{stamp}-{case['id']}-{arm}"
-            (OUT / "runs" / f"{run}.out").write_text(p.stdout + "\n--- stderr ---\n" + p.stderr[-20000:])
-            try:
-                m = metrics(arm, first_json(p.stdout))
-            except Exception as e:  # keep going; the raw output is in runs/
-                print(f"{run}: could not read the output ({e.__class__.__name__}); see runs/{run}.out")
-                continue
+            if arm.startswith("swap-"):  # same minimal loop and model, only the tools differ (swap/)
+                key = os.environ.get("OPENAI_API_KEY") or dotenv().get("OPENAI_API_KEY")
+                if not key:
+                    raise SystemExit("swap arms need OPENAI_API_KEY (environment or hedgehog/.env)")
+                run = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{case['id']}-{arm}"
+                try:
+                    m = swap.run_arm(arm, case, prompt, root, OUT, run, key, args.swap_model, args.hedgehog, args.swap_md_tokens)
+                except Exception as e:  # e.g. the markdown conversion failed; the trace is in runs/
+                    print(f"{run}: failed ({e.__class__.__name__}: {e})")
+                    continue
+            else:
+                cmd, env = command(arm, prompt, args, root)
+                p = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=args.timeout)
+                stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+                run = f"{stamp}-{case['id']}-{arm}"
+                (OUT / "runs" / f"{run}.out").write_text(p.stdout + "\n--- stderr ---\n" + p.stderr[-20000:])
+                try:
+                    m = metrics(arm, first_json(p.stdout))
+                except Exception as e:  # keep going; the raw output is in runs/
+                    print(f"{run}: could not read the output ({e.__class__.__name__}); see runs/{run}.out")
+                    continue
             m["wall_seconds"] = round(time.time() - t0, 1)
             rec = {"run": run, "batch": batch, "date": datetime.now(timezone.utc).isoformat(timespec="seconds"), "case": case["id"], "arm": arm,
                    "file": case["file"], "prompt": case["prompt"], **m,
