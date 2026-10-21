@@ -588,7 +588,7 @@ mod tests {
                 cells.push(Cell { row: r as u32, col: c as u32, value: Some(value), formula: None });
             }
         }
-        Fix { sheet: Sheet { name: "s".into(), cells, merges: vec![] }, row_roles: rows.iter().map(|r| r.1).collect() }
+        Fix { sheet: Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] }, row_roles: rows.iter().map(|r| r.1).collect() }
     }
 
     fn table(top: u32, bottom: u32, right: u32, header_top: u32, header_rows: u32) -> DetectedTable {
