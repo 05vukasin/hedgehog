@@ -33,7 +33,7 @@ pub const BUILD_ID: &str = env!("HH_BUILD_ID");
 /// Layout version of an entry.
 const FORMAT: u64 = 1;
 const DEFAULT_MAX_MB: u64 = 2048;
-const NORM_MAGIC: &[u8; 8] = b"HHNORM02";
+const NORM_MAGIC: &[u8; 8] = b"HHNORM03";
 /// Display names whose catalog an entry keeps.
 const MAX_CATALOGS: usize = 8;
 /// Lines kept in `hashes.tsv`.
@@ -416,6 +416,8 @@ pub fn write_norm(n: &Normalized, path: &Path) -> io::Result<()> {
         w.opt(&s.used_range, |w, r| w.rect(r))?;
         w.usize(s.cells)?;
         w.usize(s.formulas)?;
+        w.usize(s.formulas_without_value)?;
+        w.opt(&s.formula_without_value_at, |w, (r, c)| w.u32(*r).and_then(|_| w.u32(*c)))?;
         w.usize(s.merges)?;
         w.vec(&s.tables, |w, t| w.usize(*t))
     })?;
@@ -639,6 +641,8 @@ pub fn read_norm(path: &Path) -> io::Result<Normalized> {
             used_range: r.opt(|r| r.rect())?,
             cells: r.usize()?,
             formulas: r.usize()?,
+            formulas_without_value: r.usize()?,
+            formula_without_value_at: r.opt(|r| Ok((r.u32()?, r.u32()?)))?,
             merges: r.usize()?,
             tables: r.vec(8, |r| r.usize())?,
         })

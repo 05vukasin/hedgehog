@@ -1203,9 +1203,17 @@ pub(super) fn process_sheet(
         used_range: sheet.used_range(),
         cells: cells.len(),
         formulas: sheet.formula_count(),
+        formulas_without_value: 0,
+        formula_without_value_at: None,
         merges: sheet.merges.len(),
         tables: Vec::new(),
     };
+    for c in cells.iter().filter(|c| c.formula.is_some() && c.value.is_none()) {
+        info.formulas_without_value += 1;
+        if info.formula_without_value_at.is_none_or(|at| (c.row, c.col) < at) {
+            info.formula_without_value_at = Some((c.row, c.col));
+        }
+    }
     if cells.is_empty() {
         out.sheets.push(info);
         return;

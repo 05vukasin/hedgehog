@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use hh_core::normalize::{ColRole, Column, Dtype, Out, RowType, Table};
+use hh_core::normalize::{ColRole, Column, Dtype, Out, RowType, Table, T};
 
 use crate::catalog::{data_cols, is_date, is_numeric, label_values, measure_classes, name_period, out_text, plural, RowInfo};
 use crate::text::{csv_row, ident, num, quote_ident, short, thousands};
@@ -117,6 +117,29 @@ fn filled_labels<'a>(c: &'a Column, rows: &[usize]) -> Vec<Option<&'a str>> {
 
 const SIGN_TAIL: &str = "(outflows?) — a net figure is the SUM over all rows, not a difference";
 
+/// A label or column name of money or goods moving in or out (B49): receipts / deliveries,
+/// debit / credit, in / out, purchases / sales, payments, imports / exports.
+fn flow_word(s: &str) -> bool {
+    const FLOW: &[&str] = &[
+        "receipt", "receipts", "received", "delivery", "deliveries", "delivered", "in", "out", "inflow", "inflows",
+        "outflow", "outflows", "incoming", "outgoing", "debit", "debits", "credit", "credits", "purchase", "purchases",
+        "sale", "sales", "sold", "bought", "buy", "sell", "payment", "payments", "paid", "withdrawal", "withdrawals",
+        "deposit", "deposits", "expense", "expenses", "expenditure", "expenditures", "cost", "costs", "income",
+        "revenue", "revenues", "import", "imports", "export", "exports", "injection", "injections", "transfer",
+        "transfers", "refund", "refunds", "spend", "spending", "einnahmen", "ausgaben", "soll", "haben", "uplata", "isplata",
+    ];
+    words(s).iter().any(|w| FLOW.contains(&w.as_str()))
+}
+
+/// A column of prices, rates or indices: negative values there are not outflows (B49).
+fn rate_name(s: &str) -> bool {
+    const RATE: &[&str] = &[
+        "price", "prices", "index", "rate", "rates", "ratio", "percent", "pct", "yield", "growth", "change", "tariff",
+        "average", "avg", "mean", "spread",
+    ];
+    words(s).iter().any(|w| RATE.contains(&w.as_str()))
+}
+
 /// Sign convention: a block of rows whose numbers are all negative while others are positive
 /// (deliveries next to receipts). By a label column when one marks the block, else by source rows.
 pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String> {
@@ -128,6 +151,11 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
     if !signs.contains(&1) || !signs.contains(&-1) {
         return None;
     }
+    // B49: prices, rates and indices go negative without being outflows.
+    if cols.iter().any(|c| rate_name(&c.name)) {
+        return None;
+    }
+    let flow_cols = cols.iter().any(|c| flow_word(&c.name));
     // A label column: group column first, then text columns with 2..12 labels.
     let mut cands: Vec<usize> = t.columns.iter().position(|c| c.role == ColRole::Group).into_iter().collect();
     cands.extend(t.columns.iter().enumerate().filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text).map(|(i, _)| i));
@@ -155,7 +183,8 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
             continue;
         }
         let neg: Vec<&str> = by.iter().filter(|b| b.2 >= 2 && b.3 == 0).map(|b| b.0).collect();
-        if !neg.is_empty() && by.iter().any(|b| b.3 > 0) {
+        // B49: only blocks named as flows (receipts / deliveries, debit / credit, …).
+        if !neg.is_empty() && by.iter().any(|b| b.3 > 0) && (flow_cols || by.iter().any(|b| flow_word(b.0))) {
             let l: Vec<String> = neg.iter().take(3).map(|s| format!("'{}'", short(s, 40))).collect();
             return Some(format!(
                 "    signs: {} {} rows are all negative {SIGN_TAIL}",
@@ -165,7 +194,7 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
         }
     }
     // No label: runs of negative rows by source row (rows without numbers do not break a run).
-    let mut runs: Vec<(u32, u32)> = Vec::new();
+    let mut runs: Vec<(u32, u32, usize)> = Vec::new();
     let mut cur: Option<(u32, u32, usize)> = None;
     for (k, &r) in rows.iter().enumerate() {
         let src = t.src_rows.get(r).map_or(0, |s| s + 1);
@@ -175,7 +204,7 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
                 if let Some((a, b, n)) = cur.take()
                     && n >= 2
                 {
-                    runs.push((a, b));
+                    runs.push((a, b, n));
                 }
             }
             _ => {}
@@ -184,12 +213,16 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
     if let Some((a, b, n)) = cur
         && n >= 2
     {
-        runs.push((a, b));
+        runs.push((a, b, n));
     }
-    if runs.is_empty() {
+    // B49: without a flow label, only blocks: runs that hold at least a tenth of the signed rows
+    // (a few scattered negative values, such as negative prices, are no sign convention).
+    let in_runs: usize = runs.iter().map(|r| r.2).sum();
+    let signed = signs.iter().filter(|s| **s != 0).count();
+    if runs.is_empty() || !(flow_cols || in_runs * 10 >= signed) {
         return None;
     }
-    let r: Vec<String> = runs.iter().take(3).map(|(a, b)| format!("{a}–{b}")).collect();
+    let r: Vec<String> = runs.iter().take(3).map(|(a, b, _)| format!("{a}–{b}")).collect();
     Some(format!("    signs: rows with _src_row {} are all negative {SIGN_TAIL}", r.join(", ")))
 }
 
@@ -735,10 +768,15 @@ fn empty_explained(t: &Table, names: &[String], date: &Column, rows: &[usize], e
 /// in), negative amounts. (Cells naming several entities are on the entity line, `entity.rs`.)
 pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) -> Option<String> {
     let n = rows.len();
-    if n < 20 {
-        return None;
-    }
     let mut items: Vec<String> = Vec::new();
+    // B48: formula cells without a saved value are NULL here.
+    let no_value = t.transforms.get(T::FormulasWithoutValue);
+    if no_value > 0 {
+        items.push(format!("{} without a saved value (NULL, not evaluated)", plural(no_value, "formula cell", "formula cells")));
+    }
+    if n < 20 {
+        return (!items.is_empty()).then(|| format!("    quality: {}", items.join(" · ")));
+    }
     // Duplicates in an ID column that is unique but for a few values.
     for (i, c) in data_cols(t) {
         if !matches!(c.dtype, Dtype::Integer | Dtype::Text) || !id_like_name(&names[i]) {

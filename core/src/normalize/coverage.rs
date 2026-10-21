@@ -233,6 +233,20 @@ fn date_column(values: &[Out]) -> Option<Vec<Period>> {
     )
 }
 
+/// A date column that describes the row's entity rather than the period of the data: a start,
+/// hire, birth or expiry date (`agency_start_date`, `Hire Date`, `DOB`, `valid_from`), unless the
+/// name also says period, week, month, quarter, year or day (`period_start`, `Week start`).
+pub(super) fn attribute_date_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    const PERIOD: &[&str] = &["period", "week", "weekly", "month", "monthly", "quarter", "year", "fiscal", "day", "reporting"];
+    const ATTRIBUTE: &[&str] = &[
+        "start", "started", "startdate", "hire", "hired", "hiredate", "birth", "born", "dob", "birthdate", "birthday",
+        "expiry", "expiration", "expires", "valid", "anniversary", "seniority",
+    ];
+    !words.iter().any(|w| PERIOD.contains(w)) && words.iter().any(|w| ATTRIBUTE.contains(w))
+}
+
 /// Periods from a column's values, if it is a date / period column.
 fn column_periods(name: &str, role: ColRole, dtype: Dtype, values: &[Out]) -> Option<Vec<Period>> {
     match dtype {
@@ -378,14 +392,25 @@ fn span(periods: &[Period]) -> Option<(Period, Period, Gran)> {
 pub(super) fn table(t: &Table) -> Option<Coverage> {
     let mut periods = Vec::new();
     let mut columns = Vec::new();
+    // B49: dates that describe the row's entity (hire, start, birth, expiry) are not the period
+    // the data covers; they count only when the table has no other date / period column.
+    let mut attribute = (Vec::new(), Vec::new());
     for c in &t.columns {
         if !matches!(c.role, ColRole::Data | ColRole::Group) {
             continue;
         }
         if let Some(p) = column_periods(&c.name, c.role, c.dtype, &c.values) {
-            periods.extend(p);
-            columns.push(c.name.clone());
+            if attribute_date_name(&c.name) {
+                attribute.0.extend(p);
+                attribute.1.push(c.name.clone());
+            } else {
+                periods.extend(p);
+                columns.push(c.name.clone());
+            }
         }
+    }
+    if periods.is_empty() {
+        (periods, columns) = attribute;
     }
     let mut source = "column";
     if periods.is_empty() {
@@ -512,5 +537,15 @@ mod tests {
         assert_eq!(g(vec![d(2020, 1, 1), d(2020, 4, 1)]), Some(Gran::Quarter));
         assert_eq!(g(vec![d(2020, 1, 1), d(2020, 1, 2)]), Some(Gran::Day));
         assert_eq!(g(vec![d(2020, 1, 1)]), Some(Gran::Day));
+    }
+
+    #[test]
+    fn attribute_dates() {
+        for n in ["agency_start_date", "Hire Date", "DOB", "valid_from", "Date of birth", "expiration_date", "StartDate"] {
+            assert!(attribute_date_name(n), "{n}");
+        }
+        for n in ["Date", "period_start", "Week start", "fiscal_year", "payment_date", "Startup costs date"] {
+            assert!(!attribute_date_name(n), "{n}");
+        }
     }
 }

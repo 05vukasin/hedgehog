@@ -405,6 +405,10 @@ pub struct SheetInfo {
     pub used_range: Option<Rect>,
     pub cells: usize,
     pub formulas: usize,
+    /// Formula cells without a saved (cached) value: their table values are empty (B48).
+    pub formulas_without_value: usize,
+    /// The first of them (row, col), to cite.
+    pub formula_without_value_at: Option<(u32, u32)>,
     pub merges: usize,
     pub tables: Vec<usize>,
 }
