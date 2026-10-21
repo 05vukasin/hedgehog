@@ -483,7 +483,9 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
             Some((k, n))
         })
         .collect();
-    if years.len() < 2 || years.windows(2).all(|w| (w[1].1 - w[0].1).abs() <= YEAR_MAX_STEP) {
+    // Most neighbours close together (a header of two year blocks jumps back once).
+    let jumps = years.windows(2).filter(|w| (w[1].1 - w[0].1).abs() > YEAR_MAX_STEP).count();
+    if years.len() < 2 || jumps * 3 < years.len() - 1 {
         return;
     }
     for (k, _) in years {

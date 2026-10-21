@@ -92,7 +92,7 @@ fn text_kind(s: &str) -> Kind {
     use crate::values::missing::{NumericAnnotation, numeric_annotation};
     let annot = numeric_annotation(t);
     if annot == Some(NumericAnnotation::Censored) && t != "(Z)"
-        || (annot.is_some() && t.chars().filter(|c| c.is_alphabetic()).count() >= 6)
+        || (annot == Some(NumericAnnotation::Suppressed) && t.chars().filter(|c| c.is_alphabetic()).count() >= 6)
     {
         return Kind::Missing;
     }
@@ -196,7 +196,7 @@ pub(crate) fn is_label_number(cell: &Cell) -> bool {
     }
 }
 
-/// A period or date written as text with a year: `2010-01`, `2010/01`, `01/2010`, `2010-01-31`,
+/// A period or date written as text with a year: `2010-01`, `01/2010`, `2010-01-31`,
 /// `31.01.2010`, `1/31/2010` (B39: a header row of `YYYY-MM` periods). Not `2010.01` or `01.2010`,
 /// which read as decimals.
 pub(crate) fn is_text_period(t: &str) -> bool {
@@ -214,7 +214,8 @@ pub(crate) fn is_text_period(t: &str) -> bool {
     let year = |p: &str| p.len() == 4 && p.parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n));
     let small = |p: &str, max: u32| p.len() <= 2 && p.parse::<u32>().is_ok_and(|n| (1..=max).contains(&n));
     match parts[..] {
-        [a, b] if sep != b'.' => (year(a) && small(b, 12)) || (small(a, 12) && year(b)),
+        // `2010-01`, `01/2010`; not `2011/12`, a split year (fiscal, marketing).
+        [a, b] if sep != b'.' => (sep == b'-' && year(a) && small(b, 12)) || (small(a, 12) && year(b)),
         [a, b, c] => (year(a) && small(b, 12) && small(c, 31)) || (small(a, 31) && small(b, 31) && year(c)),
         _ => false,
     }
@@ -418,10 +419,10 @@ mod tests {
 
     #[test]
     fn periods_rules_units_and_marked_numbers() {
-        for s in ["2010-01", "2010/12", "01/2010", "2010-01-31", "31.01.2010", "1/31/2010"] {
+        for s in ["2010-01", "01/2010", "2010-01-31", "31.01.2010", "1/31/2010"] {
             assert!(is_text_period(s), "{s}");
         }
-        for s in ["2010.01", "01.2010", "2010-13", "1234-01", "12-34", "2010"] {
+        for s in ["2010.01", "01.2010", "2011/12", "2010-13", "1234-01", "12-34", "2010"] {
             assert!(!is_text_period(s), "{s}");
         }
         for s in ["-----", "=====", "_____", "~~~~~", "*****", "|", "---------------"] {
@@ -439,10 +440,10 @@ mod tests {
         for s in ["28472.72*", "1737³", "6077.61 (p)", "20560.32e", "7 p"] {
             assert_eq!(text_kind(s), Kind::Num, "{s}");
         }
-        for s in ["<5", "> 1000", "confidential", "[c]", "see note"] {
+        for s in ["<5", "> 1000", "confidential", "suppressed"] {
             assert_eq!(text_kind(s), Kind::Missing, "{s}");
         }
-        for s in ["C", "F", "Q1 2003", "Riverbend 2"] {
+        for s in ["C", "F", "Q1 2003", "Riverbend 2", "See Notes", "[c]"] {
             assert_eq!(text_kind(s), Kind::Text, "{s}");
         }
     }

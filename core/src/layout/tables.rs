@@ -96,15 +96,25 @@ pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
     if n < 2 {
         return false;
     }
-    let keys = r
-        .filled()
-        .filter(|e| e.kind == Kind::Text)
-        .filter(|e| {
+    // A `Key:` label with its value in the cell beside it, or `Key: value` in one cell.
+    let filled: Vec<&Entry> = r.filled().collect();
+    let keys = filled
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.kind == Kind::Text)
+        .filter(|&(k, e)| {
             let t = text(sheet, e).trim();
-            t.char_indices().take(40).any(|(i, c)| {
+            let colon = t.char_indices().take(40).find(|&(i, c)| {
                 c == ':' && t[..i].chars().last().is_some_and(char::is_alphabetic)
                     && t[i + 1..].chars().next().is_none_or(|c| !c.is_ascii_digit())
-            })
+            });
+            match colon {
+                Some((i, _)) if t[i + 1..].trim().is_empty() => {
+                    filled.get(k + 1).is_some_and(|x| x.left <= e.right + 2 && !text(sheet, x).trim_end().ends_with(':'))
+                }
+                Some(_) => true,
+                None => false,
+            }
         })
         .count();
     let pure = r
@@ -665,8 +675,21 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     let formula_totals_ok = (formula_totals as f32) <= TOTAL_MAX_ROW_FRAC * body_len as f32 || body_len < 4;
     let mut body_cells = 0usize;
     let mut data_rows: Vec<usize> = Vec::new();
+    let mut prev_role = if seg.header > 0 { Role::Header } else { Role::Data };
     for k in body_start..seg.end {
         let r = &rows[k];
+        // A ruling line under a header (or a repeated header) underlines it: header; elsewhere
+        // it keeps the default role (Other).
+        if r.n() == 0 && r.entries.iter().any(|e| e.kind == Kind::Rule) {
+            if prev_role == Role::Header {
+                for e in r.entries.iter().filter(|e| e.kind == Kind::Rule && e.left <= rect.right) {
+                    if let Some(i) = e.cell {
+                        out.roles[i] = Role::Header;
+                    }
+                }
+            }
+            continue;
+        }
         let last_body = k + 1 == seg.end;
         let total_label =
             if out.registers { has_own_total_label(sheet, r, &out.labelled_totals) } else { has_total_label(sheet, r) };
@@ -682,6 +705,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
             Role::Data
         };
         set_upto(out, r, role, rect.right);
+        prev_role = role;
         if role == Role::Data {
             data_rows.push(k);
             for e in r.entries.iter().filter(|e| e.left <= rect.right) {
