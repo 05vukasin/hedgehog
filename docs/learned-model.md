@@ -3,20 +3,22 @@
 Since 0.3, hedgehog labels cells with **the layout rules plus a small learned model**. The rules
 find the tables and give every cell a first role; the model looks at each row of a table as a
 whole and decides what kind of row it is (title, header, data, group header, total, note or other).
+The model's row roles then correct the tables themselves: where they start and end, how deep the
+header is, and where stacked tables split.
 On four independent hand-labelled benchmarks it is more accurate than the rules alone, it runs on
 any CPU without a GPU or extra dependencies, and it is on by default.
 
 ## How it works
 
 ```
- sheet ──▶ rules (layout) ──▶ cell features ──▶ row segments ──▶ two-stage model ──▶ safeguards ──▶ roles
-            tables, a role     110 numbers        cells of one     coarse family,      keep rule roles
-            for every cell     per cell           row, ~450        then the exact      where they are
-                                                  numbers each     role inside it      the safer call
+ sheet ──▶ rules (layout) ──▶ cell features ──▶ row segments ──▶ two-stage model ──▶ safeguards ──▶ roles ──▶ tables
+            tables, a role     110 numbers        cells of one     coarse family,      keep rule roles         edges, header
+            for every cell     per cell           row, ~450        then the exact      where they are          depth, splits
+                                                  numbers each     role inside it      the safer call          from row roles
 ```
 
-1. **Rules first.** The rule layout finds the tables and labels every cell. Table boundaries and
-   header depth still come from the rules.
+1. **Rules first.** The rule layout finds the tables and labels every cell. Its tables are the
+   starting point; step 6 corrects them.
 2. **Cell features.** About 110 numbers per cell: what the value is (number, text, date, keyword),
    its neighbours, its row and column statistics, whether it is a total, and the role the rules gave
    it and its neighbours. For xlsx / xlsm files there are also 14 formatting features (`s_*`, see
@@ -41,6 +43,31 @@ any CPU without a GPU or extra dependencies, and it is on by default.
    - Sheets with more than 1,000,000 cells use the rules alone (the features take about 440
      bytes per cell); the manifest lists a warning for each.
 
+6. **Tables from row roles** (`core/src/learned/tables.rs`). Per table, each row's role is the
+   majority role of its cells inside the rectangle, and:
+   - a rules table the model calls header from top to bottom, directly above a table over the
+     same columns, becomes the top of that table's header (ABS time series: the ten metadata rows
+     `Unit`, `Series Type`, … `Series ID` that the rules cut into three tables);
+   - a table directly below another over the same columns, whose "header" the model calls data,
+     continues it (the rules cut a list at a change of content and took its first data row, such
+     as `Inactivation | Koch Gateway Pipeline …`, for a header);
+   - rows just above the header that the model calls header extend it; trailing header rows it
+     calls data (80% of the cells or more) move into the body; a column-numbering row
+     (`1 2 3 …`) under the header stays in it;
+   - a wide run of rows the model calls header, after a blank row and between data rows, starts a
+     new table, unless it repeats the table's header or the table would fall into more than ten
+     pieces (a long list with recurring section headers);
+   - trailing rows the model calls note or title (or other, where the rules do not call them data)
+     leave the table, and so do title, note and other rows above the header — the table range is
+     header plus body, as in StatSheets and the synthetic set (DECO counts titles touching a table
+     as part of it, and still scores better this way);
+   - a table without a row the model calls header, data or total (a key/value block such as
+     `Data Source | World Development Indicators` above a World Bank table) is dropped; rows below
+     a table that the model calls data, inside its columns and in no other table, join it;
+   - no two tables overlap.
+
+   This only runs in the model path; `--rules-only` keeps the rules' tables.
+
 The model never moves a cell out of the workbook: whatever role a cell gets, it ends up in a table,
 on `Totals` or on `Notes`, with its address.
 
@@ -60,6 +87,20 @@ cell once.
 No role is worse with the model than with the rules by more than 0.1 point on DECO, Strudel or the
 synthetic set; most improve by 10 to 40 points (Strudel notes 50 → 89, synthetic totals 66 → 95,
 DECO headers 56 → 84). StatSheets labels only four roles, so it is scored in those.
+
+**Tables.** Table detection (F1 in percent, test splits; a table counts as found at IoU ≥ 0.5,
+0.8 or exactly) and how often the header rows of a found table are exactly right:
+
+| Benchmark | Rules' tables @0.5 / @0.8 / exact | **Refined by the model** | Header rows exact: rules → model |
+|---|---|---|---|
+| DECO | 65.5 / 51.6 / 34.2 | **68.2 / 56.0 / 36.7** | 75.8 → **81.5** |
+| StatSheets | 83.6 / 72.5 / 36.8 | **91.5 / 86.9 / 74.6** | 60.2 → **72.2** |
+| Synthetic | 98.1 / 95.7 / 82.4 | **98.1 / 97.2 / 94.8** | 89.7 → **96.3** |
+
+No cell-role score is lower than before (test: DECO 67.3 / 59.6 → 67.4 / 59.8, StatSheets 89.6,
+Strudel 63.2 / 61.6, synthetic 93.0 / 91.3, European sample 61.3 / 65.4 → 61.4 / 65.5). The row
+model's features see the rule layout without the column-numbering rule (`layout::analyze_for_model`),
+as in training; this step applies it afterwards.
 
 **Generalization.** Before training on all four corpora, each corpus was held out in turn and the
 model trained on the other three (leave-one-corpus-out). It still beat the rules on every held-out

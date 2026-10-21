@@ -11,6 +11,9 @@ use crate::eval::synthetic::{parse_json, J};
 use crate::features::Features;
 use crate::grid::Grid;
 
+mod tables;
+pub use tables::Steps as RefineSteps;
+
 /// One tree node, 16 bytes: a split (`x[feat] < thr` → left) or, with `feat == LEAF`, a leaf whose
 /// value is `thr`. Child indices are absolute.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -517,10 +520,17 @@ impl RowModel {
     }
 }
 
-/// Cell roles from the row model; tables (rectangles) from the rule layout. Every cell of a row
-/// segment gets the segment's role, except cells the rules set apart from the rest of their
-/// segment (a group label in the key column of a data row): those keep the rules' role.
+/// Cell roles from the row model; tables from the rule layout, refined with the model's row roles
+/// ([`tables`]: header-only tables merged, continuations joined, header depth, stacked tables,
+/// title / note rows at the edges). Every cell of a row segment gets the segment's role, except
+/// cells the rules set apart from the rest of their segment (a group label in the key column of a
+/// data row): those keep the rules' role.
 pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
+    analyze_with(grid, model, RefineSteps::ALL)
+}
+
+/// [`analyze`] with a chosen set of table refinements (`RefineSteps::NONE`: the rules' tables).
+pub fn analyze_with(grid: &Grid, model: &RowModel, steps: RefineSteps) -> SheetLayout {
     let t0 = std::time::Instant::now();
     let need = model.needed_features();
     let styles = model.reads_formats();
@@ -531,6 +541,7 @@ pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
     crate::normalize::trace("M:segment_features", t0);
     let Ok(mut pred) = model.predict(&sf) else { return lay };
     crate::normalize::trace("M:trees", t0);
+    let raw_pred = pred.clone();
     // Titles and notes sit at the edges of a table, not between its data rows; and a header row
     // between data rows (a sub-header such as "Males") is much sparser than the data around it. So a row
     // the rules call data, with data rows directly above and below, stays data when the model calls
@@ -557,6 +568,12 @@ pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
         }
     }
     let rules = lay.roles.clone();
+    let mut raw = rules.clone();
+    for (seg, &role) in segs.iter().zip(&raw_pred) {
+        for &i in &seg.members {
+            raw[i as usize] = role;
+        }
+    }
     for (seg, role) in segs.iter().zip(pred) {
         let mut counts = [0u32; Role::ALL.len()];
         for &i in &seg.members {
@@ -568,6 +585,8 @@ pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
             lay.roles[i as usize] = if crate::eval::export::role_id(r) as usize != main { r } else { role };
         }
     }
+    tables::refine(grid, &mut lay, &raw, &rules, steps);
+    crate::normalize::trace("M:tables", t0);
     lay
 }
 

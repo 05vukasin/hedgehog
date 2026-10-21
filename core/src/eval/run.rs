@@ -15,7 +15,7 @@ use crate::analysis::Role;
 use crate::grid::Grid;
 use crate::model::{Rect, Workbook};
 
-const N_CRIT: usize = TABLE_CRITERIA.len();
+pub(crate) const N_CRIT: usize = TABLE_CRITERIA.len();
 
 #[derive(Debug, Clone)]
 pub struct RunOptions {
@@ -42,6 +42,10 @@ pub struct SheetResult {
     pub pred_tables: usize,
     /// True positives per [`TABLE_CRITERIA`] entry.
     pub table_tp: [usize; N_CRIT],
+    /// Tables matched at IoU ≥ 0.5 whose labelled header rows were scored, and how many of them
+    /// have exactly the ground truth's header rows ([`super::metrics::gt_header_rows`]).
+    pub header_n: usize,
+    pub header_ok: usize,
     pub gt_cells: usize,
     /// Ground-truth cells that have a cell in the sheet as read (the ones scored).
     pub scored_cells: usize,
@@ -86,7 +90,11 @@ pub struct Report {
     pub files_via_fallback: Vec<(String, String)>,
     pub sheets_not_found: Vec<(String, String)>,
     pub sheets: Vec<SheetResult>,
+    /// The corpus labels table rectangles (`tables` is scored).
+    pub has_tables: bool,
     pub tables: [Prf; N_CRIT],
+    /// Header depth over matched tables: (scored, exact).
+    pub header_depth: (usize, usize),
     pub confusion: Confusion,
     pub file_macro: FileMacro,
     pub timing: Timing,
@@ -154,6 +162,11 @@ fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
 
         let pred: Vec<Rect> = layout.tables.iter().map(|t| t.rect).collect();
         let table_tp = TABLE_CRITERIA.map(|c| super::metrics::table_matches(&gs.tables, &pred, c));
+        let (header_n, header_ok) = if gs.cells.is_empty() {
+            (0, 0)
+        } else {
+            header_scores(&gs.tables, &layout.tables, &gs.cells)
+        };
 
         let error = (layout.roles.len() != sheet.cells.len()).then(|| {
             format!("analyzer returned {} roles for {} cells", layout.roles.len(), sheet.cells.len())
@@ -182,6 +195,8 @@ fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
                 gt_tables: gs.tables.len(),
                 pred_tables: pred.len(),
                 table_tp,
+                header_n,
+                header_ok,
                 gt_cells: gs.cells.len(),
                 scored_cells: gs.cells.len() - missing,
                 missing_cells: missing,
@@ -192,6 +207,46 @@ fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
         ));
     }
     out
+}
+
+/// Header-depth agreement over the tables matched at IoU ≥ 0.5: (scored, exact). A table is scored
+/// when its ground truth labels at least one of its rows; it is exact when the predicted header
+/// (`header_top`, `header_rows`) covers the same labelled rows as the ground truth's header.
+fn header_scores(gt: &[Rect], pred: &[crate::analysis::DetectedTable], cells: &[super::gt::GtCell]) -> (usize, usize) {
+    let rects: Vec<Rect> = pred.iter().map(|t| t.rect).collect();
+    let (mut n, mut ok) = (0, 0);
+    for (g, p) in super::metrics::table_pairs(gt, &rects, TABLE_CRITERIA[0]) {
+        let r = gt[g];
+        // Majority role per labelled row inside the ground-truth rectangle (cells are row-major).
+        let lo = cells.partition_point(|c| c.row < r.top);
+        let mut rows: Vec<(u32, [u32; 7])> = Vec::new();
+        for c in cells[lo..].iter().take_while(|c| c.row <= r.bottom) {
+            if c.col < r.left || c.col > r.right {
+                continue;
+            }
+            if rows.last().is_none_or(|x| x.0 != c.row) {
+                rows.push((c.row, [0; 7]));
+            }
+            rows.last_mut().unwrap().1[super::metrics::role_index(c.role)] += 1;
+        }
+        if rows.is_empty() {
+            continue;
+        }
+        let majority: Vec<(u32, Role)> = rows
+            .iter()
+            .map(|(row, k)| (*row, Role::ALL[(0..7).max_by_key(|&i| (k[i], std::cmp::Reverse(i))).unwrap()]))
+            .collect();
+        let want = super::metrics::gt_header_rows(&majority);
+        let t = &pred[p];
+        let got: Vec<u32> = rows
+            .iter()
+            .map(|x| x.0)
+            .filter(|&row| row >= t.header_top && row < t.header_top + t.header_rows)
+            .collect();
+        n += 1;
+        ok += (want == got) as usize;
+    }
+    (n, ok)
 }
 
 /// [`evaluate`] on up to `threads` worker threads (each holds one workbook at a time). Files are
@@ -226,7 +281,9 @@ pub fn evaluate_parallel(
         files_via_fallback: Vec::new(),
         sheets_not_found: Vec::new(),
         sheets: Vec::new(),
+        has_tables: corpus.has_tables,
         tables: [Prf::default(); N_CRIT],
+        header_depth: (0, 0),
         confusion: Confusion::default(),
         file_macro: FileMacro::default(),
         timing: Timing::default(),
@@ -254,6 +311,8 @@ pub fn evaluate_parallel(
                 for (k, tp) in res.table_tp.iter().enumerate() {
                     rep.tables[k].add(Prf::from_matches(*tp, res.gt_tables, res.pred_tables));
                 }
+                rep.header_depth.0 += res.header_n;
+                rep.header_depth.1 += res.header_ok;
             }
             if corpus.has_roles {
                 rep.confusion.merge(&res.confusion);
@@ -373,6 +432,10 @@ impl Report {
         let _ = writeln!(o, "\ntables (gt {gt}, pred {pred})     P      R     F1");
         for (c, p) in TABLE_CRITERIA.iter().zip(&self.tables) {
             let _ = writeln!(o, "  {:<22} {} {} {}", c.label(), pct(p.precision()), pct(p.recall()), opct(p.f1()));
+        }
+        let (hn, hok) = self.header_depth;
+        if hn > 0 {
+            let _ = writeln!(o, "  header rows exact      {} of {hn} matched tables", pct(hok as f64 / hn as f64).trim());
         }
         let fm = self.file_macro.per_class();
         let _ = writeln!(o, "\ncell roles        support      P      R  F1(pooled)  F1(file-macro)");

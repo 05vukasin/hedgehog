@@ -1,8 +1,8 @@
 //! Debug aid: prints every cell with its layout role and the detected tables.
 //! `HH_DUMP=file.xlsx cargo test --release -p hh_core --test layout_dump -- --ignored --nocapture`
-//! (`HH_DUMP_SHEET=name` limits it to one sheet).
+//! (`HH_DUMP_SHEET=name` limits it to one sheet; `HH_DUMP_MODEL=1` shows the model path, `learned::analyze`).
 
-use hh_core::{a1, layout, open, Grid, Role, Value};
+use hh_core::{a1, layout, learned, open, Grid, Role, Value};
 
 fn short(v: &Option<Value>) -> String {
     let s = match v {
@@ -37,7 +37,11 @@ fn dump() {
         }
         let grid = Grid::new(sheet);
         let t = std::time::Instant::now();
-        let l = layout::analyze(&grid);
+        let l = if std::env::var_os("HH_DUMP_MODEL").is_some() {
+            learned::analyze(&grid, learned::embedded().unwrap())
+        } else {
+            layout::analyze(&grid)
+        };
         println!("== {} ({} cells, layout {:.2} ms)", sheet.name, sheet.cells.len(), t.elapsed().as_secs_f64() * 1e3);
         if std::env::var_os("HH_DUMP_QUIET").is_some() {
             continue;

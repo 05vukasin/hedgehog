@@ -32,9 +32,23 @@ rule-based detector (`core/src/layout/`) works like this:
    look like notes or sources are split off. Stacked tables are split where a header-like row
    appears in the middle.
 3. **Header depth.** The number of header rows is found from text versus numbers, merged cells and
-   the first data-like row, so multi-row headers (`2024` over `Q1 Q2 Q3 Q4`) stay together.
+   the first data-like row, so multi-row headers (`2024` over `Q1 Q2 Q3 Q4`) stay together. A
+   column-numbering row right under the header (`1 2 3 4 5`, as in Destatis tables whose notes say
+   "Sp. 3–4") is part of the header, not the first data row.
 4. **Loose cells.** Filled cells outside every table become titles (text near the top), notes
    (marked text or text below a table) or other.
+5. **Label columns.** A label written once per block in one of the leftmost columns (`Receipts HH`
+   on the first row of the receipts, `Deliveries HH` on the first row of the deliveries, a pipeline
+   name on every row next to it) is a group key, and normalize fills it down, so every row says
+   which block it belongs to.
+
+
+In the default path the learned row model then corrects the tables: it trims title and note rows
+at the edges (the table range is the header plus the body), deepens or shortens the header, merges
+pieces the rules cut apart (a header-only block above a table, a list cut at a change of content)
+and splits stacked tables at a new header, and no two tables overlap (where two rectangles would,
+the one that keeps its header and loses the fewest positions gives up the shared part). See
+[learned-model.md](learned-model.md#how-it-works); `--rules-only` keeps the rules' tables.
 
 Each detected table gets a confidence between 0 and 1, reported in the manifest. The cost is linear in
 the number of filled cells, never in the area of the used range, so a sheet with a few cells at

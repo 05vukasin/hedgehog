@@ -320,3 +320,58 @@ fn text_only_table_gets_header() {
     assert_eq!(l.tables.len(), 1);
     assert_eq!(l.tables[0].header_rows, 1);
 }
+
+#[test]
+fn column_numbering_row_is_part_of_the_header() {
+    // Destatis: "Jahr | BIP | …" then "1 2 3 4" under the header, then the years.
+    let s = fixture("colnum", |ws| {
+        for (j, h) in ["Jahr", "BIP", "BNE", "Saldo", "Netto"].iter().enumerate() {
+            ws.write_string(0, j as u16, *h).unwrap();
+        }
+        for j in 1..5u16 {
+            ws.write_number(1, j, j as f64).unwrap();
+        }
+        for i in 0..6u32 {
+            ws.write_number(2 + i, 0, 1991.0 + i as f64).unwrap();
+            for j in 1..5u16 {
+                ws.write_number(2 + i, j, 1500.25 + (i * 7 + j as u32) as f64).unwrap();
+            }
+        }
+    });
+    let l = run(&s);
+    assert_eq!(l.tables.len(), 1);
+    assert_eq!((l.tables[0].header_top, l.tables[0].header_rows), (0, 2));
+    assert_eq!(role(&s, &l, 1, 2), Role::Header);
+    assert_eq!(role(&s, &l, 2, 2), Role::Data);
+}
+
+#[test]
+fn block_labels_in_a_second_column_are_group_keys() {
+    // Henry Hub flows: "Henry Hub" once in A, "Receipts HH" / "Deliveries HH" once per block in B,
+    // a pipeline name on every row in C.
+    let s = fixture("blockkeys", |ws| {
+        for (j, h) in ["Hub", "Flow", "Pipeline", "Capacity", "MTD"].iter().enumerate() {
+            ws.write_string(0, j as u16, *h).unwrap();
+        }
+        ws.write_string(1, 0, "Henry Hub").unwrap();
+        let mut row = 1u32;
+        for (block, label) in ["Receipts HH", "Deliveries HH"].iter().enumerate() {
+            ws.write_string(row, 1, *label).unwrap();
+            for (k, p) in ["ACADIAN", "BRIDGELINE", "COLUMBIA GULF", "NGPL", "SONAT"].iter().enumerate() {
+                ws.write_string(row, 2, *p).unwrap();
+                ws.write_number(row, 3, 1000.0 * (k + 1) as f64).unwrap();
+                ws.write_number(row, 4, 17.5 * (k + block + 1) as f64).unwrap();
+                row += 1;
+            }
+            ws.write_string(row, 2, "Total").unwrap();
+            ws.write_number(row, 3, 15000.0).unwrap();
+            ws.write_number(row, 4, 300.0).unwrap();
+            row += 1;
+        }
+    });
+    let l = run(&s);
+    assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
+    assert_eq!(role(&s, &l, 1, 1), Role::GroupHeader);
+    assert_eq!(role(&s, &l, 7, 1), Role::GroupHeader);
+    assert_eq!(role(&s, &l, 2, 2), Role::Data);
+}

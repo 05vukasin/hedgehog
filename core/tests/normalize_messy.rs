@@ -362,8 +362,8 @@ fn unparsed_values_are_kept_and_reported() {
     let m = &out.manifest_json;
     assert!(m.contains("1 value(s) are not numbers and were kept as text: B7"), "{m}");
     assert!(m.contains("\"unparsed_kept_as_text\": 1"), "{m}");
-    // The title sits inside the table range; the header starts below it.
-    assert!(m.contains("\"range\": \"A1:C14\""), "{m}");
+    // The title is not part of the table range (the model path trims it); it names the table.
+    assert!(m.contains("\"range\": \"A2:C14\""), "{m}");
     assert!(m.contains("\"header_top\": 2"), "{m}");
     assert!(m.contains("\"title\": \"Budget execution\""), "{m}");
     assert_eq!(names(&book)[1], "T1_budget_execution");

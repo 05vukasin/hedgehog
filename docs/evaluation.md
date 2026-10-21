@@ -41,6 +41,11 @@ as found when it overlaps the annotated one with:
 - EoB-0, EoB-2: every edge within 0 or 2 cells of the annotation (as in TableSense and
   SpreadsheetLLM).
 
+**Header depth.** For every table found at IoU ≥ 0.5, the ground truth's header is the run of
+rows labelled header (by the majority of their labelled cells) after any title, note or other rows
+at the top of its rectangle; the table's header is exact when `header_top` and `header_rows` cover
+the same labelled rows. Reported as "header rows exact" (share of found tables).
+
 **Cell roles.** A 7×7 confusion matrix per sheet. Per role, F1 = 2TP / (2TP + FP + FN). Two
 averages:
 
@@ -166,6 +171,23 @@ Rules (`layout`) vs rules + learned model (`model`), test splits:
 | StatSheets rules / model | — | — | 48.1 / **72.3** | 65.6 / **89.6** |
 | Strudel rules / model | 50.6 / **63.2** | 48.6 / **61.6** | 73.9 / **87.5** | 77.1 / **90.5** |
 | Synthetic rules / model | 75.9 / **93.0** | 79.5 / **91.3** | 86.3 / **97.1** | 91.5 / **98.0** |
+
+For the corpora with table ranges (DECO, StatSheets, synthetic) the benchmark also prints table
+precision / recall / F1 at every criterion, the header-depth score, and table F1 per source; the
+`--out` TSV has `table_f1_iou50/80/100` per source. The conventions differ: DECO counts title rows
+touching a table as part of its range, StatSheets and the synthetic set start a table at its
+header. Rules' tables vs the model path's (which refines them with the row roles, see
+[learned-model.md](learned-model.md#how-it-works)), test splits, F1 at IoU ≥ 0.5 / 0.8 / 1.0:
+
+| | Rules' tables | Refined by the model | Header rows exact |
+|---|---|---|---|
+| DECO | 65.5 / 51.6 / 34.2 | **68.2 / 56.0 / 36.7** | 75.8 → **81.5** |
+| StatSheets | 83.6 / 72.5 / 36.8 | **91.5 / 86.9 / 74.6** | 60.2 → **72.2** |
+| Synthetic | 98.1 / 95.7 / 82.4 | **98.1 / 97.2 / 94.8** | 89.7 → **96.3** |
+
+To see where tables go wrong, `HH_GT_CORPUS=deco|statsheets|synthetic cargo test --release -p hh_core
+--test tables_gtdump -- --ignored --nocapture` lists dev sheets whose tables miss the ground truth,
+row by row (ground-truth, model and rule roles); `HH_GT_DIFF=1` only those the model path changed.
 
 Leave-one-corpus-out (`tools/train/rows.py`: train on three corpora, test on the fourth; four
 roles per file): DECO 73.6 → 74.8, StatSheets 66.7 → 78.0, Strudel 79.1 → 86.6, synthetic

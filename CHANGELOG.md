@@ -8,6 +8,23 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Tables from the model's row roles** (default path; `--rules-only` unchanged): title and note
+  rows at the edges leave the table, header-only blocks join the table below as its header (ABS
+  time series), pieces the rules cut off a list rejoin it instead of taking a data row for a
+  header, headers deepen or shorten where the model disagrees with the rules, stacked tables split
+  at a new header after a blank row, key/value metadata blocks stop being tables and data rows
+  left below a table join it. Table F1 on the test splits at IoU ≥ 0.5 / 0.8 / 1.0: DECO
+  65.5 / 51.6 / 34.2 → 68.2 / 56.0 / 36.7, StatSheets 83.6 / 72.5 / 36.8 → 91.5 / 86.9 / 74.6,
+  synthetic 98.1 / 95.7 / 82.4 → 98.1 / 97.2 / 94.8; cell roles unchanged. See
+  [docs/learned-model.md](docs/learned-model.md#how-it-works).
+- Column-numbering rows (`1 2 3 4 …` under a Destatis header) are part of the header, not the
+  first data row (rules and model path).
+- Block labels in a second or third label column (`Receipts HH` / `Deliveries HH` once per block,
+  next to a column of names) are group keys and are filled down, so every row says which block it
+  belongs to.
+- `hedgehog benchmark` reports table precision / recall / F1 (IoU 0.5 / 0.8 / 1.0, EoB) per corpus
+  and per source for DECO, StatSheets and synthetic, and how often a found table's header rows are
+  exactly right; the TSV gets `table_f1_iou50/80/100`. Debug aid: `core/tests/tables_gtdump.rs`.
 - **Cell formatting from xlsx / xlsm styles**: `Sheet::formats` holds one packed `Format` per cell
   (bold, italic, underline, font colour, size, fill, borders, alignment, indent, wrap, number
   format kind), read from `xl/styles.xml` and the cells' `s` attributes in the pass that already
@@ -120,6 +137,9 @@ All notable changes to hedgehog are listed here. The format follows
   "zur Inhaltsübersicht").
 
 ### Fixed
+
+- Tables on one sheet no longer overlap in the default (model) path (Finanzstatistik T2
+  `A17:IB43` over T3 `A31:HO43`, from a vertical merge hanging below a table).
 
 - Typed totals over a column with missing-value tokens (`n/a`, `-`, `*`, `#N/A`): the tokens were
   read as header text, so the source range stopped at them and the total could be reported as a
