@@ -51,7 +51,24 @@ fn entity_columns_group_by_id() {
     let q = s
         .query("contracts.csv", "SELECT buyer_id, count(DISTINCT buyer_name) AS names, count(*) AS n FROM T1 GROUP BY buyer_id ORDER BY n DESC, buyer_id", None)
         .unwrap();
-    assert_eq!(q, "buyer_id,names,n\n503933813,3,18\n503278602,1,6\n600012662,1,6\n(3 rows)");
+    // B18: one name per ID (the most frequent spelling; the first seen on a tie).
+    assert_eq!(q, "buyer_id,names,n\n503933813,1,18\n503278602,1,6\n600012662,1,6\n(3 rows)");
+    let q = s.query("contracts.csv", "SELECT buyer_name, count(*) AS n FROM T1 GROUP BY buyer_name ORDER BY n DESC", None).unwrap();
+    assert!(q.starts_with("buyer_name,n\n\"IP - Infraestruturas de Portugal, S.A.\",18\n"), "{q}");
+    // Grouping by the text lists one body under several spellings: the result says so.
+    let q = s.query("contracts.csv", "SELECT buyer, count(*) AS n FROM T1 GROUP BY buyer ORDER BY buyer", None).unwrap();
+    assert!(q.contains("one buyer (ID 503933813) under different spellings"), "{q}");
+    assert!(q.contains("SELECT \"buyer_id\", \"buyer_name\", count(*) FROM T1 GROUP BY \"buyer_id\""), "{q}");
+    let q = s.query("contracts.csv", "SELECT buyer_id, count(*) AS n FROM T1 GROUP BY buyer_id", None).unwrap();
+    assert!(!q.contains("note:"), "{q}");
+    // B19: the share of the total, ranked by the entity.
+    assert!(
+        cat.contains(
+            "share of the total (e.g. top 10 by \"buyer_id\"): SELECT 100.0 * SUM(v) / (SELECT SUM(\"price\") FROM T1) AS pct \
+             FROM (SELECT SUM(\"price\") AS v FROM T1 GROUP BY \"buyer_id\" ORDER BY v DESC LIMIT 10)"
+        ),
+        "{cat}"
+    );
     // The IDs keep their text (leading zeros would survive) and are in T1_all too; cited as the source cell.
     let q = s.query("contracts.csv", "SELECT buyer_id, buyer_name, _src_row FROM T1_all LIMIT 1", None).unwrap();
     assert!(q.starts_with("buyer_id,buyer_name,_src_row\n503933813,\"IP - Infraestruturas de Portugal, S.A.\",2"), "{q}");
@@ -120,13 +137,66 @@ fn total_row_labels_are_rows() {
         ),
         "{e}"
     );
+    // B15: the error also returns the rows.
+    assert!(e.contains("\nThose rows (the query above, run for you; pick the columns you need):\n"), "{e}");
+    assert!(e.contains("\nTotal,328,60,5,total"), "{e}");
     let e = s.query("flows.xlsx", "SELECT Gesamt FROM T1", None).unwrap_err().0;
     assert!(e.contains("row label, not a column") && e.contains("T1_all"), "{e}");
     // A data-row label used as a column.
     let e = s.query("flows.xlsx", "SELECT \"SEA ROBIN\" FROM T1", None).unwrap_err().0;
     assert!(e.contains("is a value of column Pipeline, not a column: SELECT * FROM T1 WHERE \"Pipeline\" = 'SEA ROBIN'"), "{e}");
+    assert!(e.contains("\nSEA ROBIN,123,10,2"), "{e}");
+    // A name that is no row label: no rows.
+    let e = s.query("flows.xlsx", "SELECT \"sea robin x\" FROM T1", None).unwrap_err().0;
+    assert!(!e.contains("Those rows"), "{e}");
     // A plain typo still gets the closest names.
     let e = s.query("flows.xlsx", "SELECT Receits FROM T1", None).unwrap_err().0;
     assert!(e.contains("did you mean T1.\"Receipts\""), "{e}");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// A wide table (Datum, unbereinigt, bereinigt) and its long form (Datum, Bereinigung, Wert) whose
+/// values are off by `off`.
+fn wide_and_long(path: &std::path::Path, off: f64) {
+    let mut wb = Workbook::new();
+    let wide = wb.add_worksheet();
+    wide.set_name("wide").unwrap();
+    for (c, h) in ["Datum", "unbereinigt", "bereinigt"].iter().enumerate() {
+        wide.write_string(0, c as u16, *h).unwrap();
+    }
+    for i in 0..12u32 {
+        wide.write_string(1 + i, 0, format!("2023-01-{:02}", i + 1)).unwrap();
+        wide.write_number(1 + i, 1, 100.0 + i as f64).unwrap();
+        wide.write_number(1 + i, 2, 90.5 + i as f64).unwrap();
+    }
+    let long = wb.add_worksheet();
+    long.set_name("long").unwrap();
+    for (c, h) in ["Datum", "Bereinigung", "Wert"].iter().enumerate() {
+        long.write_string(0, c as u16, *h).unwrap();
+    }
+    for i in 0..12u32 {
+        for (k, (cat, v)) in [("unbereinigt", 100.0), ("bereinigt", 90.5)].iter().enumerate() {
+            let r = 1 + 2 * i + k as u32;
+            long.write_string(r, 0, format!("2023-01-{:02}", i + 1)).unwrap();
+            long.write_string(r, 1, *cat).unwrap();
+            long.write_number(r, 2, v + i as f64 + off).unwrap();
+        }
+    }
+    wb.save(path).unwrap();
+}
+
+/// B16: a long table whose (key, category) → value rows repeat a wide table's cells.
+#[test]
+fn long_form_of_a_wide_table() {
+    let d = dir("long");
+    wide_and_long(&d.join("index.xlsx"), 0.0);
+    wide_and_long(&d.join("other.xlsx"), 1.0);
+    let mut s = Session::new(&d, &[]).unwrap();
+    let cat = s.open_file("index.xlsx").unwrap();
+    let line = "T2 is the long form of T1: one row per Datum × Bereinigung, value in Wert (T1 has one column per Bereinigung value)";
+    assert_eq!(cat.matches(line).count(), 2, "{cat}");
+    // Values that differ: not the long form.
+    let cat = s.open_file("other.xlsx").unwrap();
+    assert!(!cat.contains("long form"), "{cat}");
     let _ = std::fs::remove_dir_all(&d);
 }
