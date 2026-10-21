@@ -168,7 +168,7 @@ pub(super) fn xlsx(
             ("- Row 1 is a single flat header; multi-row headers are joined with ' / '.".into(), false),
             ("- Values only: formulas are replaced by their cached values. Numbers, dates and booleans are typed.".into(), false),
             ("- _src_row = 1-based row number of the value in the source sheet (see 'Source range' below for the sheet).".into(), false),
-            ("- Group-header rows ('Region: North') become a leading column. _row_type (with --keep-totals) = data|subtotal|total.".into(), false),
+            ("- Group-header rows ('Region: North') become a leading column. _row_type (with --keep-totals) = data|subtotal|total|average|of_which.".into(), false),
             ("- Totals: every total/subtotal with its recomputed value and ok/mismatch/unknown status.".into(), false),
             ("- Notes: titles, notes and every other source cell that is not table data, with its address.".into(), false),
             (String::new(), false),

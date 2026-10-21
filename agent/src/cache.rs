@@ -615,7 +615,7 @@ fn intern(s: String) -> &'static str {
 const ROLES: [ColRole; 4] = [ColRole::Data, ColRole::Group, ColRole::SrcRow, ColRole::RowType];
 const DTYPES: [Dtype; 9] =
     [Dtype::Integer, Dtype::Number, Dtype::Percent, Dtype::Currency, Dtype::Date, Dtype::Datetime, Dtype::Text, Dtype::Bool, Dtype::Empty];
-const ROW_TYPES: [RowType; 3] = [RowType::Data, RowType::Subtotal, RowType::Total];
+const ROW_TYPES: [RowType; 5] = [RowType::Data, RowType::Subtotal, RowType::Total, RowType::Average, RowType::OfWhich];
 const DECIMALS: [DecimalSep; 2] = [DecimalSep::Dot, DecimalSep::Comma];
 const DATE_ORDERS: [DateOrder; 2] = [DateOrder::DayMonth, DateOrder::MonthDay];
 

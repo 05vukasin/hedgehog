@@ -14,7 +14,9 @@ use super::{
 use crate::analysis::{DetectedTable, Role, SheetLayout};
 use crate::grid::Grid;
 use crate::model::{Rect, Sheet, Value, a1};
-use crate::totals::{self, CheckReason, Direction, KeywordLevel, TotalCandidate, TotalCheck, TotalLevel, TotalOrigin};
+use crate::totals::{
+    self, CheckReason, Direction, Evidence, KeywordLevel, NonSumKind, TotalCandidate, TotalCheck, TotalLevel, TotalOrigin,
+};
 use crate::values::{ColumnHints, NativeNumbers, infer_column_with, norm_key, sheet_column_hints_with};
 
 const OWN_NONE: u8 = 0;
@@ -80,6 +82,104 @@ enum RowKind {
     RepeatedHeader,
     Note,
     Title,
+    /// An "of which" or average row ([`totals::NonSumRow`]).
+    NonSum(NonSumKind),
+}
+
+/// What the totals know about a row better than its cells' layout roles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowOverride {
+    /// A total row: its total word and its numbers agree, its numbers add up without a total word,
+    /// or it is a known aggregate (World Bank region codes).
+    Total,
+    /// A record whose total word is part of its text or a name ("Total knee replacement implant",
+    /// "Somme"), and whose numbers do not add up.
+    Data,
+    NonSum(NonSumKind),
+}
+
+/// Row overrides from the sheet's total detection (see [`RowOverride`]). A total word confirms a
+/// total row only as the row's first text (its label): in long-format data a total category beside
+/// other keys ("2020 | Wien | Insgesamt") stays in the data, marked on Totals as kept.
+///
+/// Row → overrides, each with the columns it was found in (a table gets an override only when it
+/// holds one of them: a total row of one block does not make the row of the block beside it a
+/// total); no columns: the whole row.
+type Overrides = HashMap<u32, Vec<(RowOverride, Vec<u32>)>>;
+
+/// Words of a label; spaced letters ("T o t a l", "O G Ó Ł E M") are one word.
+fn label_words(t: &str) -> usize {
+    let words: Vec<&str> = t.split(|ch: char| !ch.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    if words.len() >= 3 && words.iter().all(|w| w.chars().count() == 1) { 1 } else { words.len() }
+}
+
+/// A total label recurring this often in its column is a category of long-format data.
+const LABEL_CATEGORY_REPEATS: usize = 3;
+/// A total label confirming a total row has at most this many words ("Grand Total", "Razem
+/// Działanie", "SUMME Tirol mit Innsbruck"); longer texts are measure names or codes.
+const LABEL_MAX_WORDS: usize = 4;
+
+fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
+    let mut out: Overrides = HashMap::new();
+    let mut add = |row: u32, o: RowOverride, cols: Vec<u32>| out.entry(row).or_default().push((o, cols));
+    // A row with a SUM formula is a total whatever its text says.
+    let with_formula: HashSet<u32> =
+        det.candidates.iter().filter(|c| c.origin == TotalOrigin::Formula).map(|c| c.row).collect();
+    for &r in det.incidental_rows.iter().filter(|r| !with_formula.contains(r)) {
+        add(r, RowOverride::Data, Vec::new());
+    }
+    let first_text = |row: u32| {
+        grid.row_cells(row).iter().map(|&i| &grid.sheet.cells[i as usize]).find_map(|c| match &c.value {
+            Some(Value::Text(t)) if !t.trim().is_empty() && totals::numeric_text(t).is_none() => Some(c.col),
+            _ => None,
+        })
+    };
+    // A label that recurs in its column is a category of long-format data ("Totaal van woningen …"
+    // per region, "A,NRG_CL_E,TOTAL,GWH,AL"): such rows stay where the layout put them.
+    let mut repeats: HashMap<(u32, String), usize> = HashMap::new();
+    let mut category = |col: u32, t: &str| {
+        *repeats.entry((col, t.to_string())).or_insert_with(|| {
+            grid.col_cells(col)
+                .iter()
+                .filter(|&&i| matches!(&grid.sheet.cells[i as usize].value, Some(Value::Text(x)) if x == t))
+                .count()
+        }) >= LABEL_CATEGORY_REPEATS
+    };
+    for c in &det.candidates {
+        let label_text = c.label.and_then(|(lr, lc)| match grid.cell(lr, lc).and_then(|x| x.value.as_ref()) {
+            Some(Value::Text(t)) => Some((lc, t.as_str())),
+            _ => None,
+        });
+        let labelled = c.evidence.iter().any(|e| matches!(e, Evidence::Keyword(_)))
+            && label_text.is_some_and(|(lc, t)| {
+                first_text(c.row) == Some(lc)
+                    && label_words(t) <= LABEL_MAX_WORDS
+                    && !category(lc, t)
+            });
+        let confirmed = c.direction == Direction::Vertical
+            && match c.origin {
+                TotalOrigin::Typed => {
+                    c.evidence.contains(&Evidence::ArithmeticMatch)
+                        && (labelled || c.evidence.contains(&Evidence::Unlabelled))
+                }
+                // A SUM over the rows below (the layout only knows sums over the rows above).
+                TotalOrigin::Formula => labelled || c.evidence.contains(&Evidence::SourceBelow),
+            };
+        if confirmed {
+            let mut cols = vec![c.col];
+            cols.extend(c.label.map(|l| l.1));
+            add(c.row, RowOverride::Total, cols);
+        }
+    }
+    for &(r, lc) in &det.aggregates {
+        add(r, RowOverride::Total, vec![lc]);
+    }
+    for n in &det.nonsum {
+        let mut cols: Vec<u32> = n.cells.iter().map(|c| c.col).collect();
+        cols.push(n.label_col);
+        add(n.row, RowOverride::NonSum(n.kind), cols);
+    }
+    out
 }
 
 fn row_kind(roles: impl Iterator<Item = Role>) -> RowKind {
@@ -111,6 +211,36 @@ fn row_kind(roles: impl Iterator<Item = Role>) -> RowKind {
     } else {
         RowKind::Data
     }
+}
+
+/// Columns whose only texts are one label on the first data row of each block of rows between
+/// total rows ([`build_table`]'s `block_of`; `u32::MAX` for total rows): at least two blocks of
+/// two or more rows, every block labelled on its first row and blank below it.
+fn block_label_columns(slots: &[Vec<Slot>], block_of: &[u32], skip: &HashSet<usize>) -> Vec<usize> {
+    let mut blocks: Vec<(usize, usize)> = Vec::new(); // (first row, rows)
+    for (j, &b) in block_of.iter().enumerate() {
+        if b == u32::MAX {
+            continue;
+        }
+        match blocks.last_mut() {
+            Some((first, n)) if block_of[*first] == b => *n += 1,
+            _ => blocks.push((j, 1)),
+        }
+    }
+    if blocks.iter().filter(|(_, n)| *n >= 2).count() < 2 {
+        return Vec::new();
+    }
+    let text = |s: &Slot| matches!(s, Slot::Val(Value::Text(t)) if !t.trim().is_empty());
+    (0..slots.len())
+        .filter(|k| !skip.contains(k))
+        .filter(|&k| {
+            let col = &slots[k];
+            blocks.iter().all(|&(first, n)| {
+                text(&col[first])
+                    && (first + 1..first + n).all(|j| block_of[j] == u32::MAX || matches!(col[j], Slot::Empty))
+            })
+        })
+        .collect()
 }
 
 /// Header + group column name for "Region: North"-style labels, if all labels share the prefix.
@@ -210,6 +340,7 @@ fn build_table(
     n: usize,
     sheet_hints: &OnceCell<HashMap<u32, ColumnHints>>,
     row_total: &HashMap<u32, RowTotal>,
+    overrides: &Overrides,
     opts: &Options,
     owner: &mut [u8],
 ) -> Built {
@@ -359,9 +490,24 @@ fn build_table(
     let mut removed_totals = Vec::new();
     let mut body_rows_seen = 0u32;
     let mut key_cols: HashSet<usize> = HashSet::new();
+    // Block of each output row: the rows between two total rows (removed or kept).
+    let mut block_of: Vec<u32> = Vec::new();
+    let mut block = 0u32;
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
-        let kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
+        let mut kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
+        if matches!(kind, RowKind::Data | RowKind::Total) {
+            // The last override that applies to this table wins ("of which" over a total).
+            let here = overrides.get(row).and_then(|list| {
+                list.iter().rev().find(|(_, cols)| cols.is_empty() || cols.iter().any(|c| (r.left..=r.right).contains(c)))
+            });
+            kind = match here.map(|x| x.0) {
+                Some(RowOverride::Total) => RowKind::Total,
+                Some(RowOverride::Data) => RowKind::Data,
+                Some(RowOverride::NonSum(k)) => RowKind::NonSum(k),
+                None => kind,
+            };
+        }
         match kind {
             RowKind::Group => {
                 let label = idxs
@@ -397,7 +543,7 @@ fn build_table(
                 }
                 continue;
             }
-            RowKind::Total | RowKind::Data => {}
+            RowKind::Total | RowKind::Data | RowKind::NonSum(_) => {}
         }
         let level = if kind == RowKind::Total {
             row_total.get(row).map(|t| t.level).or_else(|| {
@@ -419,8 +565,13 @@ fn build_table(
         let rt = match (kind, level) {
             (RowKind::Total, Some(TotalLevel::Subtotal)) => RowType::Subtotal,
             (RowKind::Total, _) => RowType::Total,
+            (RowKind::NonSum(NonSumKind::Average), _) => RowType::Average,
+            (RowKind::NonSum(NonSumKind::OfWhich), _) => RowType::OfWhich,
             _ => RowType::Data,
         };
+        if rt != RowType::Data {
+            block += 1;
+        }
         if rt != RowType::Data && !opts.keep_totals {
             tr.add(T::TotalRowsRemoved, 1);
             removed_totals.push((*row, rt, idxs.clone()));
@@ -457,7 +608,7 @@ fn build_table(
         // to its group, a grand total (or a total over several groups) to none of them. A source
         // range reaching into the header (a year header read as a number, B17) starts at the body.
         let depth = match (level, row_total.get(row).and_then(|t| t.top)) {
-            _ if rt == RowType::Data => path.len(),
+            _ if matches!(rt, RowType::Data | RowType::Average | RowType::OfWhich) => path.len(),
             (Some(TotalLevel::GrandTotal), _) => 0,
             (_, Some(top)) => path_rows.iter().take_while(|&&h| h <= top.max(body_top)).count(),
             _ => path.len(),
@@ -503,9 +654,34 @@ fn build_table(
         }
         src_rows.push(*row);
         row_types.push(rt);
+        block_of.push(if rt == RowType::Data { block } else { u32::MAX });
+        if rt != RowType::Data {
+            block += 1;
+        }
     }
     if r.bottom + 1 > body_top {
         tr.add(T::BlankRowsRemoved, (r.bottom + 1 - body_top).saturating_sub(body_rows_seen) as usize);
+    }
+
+    // Group labels written once per block of rows between subtotals ("Belgium" on the first row
+    // of the block its "Razem Belgium" closes, or under its "Total Belgium"): filled down the block.
+    for k in block_label_columns(&slots, &block_of, &key_cols) {
+        let mut cur: (u32, Option<&Value>) = (u32::MAX, None);
+        for (j, s) in slots[k].iter_mut().enumerate() {
+            if block_of[j] == u32::MAX {
+                continue;
+            }
+            match s {
+                Slot::Val(v) => cur = (block_of[j], Some(*v)),
+                Slot::Empty if cur.0 == block_of[j] => {
+                    if let Some(v) = cur.1 {
+                        *s = Slot::Val(v);
+                        tr.add(T::GroupKeysFilledDown, 1);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     // Outline key columns: each label covers the data rows below it until the next label.
@@ -915,7 +1091,9 @@ pub(super) fn process_sheet(
     super::trace("layout", t0);
     let mut owner = vec![OWN_NONE; cells.len()];
     let sheet_hints = OnceCell::new();
-    let cands = totals::detect(&grid);
+    let det = totals::detection(&grid);
+    let cands = &det.candidates;
+    let overrides = row_overrides(&grid, det);
     super::trace("totals_detect", t0);
     let checks: Vec<_> = cands.iter().map(|c| totals::verify(&grid, c)).collect();
     super::trace("totals_verify", t0);
@@ -940,7 +1118,7 @@ pub(super) fn process_sheet(
     let mut layouts: Vec<Vec<(u32, bool)>> = Vec::new();
     for t in &lay.tables {
         let n = out.tables.len() + 1;
-        let b = build_table(&grid, &lay, t, n, &sheet_hints, &row_total, opts, &mut owner);
+        let b = build_table(&grid, &lay, t, n, &sheet_hints, &row_total, &overrides, opts, &mut owner);
         info.tables.push(n);
         layouts.push(row_layout(&b.table, &b.removed_totals));
         kept.push(b.kept);
@@ -1005,6 +1183,80 @@ pub(super) fn process_sheet(
             kept_in_data,
         });
     }
+    // "Of which" and average rows that ended up as such in a table (removed, or kept with
+    // `keep_totals`): one item per number, checked against the rows above.
+    let nonsum_rows: HashSet<(usize, u32)> = removed
+        .iter()
+        .filter(|(_, _, rt, _)| matches!(rt, RowType::Average | RowType::OfWhich))
+        .map(|(n, row, _, _)| (*n, *row))
+        .chain(tables.iter().flat_map(|t| {
+            t.src_rows
+                .iter()
+                .zip(&t.row_types)
+                .filter(|(_, rt)| matches!(rt, RowType::Average | RowType::OfWhich))
+                .map(move |(&r, _)| (t.n, r))
+        }))
+        .collect();
+    // The table of a cell of an "of which" / average row, when that table took the row out of its
+    // data (or marked it): (table index, table number).
+    let nonsum_table = |row: u32, col: u32| {
+        table_at(row, col).map(|k| (k, first + k + 1)).filter(|&(_, n)| nonsum_rows.contains(&(n, row)))
+    };
+    for ns in &det.nonsum {
+        let label_table = nonsum_table(ns.row, ns.label_col);
+        let label = grid.cell_index(ns.row, ns.label_col).and_then(|i| {
+            if label_table.is_some() && owner[i] == OWN_NONE {
+                owner[i] = OWN_TOTALS;
+            }
+            cells[i].value.as_ref().map(display)
+        });
+        let (level, median) = match ns.kind {
+            NonSumKind::Average => ("average", label.as_deref().is_some_and(|l| norm_key(l).starts_with("median"))),
+            NonSumKind::OfWhich => ("of_which", false),
+        };
+        for ch in &ns.cells {
+            let Some((k, n)) = nonsum_table(ns.row, ch.col) else { continue };
+            let kept_in_data = kept[k].contains(&ns.row);
+            if let Some(i) = grid.cell_index(ns.row, ch.col)
+                && owner[i] == OWN_NONE
+            {
+                owner[i] = OWN_TOTALS;
+            }
+            if !listed.insert((ns.row, ch.col)) {
+                continue;
+            }
+            let (status, reason) = match (ns.kind, ch.ok, ch.expected) {
+                (NonSumKind::Average, Some(true), _) => ("ok", if median { "matches_median" } else { "matches_mean" }),
+                (NonSumKind::Average, _, Some(_)) => ("unknown", "unconfirmed"),
+                (NonSumKind::Average, _, None) => ("unknown", "no_source"),
+                (NonSumKind::OfWhich, Some(true), _) => ("ok", "within_parent"),
+                // A larger part is not reported as wrong: rates, shares and changes are no parts.
+                (NonSumKind::OfWhich, Some(false), _) => ("unknown", "exceeds_parent"),
+                (NonSumKind::OfWhich, None, _) => ("unknown", "no_parent"),
+            };
+            items.push(TotalItem {
+                table: Some(n),
+                sheet: sheet.name.clone(),
+                row: ns.row,
+                col: ch.col,
+                count: 1,
+                row_end: ns.row,
+                label: label.clone(),
+                label_cell: Some((ns.row, ns.label_col)),
+                level,
+                direction: "vertical",
+                origin: if grid.cell(ns.row, ch.col).is_some_and(|c| c.formula.is_some()) { "formula" } else { "typed" },
+                value: Some(ch.value),
+                recomputed: ch.expected,
+                status,
+                reason: reason.into(),
+                sources: ch.source.iter().map(|r| range_a1(*r)).collect(),
+                formula: grid.cell(ns.row, ch.col).and_then(|c| c.formula.as_ref()).map(|f| format!("={f}")),
+                kept_in_data,
+            });
+        }
+    }
+    let aggregate_rows: HashSet<u32> = det.aggregates.iter().map(|a| a.0).collect();
     // Removed total rows: numbers not found by `totals::detect` are listed unverified; the row's
     // label text is attached; other text goes to Notes.
     for (n, row, rt, idxs) in &removed {
@@ -1041,7 +1293,14 @@ pub(super) fn process_sheet(
                         value: num,
                         recomputed: None,
                         status: "unknown",
-                        reason: if rate { "not_additive" } else { "not_verified" }.into(),
+                        reason: if aggregate_rows.contains(row) {
+                            "known_aggregate"
+                        } else if rate {
+                            "not_additive"
+                        } else {
+                            "not_verified"
+                        }
+                        .into(),
                         sources: Vec::new(),
                         formula: c.formula.as_ref().map(|f| format!("={f}")),
                         kept_in_data: false,
