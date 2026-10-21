@@ -823,6 +823,11 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             let mixed = mixed_measures_by(t, &data);
             let tys = types::classify(t, &names, mixed, &types::summed_cols(norm, t)); // B21
             let mut lines = vec![line, columns_line(t, &names, inline.is_none(), &tys)];
+            // B2/B18: "<id> - <name>" columns and how to group them, right under the columns.
+            let ents = crate::entity::detect(t);
+            lines.extend(ents.iter().map(|e| crate::entity::line(e, &t.id())));
+            // B19: a share of the total, with the entity (or label) column to rank by.
+            lines.extend(facts::share_line(t, &names, &data, ents.first().map(crate::entity::group_key)));
             // The values to filter on; a small inlined table shows them in its rows.
             if inline.is_none() {
                 for (i, c) in data_cols(t) {
@@ -831,7 +836,6 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                     }
                 }
             }
-            lines.extend(crate::entity::lines(t)); // B2: "<id> - <name>" columns and their <col>_id (entity.rs)
             if let Some(i) = mixed {
                 lines.push(format!("    rows mix measures by {} — filter before aggregating", ident(&names[i])));
             }
@@ -863,6 +867,10 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 b.add_facts(f);
             }
             out.push(b);
+        }
+        // B16: a table that is the long form of another, on both of them.
+        for (k, l) in facts::long_forms(&norm.tables) {
+            out[k].lines.push(l);
         }
         out
     };

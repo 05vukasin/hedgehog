@@ -248,7 +248,7 @@ impl Session {
         let used = tables_in_sql(&o.norm, sql);
         let res = match o.db.query(sql, limit, timeout) {
             Ok(r) => r,
-            Err(e) => return Err(ToolError(sql_error_hint(&o.norm, &o.db, &used, sql, &e))),
+            Err(e) => return Err(ToolError(sql_error_hint(&o.norm, &o.db, &used, sql, &e, timeout))),
         };
         let mut lines = vec![csv_row(&res.header)];
         let mut shown = 0;
@@ -280,6 +280,9 @@ impl Session {
         }
         if let Some(hint) = cite_hint(&o.db, &used, &res.header) {
             lines.push(hint);
+        }
+        if let Some(note) = spellings_note(&o.db, &used, &res) {
+            lines.push(note);
         }
         let n = text::thousands(res.total);
         lines.push(match (res.complete, shown < res.total) {
@@ -351,7 +354,12 @@ fn tables_in_sql<'a>(norm: &'a Normalized, sql: &str) -> Vec<&'a Table> {
     out
 }
 
-fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, err: &str) -> String {
+/// Rows an error returns when it names the rows the query was after (B15).
+const ERROR_ROWS: usize = 10;
+/// Characters of those rows at most.
+const ERROR_ROWS_CHARS: usize = 3000;
+
+fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, err: &str, timeout: Duration) -> String {
     let mut err = err.replace(" - should this be a string literal in single-quotes?", "");
     // SQLite echoes the whole statement ("… in SELECT … at offset 7"); keep the position only.
     if let Some(pos) = err.rfind(" at offset ") {
@@ -386,10 +394,13 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
             .take(6)
             .map(|(t, n)| format!("{t}.{}", quote_ident(n)))
             .collect();
-        if let Some(h) = row_label_hint(norm, &scope, wanted) {
+        if let Some((h, rows_sql)) = row_label_hint(norm, &scope, wanted) {
             msg.push_str(&format!(" — {h}"));
             if !hits.is_empty() {
                 msg.push_str(&format!(" (columns with similar names: {})", hits.join(", ")));
+            }
+            if let Some(rows) = rows_sql.and_then(|q| rows_csv(db, &q, timeout)) {
+                msg.push_str(&format!("\n{rows}"));
             }
         } else if !hits.is_empty() {
             msg.push_str(&format!(" — did you mean {}? (quote names with double quotes)", hits.join(", ")));
@@ -455,9 +466,32 @@ fn label_column(t: &Table, names: &[String], i: usize, label: &str) -> Option<St
     })
 }
 
+/// The rows of `sql` as CSV for an error text: at most [`ERROR_ROWS`] rows and
+/// [`ERROR_ROWS_CHARS`] characters, under a short time limit; None when it fails or is empty.
+fn rows_csv(db: &sql::Db, sql: &str, timeout: Duration) -> Option<String> {
+    let r = db.query(sql, ERROR_ROWS, timeout.min(Duration::from_millis(500))).ok()?;
+    if r.rows.is_empty() {
+        return None;
+    }
+    let mut lines = vec![csv_row(&r.header)];
+    let mut size = lines[0].len();
+    for row in &r.rows {
+        let line = csv_row(row);
+        if size + line.len() + 1 > ERROR_ROWS_CHARS {
+            break;
+        }
+        size += line.len() + 1;
+        lines.push(line);
+    }
+    let shown = lines.len() - 1;
+    let more = if r.total > shown { format!(", first {shown} of {}", text::thousands(r.total)) } else { String::new() };
+    Some(format!("Those rows (the query above, run for you{more}; pick the columns you need):\n{}", lines.join("\n")))
+}
+
 /// When the "missing column" is the label of a total row (or a total word such as "Total") or a
-/// value of a text column: where those rows are and how to select them.
-fn row_label_hint(norm: &Normalized, scope: &[&Table], wanted: &str) -> Option<String> {
+/// value of a text column: where those rows are and how to select them, and the query that
+/// returns them (run for the error text, B15).
+fn row_label_hint(norm: &Normalized, scope: &[&Table], wanted: &str) -> Option<(String, Option<String>)> {
     let w = wanted.trim();
     if w.chars().count() < 2 {
         return None;
@@ -482,21 +516,21 @@ fn row_label_hint(norm: &Normalized, scope: &[&Table], wanted: &str) -> Option<S
         let at = col.as_ref().map(|c| format!(" (label in {})", ident(c))).unwrap_or_default();
         return Some(if in_all {
             let kind = r.kind.as_str();
-            format!(
-                "{quoted} is a row label, not a column: {kind} rows are in {id}_all with _row_type = '{kind}'{at}: \
-                 SELECT * FROM {id}_all WHERE _row_type = '{kind}'"
-            )
+            let q = format!("SELECT * FROM {id}_all WHERE _row_type = '{kind}'");
+            (format!("{quoted} is a row label, not a column: {kind} rows are in {id}_all with _row_type = '{kind}'{at}: {q}"), Some(q))
         } else {
             let filter = match &col {
                 Some(c) => format!("WHERE {} = {}", quote_ident(c), sql_text(&r.label)),
                 None => format!("WHERE _src_row = {}", r.row),
             };
-            format!("{quoted} is a row label, not a column: that total row stays in {id}{at}: SELECT * FROM {id} {filter}")
+            let q = format!("SELECT * FROM {id} {filter}");
+            (format!("{quoted} is a row label, not a column: that total row stays in {id}{at}: {q}"), Some(q))
         });
     }
     if generic {
         let id = scope.first()?.id();
-        return Some(format!("{quoted} is not a column and {id} has no total rows: compute it, e.g. SELECT SUM(<column>) FROM {id}"));
+        let h = format!("{quoted} is not a column and {id} has no total rows: compute it, e.g. SELECT SUM(<column>) FROM {id}");
+        return Some((h, None));
     }
     // A value of a text column (a pipeline, a region) used as a column name.
     for t in scope {
@@ -505,14 +539,9 @@ fn row_label_hint(norm: &Normalized, scope: &[&Table], wanted: &str) -> Option<S
             if !matches!(c.role, ColRole::Data | ColRole::Group) || c.dtype != Dtype::Text {
                 continue;
             }
-            if c.values.iter().any(|v| matches!(v, Out::Text(s) if s.trim().eq_ignore_ascii_case(w))) {
-                return Some(format!(
-                    "{quoted} is a value of column {}, not a column: SELECT * FROM {} WHERE {} = {}",
-                    ident(n),
-                    t.id(),
-                    quote_ident(n),
-                    sql_text(w)
-                ));
+            if let Some(Out::Text(v)) = c.values.iter().find(|v| matches!(v, Out::Text(s) if s.trim().eq_ignore_ascii_case(w))) {
+                let q = format!("SELECT * FROM {} WHERE {} = {}", t.id(), quote_ident(n), sql_text(v));
+                return Some((format!("{quoted} is a value of column {}, not a column: {q}", ident(n)), Some(q)));
             }
         }
     }
@@ -528,7 +557,7 @@ fn with_entities(text: String, t: &Table, ents: &[entity::Entity]) -> String {
     let cols: Vec<String> = ents.iter().map(|e| format!("{}, {}", ident(&e.id_col), ident(&e.name_col))).collect();
     let mut add = format!("entity columns (the SQL views {} and {}_all also have {}):", t.id(), t.id(), cols.join(", "));
     for e in ents {
-        add.push_str(&format!("\n  {}", entity::line(e).trim_start()));
+        add.push_str(&format!("\n  {}", entity::line(e, &t.id()).trim_start()));
     }
     let out = match text.find("\nfirst ") {
         Some(i) => format!("{}\n{add}{}", &text[..i], &text[i..]),
@@ -574,6 +603,43 @@ fn missing_column(rest: &str) -> String {
         }
         return name;
     }
+}
+
+/// A result keyed by an entity column's text that lists one entity (one ID) on several rows under
+/// different spellings (B18): which rows, and the query grouped by the ID instead.
+fn spellings_note(db: &sql::Db, used: &[&Table], res: &sql::QueryResult) -> Option<String> {
+    for t in used {
+        let ents = db.entities.iter().find(|(n, _)| *n == t.n).map(|x| x.1.as_slice()).unwrap_or_default();
+        for e in ents {
+            let has = |n: &str| res.header.iter().position(|h| h.eq_ignore_ascii_case(n));
+            let Some(j) = has(&e.name) else { continue };
+            if has(&e.id_col).is_some() {
+                continue;
+            }
+            let mut first: HashMap<&str, (usize, &str)> = HashMap::new();
+            for (r, row) in res.rows.iter().enumerate() {
+                let Some(cell) = row.get(j) else { continue };
+                let entity::Parsed::One { id, .. } = entity::parse(cell) else { continue };
+                match first.get(id) {
+                    Some(&(r0, text)) if text != cell.as_str() => {
+                        return Some(format!(
+                            "note: rows {} and {} are one {} (ID {id}) under different spellings — group by {} instead, e.g. {}",
+                            r0 + 1,
+                            r + 1,
+                            ident(&e.name),
+                            ident(&e.id_col),
+                            entity::group_sql(e, &t.id())
+                        ));
+                    }
+                    Some(_) => {}
+                    None => {
+                        first.insert(id, (r, cell));
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// With `_src_row` in the result and one table queried: which source cell each column comes from.
