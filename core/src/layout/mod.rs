@@ -44,14 +44,13 @@ fn analyze_inner(grid: &Grid, column_numbers: bool) -> SheetLayout {
     }
     classify_loose(sheet, &mut out);
     out.tables.sort_by_key(|t| (t.rect.top, t.rect.left));
-    separate_tables(&mut out.tables);
     SheetLayout { tables: out.tables, roles: out.roles }
 }
 
-/// Tables on a sheet never overlap: where two rectangles do (a vertical merge hanging below a
-/// table's last row into the next one, a narrow table beside a wide one), one of them gives up the
-/// shared part — whichever cut (an edge of either rectangle moved to just outside the other) loses
-/// the fewest positions. `tables` is sorted by (top, left) and stays so.
+/// Used by the model path (`learned::tables`) so its tables never overlap: where two rectangles do
+/// (a vertical merge hanging below a table's last row into the next one, a narrow table beside a
+/// wide one), one of them gives up the shared part — whichever cut (an edge of either rectangle moved to just outside the other) keeps
+/// both headers and loses the fewest positions. `tables` is sorted by (top, left) and stays so.
 pub(crate) fn separate_tables(tables: &mut [crate::analysis::DetectedTable]) {
     use crate::model::Rect;
     let area = |r: Rect| (r.bottom - r.top + 1) as u64 * (r.right - r.left + 1) as u64;
@@ -77,7 +76,12 @@ pub(crate) fn separate_tables(tables: &mut [crate::analysis::DetectedTable]) {
                     cuts.push((k, Rect { left: y.right + 1, ..x }));
                 }
             }
-            let lost = |&(k, r): &(usize, Rect)| area(tables[k].rect) - area(r);
+            // A cut that takes a table's header away from it comes last.
+            let lost = |&(k, r): &(usize, Rect)| {
+                let t = &tables[k];
+                let headless = t.header_rows > 0 && !(r.top <= t.header_top && t.header_top <= r.bottom);
+                (headless, area(t.rect) - area(r))
+            };
             let Some((k, r)) = cuts.iter().min_by_key(|c| lost(c)).copied() else { continue };
             let t = &mut tables[k];
             t.rect = r;

@@ -288,7 +288,7 @@ fn merge_continuations(
     out
 }
 
-/// Step 5: rows directly below a table (at most one blank row between) that the model calls data,
+/// Step 5: rows directly below a table (no blank row between) that the model calls data,
 /// that no table holds and that lie inside the table's columns, continue it.
 fn extend_down(grid: &Grid, tables: &mut [DetectedTable], roles: &[Role]) {
     let cells = &grid.sheet.cells;
@@ -307,7 +307,7 @@ fn extend_down(grid: &Grid, tables: &mut [DetectedTable], roles: &[Role]) {
         let mut i = cells.partition_point(|c| c.row <= t.bottom);
         while i < cells.len() {
             let row = cells[i].row;
-            if row > last + 2 || row >= next_top {
+            if row > last + 1 || row >= next_top {
                 break;
             }
             let j = i + cells[i..].iter().take_while(|c| c.row == row).count();

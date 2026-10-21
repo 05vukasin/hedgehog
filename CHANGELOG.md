@@ -119,8 +119,8 @@ All notable changes to hedgehog are listed here. The format follows
   "zur Inhaltsübersicht").
 ### Fixed
 
-- Tables on one sheet no longer overlap (Finanzstatistik T2 `A17:IB43` over T3 `A31:HO43`, from a
-  vertical merge hanging below a table).
+- Tables on one sheet no longer overlap in the default (model) path (Finanzstatistik T2
+  `A17:IB43` over T3 `A31:HO43`, from a vertical merge hanging below a table).
 
 - Typed totals over a column with missing-value tokens (`n/a`, `-`, `*`, `#N/A`): the tokens were
   read as header text, so the source range stopped at them and the total could be reported as a

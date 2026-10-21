@@ -67,7 +67,10 @@ fn tables_gtdump() {
     let diff = std::env::var_os("HH_GT_DIFF").is_some();
     let model = learned::embedded().unwrap();
     let mut shown = 0;
-    for file in corpus.files.iter().filter(|f| Split::Dev.contains(&f.id)) {
+    // Dev only, unless HH_GT_SPLIT says otherwise (never tune on test; look there only to explain a
+    // score).
+    let split: Split = std::env::var("HH_GT_SPLIT").ok().and_then(|s| s.parse().ok()).unwrap_or(Split::Dev);
+    for file in corpus.files.iter().filter(|f| split.contains(&f.id)) {
         if file_filter.as_ref().is_some_and(|s| !file.id.contains(s.as_str())) {
             continue;
         }

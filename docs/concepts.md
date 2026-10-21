@@ -42,13 +42,12 @@ rule-based detector (`core/src/layout/`) works like this:
    name on every row next to it) is a group key, and normalize fills it down, so every row says
    which block it belongs to.
 
-Tables never overlap; where two rectangles would (a vertical merge hanging into the next table),
-the one that loses the fewest positions gives up the shared part.
 
 In the default path the learned row model then corrects the tables: it trims title and note rows
 at the edges (the table range is the header plus the body), deepens or shortens the header, merges
 pieces the rules cut apart (a header-only block above a table, a list cut at a change of content)
-and splits stacked tables at a new header. See
+and splits stacked tables at a new header, and no two tables overlap (where two rectangles would,
+the one that keeps its header and loses the fewest positions gives up the shared part). See
 [learned-model.md](learned-model.md#how-it-works); `--rules-only` keeps the rules' tables.
 
 Each detected table gets a confidence between 0 and 1, reported in the manifest. The cost is linear in
