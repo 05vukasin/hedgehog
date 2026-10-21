@@ -33,35 +33,35 @@ Invariants:
 
 | family | t=0 | t=0.25 | t=0.5 | t=0.75 | t=1 | drop 0→1 (model) |
 |---|---|---|---|---|---|---|
-| `multirow_header` | 100 / 100 | 98 / 98 | 75 / 75 | 75 / 77 | 32 / 38 | **62** |
-| `side_by_side` | 100 / 100 | 62 / 62 | 27 / 27 | 37 / 37 | 28 / 28 | **72** |
+| `multirow_header` | 100 / 100 | 100 / 100 | 77 / 78 | 80 / 82 | 33 / 43 | **57** |
+| `side_by_side` | 100 / 100 | 87 / 87 | 47 / 47 | 42 / 40 | 33 / 33 | **67** |
 | `stacked` | 100 / 100 | 92 / 95 | 85 / 90 | 88 / 97 | 67 / 95 | 5 |
 | `label_blocks` | 50 / 100 | 50 / 100 | 73 / 100 | 72 / 100 | 82 / 100 | 0 |
 | `labels_once` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 98 | 100 / 100 | 0 |
 | `subtotals` | 100 / 100 | 98 / 100 | 95 / 100 | 88 / 100 | 97 / 100 | 0 |
 | `of_which` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
 | `average_rows` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
-| `unit_scale` | 98 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
-| `footnotes` | 100 / 100 | 82 / 93 | 45 / 92 | 48 / 93 | 73 / 100 | 0 |
+| `unit_scale` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
+| `footnotes` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
 | `locale` | 100 / 100 | 100 / 100 | 100 / 100 | 97 / 100 | 97 / 100 | 0 |
-| `notes` | 100 / 100 | 82 / 85 | 43 / 67 | 25 / 52 | 17 / 32 | **68** |
+| `notes` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
 | `spacers` | 100 / 100 | 100 / 97 | 100 / 93 | 100 / 90 | 100 / 88 | 12 |
-| `separators` | 100 / 100 | 77 / 77 | 53 / 53 | 25 / 25 | 37 / 37 | **63** |
+| `separators` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
 | `transposed` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
 | `long_register` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
-| `wide_periods` | 72 / 72 | 73 / 73 | 78 / 78 | 78 / 78 | 68 / 68 | 3 |
-| `mixed_types` | 100 / 100 | 100 / 100 | 90 / 93 | 77 / 87 | 78 / 80 | 20 |
+| `wide_periods` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
+| `mixed_types` | 100 / 100 | 100 / 100 | 95 / 98 | 88 / 93 | 85 / 90 | 10 |
 | `total_labels` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
-| `multilingual` | 98 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
-| `combo` | 100 / 100 | 82 / 85 | 58 / 60 | 37 / 40 | 30 / 28 | **72** |
-| **all** | 96 / 99 | 90 / 94 | 82 / 87 | 78 / 84 | 76 / 81 | |
+| `multilingual` | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 0 |
+| `combo` | 100 / 100 | 92 / 92 | 85 / 82 | 75 / 80 | 58 / 58 | **42** |
+| **all** | 98 / 100 | 96 / 99 | 93 / 95 | 92 / 94 | 88 / 91 | |
 
 ## Failing scenarios per invariant, model (% of scenarios where it applies, t > 0)
 
 | family | placed | value | labels | header | tables | notes_out | totals_found | totals_ok | totals_out | nonsum | scale |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `multirow_header` | 0 | 0 | 0 | **28** | 0 | 0 |  |  |  |  |  |
-| `side_by_side` | 5 | 0 | 21 | 25 | **62** | 6 |  |  |  |  |  |
+| `multirow_header` | 0 | 0 | 0 | 24 | 0 | 0 |  |  |  |  |  |
+| `side_by_side` | 5 | 0 | 23 | 22 | **48** | 6 |  |  |  |  |  |
 | `stacked` | 0 | 0 | 4 | 0 | 1 | 0 |  |  |  |  |  |
 | `label_blocks` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
 | `labels_once` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
@@ -69,25 +69,25 @@ Invariants:
 | `of_which` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 | `average_rows` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 | `unit_scale` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  | 0 |
-| `footnotes` | 5 | 0 | 0 | 5 | 5 | 0 |  |  |  |  |  |
+| `footnotes` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
 | `locale` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
-| `notes` | 0 | 0 | 0 | 0 | 0 | **41** |  |  |  |  |  |
+| `notes` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
 | `spacers` | 8 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
-| `separators` | 0 | 0 | 0 | 15 | 15 | **30** | 0 | **37** | 0 |  |  |
+| `separators` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |  |
 | `transposed` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
 | `long_register` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |  |
-| `wide_periods` | 5 | 0 | 0 | 22 | 0 | 0 |  |  |  |  |  |
-| `mixed_types` | 10 | 1 | 0 | 9 | 9 | 0 |  |  |  |  |  |
+| `wide_periods` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
+| `mixed_types` | 4 | 1 | 0 | 3 | 3 | 0 |  |  |  |  |  |
 | `total_labels` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |  |
 | `multilingual` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
-| `combo` | 6 | 3 | 5 | 15 | 7 | **26** | 1 | **31** | 3 | 2 | 3 |
+| `combo` | 2 | 2 | 3 | 5 | 0 | 1 | 0 | 23 | 2 | 2 | 0 |
 
 ## Failing scenarios per invariant, rules only (% of scenarios where it applies, t > 0)
 
 | family | placed | value | labels | header | tables | notes_out | totals_found | totals_ok | totals_out | nonsum | scale |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `multirow_header` | 0 | 2 | 0 | **30** | 0 | 0 |  |  |  |  |  |
-| `side_by_side` | 2 | 0 | 21 | 25 | **62** | 8 |  |  |  |  |  |
+| `multirow_header` | 0 | 2 | 0 | **28** | 0 | 0 |  |  |  |  |  |
+| `side_by_side` | 2 | 0 | 23 | 22 | **48** | 6 |  |  |  |  |  |
 | `stacked` | 0 | 0 | 15 | 0 | 1 | 16 |  |  |  |  |  |
 | `label_blocks` | 0 | 0 | 0 | **31** | 0 | 0 |  |  |  |  |  |
 | `labels_once` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
@@ -95,30 +95,30 @@ Invariants:
 | `of_which` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 | `average_rows` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |
 | `unit_scale` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  | 0 |
-| `footnotes` | **38** | 0 | 0 | **36** | **36** | 0 |  |  |  |  |  |
+| `footnotes` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
 | `locale` | 2 | 0 | 0 | 2 | 2 | 0 |  |  |  |  |  |
-| `notes` | 0 | 0 | 0 | 0 | 0 | **58** |  |  |  |  |  |
+| `notes` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
 | `spacers` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
-| `separators` | 0 | 0 | 0 | 15 | 15 | **30** | 0 | **37** | 0 |  |  |
+| `separators` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |  |
 | `transposed` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
 | `long_register` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |  |
-| `wide_periods` | 5 | 4 | 0 | 22 | 0 | 0 |  |  |  |  |  |
-| `mixed_types` | 13 | 1 | 0 | 12 | 12 | 0 |  |  |  |  |  |
+| `wide_periods` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
+| `mixed_types` | 7 | 1 | 0 | 6 | 6 | 0 |  |  |  |  |  |
 | `total_labels` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |  |  |
 | `multilingual` | 0 | 0 | 0 | 0 | 0 | 0 |  |  |  |  |  |
-| `combo` | 5 | 4 | 5 | 18 | 10 | **26** | 2 | **31** | 5 | 2 | 5 |
+| `combo` | 0 | 2 | 3 | 8 | 0 | 2 | 1 | 22 | 4 | 2 | 2 |
 
 ## Failure examples (first failing seed per family and invariant, model path; rules where only rules fail)
 
 - **multirow_header** — 1–3 parent header rows over the measures (merged, written once, repeated or centred); years × measures with repeated child names
   - `placed` (model): `--repro multirow_header 0.75 26` — B6 Text("Orthopaedics 2") dropped: its row was taken as a total row (total 'Orthopaedics 2') — *base gen:health (23 rows × 4 cols); multirow header: 2 parent rows, years 2022/2023/2024 × measures (repeated child names)*
   - `value` (rules): `--repro multirow_header 1.00 7` — C7 expected Num(347.7), got text "347.7" (column 'Calendar year 2025' text) — *base gen:energy (23 rows × 4 cols); multirow header: 3 parent rows (Centered,Merged,Repeated,Once), key headers Bottom*
-  - `header` (model): `--repro multirow_header 0.25 49` — C4 column 'unitPrice' lacks ["Activity"] — *base real:northwind/products.csv (24 rows × 5 cols); multirow header: 1 parent rows (Centered), key headers Top*
+  - `header` (model): `--repro multirow_header 0.50 13` — B6 column 'Year to date' lacks ["Key figures", "unitPrice"] — *base real:northwind/products.csv (9 rows × 5 cols); multirow header: 2 parent rows (Once,Repeated), key headers Top*
 - **side_by_side** — 2–4 tables side by side, gaps of 0–2 columns, later tables sharing the first table's row labels
   - `placed` (model): `--repro side_by_side 0.75 2` — E24 Text("CC-520") dropped: its row was taken as a total row (total 'CC-520') — *3 tables side by side, gap 0, gap 0*
   - `labels` (model): `--repro side_by_side 0.50 1` — K3 lost labels ["Dunmore 2"] (row has: idaho, 153, 36, 29, 85, 221807, 767, 16952, capacity) — *3 tables side by side, shares the first table's labels, gap 1, gap 1*
-  - `header` (model): `--repro side_by_side 0.50 0` — A3 column 'col_A' lacks ["Fuel"] — *3 tables side by side, gap 1, gap 0*
-  - `tables` (model): `--repro side_by_side 0.25 1` — T1 mixes 2 source tables — *2 tables side by side, gap 2*
+  - `header` (model): `--repro side_by_side 0.75 2` — E6 column 'Power generation by plant / Budget and actuals' lacks ["Cost centre"] — *3 tables side by side, gap 0, gap 0*
+  - `tables` (model): `--repro side_by_side 0.25 7` — T1 mixes 2 source tables — *2 tables side by side, gap 0*
   - `notes_out` (model): `--repro side_by_side 0.75 5` — G4 title became table data — *3 tables side by side, shares the first table's labels, gap 2, gap 0*
 - **stacked** — 2–4 tables stacked, 0–3 blank rows apart, same or different schema, block titles, header repeated or not
   - `labels` (model): `--repro stacked 0.25 2` — B19 lost labels ["2023"] (row has: vehicles, 59707, 1063622, men, exports) — *2 tables stacked, same schema, gap 1*
@@ -138,58 +138,57 @@ Invariants:
 - **average_rows** — average / mean / Ø rows (group and overall) that must not be summed or flagged as wrong totals
   - no failures
 - **unit_scale** — scale stated in the title, a unit row, the header text, a corner cell or a note ('in 1000 EUR', 'Mio. €')
-  - `placed` (rules): `--repro unit_scale 0.00 14` — A14 Text("Riverbend 2") taken as a header row of T2 — *base gen:energy (21 rows × 4 cols)*
-  - `header` (rules): `--repro unit_scale 0.00 14` — A15 column 'Riverbend 2' lacks ["Plant"] — *base gen:energy (21 rows × 4 cols)*
-  - `tables` (rules): `--repro unit_scale 0.00 14` — source table 1 split into T1+T2 — *base gen:energy (21 rows × 4 cols)*
+  - no failures
 - **footnotes** — footnote marks in numbers (123¹, 45*, 12 (r), 7 p) and headers, legend lines under the table
-  - `placed` (model): `--repro footnotes 0.25 4` — B14 Text("Highlands") taken as a header row of T2 — *base gen:sales (16 rows × 3 cols); footnote marks on 12% of numbers, 0 headers, 2 legend lines (gap 1)*
-  - `header` (model): `--repro footnotes 0.25 4` — B15 column 'Highlands' lacks ["Region"] — *base gen:sales (16 rows × 3 cols); footnote marks on 12% of numbers, 0 headers, 2 legend lines (gap 1)*
-  - `tables` (model): `--repro footnotes 0.25 4` — source table 1 split into T1+T2 — *base gen:sales (16 rows × 3 cols); footnote marks on 12% of numbers, 0 headers, 2 legend lines (gap 1)*
+  - no failures
 - **locale** — numbers and dates as text in US/EU/FR/CH conventions, negatives in parentheses, '-', '…', '..' for missing
   - `placed` (rules): `--repro locale 0.75 18` — A20 Text("24021102IND01") taken as a header row of T2 — *base real:data_gov_rs/rzs_zaposleni_cyr.csv (24 rows × 3 cols); numbers as Us text on 75% of cells, paren negatives true, missing 9%, dates as Some(Us)*
   - `header` (rules): `--repro locale 0.75 18` — A21 column '24021102IND01' lacks ["idindikator"] — *base real:data_gov_rs/rzs_zaposleni_cyr.csv (24 rows × 3 cols); numbers as Us text on 75% of cells, paren negatives true, missing 9%, dates as Some(Us)*
   - `tables` (rules): `--repro locale 0.75 18` — source table 1 split into T1+T2 — *base real:data_gov_rs/rzs_zaposleni_cyr.csv (24 rows × 3 cols); numbers as Us text on 75% of cells, paren negatives true, missing 9%, dates as Some(Us)*
 - **notes** — notes above the header, inside the body, directly under the last row, and comments right of the table
-  - `notes_out` (model): `--repro notes 0.25 0` — E20 comment became table data — *base gen:health (21 rows × 3 cols); notes: comment*
+  - no failures
 - **spacers** — blank spacer rows every k rows and blank spacer columns
   - `placed` (model): `--repro spacers 0.25 0` — A27 Text("Eastwick 3") dropped: its row was taken as a total row (total 'Eastwick 3') — *base gen:population (21 rows × 4 cols); blank row every 5 rows*
 - **separators** — rows of ----- / ===== under the header and before totals, a | separator column
-  - `header` (model): `--repro separators 0.50 1` — B10 column '_____' lacks ["weather"] — *base real:vega_datasets/seattle_weather.csv (18 rows × 5 cols); '_____' rows, every 6 rows*
-  - `tables` (model): `--repro separators 0.50 1` — source table 1 split into T1+T2 — *base real:vega_datasets/seattle_weather.csv (18 rows × 5 cols); '_____' rows, every 6 rows*
-  - `notes_out` (model): `--repro separators 0.25 33` — A13 separator became table data — *base real:data_gov_rs/rzs_zaposleni_cyr.csv (9 rows × 3 cols); '_____' rows, before a grand total*
-  - `totals_ok` (model): `--repro separators 0.25 1` — C17 total status unknown (not_verified) — *base gen:sales (10 rows × 5 cols); '=====' rows, under the header, before a grand total*
+  - no failures
 - **transposed** — periods across instead of down (records as columns), with a year row over quarters
   - no failures
 - **long_register** — 200–2000-row register whose descriptions contain total words ('Total knee replacement', 'Ukupni troškovi')
   - no failures
 - **wide_periods** — 6–60 period columns (years, 'Jan 2021', '2021-01', or a year row over month names)
-  - `placed` (model): `--repro wide_periods 0.00 2` — A4 Text("Alder 1") on Notes as other — *6 period columns as '2010-01'*
-  - `value` (rules): `--repro wide_periods 0.00 9` — C3 expected Num(29.0), got text "29" (column 'col_C' text) — *6 period columns as '2010-01'*
-  - `header` (model): `--repro wide_periods 0.00 3` — A4 column 'col_A' lacks ["Country"] — *6 period columns as '2010-01'*
+  - no failures
 - **mixed_types** — free text in numeric columns ('<5', 'confidential', 'n.a.', 'see note')
-  - `placed` (model): `--repro mixed_types 0.50 0` — A14 Text("Human Resources") taken as a header row of T2 — *base gen:budget (22 rows × 3 cols); free text in 2 numeric columns (15% of cells)*
+  - `placed` (model): `--repro mixed_types 0.50 26` — B11 Text("Stonegate") taken as a header row of T2 — *base gen:energy (10 rows × 4 cols); free text in 2 numeric columns (15% of cells)*
   - `value` (model): `--repro mixed_types 1.00 3` — D4 expected Num(43257.64), got text "43257.64" (column 'Imports' text) — *base gen:trade (10 rows × 5 cols); free text in 2 numeric columns (30% of cells)*
-  - `header` (model): `--repro mixed_types 0.50 0` — A15 column 'Human Resources' lacks ["Department"] — *base gen:budget (22 rows × 3 cols); free text in 2 numeric columns (15% of cells)*
-  - `tables` (model): `--repro mixed_types 0.50 0` — source table 1 split into T1+T2 — *base gen:budget (22 rows × 3 cols); free text in 2 numeric columns (15% of cells)*
+  - `header` (model): `--repro mixed_types 0.50 26` — B12 column 'Stonegate' lacks ["Plant"] — *base gen:energy (10 rows × 4 cols); free text in 2 numeric columns (15% of cells)*
+  - `tables` (model): `--repro mixed_types 0.50 26` — source table 1 split into T1+T2 — *base gen:energy (10 rows × 4 cols); free text in 2 numeric columns (15% of cells)*
 - **total_labels** — grand total rows with rare, foreign and misspelled labels (Totals, Insgesamt, Ukupno, Razem, Toal, ∑)
   - no failures
 - **multilingual** — headers in de/fr/es/it/pl/sr/Cyrillic, bilingual two-row headers, Latin/Cyrillic mixed
-  - `placed` (rules): `--repro multilingual 0.00 49` — A3 Text("Alder") taken as a header row of T1 — *base gen:population (10 rows × 5 cols)*
+  - no failures
 - **combo** — three random mutators on one table at the same intensity
   - `placed` (model): `--repro combo 0.50 7` — C13 Text("Harrow") dropped: its row was taken as a total row (total 'Harrow') — *combo of labels_once + unit_scale + locale; base gen:population; group labels Once; scale 'in 1000 EUR' ×1000 in the own line under the title; numbers as Eu text on 50% of cells, paren negatives true, missing 6%, dates as Some(Eu)*
   - `value` (model): `--repro combo 0.50 6` — A18 expected Text("Riverside"), got text "General" (column 'Hospital' text) — *combo of labels_once + notes + footnotes; base gen:health; group labels Once; notes: below_gap0, inside; footnote marks on 25% of numbers, 1 headers, 2 legend lines (gap 0)*
-  - `labels` (model): `--repro combo 0.50 9` — D6 lost labels ["Riverbend"] (row has: gas, 1000, 198, c, powergenerationbyplant, capacity) — *combo of labels_once + separators + mixed_types; base gen:energy; group labels Once; '*****' rows, every 4 rows; free text in 2 numeric columns (15% of cells)*
-  - `header` (model): `--repro combo 0.50 2` — B11 column '~~~~~' lacks ["Plant"] — *combo of total_labels + spacers + separators; base gen:energy; typed grand total 'Totals' (tier 1) at the bottom; blank row every 4 rows, blank column after the labels; '~~~~~' rows, every 6 rows*
-  - `tables` (model): `--repro combo 0.50 2` — source table 1 split into T1+T2 — *combo of total_labels + spacers + separators; base gen:energy; typed grand total 'Totals' (tier 1) at the bottom; blank row every 4 rows, blank column after the labels; '~~~~~' rows, every 6 rows*
-  - `notes_out` (model): `--repro combo 0.25 20` — A21 separator became table data — *combo of separators + footnotes + locale; base gen:health; '---------------' rows, under the header, before a grand total; footnote marks on 12% of numbers, 0 headers, 2 legend lines (gap 1); numbers as Ch text on 25% of cells, paren negatives false, missing 3%, dates as None*
-  - `totals_found` (model): `--repro combo 0.75 45` — C4 total not on Totals (stayed in the data) — *combo of of_which + total_labels + separators; base gen:population; 3 of-which rows (davon: Export / di cui: estero / di cui: estero), grand total; typed grand total 'Celkem' (tier 2) at the top; '~~~~~' rows, under the header, before a grand total, every 6 rows*
+  - `labels` (model): `--repro combo 0.50 31` — D6 lost labels ["Alder"] (row has: harrow, 598, 73178, populationbydistrict, population) — *combo of labels_once + of_which + total_labels; base gen:population; group labels Once; 2 of-which rows (- of which online / of which: domestic); typed grand total 'Suma' (tier 1) at the bottom*
+  - `header` (model): `--repro combo 0.75 24` — D7 column '2022 / Imports' lacks ["All units"] — *combo of separators + multirow_header + mixed_types; base gen:trade; '-----' rows, before a grand total, every 4 rows, '/' column; multirow header: 2 parent rows, years 2022/2023/2024 × measures (repeated child names); free text in 2 numeric columns (22% of cells)*
+  - `tables` (rules): `--repro combo 0.75 25` — source table 1 split into T1+T2 — *combo of multirow_header + unit_scale + locale; base real:northwind/products.csv; multirow header: 2 parent rows (Merged,Merged), key headers Top; scale 'u hiljadama dinara' ×1000 in the own line under the title; numbers as Ch text on 75% of cells, paren negatives true, missing 9%, dates as Some(Eu)*
+  - `notes_out` (model): `--repro combo 0.50 13` — B17 total_label became table data — *combo of of_which + notes + multirow_header; base real:plotly_datasets/gapminder_five_year.csv; 3 of-which rows (di cui: estero /   of which exports / davon: Export); notes: inside, comment; multirow header: 2 parent rows, years 2022/2023 × measures (repeated child names)*
+  - `totals_found` (rules): `--repro combo 1.00 52` — D5 total not on Totals (stayed in the data) — *combo of total_labels + notes + spacers; base gen:health; typed grand total 'Totaal generaal' (tier 2) at the top; notes: below_gap1, above, comment, below_gap0; blank row every 2 rows (double), blank column after the labels*
   - `totals_ok` (model): `--repro combo 0.25 5` — C17 total status unknown (not_verified) — *combo of spacers + separators + locale; base gen:trade; blank row every 5 rows; '_____' rows, before a grand total; numbers as Eu text on 25% of cells, paren negatives false, missing 3%, dates as None*
   - `totals_out` (model): `--repro combo 0.50 13` — C17 of-which row cell is table data — *combo of of_which + notes + multirow_header; base real:plotly_datasets/gapminder_five_year.csv; 3 of-which rows (di cui: estero /   of which exports / davon: Export); notes: inside, comment; multirow header: 2 parent rows, years 2022/2023 × measures (repeated child names)*
   - `nonsum` (model): `--repro combo 0.50 13` — C17 of-which row: summable table data — *combo of of_which + notes + multirow_header; base real:plotly_datasets/gapminder_five_year.csv; 3 of-which rows (di cui: estero /   of which exports / davon: Export); notes: inside, comment; multirow header: 2 parent rows, years 2022/2023 × measures (repeated child names)*
-  - `scale` (model): `--repro combo 0.50 24` — scale ×1000 (1000) neither applied nor kept with the table — *combo of multilingual + unit_scale + footnotes; base gen:budget; bilingual header sr_cyr over en; scale 'in 1000 EUR' ×1000 in the unit row under the header; footnote marks on 25% of numbers, 0 headers, 2 legend lines (gap 0)*
+  - `scale` (rules): `--repro combo 1.00 6` — scale ×1000 (1000) neither applied nor kept with the table — *combo of spacers + unit_scale + footnotes; base gen:energy; blank row every 2 rows, blank column after the labels; scale 'in 1000 EUR' ×1000 in the note under the table; footnote marks on 50% of numbers, 1 headers, 3 legend lines (gap 0)*
 
 <!-- HAND-WRITTEN: everything below this line is kept when the report is regenerated -->
 ## Summary (hand-written, from the 60-seed sweep on master dca8aeb + this harness)
+
+- **Layout and headers (B33, B35, B38, B39; rules / model at t = 1, master cbf0d61 → this
+  branch):** `footnotes` 73 / 100 → 100 / 100, `wide_periods` 68 → 100 at every intensity,
+  `separators` 37 → 100, `notes` 17 / 32 → 100 / 100, `mixed_types` 78 / 80 → 85 / 90,
+  `multirow_header` 32 / 38 → 33 / 43, `side_by_side` 28 → 33 (t = 0.25: 62 → 87), `combo`
+  30 / 28 → 58 / 58; all families 76 / 81 → 88 / 91; no family lower. Still open: the model's
+  lone last row after a spacer as a total (`spacers` 88 %), side-by-side tables 0 columns apart
+  or sharing the first table's labels, rules-only `label_blocks` (50 % at t = 0).
 
 - **0 crashes** in 12,600 normalize runs; ~2 ms per run. Clean tables (t = 0) pass 96% (rules) /
   99% (model). Averaged over families, the model path drops to 74 / 61 / 55 / 50% at

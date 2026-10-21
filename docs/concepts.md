@@ -47,7 +47,8 @@ rule-based detector (`core/src/layout/`) works like this:
    the first data-like row, so multi-row headers (`2024` over `Q1 Q2 Q3 Q4`) stay together. A
    column-numbering row right under the header (`1 2 3 4 5`, as in Destatis tables whose notes say
    "Sp. 3–4") is part of the header, not the first data row, and so is a unit row (`Mrd. EUR | % |
-   2020 = 100 | 1 000 Personen`). A header row of periods written as text (`2010-01`, `01/2010`)
+   2020 = 100 | 1 000 Personen`). A header row of periods written as text (three or more of
+   `2010-01`, `01/2010`, `2010-01-31`)
    is a header like a row of years, and so is a label over period numbers (`Year | 1 | 2 | … | 20`).
    Key/value metadata above a table (`Date of publication: | 15 Sep 2026 | Date of next
    publication: | …`) is never its header.

@@ -276,7 +276,7 @@ All notable changes to hedgehog are listed here. The format follows
     as numbers and censored / suppressed cells (`<5`, `confidential`, `[c]`) as blanks when the
     rules look for headers, so such rows no longer start a new table; whole numbers that fall in
     1900–2100 but jump (`Riverbend 2 | 1948 | 2043 | 338`) are measures, not a header of years;
-  - a header row of text periods (`2010-01`, `01/2010`, `2010-01-31`) is a header; so is a label
+  - a header row of three or more text periods (`2010-01`, `01/2010`, `2010-01-31`) is a header; so is a label
     over period numbers (`Year | 1 | 2 | … | 20`, Enron Newco);
   - ruling lines drawn with text (`-----`, `=====`, `_____`, `~~~~~`, `*****`, a `|` column) are
     neither data nor a table break: they go to `Notes` as `other`, and a total under one verifies;
