@@ -36,7 +36,7 @@ pub struct Limits {
 }
 
 pub const DEFAULT_MAX_DECOMPRESSED_BYTES: u64 = 2 << 30;
-pub const DEFAULT_MAX_CELLS: u64 = 20_000_000;
+pub const DEFAULT_MAX_CELLS: u64 = 10_000_000;
 pub const DEFAULT_MAX_SHARED_STRINGS: u64 = 10_000_000;
 
 impl Default for Limits {

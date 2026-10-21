@@ -10,10 +10,10 @@ All notable changes to hedgehog are listed here. The format follows
 
 - **Robustness for untrusted files** (P4). Per-file limits, checked before and while a file is
   read (`hh_core::reader::Limits` in `ReadOptions`): parts of a zip package decompressing to more
-  than 2 GB (zip bombs), more than 20 million cells (an ODS file's repeated rows and columns are
+  than 2 GB (zip bombs), more than 10 million cells (an ODS file's repeated rows and columns are
   counted before it is parsed), more than 10 million shared strings, and an optional deadline
   (`NormalizeOptions::deadline`, `try_normalize_workbook`). Refusals are one-line errors starting
-  with `file refused:` (`Error::is_limit`). `hedgehog mcp` gets `--max-cells` (default 20,000,000)
+  with `file refused:` (`Error::is_limit`). `hedgehog mcp` gets `--max-cells` (default 10,000,000)
   and `--max-seconds` (default 120). Password-protected files (encrypted xlsx / xlsb / ODS, xls
   with a password) now say so instead of reporting a broken zip or OLE file. See
   [docs/mcp.md](docs/mcp.md#security-limits).

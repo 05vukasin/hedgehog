@@ -28,7 +28,7 @@ hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-m
 | `--allow PATH` | none | One more file or folder outside the root (repeatable). |
 | `--query-timeout-ms N` | `2000` | Time limit of one SQL query. |
 | `--max-file-mb N` | `256` | Larger files are refused. |
-| `--max-cells N` | `20000000` | Workbooks with more non-empty cells are refused. Normalizing takes roughly 200 bytes per cell at peak (8.5 million cells: 1.8 GB), so lower it on small machines. |
+| `--max-cells N` | `10000000` | Workbooks with more non-empty cells are refused. Normalizing takes roughly 200 bytes per cell at peak (8.5 million cells: 1.8 GB), so the default keeps one file near 2 GB; raise it on a large machine. |
 | `--max-seconds N` | `120` | Time limit for reading and normalizing one file. |
 
 Get the binary from a [GitHub release](https://github.com/05vukasin/hedgehog/releases)
@@ -351,7 +351,7 @@ The server only reads; it never writes, deletes or executes anything.
   a one-line tool error that starts with `file refused:`:
   - a zip package (xlsx, xlsm, xlsb, ods) whose parts decompress to more than 2 GB (zip bombs; the
     zip reader also refuses to inflate a part past its declared size);
-  - more than `--max-cells` cells (20 million by default). An ODS file's repeated rows and columns
+  - more than `--max-cells` cells (10 million by default). An ODS file's repeated rows and columns
     are counted before it is parsed, so a few hundred bytes cannot ask for billions of cells;
   - more than 10 million shared strings;
   - reading plus normalizing longer than `--max-seconds` (120 s by default).
