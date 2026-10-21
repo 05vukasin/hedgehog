@@ -107,6 +107,18 @@ enum RowOverride {
 /// total); no columns: the whole row.
 type Overrides = HashMap<u32, Vec<(RowOverride, Vec<u32>)>>;
 
+/// Words of a label; spaced letters ("T o t a l", "O G Ó Ł E M") are one word.
+fn label_words(t: &str) -> usize {
+    let words: Vec<&str> = t.split(|ch: char| !ch.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    if words.len() >= 3 && words.iter().all(|w| w.chars().count() == 1) { 1 } else { words.len() }
+}
+
+/// A total label recurring this often in its column is a category of long-format data.
+const LABEL_CATEGORY_REPEATS: usize = 3;
+/// A total label confirming a total row has at most this many words ("Grand Total", "Razem
+/// Działanie", "SUMME Tirol mit Innsbruck"); longer texts are measure names or codes.
+const LABEL_MAX_WORDS: usize = 4;
+
 fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
     let mut out: Overrides = HashMap::new();
     let mut add = |row: u32, o: RowOverride, cols: Vec<u32>| out.entry(row).or_default().push((o, cols));
@@ -119,9 +131,28 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
             _ => None,
         })
     };
+    // A label that recurs in its column is a category of long-format data ("Totaal van woningen …"
+    // per region, "A,NRG_CL_E,TOTAL,GWH,AL"): such rows stay where the layout put them.
+    let mut repeats: HashMap<(u32, String), usize> = HashMap::new();
+    let mut category = |col: u32, t: &str| {
+        *repeats.entry((col, t.to_string())).or_insert_with(|| {
+            grid.col_cells(col)
+                .iter()
+                .filter(|&&i| matches!(&grid.sheet.cells[i as usize].value, Some(Value::Text(x)) if x == t))
+                .count()
+        }) >= LABEL_CATEGORY_REPEATS
+    };
     for c in &det.candidates {
+        let label_text = c.label.and_then(|(lr, lc)| match grid.cell(lr, lc).and_then(|x| x.value.as_ref()) {
+            Some(Value::Text(t)) => Some((lc, t.as_str())),
+            _ => None,
+        });
         let labelled = c.evidence.iter().any(|e| matches!(e, Evidence::Keyword(_)))
-            && c.label.is_some_and(|(_, lc)| first_text(c.row) == Some(lc));
+            && label_text.is_some_and(|(lc, t)| {
+                first_text(c.row) == Some(lc)
+                    && label_words(t) <= LABEL_MAX_WORDS
+                    && !category(lc, t)
+            });
         let confirmed = c.direction == Direction::Vertical
             && match c.origin {
                 TotalOrigin::Typed => {

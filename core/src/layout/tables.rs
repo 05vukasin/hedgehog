@@ -140,10 +140,14 @@ fn has_own_total_label(sheet: &Sheet, r: &Row, labelled: &[u32]) -> bool {
         (Some(a), Some(b)) => b.row - a.row + 1,
         _ => 0,
     };
-    let texts = r.entries.iter().filter(|e| e.kind == Kind::Text).count();
-    r.entries.iter().filter(|e| e.kind == Kind::Text).take(3).enumerate().any(|(k, e)| {
-        is_total_label(text(sheet, e)) && !incidental_keyword(text(sheet, e), k > 0, k + 1 < texts, rows)
-    })
+    // Text right of the label is left to the normalized output's row overrides: the learned model
+    // keeps these rows' roles as trained ("Total debt service (% of GNI) | country | …").
+    r.entries
+        .iter()
+        .filter(|e| e.kind == Kind::Text)
+        .take(3)
+        .enumerate()
+        .any(|(k, e)| is_total_label(text(sheet, e)) && !incidental_keyword(text(sheet, e), k > 0, false, rows))
 }
 
 /// Most of the row's numbers are aggregate formulas over the cells above.

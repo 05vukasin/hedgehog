@@ -17,7 +17,8 @@ pub mod verify;
 
 pub use deps::DependencyIndex;
 pub use detect::{
-    detect, detect_rows, detect_with, detection, incidental_rows, keyword_rows, labelled_rows, Detection, Direction,
+    detect, detect_rows, detect_with, detection, incidental_rows, keyword_rows, labelled_rows, model_records, Detection,
+    Direction,
     Evidence, IncidentalRows, NonSumCheck, NonSumRow, TotalCandidate, TotalLevel, TotalOrigin,
 };
 pub use features::compute;

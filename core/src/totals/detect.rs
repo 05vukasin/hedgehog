@@ -209,7 +209,7 @@ fn number(cell: Option<&Cell>) -> Option<f64> {
 /// Rows whose keyword is only an incidental word of a free-text cell in a register
 /// ([`incidental_keyword`]) are left out; [`detect_rows`] adds those whose numbers add up.
 pub fn keyword_rows(grid: &Grid) -> HashMap<u32, (u32, KeywordLevel)> {
-    keyword_rows_with(grid, &keyword_cells(grid, true), true).0
+    keyword_rows_with(grid, &keyword_cells(grid, true), true, false).0
 }
 
 /// Rows whose total word is incidental ([`incidental_keyword`]: free text in a register), sorted.
@@ -224,12 +224,80 @@ pub struct IncidentalRows {
 /// The rows of `grid` whose total word is incidental, split by whether arithmetic (or the group
 /// they close) confirms them as totals. Cheap when there are none (one pass over the text cells).
 pub fn incidental_rows(grid: &Grid) -> IncidentalRows {
-    let (_, weak) = keyword_rows_with(grid, &keyword_cells(grid, true), true);
+    let (_, weak, _) = keyword_rows_with(grid, &keyword_cells(grid, true), true, false);
     if weak.is_empty() {
         return IncidentalRows::default();
     }
     let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
     IncidentalRows { records: d.incidental_rows.clone(), totals: d.confirmed_rows.clone() }
+}
+
+/// The rows the learned row model's post-step turns back into data: the register rule it was
+/// built with (B1) — a total word of the row model's list in a longer text right of other text,
+/// a recurring label a category by its share alone, a total only when one of its typed numbers is
+/// the sum of at least two numbers above it or it closes its group. The other weak rows (B32
+/// descriptions starting with a total word, names such as "Somme") are left to the normalized
+/// output's row overrides, so the model's roles stay as trained.
+pub fn model_records(grid: &Grid) -> Vec<u32> {
+    let kw_cells = keyword_cells(grid, false);
+    let (strong, weak, _) = keyword_rows_with(grid, &kw_cells, true, true);
+    if weak.is_empty() {
+        return Vec::new();
+    }
+    let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
+    let formula_total: FxHashSet<(u32, u32)> = d
+        .candidates
+        .iter()
+        .filter(|c| c.origin == TotalOrigin::Formula && !c.evidence.contains(&Evidence::SourceBelow))
+        .map(|c| (c.row, c.col))
+        .collect();
+    let rows_with_cells = RowSet::new(grid.sheet.cells.iter().map(|c| c.row));
+    let none = RowSet::new(std::iter::empty());
+    let budget = std::cell::Cell::new(0);
+    let strong_set = RowSet::new(strong.keys().copied());
+    let mut all_rows = strong.clone();
+    all_rows.extend(weak.iter().map(|(&r, &v)| (r, v)));
+    let all_set = RowSet::new(all_rows.keys().copied());
+    let mut columns: FxHashMap<u32, ColumnView> = FxHashMap::default();
+    let mut weak_sorted: Vec<_> = weak.iter().map(|(&r, &v)| (r, v)).collect();
+    weak_sorted.sort_unstable_by_key(|x| x.0);
+    let mut records = Vec::new();
+    for &(row, (lc, lvl)) in &weak_sorted {
+        let cols: Vec<u32> = grid
+            .row_cells(row)
+            .iter()
+            .map(|&i| &grid.sheet.cells[i as usize])
+            .filter(|c| c.col > lc && c.formula.is_none() && matches!(c.value, Some(Value::Number(_))))
+            .map(|c| c.col)
+            .collect();
+        let mut adds_up = |rows: &KeywordRows, set: &RowSet| {
+            let w = Walk {
+                grid,
+                kw_rows: rows,
+                formula_total: &formula_total,
+                rows_with_cells: &rows_with_cells,
+                kw_set: set,
+                skip: &none,
+                more: false,
+                budget: &budget,
+                spacers: false,
+            };
+            let group = if cols.is_empty() { None } else { group_start(grid, rows, &rows_with_cells, row, lc, false) };
+            cols.iter().any(|&col| {
+                let value = number(grid.cell(row, col)).unwrap_or(0.0);
+                let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
+                value != 0.0
+                    && typed_vertical(&w, view, group, row, col, lc, lvl, value).is_some_and(|c| {
+                        c.evidence.contains(&Evidence::ArithmeticMatch) && source_numbers(view, &c) >= 2
+                    })
+            })
+        };
+        let confirmed = closes_group_with(grid, row, lc, false) || adds_up(&all_rows, &all_set) || adds_up(&strong, &strong_set);
+        if !confirmed {
+            records.push(row);
+        }
+    }
+    records
 }
 
 /// Rows labelled as totals by a total word, sorted: [`keyword_rows`] plus the rows whose
@@ -239,12 +307,16 @@ pub fn labelled_rows(grid: &Grid) -> Vec<u32> {
     if sheet_rows(grid) < REGISTER_MIN_ROWS {
         return Vec::new();
     }
-    let (strong, weak) = keyword_rows_with(grid, &keyword_cells(grid, true), true);
-    let mut rows: Vec<u32> = if weak.is_empty() {
-        strong.into_keys().collect()
+    let (strong, weak, b1) = keyword_rows_with(grid, &keyword_cells(grid, true), true, false);
+    // The rule layout (and through it the learned model) keeps the register rule it was built with
+    // (B1, see [`model_records`]); the other weak rows are left to the normalized output.
+    let mut rows: Vec<u32> = if b1.is_empty() {
+        strong.into_keys().chain(weak.into_keys()).collect()
     } else {
         let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
-        d.keyword_rows.keys().copied().collect()
+        let mut v: Vec<u32> = d.keyword_rows.keys().copied().collect();
+        v.extend(weak.into_keys().filter(|r| !b1.contains(r) && !d.keyword_rows.contains_key(r)));
+        v
     };
     rows.sort_unstable();
     rows
@@ -331,7 +403,8 @@ fn keyword_rows_with(
     grid: &Grid,
     kw_cells: &[(usize, KeywordLevel)],
     registers: bool,
-) -> (KeywordRows, KeywordRows) {
+    legacy: bool,
+) -> (KeywordRows, KeywordRows, FxHashSet<u32>) {
     let kw_of: FxHashMap<usize, KeywordLevel> = kw_cells.iter().copied().collect();
     let n_rows = if registers { sheet_rows(grid) } else { 0 };
     let cells = &grid.sheet.cells;
@@ -343,6 +416,13 @@ fn keyword_rows_with(
             }
         }
     }
+    // The register rule as the learned row model's post-step knows it (B1: a longer text right of
+    // other text, the row model's keywords, a recurring label a category by its share alone).
+    let b1_category = |row: u32, col: u32, t: &str| {
+        let n = repeats.get(&(col, t)).copied().unwrap_or(0);
+        n >= MIN_CATEGORY_REPEATS && keyword_at_edge(t) && (n * 100 >= grid.col_cells(col).len() || ends_block(grid, row, col))
+    };
+    let mut b1 = FxHashSet::default();
     let category = |row: u32, col: u32, t: &str| {
         let n = repeats.get(&(col, t)).copied().unwrap_or(0);
         n >= MIN_CATEGORY_REPEATS
@@ -365,10 +445,12 @@ fn keyword_rows_with(
     let mut label: Option<(u32, u32, KeywordLevel, bool)> = None; // (row, col, level, incidental)
     let mut cur_row = None;
     let mut text_left = false; // a label text seen on the current row before `label`
+    let mut skipped = false; // a repeated key with a total word passed over on the current row
     for (i, c) in grid.sheet.cells.iter().enumerate() {
         if cur_row != Some(c.row) {
             cur_row = Some(c.row);
             text_left = false;
+            skipped = false;
             label = None;
         }
         if out.contains_key(&c.row) || weak.contains_key(&c.row) {
@@ -385,15 +467,28 @@ fn keyword_rows_with(
                     };
                     (same(-1) && (same(1) || same(-2))) || (same(1) && same(2))
                 };
-                let kw = kw_of.get(&i).filter(|_| !(registers && repeated()));
+                let kw = kw_of.get(&i).filter(|_| legacy || !(registers && repeated()));
+                skipped |= kw.is_none() && kw_of.contains_key(&i);
                 if let Some(&level) = kw {
                     // A free text in a register, or a word that is also a name or a code ("Somme",
                     // "SOM", "SUMA Kommunikation"): a total only if its numbers add up.
                     let right = n_rows >= REGISTER_MIN_ROWS && text_right(c.row, c.col);
-                    let weak = registers
-                        && (incidental_keyword(s, text_left, right, n_rows)
-                            || ambiguous_keyword(s).is_some_and(|name| name || text_left || data_below(c.row)));
-                    let inc = weak && !category(c.row, c.col, s);
+                    let inc = if legacy {
+                        incidental_keyword(s, text_left, false, n_rows) && !b1_category(c.row, c.col, s)
+                    } else {
+                        let weak = registers
+                            && (incidental_keyword(s, text_left, right, n_rows)
+                                || ambiguous_keyword(s).is_some_and(|name| name || text_left || data_below(c.row)));
+                        weak && !category(c.row, c.col, s)
+                    };
+                    if registers
+                        && !skipped
+                        && total_keyword_base(s).is_some()
+                        && incidental_keyword(s, text_left, false, n_rows)
+                        && !b1_category(c.row, c.col, s)
+                    {
+                        b1.insert(c.row);
+                    }
                     label = Some((c.row, c.col, level, inc));
                 } else if header_text(s) {
                     text_left = true;
@@ -407,7 +502,8 @@ fn keyword_rows_with(
     }
     drop_repeated_labels(grid, &mut out);
     drop_repeated_labels(grid, &mut weak);
-    (out, weak)
+    b1.retain(|r| weak.contains_key(r));
+    (out, weak, b1)
 }
 
 /// Shortest run of adjacent identical total labels read as a category value.
@@ -567,7 +663,7 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
     let sheet = grid.sheet;
     let kw_cells = keyword_cells(grid, registers);
     let kw_fn = if registers { total_keyword } else { total_keyword_base };
-    let (mut kw_rows, weak_rows) = keyword_rows_with(grid, &kw_cells, registers);
+    let (mut kw_rows, weak_rows, _) = keyword_rows_with(grid, &kw_cells, registers, false);
     let mut labels = Labels::new(grid);
     let mut out: Vec<TotalCandidate> = Vec::new();
 
@@ -720,12 +816,11 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
                         c.evidence.contains(&Evidence::ArithmeticMatch) && source_numbers(view, &c) >= 2
                     }) as usize;
                 }
-                matches > 0 && 2 * matches > numbers
+                (matches, numbers)
             };
-            if closes_group(grid, row, lc)
-                || adds_up(&all_rows, &all_set, &mut columns)
-                || adds_up(&strong_rows, &strong_set, &mut columns)
-            {
+            let (m1, n1) = adds_up(&all_rows, &all_set, &mut columns);
+            let (m2, n2) = if m1 > 0 && 2 * m1 > n1 { (m1, n1) } else { adds_up(&strong_rows, &strong_set, &mut columns) };
+            if closes_group(grid, row, lc) || (m1 > 0 && 2 * m1 > n1) || (m2 > 0 && 2 * m2 > n2) {
                 confirmed.push(row);
                 kw_rows.insert(row, (lc, lvl));
             } else {
@@ -804,7 +899,12 @@ const MAX_GROUP_ROWS: u32 = 10_000;
 /// label repeated). Other columns are not looked at, so a block beside another one (whose own
 /// totals sit on other rows) still closes its groups.
 fn closes_group(grid: &Grid, row: u32, label_col: u32) -> bool {
-    let Some(name) = text(grid.cell(row, label_col)).and_then(|t| group_name(t, true)) else {
+    closes_group_with(grid, row, label_col, true)
+}
+
+/// [`closes_group`] with or without the group names of the normalized output ([`group_name`]).
+fn closes_group_with(grid: &Grid, row: u32, label_col: u32, more: bool) -> bool {
+    let Some(name) = text(grid.cell(row, label_col)).and_then(|t| group_name(t, more)) else {
         return false;
     };
     for r in (row.saturating_sub(MAX_GROUP_ROWS)..row).rev() {

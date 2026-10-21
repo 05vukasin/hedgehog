@@ -153,9 +153,11 @@ A cell is taken for a total when there is evidence (`Workbook.totals()` reports 
   partial, so they are no checkable sums; they are listed on `Totals` with reason
   `known_aggregate`, so a sum over the countries does not count them again.
 
-In the normalized output a row whose total word is its label (its first text) and whose numbers add
-up is a total row even when the layout took it for data; a row the totals took for a total without
-a total word, or with its sum below it, likewise.
+In the normalized output a row whose total word is its label (its first text, at most four words,
+not a value recurring in its column as in long-format data) and whose numbers add up is a total row
+even when the layout took it for data; a row the totals took for a total without a total word, or
+with its sum below it, likewise. These decisions apply to the table holding the total's label or
+numbers only, not to a table beside it.
 
 #### Words that are not total labels
 
