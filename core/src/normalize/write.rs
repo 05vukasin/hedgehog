@@ -3,7 +3,9 @@
 use std::io::Write as _;
 use std::path::Path;
 
-use rust_xlsxwriter::{Format, Table as XTable, TableColumn, Workbook, Worksheet, XlsxError};
+use rust_xlsxwriter::{
+    DocProperties, ExcelDateTime, Format, Table as XTable, TableColumn, Workbook, Worksheet, XlsxError,
+};
 
 use super::manifest::{Source, load_hints};
 use super::typing::{fmt_num, iso};
@@ -187,6 +189,11 @@ pub(super) fn xlsx(
     // One sheet per table plus README, Totals and Notes, each holding a temp file open until saved.
     ensure_open_files(norm.tables.len() as u64 + 3)?;
     let mut wb = Workbook::new();
+    // The same input gives the same bytes (B68): rust_xlsxwriter stamps the document's created /
+    // modified properties with the current time unless one is set, so set a fixed one (the zip
+    // entries' own timestamp, 1980-01-01).
+    let epoch = ExcelDateTime::from_ymd(1980, 1, 1).map_err(xerr)?;
+    wb.set_properties(&DocProperties::new().set_creation_datetime(&epoch));
     // Low-memory sheets stream rows to temp files: put them next to the output, not in a /tmp that
     // may live in RAM.
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {

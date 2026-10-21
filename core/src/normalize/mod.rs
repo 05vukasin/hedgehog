@@ -47,6 +47,9 @@ pub struct Options {
     /// Stop after this instant: [`try_normalize_workbook`] (and [`normalize_file`], which also
     /// stops reading) returns an error; sheets not started by then are skipped.
     pub deadline: Option<std::time::Instant>,
+    /// Threads that analyze sheets in parallel. None: up to 4 (fewer on fewer CPUs). The output is
+    /// the same for every thread count.
+    pub threads: Option<usize>,
 }
 
 /// Default for [`Options::model_max_cells`].
@@ -606,7 +609,10 @@ fn layouts(wb: &Workbook, opts: &Options) -> Vec<SheetAnalysis> {
         (lay, warning, grid.into_totals())
     };
     let model_cells: usize = wb.sheets.iter().map(|s| s.cells.len()).filter(|&n| n <= limit).sum();
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(4).min(wb.sheets.len());
+    let threads = opts
+        .threads
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()).min(4))
+        .min(wb.sheets.len());
     if model.is_none() || threads <= 1 || model_cells > PARALLEL_SHEETS_MAX_CELLS {
         return wb.sheets.iter().map(one).collect();
     }
