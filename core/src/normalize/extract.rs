@@ -316,6 +316,47 @@ fn build_table(
             }
         }
     }
+    // Parent labels centred over their children without a merge (B39): when blank parent cells
+    // over labelled measure columns lie left of the row's first label, the labels sit in the
+    // middle of their spans, and each such blank takes the nearest label (the left one on a tie).
+    let measure = |hc: usize| {
+        let col = r.left + hc as u32;
+        let vals: Vec<bool> = rows
+            .iter()
+            .filter(|(row, _)| *row >= body_top)
+            .take(5)
+            .filter_map(|(_, idxs)| idxs.iter().find(|&&i| cells[i].col == col))
+            .map(|&i| matches!(cells[i].value, Some(Value::Number(_))))
+            .collect();
+        !vals.is_empty() && vals.iter().all(|&b| b)
+    };
+    for hr in 0..nh.saturating_sub(1) {
+        let labelled_below = |hc: usize| (hr + 1..nh).any(|k| head[k][hc].is_some());
+        if (0..ncols).any(|hc| merged_in_header.contains(&(hr, hc))) {
+            continue;
+        }
+        let labels: Vec<usize> = (0..ncols).filter(|&hc| head[hr][hc].is_some() && labelled_below(hc)).collect();
+        let Some(&first) = labels.first() else { continue };
+        let centred = (0..first).any(|hc| head[hr][hc].is_none() && labelled_below(hc) && measure(hc));
+        if !centred {
+            continue;
+        }
+        let same_parent = |a: usize, b: usize| hr == 0 || head[hr - 1][a] == head[hr - 1][b];
+        let mut fill: Vec<(usize, usize)> = Vec::new();
+        for hc in 0..ncols {
+            if head[hr][hc].is_some() || !labelled_below(hc) || !measure(hc) {
+                continue;
+            }
+            let near = labels.iter().copied().filter(|&l| same_parent(l, hc)).min_by_key(|&l| (l.abs_diff(hc), l > hc));
+            if let Some(l) = near {
+                fill.push((hc, l));
+            }
+        }
+        for (hc, l) in fill {
+            head[hr][hc] = head[hr][l].clone();
+            tr.add(T::HeaderCellsForwardFilled, 1);
+        }
+    }
     // Blank cells right of a parent label (not merged) take it, while columns below are labelled
     // and the parent's own parent does not change.
     for hr in 0..nh.saturating_sub(1) {
