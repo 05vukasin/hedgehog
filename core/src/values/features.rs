@@ -444,6 +444,7 @@ mod tests {
             name: "s".into(),
             cells: vec![text(0, 0, "1.200"), text(0, 1, "1.200"), text(1, 0, "3,5"), text(1, 1, "3.25")],
             merges: vec![],
+            formats: vec![],
         };
         let grid = Grid::new(&sheet);
         let hints = sheet_column_hints(&grid);

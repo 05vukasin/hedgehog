@@ -55,7 +55,7 @@ pub fn sheet_features_with(grid: &Grid, lay: &crate::analysis::SheetLayout) -> F
     crate::context::compute(grid, &mut f);
     crate::values::features::compute(grid, &mut f);
     let cands = crate::totals::features::compute_returning(grid, &mut f);
-    finish(grid, lay, &cands, &mut f);
+    finish(grid, lay, &cands, &mut f, true);
     f
 }
 
@@ -64,11 +64,17 @@ const PARALLEL_MIN_CELLS: usize = 20_000;
 
 /// The rule layout and [`sheet_features`] of a sheet, the independent parts (layout, context,
 /// values, totals) on parallel threads for larger sheets. Same result as the sequential path.
-pub fn layout_and_features(grid: &Grid) -> (crate::analysis::SheetLayout, Features) {
+/// Without `styles`, the formatting features ([`STYLE_FEATURES`]) are left out (a model that does
+/// not read them need not pay their memory).
+pub fn layout_and_features(grid: &Grid, styles: bool) -> (crate::analysis::SheetLayout, Features) {
     let n = grid.sheet.cells.len();
     if n < PARALLEL_MIN_CELLS {
         let lay = crate::layout::analyze_for_model(grid);
-        let f = sheet_features_with(grid, &lay);
+        let mut f = Features::new(n);
+        crate::context::compute(grid, &mut f);
+        crate::values::features::compute(grid, &mut f);
+        let cands = crate::totals::features::compute_returning(grid, &mut f);
+        finish(grid, &lay, &cands, &mut f, styles);
         return (lay, f);
     }
     let (lay, mut f, values, (totals, cands)) = std::thread::scope(|s| {
@@ -89,7 +95,7 @@ pub fn layout_and_features(grid: &Grid) -> (crate::analysis::SheetLayout, Featur
     });
     f.append(values);
     f.append(totals);
-    finish(grid, &lay, &cands, &mut f);
+    finish(grid, &lay, &cands, &mut f, styles);
     (lay, f)
 }
 
@@ -98,8 +104,15 @@ fn join<T>(r: std::thread::Result<T>) -> T {
     r.unwrap_or_else(|e| std::panic::resume_unwind(e))
 }
 
-/// The `l_*` (rule layout) and `x_*` (detected totals) columns, after the core features.
-fn finish(grid: &Grid, lay: &crate::analysis::SheetLayout, cands: &[crate::totals::TotalCandidate], f: &mut Features) {
+/// The `l_*` (rule layout), `x_*` (detected totals) and, with `styles`, `s_*` (formatting)
+/// columns, after the core features.
+fn finish(
+    grid: &Grid,
+    lay: &crate::analysis::SheetLayout,
+    cands: &[crate::totals::TotalCandidate],
+    f: &mut Features,
+    styles: bool,
+) {
     let cells = &grid.sheet.cells;
     let role_at = |r: i64, c: i64| -> f32 {
         if r < 0 || c < 0 {
@@ -128,6 +141,105 @@ fn finish(grid: &Grid, lay: &crate::analysis::SheetLayout, cands: &[crate::total
     f.add("l_role_right", g);
     f.add("l_in_table", h);
     add_total_context(grid, cands, f);
+    if styles {
+        add_style_features(grid, f);
+    }
+}
+
+/// The formatting features (`s_*`), in column order.
+pub const STYLE_FEATURES: [&str; 14] = [
+    "s_known",
+    "s_bold",
+    "s_italic",
+    "s_underline",
+    "s_color",
+    "s_font_rel",
+    "s_fill",
+    "s_border_top",
+    "s_border_bottom",
+    "s_border_lr",
+    "s_indent",
+    "s_align",
+    "s_wrap",
+    "s_numfmt",
+];
+
+/// Positions in [`STYLE_FEATURES`] of the on/off features given as the cell's value minus the
+/// sheet's mean (bold, italic, underline, colour, fill, borders, wrap).
+const RELATIVE: [usize; 9] = [1, 2, 3, 4, 6, 7, 8, 9, 12];
+
+/// `s_*`: the cell's formatting ([`crate::model::Format`]). `s_known` is 0 and every other
+/// feature 0 when the file format carries no styles hedgehog reads (xls, xlsb, ods, csv).
+/// `s_font_rel` is the font size over the sheet's most common size; `s_align` 0 general, 1 left,
+/// 2 center, 3 right, 4 other; `s_numfmt` the [`crate::model::NumFmt`] in declaration order
+/// (0 general … 8 other); `s_border_lr` counts the left and right borders.
+fn add_style_features(grid: &Grid, f: &mut Features) {
+    use crate::model::{Align, NumFmt};
+    let sheet = grid.sheet;
+    let n = sheet.cells.len();
+    let mut cols: Vec<Vec<f32>> = (0..STYLE_FEATURES.len()).map(|_| vec![0f32; n]).collect();
+    if sheet.formats.len() == n {
+        let mut sizes = [0u32; 512];
+        for fm in &sheet.formats {
+            if let Some(s) = fm.unpack() {
+                sizes[s.size_half_pt as usize] += 1;
+            }
+        }
+        let mode = (1..sizes.len()).max_by_key(|&k| (sizes[k], std::cmp::Reverse(k))).filter(|&k| sizes[k] > 0);
+        for (i, fm) in sheet.formats.iter().enumerate() {
+            let Some(s) = fm.unpack() else { continue };
+            let align = match s.align {
+                Align::General => 0.0,
+                Align::Left => 1.0,
+                Align::Center => 2.0,
+                Align::Right => 3.0,
+                Align::Other => 4.0,
+            };
+            let numfmt = match s.num_fmt {
+                NumFmt::General => 0.0,
+                NumFmt::Integer => 1.0,
+                NumFmt::Decimal => 2.0,
+                NumFmt::Thousands => 3.0,
+                NumFmt::Percent => 4.0,
+                NumFmt::Currency => 5.0,
+                NumFmt::Date => 6.0,
+                NumFmt::Text => 7.0,
+                NumFmt::Other => 8.0,
+            };
+            let font_rel = match mode {
+                Some(m) if s.size_half_pt > 0 => s.size_half_pt as f32 / m as f32,
+                _ => 1.0,
+            };
+            let row = [
+                1.0,
+                s.bold as u8 as f32,
+                s.italic as u8 as f32,
+                s.underline as u8 as f32,
+                s.color as u8 as f32,
+                font_rel,
+                s.fill as u8 as f32,
+                s.border_top as u8 as f32,
+                s.border_bottom as u8 as f32,
+                (s.border_left as u8 + s.border_right as u8) as f32,
+                s.indent as f32,
+                align,
+                s.wrap as u8 as f32,
+                numfmt,
+            ];
+            for (c, v) in cols.iter_mut().zip(row) {
+                c[i] = v;
+            }
+        }
+        // On/off formatting counts relative to the sheet: bold in a sheet where everything is
+        // bold, or borders on every cell, says nothing about the cell.
+        for k in RELATIVE {
+            let mean = cols[k].iter().sum::<f32>() / n.max(1) as f32;
+            cols[k].iter_mut().for_each(|x| *x -= mean);
+        }
+    }
+    for (name, col) in STYLE_FEATURES.iter().zip(cols) {
+        f.add(name, col);
+    }
 }
 
 /// `x_*`: detected totals around the cell. DECO labels a whole total row (its label and every
@@ -198,7 +310,7 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
         if opts.progress && k % 50 == 0 {
             eprintln!("  {}/{} files, {} rows", k, files.len(), stats.rows);
         }
-        let wb = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open(p).ok());
+        let wb = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open_with(p, crate::reader::ReadOptions { formats: true }).ok());
         let Some(wb) = wb else {
             stats.failed += 1;
             continue;

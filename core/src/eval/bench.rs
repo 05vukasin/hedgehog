@@ -238,7 +238,7 @@ pub mod synth {
 
     fn sheet(name: &str, mut cells: Vec<Cell>, merges: Vec<Rect>) -> Sheet {
         cells.sort_by_key(|c| (c.row, c.col));
-        Sheet { name: name.into(), cells, merges }
+        Sheet { name: name.into(), cells, merges, formats: vec![] }
     }
 
     fn num(row: u32, col: u32, v: f64) -> Cell {

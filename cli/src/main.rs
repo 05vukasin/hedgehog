@@ -43,7 +43,11 @@ fn analyzer(name: &str) -> Option<&'static dyn Analyzer> {
     match name {
         "baseline" => Some(&eval::baseline::analyze),
         "layout" => Some(&hh_core::layout::analyze),
-        "model" => Some(&model_analyze),
+        "model" => {
+            // A model that reads formatting features needs the cell formats read.
+            eval::set_read_formats(model().reads_formats());
+            Some(&model_analyze)
+        }
         _ => None,
     }
 }

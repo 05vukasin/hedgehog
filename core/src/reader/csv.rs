@@ -57,7 +57,7 @@ pub(super) fn open(path: &Path) -> Result<Workbook, Error> {
         };
         read_cells(open, &head[bom..], tsv)?
     };
-    Ok(Workbook { sheets: vec![Sheet { name, cells, merges: Vec::new() }] })
+    Ok(Workbook { sheets: vec![Sheet { name, cells, merges: Vec::new(), formats: Vec::new() }] })
 }
 
 /// [`open`] on bytes in memory, without the sheet around the cells.

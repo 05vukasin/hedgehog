@@ -42,7 +42,7 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
         if opts.progress && k % 50 == 0 {
             eprintln!("  {}/{} files, {} segments", k, files.len(), stats.rows);
         }
-        let Some(wb) = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open(p).ok())
+        let Some(wb) = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open_with(p, crate::reader::ReadOptions { formats: true }).ok())
         else {
             stats.failed += 1;
             continue;
@@ -134,7 +134,7 @@ mod tests {
             .iter()
             .map(|&c| Cell { row: 0, col: c, value: Some(Value::Number(1.0)), formula: None })
             .collect();
-        let sheet = crate::model::Sheet { name: "s".into(), cells, merges: vec![] };
+        let sheet = crate::model::Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
         let grid = Grid::new(&sheet);
         let f = sheet_features(&grid);
         let (segs, sf) = crate::learned::segment_features(&grid, &f);

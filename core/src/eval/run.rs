@@ -129,10 +129,10 @@ struct FileOutcome {
 fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
     let t = Instant::now();
     let mut out = FileOutcome { via_fallback: None, failed: None, open_ms: 0.0, sheets: Vec::new() };
-    let mut opened = crate::reader::open(&file.path);
+    let mut opened = super::open(&file.path);
     if opened.is_err() {
         for alt in &file.fallback_paths {
-            if let Ok(wb) = crate::reader::open(alt) {
+            if let Ok(wb) = super::open(alt) {
                 out.via_fallback = Some(opened.err().map(|e| e.to_string()).unwrap_or_default());
                 opened = Ok(wb);
                 break;

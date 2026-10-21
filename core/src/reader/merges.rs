@@ -1,16 +1,17 @@
-//! Merged areas of xlsx sheets by a byte scan of the sheet XML.
+//! Merged areas (and cell formats, `styles.rs`) of xlsx sheets by a byte scan of the sheet XML.
 //!
 //! calamine's `merge_cells_by_sheet_name` re-parses the whole sheet XML (every cell event) only to
 //! reach `<mergeCells>` at its end — about 40% of the reader's time on large sheets. Here the
-//! part is just inflated and searched for the `mergeCells` element with `memmem`; the few tags
-//! after it are parsed by hand with calamine's exact rules (first `mergeCells` element; every
-//! `mergeCell` start tag's `ref` attribute; one bad reference empties the list, as calamine's
-//! error does through `unwrap_or_default`).
+//! part is just inflated and its tags are found with `memchr`: the `s` attribute of every `<c>`
+//! gives the cell's format, and the few tags from `mergeCells` on are parsed by hand with
+//! calamine's exact rules (first `mergeCells` element; every `mergeCell` start tag's `ref`
+//! attribute; one bad reference empties the list, as calamine's error does through
+//! `unwrap_or_default`).
 //!
 //! The sheet name → part path mapping repeats calamine's (`_rels/.rels` → workbook part,
 //! `workbook.xml.rels` → targets). Whenever anything is unusual — an entity in a sheet name, a
 //! part that is not found, a `<dimension>` that differs from the one calamine read — the
-//! scanner returns `None` and the caller falls back to calamine.
+//! scanner returns `None` and the caller falls back to calamine (and no formats).
 
 use std::collections::HashMap;
 use std::io::{Read, Seek};
@@ -19,7 +20,7 @@ use std::sync::atomic::AtomicUsize;
 use calamine::Dimensions;
 use memchr::memmem;
 
-use crate::model::Rect;
+use crate::model::{Cell, Format, Rect};
 
 pub(super) static SCANNED: AtomicUsize = AtomicUsize::new(0);
 pub(super) static FALLBACK: AtomicUsize = AtomicUsize::new(0);
@@ -28,10 +29,13 @@ pub struct Scanner<R: Read + Seek> {
     zip: zip::ZipArchive<R>,
     /// Sheet name → zip path of its part.
     parts: HashMap<String, String>,
+    /// Packed format of every `cellXfs` entry; `None` when the styles part is missing or odd.
+    xfs: Option<Vec<Format>>,
 }
 
 impl<R: Read + Seek> Scanner<R> {
-    pub fn new(reader: R) -> Option<Self> {
+    /// `formats`: also resolve the workbook's styles, so [`Scanner::scan`] returns cell formats.
+    pub fn new(reader: R, formats: bool) -> Option<Self> {
         let mut zip = zip::ZipArchive::new(reader).ok()?;
         // Workbook part, like calamine's read_package_relationships (last officeDocument wins).
         let rels = read_small(&mut zip, "_rels/.rels")?;
@@ -51,10 +55,15 @@ impl<R: Read + Seek> Scanner<R> {
         // Relationship id → target (raw, like calamine), last one wins.
         let rels = read_small(&mut zip, &format!("{xl_path}_rels/workbook.xml.rels"))?;
         let mut targets: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
+        let mut styles_target = None;
         for t in tags(&rels) {
             if !t.closing && local(t.name) == b"Relationship"
                 && let Some(id) = t.attr(b"Id") {
-                    targets.insert(id.to_vec(), t.attr(b"Target").unwrap_or(b"").to_vec());
+                    let target = t.attr(b"Target").unwrap_or(b"").to_vec();
+                    if t.attr(b"Type").is_some_and(|ty| ty.ends_with(b"/relationships/styles")) {
+                        styles_target = Some(target.clone());
+                    }
+                    targets.insert(id.to_vec(), target);
                 }
         }
         let wb = read_small(&mut zip, &format!("{xl_path}workbook.xml"))?;
@@ -80,55 +89,32 @@ impl<R: Read + Seek> Scanner<R> {
             };
             parts.insert(name, path);
         }
-        Some(Scanner { zip, parts })
+        let xfs = styles_target
+            .filter(|_| formats)
+            .and_then(|t| {
+                let t = std::str::from_utf8(&t).ok()?.to_string();
+                let path = match t.strip_prefix('/') {
+                    Some(abs) => abs.to_string(),
+                    None => format!("{xl_path}{t}"),
+                };
+                read_small(&mut zip, &path)
+            })
+            .and_then(|xml| super::styles::parse_styles(&xml));
+        Some(Scanner { zip, parts, xfs })
     }
 
-    /// Merged areas of sheet `name`, or `None` to let the caller ask calamine. `dims` is the
-    /// `<dimension>` calamine read for that sheet; the part found here must declare the same.
-    pub fn merges(&mut self, name: &str, dims: Dimensions) -> Option<Vec<Rect>> {
+    /// Merged areas and cell formats (`None`: the workbook's styles are unknown) of sheet `name`,
+    /// whose `cells` the reader has built; `None` to let the caller ask calamine for the merges.
+    /// `dims` is the `<dimension>` calamine read for that sheet; the part found here must declare
+    /// the same.
+    pub fn scan(&mut self, name: &str, dims: Dimensions, cells: &[Cell]) -> Option<(Vec<Rect>, Option<Vec<Format>>)> {
         let path = self.parts.get(name)?;
         let mut f = self.zip.by_name(path).ok()?;
-        let mut buf: Vec<u8> = Vec::with_capacity(CHUNK + TAIL);
-        let mut chunk = vec![0u8; CHUNK];
-        let finder = memmem::Finder::new(b"mergeCells");
-        let mut checked_dims = false;
-        // Bytes of `buf` already searched (keeping the last TAIL bytes for matches that cross
-        // chunk boundaries and for the tag start before a match).
-        loop {
-            let n = read_full(&mut f, &mut chunk)?;
-            buf.extend_from_slice(&chunk[..n]);
-            if !checked_dims {
-                // `<dimension>` comes before `<sheetData>`, normally within the first chunk.
-                match declared_dimension(&buf) {
-                    Some(d) if d.unwrap_or_default() == dims => checked_dims = true,
-                    Some(_) => return None, // not the part calamine read
-                    None if n == 0 || buf.len() >= 4 * CHUNK => return None,
-                    None => continue,
-                }
-            }
-            let mut from = 0;
-            while let Some(j) = finder.find(&buf[from..]).map(|j| j + from) {
-                if let Some(start) = tag_start(&buf, j) {
-                    // Found: the rest of the part holds the list.
-                    let mut rest = buf.split_off(start);
-                    f.read_to_end(&mut rest).ok()?;
-                    return Some(parse_merge_cells(&rest));
-                }
-                from = j + 1;
-            }
-            if n == 0 {
-                return Some(Vec::new()); // no <mergeCells>
-            }
-            let keep = buf.len().min(TAIL);
-            buf.drain(..buf.len() - keep);
-        }
+        super::styles::scan_sheet(&mut f, dims, self.xfs.as_deref(), cells)
     }
 }
 
-const CHUNK: usize = 256 * 1024;
-const TAIL: usize = 128;
-
-fn read_full(r: &mut impl Read, buf: &mut [u8]) -> Option<usize> {
+pub(super) fn read_full(r: &mut impl Read, buf: &mut [u8]) -> Option<usize> {
     let mut n = 0;
     while n < buf.len() {
         match r.read(&mut buf[n..]) {
@@ -148,24 +134,9 @@ fn read_small<R: Read + Seek>(zip: &mut zip::ZipArchive<R>, path: &str) -> Optio
     Some(v)
 }
 
-/// The match at `j` is the name of a `mergeCells` start tag (`<mergeCells` or `<x:mergeCells`
-/// followed by whitespace, `>` or `/`): index of its `<`.
-fn tag_start(buf: &[u8], j: usize) -> Option<usize> {
-    let after = *buf.get(j + b"mergeCells".len())?;
-    if !(after.is_ascii_whitespace() || after == b'>' || after == b'/') {
-        return None;
-    }
-    let lt = buf[..j].iter().rposition(|&b| b == b'<')?;
-    let prefix = &buf[lt + 1..j];
-    let ok = prefix.is_empty()
-        || (prefix.last() == Some(&b':')
-            && prefix[..prefix.len() - 1].iter().all(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'));
-    ok.then_some(lt)
-}
-
 /// `Some(Some(d))`: the part declares `<dimension ref=d>` before `<sheetData>`; `Some(None)`: it
 /// does not; `None`: undecided yet (need more bytes) or unparsable.
-fn declared_dimension(buf: &[u8]) -> Option<Option<Dimensions>> {
+pub(super) fn declared_dimension(buf: &[u8]) -> Option<Option<Dimensions>> {
     for t in tags(buf) {
         if t.closing {
             continue;
@@ -184,7 +155,7 @@ fn declared_dimension(buf: &[u8]) -> Option<Option<Dimensions>> {
 
 /// Merge list starting at the `<mergeCells` tag. calamine's semantics: every `mergeCell` start
 /// tag until `</mergeCells>`; a missing end or a bad reference empties the whole list.
-fn parse_merge_cells(xml: &[u8]) -> Vec<Rect> {
+pub(super) fn parse_merge_cells(xml: &[u8]) -> Vec<Rect> {
     let mut out = Vec::new();
     let mut it = tags(xml);
     match it.next() {
@@ -222,7 +193,7 @@ fn dimension(r: &[u8]) -> Option<Dimensions> {
     }
 }
 
-fn cell_ref(s: &[u8]) -> Option<(u32, u32)> {
+pub(super) fn cell_ref(s: &[u8]) -> Option<(u32, u32)> {
     let (mut col, mut row) = (0u32, 0u32);
     let mut i = 0;
     while i < s.len() {
@@ -249,7 +220,7 @@ fn cell_ref(s: &[u8]) -> Option<(u32, u32)> {
 }
 
 /// Unescapes the five XML entities and character references; `None` for anything else.
-fn decode(v: &[u8]) -> Option<String> {
+pub(super) fn decode(v: &[u8]) -> Option<String> {
     let s = std::str::from_utf8(v).ok()?;
     if !s.contains('&') {
         return Some(s.to_string());
@@ -282,31 +253,31 @@ fn decode(v: &[u8]) -> Option<String> {
     Some(out)
 }
 
-fn local(name: &[u8]) -> &[u8] {
+pub(super) fn local(name: &[u8]) -> &[u8] {
     match name.iter().rposition(|&b| b == b':') {
         Some(i) => &name[i + 1..],
         None => name,
     }
 }
 
-struct Tag<'a> {
-    name: &'a [u8],
+pub(super) struct Tag<'a> {
+    pub(super) name: &'a [u8],
     attrs: &'a [u8],
-    closing: bool,
-    self_closing: bool,
+    pub(super) closing: bool,
+    pub(super) self_closing: bool,
 }
 
 impl<'a> Tag<'a> {
-    fn attrs(&self) -> Attrs<'a> {
+    pub(super) fn attrs(&self) -> Attrs<'a> {
         Attrs { s: self.attrs }
     }
 
-    fn attr(&self, key: &[u8]) -> Option<&'a [u8]> {
+    pub(super) fn attr(&self, key: &[u8]) -> Option<&'a [u8]> {
         self.attrs().find(|(k, _)| *k == key).map(|(_, v)| v)
     }
 }
 
-struct Attrs<'a> {
+pub(super) struct Attrs<'a> {
     s: &'a [u8],
 }
 
@@ -331,11 +302,11 @@ impl<'a> Iterator for Attrs<'a> {
 
 /// Element tags of an XML fragment, skipping comments, CDATA, declarations and processing
 /// instructions.
-fn tags(xml: &[u8]) -> Tags<'_> {
+pub(super) fn tags(xml: &[u8]) -> Tags<'_> {
     Tags { xml, pos: 0 }
 }
 
-struct Tags<'a> {
+pub(super) struct Tags<'a> {
     xml: &'a [u8],
     pos: usize,
 }
@@ -415,10 +386,6 @@ mod tests {
 
     #[test]
     fn tag_starts_and_names() {
-        let b = b"<a/><mergeCells count=\"1\"><x:mergeCells>mergeCellsX";
-        assert_eq!(tag_start(b, 5), Some(4));
-        assert_eq!(tag_start(b, 29), Some(26));
-        assert_eq!(tag_start(b, 42), None);
         assert_eq!(decode(b"A &amp; B &#x41;&#66;"), Some("A & B AB".into()));
         assert_eq!(decode(b"&nbsp;"), None);
     }

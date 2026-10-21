@@ -25,6 +25,21 @@ All notable changes to hedgehog are listed here. The format follows
 - `hedgehog benchmark` reports table precision / recall / F1 (IoU 0.5 / 0.8 / 1.0, EoB) per corpus
   and per source for DECO, StatSheets and synthetic, and how often a found table's header rows are
   exactly right; the TSV gets `table_f1_iou50/80/100`. Debug aid: `core/tests/tables_gtdump.rs`.
+- **Cell formatting from xlsx / xlsm styles**: `Sheet::formats` holds one packed `Format` per cell
+  (bold, italic, underline, font colour, size, fill, borders, alignment, indent, wrap, number
+  format kind), read from `xl/styles.xml` and the cells' `s` attributes in the pass that already
+  scans each sheet for merged areas (4 bytes per cell; other formats: empty, never guessed).
+  Opt-in: `reader::open_with(path, ReadOptions { formats: true })`; plain `open` reads them only
+  when the embedded model uses them (not yet), so read time and memory are unchanged. 14
+  `s_*` features for the learned model, relative to the sheet where that matters. In
+  leave-one-corpus-out training they help every held-out corpus (four roles per file, mean of three
+  seeds: DECO 75.2 → 75.6, StatSheets 79.9 → 80.1, Strudel 86.6 → 87.3, synthetic 94.3 → 94.7), but
+  the retrained model did not beat the shipped one on the European sample, so the shipped model is
+  unchanged and does not read them yet. See
+  [docs/learned-model.md](docs/learned-model.md#formatting-features).
+- Training scripts: `--style-dropout`, `--exclude`, `--seed`; features are loaded into one float32
+  matrix file by file and XGBoost gets `QuantileDMatrix`es, so training on the four corpora fits in
+  4 GB (it needed more).
 - **`hedgehog mcp`**, an MCP tool server over stdio (JSON-RPC 2.0, protocol `2025-06-18`, older
   versions accepted) with six tools: `open_file` (compact catalog with time coverage, tables, total
   rows, columns and totals check), `describe_table`, `query` (read-only SQLite SQL over `T1`… and
@@ -85,8 +100,11 @@ All notable changes to hedgehog are listed here. The format follows
 - `hh_core::normalize::{table_time_coverage, workbook_time_coverage, table_totals}`: the manifest's
   `time_coverage` and `tables[].totals` as Rust values (`TimeCoverage`, `TableTotals`), so other
   views agree with the manifest.
+
 ### Changed
 
+- The model path computes only the row-segment features the trees test (and the guard's), not all
+  ~450: same predictions, less memory and time per sheet.
 - `open_file` catalog (MCP, `hh_agent`, Node `HedgehogSession`), after the gpt-4o-mini chat
   pilots: every column is listed for tables up to 40 columns (`name[dtype unit]`; ranges up to 14),
   runs of columns named by consecutive periods as one item (`"2011".."2025"[15 × number]`), wider
@@ -117,6 +135,7 @@ All notable changes to hedgehog are listed here. The format follows
   spisu tablic`, `Inhalt`, ...) is never a table title; the next title-like line is, and the link is
   a Notes row of kind `other` (15 of the 31 tables of a destatis migration report were titled
   "zur Inhaltsübersicht").
+
 ### Fixed
 
 - Tables on one sheet no longer overlap in the default (model) path (Finanzstatistik T2

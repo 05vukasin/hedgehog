@@ -148,6 +148,7 @@ fn baseline_components() {
         name: "s".into(),
         cells: vec![cell(0, 0), cell(1, 1), cell(5, 5), cell(10, 0), cell(10, 4)],
         merges: vec![Rect { top: 10, left: 1, bottom: 10, right: 3 }],
+        formats: vec![],
     };
     let layout = baseline::analyze(&Grid::new(&sheet));
     let rects: Vec<Rect> = layout.tables.iter().map(|t| t.rect).collect();
