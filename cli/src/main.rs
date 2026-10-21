@@ -5,6 +5,7 @@ use std::time::Instant;
 use hh_core::eval::{self, run::RunOptions, split::Split, Analyzer};
 
 mod bench;
+mod mcp;
 
 fn report(r: Result<(), String>) -> ExitCode {
     match r {
@@ -20,6 +21,8 @@ const USAGE: &str = "usage:
   hedgehog describe <file>
   hedgehog cells <file> [--sheet NAME]   (every non-empty cell as TSV: sheet row col a1 value)
   hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG] [--rules-only] [--model-max-cells N]
+  hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N]
+               (MCP tool server over stdio: open_file, describe_table, query, cells, totals, list_files; see docs/mcp.md)
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
   hedgehog eval synthetic --dir DIR [--analyzer NAME] [--limit N] [--values] [--json OUT.json] [--no-json] [--progress]
   hedgehog bench <dir|filelist> [--limit N] [--threads N] [--top K] [--open-only]
@@ -89,6 +92,7 @@ fn main() -> ExitCode {
         },
         ["cells", path, rest @ ..] => report(cells(path, rest)),
         ["normalize", rest @ ..] => report(normalize(rest)),
+        ["mcp", rest @ ..] => report(mcp::run(rest)),
         ["bench", rest @ ..] => report(bench::bench(rest)),
         ["golden", rest @ ..] => report(bench::golden(rest)),
         ["eval", "synthetic", rest @ ..] => report(eval_synthetic(rest)),

@@ -23,6 +23,7 @@ New here? Read [installation](installation.md), then the [quickstart](quickstart
 |---|---|
 | [cli.md](cli.md) | Every `hedgehog` subcommand, flag, environment variable and exit code |
 | [python-api.md](python-api.md) | Every public Python function, class, method and result field |
+| [node-api.md](node-api.md) | The npm package `hedgehog-sheets`: install, TypeScript API, agent tools in-process, mapping to Python |
 | [normalized-output.md](normalized-output.md) | The normalized workbook's sheets and the manifest schema |
 
 ## Background

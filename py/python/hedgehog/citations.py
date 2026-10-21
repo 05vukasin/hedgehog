@@ -1,6 +1,12 @@
 """Finds cell citations (``Sheet1!D43``, ``'My sheet'!B2:B9``, ``(D43)``) in model text and checks them
-against the workbook: the sheet exists, the cell is filled, and a number written right before the
-citation equals the cell's value (allowing for the rounding the text shows)."""
+against the workbook: the sheet exists, the cell is filled, and the number the citation is paired
+with equals the cell's value (allowing for the rounding the text shows).
+
+A cited cell is paired with a number written right next to it (``24.5 (G54)``, ``G54: 24.5``); else
+with the number in the same or the neighbouring cell of a Markdown table row; else with the
+nearest number in the same sentence, or the last number of the previous sentence when the sentence
+refers back to it ("478,737. This value is from cell D7"). A bare table id such as ``(T1)`` or
+``[T12]`` is not read as a cell."""
 
 from __future__ import annotations
 
@@ -33,6 +39,8 @@ class Citation:
     status: str = "ok"  # ok | unknown_sheet | empty_cell | out_of_range | mismatch | not_in_facts
     written: Optional[float] = None
     actual: Any = None
+    # How `written` was found: adjacent | table | sentence | previous_sentence (None: no number paired)
+    pairing: Optional[str] = None
 
 
 @dataclass
@@ -60,7 +68,8 @@ class CitationReport:
         for c in self.invalid:
             if c.status == "mismatch":
                 actual = f"{c.actual:,.2f}" if isinstance(c.actual, (int, float)) else repr(c.actual)
-                out.append(f"{c.ref}: text gives {c.written:,.2f} for this cell, but it holds {actual}")
+                where = "" if c.pairing in (None, "adjacent") else f" (number paired by {c.pairing.replace('_', ' ')})"
+                out.append(f"{c.ref}: text gives {c.written:,.2f} for this cell{where}, but it holds {actual}")
             elif c.status == "unknown_sheet":
                 out.append(f"{c.ref}: no such sheet")
             elif c.status == "out_of_range":
@@ -121,6 +130,8 @@ def find_citations(text: str, sheet_names: List[str]) -> List[Citation]:
     for m in _BARE.finditer(text):
         if any(s <= m.start() < e for s, e in taken):
             continue
+        if _TABLE_ID.fullmatch(m.group(0)):
+            continue  # "(T1)", "[T12]": a table id, not cell T1
         sheet = sheet_names[0] if len(sheet_names) == 1 else None
         out.append(_citation(sheet, m.groups(), m.start(), m.end()))
     out.sort(key=lambda c: c.start)
@@ -180,10 +191,13 @@ def check_citations(
             c.status = "not_in_facts"
             continue
         if single:
-            written = _number_before(text, c, report.citations)
+            written, pairing = _number_before(text, c, report.citations), "adjacent"
+            if written is None:
+                written, pairing = _paired_number(text, c, report.citations)
             if written is not None:
                 value, tol = written
                 c.written = value
+                c.pairing = pairing
                 if not _matches(value, tol, c.actual):
                     c.status = "mismatch"
     report.uncited_numbers = _uncited_numbers(text, report.citations)
@@ -245,6 +259,80 @@ def _adjacent_number(text: str, c: Citation, all_cits: List[Citation]) -> Option
     if m and _JOIN_AFTER.fullmatch(_plain(text[c.end:m.start()])):
         return m
     return None
+
+
+_TABLE_ID = re.compile(r"[(\[]T[1-9]\d{0,2}", re.IGNORECASE)
+_SENTENCE_END = re.compile(r"[.!?](?=\s|$)|\n")
+_BACK_REFERENCE = re.compile(
+    r"\s*[*_`]*(?:this|that|these|it|which|the (?:value|figure|number|amount|total))\b", re.IGNORECASE
+)
+
+
+def _parse(m: "re.Match[str]") -> Optional[Tuple[float, float]]:
+    try:
+        return parse_number(m.group(1), m.group(2))
+    except ValueError:
+        return None
+
+
+def _candidates(text: str, start: int, end: int, cits: List[Citation], skip: set) -> List["re.Match[str]"]:
+    """Numbers in text[start:end] that may stand for a cell value: not inside a citation, not
+    attached to another citation, not a year, a count ("3 rows") or a small plain integer."""
+    out = []
+    for m in _NUMBER.finditer(text, start, end):
+        if any(c.start <= m.start() < c.end for c in cits) or m.start() in skip:
+            continue
+        if _COUNT_WORDS.match(text, m.end()):
+            continue
+        raw = m.group(1)
+        if re.fullmatch(r"\d+", raw) and not m.group(2):
+            v = int(raw)
+            if v < 100 or 1900 <= v <= 2100:
+                continue
+        out.append(m)
+    return out
+
+
+def _paired_number(text: str, c: Citation, cits: List[Citation]) -> Tuple[Optional[Tuple[float, float]], Optional[str]]:
+    """The number a citation stands for when none is written right next to it: the same or the
+    neighbouring cell of a Markdown table row, else the nearest number in the same sentence, else
+    the last number of the previous sentence when this one refers back ("This value ...")."""
+    others = [x for x in cits if x is not c]
+    skip = {m.start() for x in others if (m := _adjacent_number(text, x, cits)) is not None}
+    line_start = text.rfind("\n", 0, c.start) + 1
+    line_end = text.find("\n", c.end)
+    line_end = len(text) if line_end < 0 else line_end
+    line = text[line_start:line_end]
+    if line.lstrip().startswith("|"):
+        bars = [line_start + i for i, ch in enumerate(line) if ch == "|"]
+        cells = [(a + 1, b) for a, b in zip(bars, bars[1:])]
+        k = next((i for i, (a, b) in enumerate(cells) if a <= c.start < b), None)
+        if k is not None:
+            for j in (k, k - 1, k + 1):
+                if 0 <= j < len(cells):
+                    nums = _candidates(text, cells[j][0], cells[j][1], cits, skip)
+                    if nums:
+                        return _parse(nums[-1] if j <= k else nums[0]), "table"
+        return None, None
+    # Sentence bounds.
+    s_start = 0
+    for m in _SENTENCE_END.finditer(text, 0, c.start):
+        s_start = m.end()
+    m_end = _SENTENCE_END.search(text, c.end)
+    s_end = m_end.start() if m_end else len(text)
+    nums = _candidates(text, s_start, s_end, cits, skip)
+    if nums:
+        before = [m for m in nums if m.end() <= c.start]
+        best = before[-1] if before else nums[0]
+        return _parse(best), "sentence"
+    if s_start > 0 and _BACK_REFERENCE.match(text, s_start):
+        p_start = 0
+        for m in _SENTENCE_END.finditer(text, 0, max(0, s_start - 1)):
+            p_start = m.end()
+        prev = _candidates(text, p_start, s_start, cits, skip)
+        if prev:
+            return _parse(prev[-1]), "previous_sentence"
+    return None, None
 
 
 _COUNT_WORDS = re.compile(r"\s*(?:cells?|rows?|columns?|cols?|formulas?|sheets?|items?|totals?|tables?)\b", re.IGNORECASE)
