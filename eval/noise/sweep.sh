@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full robustness sweep in small capped jobs (one family × intensity × ≤ 200 seeds per job, one
+# Full robustness sweep in small capped jobs (one family × 5 intensities × ≤ 40 seeds = ≤ 200 workbooks per job, one
 # job at a time, 2 worker threads), then the report from all batches.
 # Usage (from the repo root): eval/noise/sweep.sh [seeds per cell, default 60] [work dir]
 set -euo pipefail
@@ -17,15 +17,14 @@ mkdir -p "$WORK"
 BATCH=$WORK/batches
 rm -rf "$BATCH"
 FAMILIES=$("$BIN" --list)
+# one job = one family, all 5 intensities, 40 seeds (200 workbooks)
 for f in $FAMILIES; do
-  for t in 0 0.25 0.5 0.75 1; do
-    from=0
-    while [ "$from" -lt "$SEEDS" ]; do
-      n=$(( SEEDS - from < 200 ? SEEDS - from : 200 ))
-      "$RUN" "$CAP" "$LOG" "$BIN" --families "$f" --intensities "$t" --seed-from "$from" --seeds "$n" \
-        --threads 2 --work "$WORK" --batch-dir "$BATCH"
-      from=$(( from + n ))
-    done
+  from=0
+  while [ "$from" -lt "$SEEDS" ]; do
+    n=$(( SEEDS - from < 40 ? SEEDS - from : 40 ))
+    "$RUN" "$CAP" "$LOG" "$BIN" --families "$f" --seed-from "$from" --seeds "$n" \
+      --threads 2 --work "$WORK" --batch-dir "$BATCH"
+    from=$(( from + n ))
   done
 done
 "$RUN" "$CAP" "$LOG" "$BIN" --report-from "$BATCH" --out "$ROOT/eval/noise/REPORT.md"
