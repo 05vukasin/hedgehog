@@ -8,6 +8,39 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Average and of-which rows** (B30, B31): `Average` / `Mean` / `Median` / `Ø 2024` /
+  `Durchschnitt` / `Moyenne` / `Prosek` / `Średnia` ... rows and `of which` / `davon` / `darunter` /
+  `dont` / `di cui` / `od toga` / `w tym` / `z toho` / `waarvan` ... rows are neither data nor sums:
+  they leave the table data (`_row_type` `average` / `of_which` with `keep_totals`, so `T<n>` has
+  data rows only and `T<n>_all` has them), are listed on `Totals` (levels `average` / `of_which`,
+  checked: `matches_mean` / `matches_median`, `within_parent`; an unchecked or larger value is
+  `unknown`, never `mismatch`) and are left out of every total's sum, so `Total` after them still
+  checks out. Agent views, catalog (`total rows: … WHERE _row_type IN ('total', 'average')`) and
+  disk cache know the new row types.
+- **Totals above their rows** (B36): a subtotal at the top of its group and a grand total at the
+  top of a table add the rows below them when those add up (typed), or by their formula (`SUM`
+  over the cells below); `{g} gesamt`, `Razem {g}`, `{g} - total` close their groups; a group
+  label written once per block is filled down across the subtotal rows; single spacer rows are
+  stepped over when the sum then matches.
+- **Total words in more languages** (B37): Czech/Slovak, Finnish, Danish, Swedish/Norwegian,
+  Hungarian, Russian, Polish, Estonian, Icelandic, Turkish, Greek, German `X gesamt` / `X
+  insgesamt`; one-letter typos of `total` in short labels (`Toal`, `Totl`, `Grand Totl`); spaced
+  letters (`T o t a l`). The learned row model's features keep the keyword list they were trained
+  on.
+- **Aggregates without a total word** (B42): a row equal to the sum of the rows above it in at
+  least two columns and two thirds of its numbers (`France métropolitaine`, `DOM`, `France
+  métropolitaine et DOM`) is a total (evidence `unlabelled`); World Bank region and income-group
+  rows (`WLD`, `EUU`, `HIC`, …, by their code column) are aggregates (`known_aggregate`). In the
+  normalized output a row whose short total label (its first text) adds up, a `SUM` over the rows
+  below, or such an aggregate is a total row even when the layout took it for data — in the table
+  holding it only, not in a table beside it.
+
+  Noise curves (model, t = 1, 60 seeds): `subtotals` 27 → 100 %, `of_which` 0 → 100 %,
+  `average_rows` 22 → 100 %, `long_register` 0 → 100 %, `total_labels` 55 → 100 %, `combo` 8 →
+  28 %, all families 61 → 81 % (rules 55 → 76 %); no family drops. Structure benchmarks: model
+  identical to master, layout total F1 on the synthetic corpus 68.3 → 68.5. EU open data + Enron
+  benchmark files: total cells found 728k → 764k (`ok` 611,692 → 646,280, mismatches 357 → 360).
+
 - **Disk cache** of normalized files (agent tools: `hedgehog mcp`, Node `HedgehogSession`): a file
   opened before comes back in a new process in ~2 ms to the catalog and ~20 ms to the first query
   answer (Portugal's 4.5M-cell contracts register: 15 s → 2.3 ms / 19 ms; peak memory 1.2 GB →
@@ -235,8 +268,10 @@ All notable changes to hedgehog are listed here. The format follows
 - **Layout and headers on noisy and statistical sheets** (B33, B35, B38, B39, B43–B46; noise
   curves at t = 1, rules / model, before → after: `footnotes` 73 / 100 → 100 / 100, `wide_periods`
   68 → 100 at every intensity, `separators` 37 → 100, `notes` 17 / 32 → 100 / 100, `mixed_types`
-  78 / 80 → 92 / 95, `side_by_side` 28 → 33 (t = 0.25: 62 → 87), `combo` 8 → 27; all families
-  55 / 61 → 67 / 70; no family lower):
+  78 / 80 → 85 / 90, `multirow_header` 32 / 38 → 33 / 43, `side_by_side` 28 → 33 (t = 0.25:
+  62 → 87), `combo` 8 → 27; all families 55 / 61 → 67 / 70; no family lower; structure
+  benchmarks: table F1 up on every corpus, e.g. DECO model IoU≥0.8 56.0 → 57.8, StatSheets
+  86.9 → 88.1):
   - numbers with footnote marks or flags (`28472.72*`, `1737³`, `6077.61 (p)`, `20560.32e`) count
     as numbers and censored / suppressed cells (`<5`, `confidential`, `[c]`) as blanks when the
     rules look for headers, so such rows no longer start a new table; whole numbers that fall in
@@ -245,6 +280,7 @@ All notable changes to hedgehog are listed here. The format follows
     over period numbers (`Year | 1 | 2 | … | 20`, Enron Newco);
   - ruling lines drawn with text (`-----`, `=====`, `_____`, `~~~~~`, `*****`, a `|` column) are
     neither data nor a table break: they go to `Notes` as `other`, and a total under one verifies;
+  - parent labels centred over their columns without a merge name every child column;
   - a header-less column right of a table with a remark on a row or two (`check!`) is notes; a
     sentence alone on the last row and source lines in more languages (`Quelle:`, `Remarque :`,
     `Fuente:`, `Uwaga:`, …) are notes;
@@ -260,6 +296,15 @@ All notable changes to hedgehog are listed here. The format follows
   - a row the model calls a group header that fills the label columns like the records around it
     (a WDI country without values) is a record: no invented `group` column;
   - an index named after its base year (`VPI 2000`, `HICP 2015`) is not a period for time coverage.
+
+- Total words in names and descriptions (B32, B41): in a register (200+ rows) a description or
+  name of more than three words that is its row's first text with more text right of it ("Total
+  knee replacement implant", "BEECH TREE TOTAL CARE LIMITED") is a record unless more than half
+  of its numbers add up; a recurring label is a category only when its row shares its keys with a
+  neighbour (a record with its own id is not); `Somme` (département), `Sumas` (place), `SOM`
+  (Somalia), `SUMA Kommunikation`, `Zusammen interreligiös` need arithmetic (`Suma`, `Zusammen`
+  alone under a table stay total labels). The learned model's own post-step keeps its trained rule;
+  the normalized output turns such rows back into data.
 
 - **Numbers next to a column's other numbers** (B40): a CSV column of percentages with up to three
   decimals read `40.805` as 40805 (the UK gender pay gap file: 35 cells, the 500–999 band averaged

@@ -37,9 +37,11 @@ pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
     let mut head: Vec<String> = cols.iter().map(|&i| short(&names[i], 60)).collect();
     let mut out = if marked {
         head.push("_row_type".into());
+        let other = t.row_types.iter().any(|r| matches!(r, RowType::Average | RowType::OfWhich));
         vec![format!(
-            "    all {} (CSV, as in {id}_all; rows with _row_type total/subtotal are not in {id}):",
+            "    all {} (CSV, as in {id}_all; rows with _row_type {} are not in {id}):",
             plural(rows, "row", "rows"),
+            if other { "other than data" } else { "total/subtotal" },
             id = t.id()
         )]
     } else {
@@ -202,10 +204,15 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
     }
     let idx: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data)).collect();
     let has = |k: RowType| idx.iter().any(|&r| t.row_types.get(r) == Some(&k));
-    let cond = match (has(RowType::Total), has(RowType::Subtotal)) {
-        (true, true) => "_row_type IN ('subtotal', 'total')",
-        (false, true) => "_row_type = 'subtotal'",
-        _ => "_row_type = 'total'",
+    let kinds: Vec<String> = [RowType::Subtotal, RowType::Total, RowType::Average, RowType::OfWhich]
+        .into_iter()
+        .filter(|&k| has(k))
+        .map(|k| format!("'{}'", k.as_str()))
+        .collect();
+    let cond = match kinds.len() {
+        0 => "_row_type = 'total'".to_string(),
+        1 => format!("_row_type = {}", kinds[0]),
+        _ => format!("_row_type IN ({})", kinds.join(", ")),
     };
     // The column whose text is the row's label, the most frequent one.
     let mut at: HashMap<usize, usize> = HashMap::new();

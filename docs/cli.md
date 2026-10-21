@@ -51,7 +51,7 @@ sales.xlsx: 1 tables, 39 cells (28 in tables, 9 totals, 2 notes) in 16 ms
 |---|---|---|
 | `<file>` | yes | Input workbook. Only read, never modified. |
 | `-o <dir>`, `--out <dir>` | yes | Output directory, created if missing. Files with the same names are overwritten. |
-| `--keep-totals` | no | Keep total and subtotal rows in the table sheets, marked in a `_row_type` column (`data`, `subtotal`, `total`). Default: they are removed from the data and listed only on the `Totals` sheet. |
+| `--keep-totals` | no | Keep total and subtotal rows in the table sheets, marked in a `_row_type` column (`data`, `subtotal`, `total`; `average` and `of_which` for average and "of which" rows). Default: they are removed from the data and listed only on the `Totals` sheet. |
 | `--csv` | no | Also write `<stem>.<table sheet>.csv` per table (UTF-8, ISO dates, empty field = missing). |
 | `--locale TAG` | no | Fix the decimal separator and day/month order for every column instead of inferring them per column. `TAG` is a preset or a language tag: `us`, `en-US`, `uk`, `en-GB`, `de`, `de-AT`, `fr`, `es`, `it`, `nl`, `pt`, `pt-BR`, `pl`, `ch`, `de-CH`, `fr-CH`, `sr`, `hr`, `bs`, `iso`, ... See [locales.md](locales.md#locale-presets). |
 | `--rules-only` | no | Label cells with the layout rules alone, without the built-in learned model ([learned-model.md](learned-model.md)). |

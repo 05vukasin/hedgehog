@@ -158,6 +158,64 @@ A cell is taken for a total when there is evidence (`Workbook.totals()` reports 
   (`siblings_match`); otherwise the result is `unconfirmed`, not `mismatch`.
 - **Grand totals** that add the subtotals, or add everything except the subtotals, are recognized
   (`sums_totals`); the subtotal rows are listed in `excluded`.
+- **Totals above their rows:** a subtotal at the top of its group (`Total Belgium` over the Belgian
+  rows) or a grand total at the top of a table (`Insgesamt` over `Österreich gesamt`, its Länder
+  and `Ausland`) adds the rows below it. A `SUM` over the cells below is read as such; a typed
+  total is taken this way only when the rows below it add up (`source_below`): down to the next
+  total, or the first run of rows from the row below that does, the totals inside skipped.
+- **Totals without a total word:** a row whose numbers equal the sum of the rows above it in at
+  least two columns and two thirds of its numbers (at least three non-zero numbers each, not only small
+  whole numbers; five in a one-column table), counted since the
+  previous total or over everything above without the totals, is a total (`unlabelled`):
+  `France métropolitaine` under the départements, `DOM`, `France métropolitaine et DOM`.
+- **Known aggregates:** in a country list with World Bank codes, the rows of region and
+  income-group codes (`WLD`, `EUU`, `HIC`, `SSF`, ...) are aggregates. Their values are weighted or
+  partial, so they are no checkable sums; they are listed on `Totals` with reason
+  `known_aggregate`, so a sum over the countries does not count them again.
+
+In the normalized output a row whose total word is its label (its first text, at most four words,
+not a value recurring in its column as in long-format data) and whose numbers add up is a total row
+even when the layout took it for data; a row the totals took for a total without a total word, or
+with its sum below it, likewise. These decisions apply to the table holding the total's label or
+numbers only, not to a table beside it.
+
+#### Words that are not total labels
+
+- **In registers** (sheets of at least 200 rows), a total word inside a longer free text is part
+  of the record: a description or a name right of other text (`Prótese total anca`), or the row's
+  first text when more text follows it and it has more than three words (`Total knee replacement
+  implant`, `BEECH TREE TOTAL CARE LIMITED`). Such a row is a total only if more than half of its
+  numbers add up (or it closes its group).
+- **Names and codes** that start with a total word in another language are total labels only if
+  more than half of the row's numbers add up: a longer name starting with one (`SUMA Kommunikation`,
+  `Zusammen interreligiös`), or `Somme` (a département), `Sumas` (a place) and `SOM` (Somalia's
+  code) right of other text or with numbers on the row below (inside a list). Alone as the label
+  under a table's numbers they stay total labels, as `Suma` and `Zusammen` always do.
+- A label recurring as a category of its column (`Summe der bezogenen Rohstoffe` once per industry
+  in long-format data) stays a total label when the row shares its other keys with a neighbouring
+  row; a record with an id of its own (`K-24-00758 | Total station survey equipment`) does not.
+
+#### Average and of-which rows
+
+Rows that are neither data nor sums are listed on `Totals` with their own level and check, and
+left out of every sum:
+
+- **Average** rows (`Average`, `Mean`, `Median`, `Ø`, `Durchschnitt`, `Mittelwert`, `Moyenne`,
+  `Media`, `Promedio`, `Prosek`, `Średnia`, `Gemiddelde`, ...; at most four words): the value is
+  compared with the mean (for `Median`, the median or the mean) of the numbers above it, since the
+  previous total or average row, or of all numbers above it without the totals and averages. A row
+  is an average row when that matches in some column, or, unchecked, when its label is the average
+  sign (`Ø 2024`) or the bare word at the end of its block, over at least two numbers. Reasons:
+  `matches_mean`, `matches_median` (`ok`), `unconfirmed` (no match: a weighted or published
+  average), `no_source`.
+- **Of-which** rows (`of which`, `thereof`, `davon`, `darunter`, `dont`, `di cui`, `de los cuales`,
+  `od toga`, `w tym`, `z toho`, `waarvan`, `varav`, `heraf`, `josta`, `ebből`, `из них`, ...): a
+  part of the row directly above it (past other of-which rows and a spacer row). The part must not
+  be larger than the whole: `within_parent` (`ok`); `exceeds_parent` (`unknown`, not `mismatch`: a rate,
+  share or change column is no part of its row above) or `no_parent` otherwise.
+
+A total under such rows adds the data rows only, so `Total` after `of which: exports` or after
+`Average` still checks out.
 
 The level (`total`, `subtotal`, `grand_total`) comes from the keyword and from nesting. The direction
 is `vertical` for a total row and `horizontal` for a total column.
@@ -181,6 +239,7 @@ Then `ok` is `True`, `False` or `None` and `reason` says why:
 | `no_source` | None | Nothing numeric in the source, and the total is not zero. |
 | `unconfirmed` | None | A typed total disagrees with its guessed source, and nothing confirmed the guess. |
 | `not_verified` | None | Normalized output only: a row the layout marked as a total whose source range was not found. |
+| `known_aggregate` | None | Normalized output only: a known aggregate row (World Bank region or income-group code), not a checkable sum. |
 | `not_additive` | None | Normalized output only: a typed total that does not add up, in a column whose header (or a row whose label) names a rate, share, percentage, index, average or per-capita value: `%`, `Anteil`, `Quote`, `Rate`, `Index`, `je Einwohner`, `j.E.`, `pro Kopf`, `per capita`, `Durchschnitt`, `average`, `Gesamt-VPI (2020=100)`. Also given to `not_verified` total rows with such a header or label. |
 | `rounding_difference` | None | Normalized output only: a typed total off by no more than the rounding of its n summed values (√n units of the last decimal shown, at least one) and by under 1%: typical of statistics published "in 1 000". |
 | `average_like` | None | Normalized output only: a typed total that lies between the smallest and the largest of its (non-negative) source values, so it cannot be their sum: an average, a weighted index or a wrong source range. |

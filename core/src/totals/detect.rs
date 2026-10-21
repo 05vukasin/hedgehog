@@ -9,7 +9,10 @@ use crate::grid::Grid;
 use crate::model::{Cell, Rect, Value};
 use crate::totals::deps::DependencyIndex;
 use crate::totals::formula::FormulaKind;
-use crate::totals::keywords::{KeywordLevel, REGISTER_MIN_ROWS, incidental_keyword, keyword_at_edge, total_keyword};
+use crate::totals::keywords::{
+    KeywordLevel, NonSumKind, NonSumLabel, REGISTER_MIN_ROWS, ambiguous_keyword, incidental_keyword, keyword_at_edge,
+    nonsum_keyword, total_keyword, total_keyword_base,
+};
 use crate::totals::verify::{close, numeric_text, verify};
 use crate::values::missing_token;
 
@@ -55,6 +58,11 @@ pub enum Evidence {
     /// Typed total without an arithmetic match, but most other totals in its row / column match,
     /// so the inferred source is trusted and a mismatch is reported as wrong.
     SiblingsMatch,
+    /// The source is the rows below the total (a subtotal above its group, a grand total at the top).
+    SourceBelow,
+    /// No total word: the row's numbers equal the sum of the rows above them in several columns
+    /// ("France métropolitaine" under the départements).
+    Unlabelled,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -202,7 +210,7 @@ fn number(cell: Option<&Cell>) -> Option<f64> {
 /// Rows whose keyword is only an incidental word of a free-text cell in a register
 /// ([`incidental_keyword`]) are left out; [`detect_rows`] adds those whose numbers add up.
 pub fn keyword_rows(grid: &Grid) -> HashMap<u32, (u32, KeywordLevel)> {
-    keyword_rows_with(grid, &keyword_cells(grid), true).0
+    keyword_rows_with(grid, &keyword_cells(grid, true), true, false).0
 }
 
 /// Rows whose total word is incidental ([`incidental_keyword`]: free text in a register), sorted.
@@ -217,12 +225,80 @@ pub struct IncidentalRows {
 /// The rows of `grid` whose total word is incidental, split by whether arithmetic (or the group
 /// they close) confirms them as totals. Cheap when there are none (one pass over the text cells).
 pub fn incidental_rows(grid: &Grid) -> IncidentalRows {
-    let (_, weak) = keyword_rows_with(grid, &keyword_cells(grid), true);
+    let (_, weak, _) = keyword_rows_with(grid, &keyword_cells(grid, true), true, false);
     if weak.is_empty() {
         return IncidentalRows::default();
     }
     let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
     IncidentalRows { records: d.incidental_rows.clone(), totals: d.confirmed_rows.clone() }
+}
+
+/// The rows the learned row model's post-step turns back into data: the register rule it was
+/// built with (B1) — a total word of the row model's list in a longer text right of other text,
+/// a recurring label a category by its share alone, a total only when one of its typed numbers is
+/// the sum of at least two numbers above it or it closes its group. The other weak rows (B32
+/// descriptions starting with a total word, names such as "Somme") are left to the normalized
+/// output's row overrides, so the model's roles stay as trained.
+pub fn model_records(grid: &Grid) -> Vec<u32> {
+    let kw_cells = keyword_cells(grid, false);
+    let (strong, weak, _) = keyword_rows_with(grid, &kw_cells, true, true);
+    if weak.is_empty() {
+        return Vec::new();
+    }
+    let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
+    let formula_total: FxHashSet<(u32, u32)> = d
+        .candidates
+        .iter()
+        .filter(|c| c.origin == TotalOrigin::Formula && !c.evidence.contains(&Evidence::SourceBelow))
+        .map(|c| (c.row, c.col))
+        .collect();
+    let rows_with_cells = RowSet::new(grid.sheet.cells.iter().map(|c| c.row));
+    let none = RowSet::new(std::iter::empty());
+    let budget = std::cell::Cell::new(0);
+    let strong_set = RowSet::new(strong.keys().copied());
+    let mut all_rows = strong.clone();
+    all_rows.extend(weak.iter().map(|(&r, &v)| (r, v)));
+    let all_set = RowSet::new(all_rows.keys().copied());
+    let mut columns: FxHashMap<u32, ColumnView> = FxHashMap::default();
+    let mut weak_sorted: Vec<_> = weak.iter().map(|(&r, &v)| (r, v)).collect();
+    weak_sorted.sort_unstable_by_key(|x| x.0);
+    let mut records = Vec::new();
+    for &(row, (lc, lvl)) in &weak_sorted {
+        let cols: Vec<u32> = grid
+            .row_cells(row)
+            .iter()
+            .map(|&i| &grid.sheet.cells[i as usize])
+            .filter(|c| c.col > lc && c.formula.is_none() && matches!(c.value, Some(Value::Number(_))))
+            .map(|c| c.col)
+            .collect();
+        let mut adds_up = |rows: &KeywordRows, set: &RowSet| {
+            let w = Walk {
+                grid,
+                kw_rows: rows,
+                formula_total: &formula_total,
+                rows_with_cells: &rows_with_cells,
+                kw_set: set,
+                skip: &none,
+                more: false,
+                budget: &budget,
+                spacers: false,
+            };
+            let group = if cols.is_empty() { None } else { group_start(grid, rows, &rows_with_cells, row, lc, false) };
+            cols.iter().any(|&col| {
+                let value = number(grid.cell(row, col)).unwrap_or(0.0);
+                let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
+                value != 0.0
+                    && typed_vertical(&w, view, group, row, col, lc, lvl, value).is_some_and(|c| {
+                        c.evidence.contains(&Evidence::ArithmeticMatch) && source_numbers(view, &c) >= 2
+                    })
+            })
+        };
+        let confirmed = closes_group_with(grid, row, lc, false) || adds_up(&all_rows, &all_set) || adds_up(&strong, &strong_set);
+        if !confirmed {
+            records.push(row);
+        }
+    }
+    records
 }
 
 /// Rows labelled as totals by a total word, sorted: [`keyword_rows`] plus the rows whose
@@ -232,12 +308,16 @@ pub fn labelled_rows(grid: &Grid) -> Vec<u32> {
     if sheet_rows(grid) < REGISTER_MIN_ROWS {
         return Vec::new();
     }
-    let (strong, weak) = keyword_rows_with(grid, &keyword_cells(grid), true);
-    let mut rows: Vec<u32> = if weak.is_empty() {
-        strong.into_keys().collect()
+    let (strong, weak, b1) = keyword_rows_with(grid, &keyword_cells(grid, true), true, false);
+    // The rule layout (and through it the learned model) keeps the register rule it was built with
+    // (B1, see [`model_records`]); the other weak rows are left to the normalized output.
+    let mut rows: Vec<u32> = if b1.is_empty() {
+        strong.into_keys().chain(weak.into_keys()).collect()
     } else {
         let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
-        d.keyword_rows.keys().copied().collect()
+        let mut v: Vec<u32> = d.keyword_rows.keys().copied().collect();
+        v.extend(weak.into_keys().filter(|r| !b1.contains(r) && !d.keyword_rows.contains_key(r)));
+        v
     };
     rows.sort_unstable();
     rows
@@ -252,7 +332,8 @@ fn sheet_rows(grid: &Grid) -> u32 {
 }
 
 /// Text cells naming a total, by index into `sheet.cells` (ascending).
-fn keyword_cells(grid: &Grid) -> Vec<(usize, KeywordLevel)> {
+fn keyword_cells(grid: &Grid, extended: bool) -> Vec<(usize, KeywordLevel)> {
+    let kw = if extended { total_keyword } else { total_keyword_base };
     // Registers repeat the same texts on many rows: classify each distinct text once.
     let mut seen: FxHashMap<&str, Option<KeywordLevel>> = FxHashMap::default();
     grid.sheet
@@ -260,7 +341,7 @@ fn keyword_cells(grid: &Grid) -> Vec<(usize, KeywordLevel)> {
         .iter()
         .enumerate()
         .filter_map(|(i, c)| match &c.value {
-            Some(Value::Text(s)) => (*seen.entry(s.as_str()).or_insert_with(|| total_keyword(s))).map(|lvl| (i, lvl)),
+            Some(Value::Text(s)) => (*seen.entry(s.as_str()).or_insert_with(|| kw(s))).map(|lvl| (i, lvl)),
             _ => None,
         })
         .collect()
@@ -302,6 +383,19 @@ fn ends_block(grid: &Grid, row: u32, col: u32) -> bool {
     !keys.is_empty() && same(&here) && !same(&left_texts(grid, row + 1, col))
 }
 
+/// The text cells left of `col` on `row` (its keys) are all on the row above or the row below too:
+/// a category value inside a block of long-format data ("Material- und Wareneingang | Industrie 3
+/// | Summe der bezogenen Rohstoffe"), not a record with its own id ("K-24-00758 | Total station
+/// survey equipment"). True when the row has no keys.
+fn shares_keys(grid: &Grid, row: u32, col: u32) -> bool {
+    let keys = left_texts(grid, row, col);
+    let all_in = |r: u32| {
+        let line = left_texts(grid, r, col);
+        keys.iter().all(|k| line.contains(k))
+    };
+    keys.is_empty() || (row > 0 && all_in(row - 1)) || all_in(row + 1)
+}
+
 /// Keyword rows (see [`keyword_rows`]), split into rows labelled by their keyword cell and rows
 /// whose keyword is incidental ([`incidental_keyword`]; only with `registers`): those need
 /// arithmetic to be totals. A keyword text that starts or ends with the total word and recurs as
@@ -310,7 +404,8 @@ fn keyword_rows_with(
     grid: &Grid,
     kw_cells: &[(usize, KeywordLevel)],
     registers: bool,
-) -> (KeywordRows, KeywordRows) {
+    legacy: bool,
+) -> (KeywordRows, KeywordRows, FxHashSet<u32>) {
     let kw_of: FxHashMap<usize, KeywordLevel> = kw_cells.iter().copied().collect();
     let n_rows = if registers { sheet_rows(grid) } else { 0 };
     let cells = &grid.sheet.cells;
@@ -322,21 +417,41 @@ fn keyword_rows_with(
             }
         }
     }
+    // The register rule as the learned row model's post-step knows it (B1: a longer text right of
+    // other text, the row model's keywords, a recurring label a category by its share alone).
+    let b1_category = |row: u32, col: u32, t: &str| {
+        let n = repeats.get(&(col, t)).copied().unwrap_or(0);
+        n >= MIN_CATEGORY_REPEATS && keyword_at_edge(t) && (n * 100 >= grid.col_cells(col).len() || ends_block(grid, row, col))
+    };
+    let mut b1 = FxHashSet::default();
     let category = |row: u32, col: u32, t: &str| {
         let n = repeats.get(&(col, t)).copied().unwrap_or(0);
         n >= MIN_CATEGORY_REPEATS
             && keyword_at_edge(t)
-            && (n * 100 >= grid.col_cells(col).len() || ends_block(grid, row, col))
+            && ((n * 100 >= grid.col_cells(col).len() && shares_keys(grid, row, col)) || ends_block(grid, row, col))
+    };
+    // A word that is also a name ("Somme") alone as the row's label under a table's numbers is its
+    // total label; the same word with numbers on the row below sits inside a list (a département).
+    let data_below = |row: u32| {
+        grid.row_cells(row + 1).iter().any(|&j| matches!(cells[j as usize].value, Some(Value::Number(_))))
+    };
+    // A label text right of the keyword cell on its row (a register's other columns).
+    let text_right = |row: u32, col: u32| {
+        grid.row_cells(row).iter().map(|&j| &cells[j as usize]).any(|c| {
+            c.col > col && matches!(&c.value, Some(Value::Text(t)) if header_text(t) && !t.trim().is_empty())
+        })
     };
     let mut out = HashMap::new();
     let mut weak = HashMap::new();
     let mut label: Option<(u32, u32, KeywordLevel, bool)> = None; // (row, col, level, incidental)
     let mut cur_row = None;
     let mut text_left = false; // a label text seen on the current row before `label`
+    let mut skipped = false; // a repeated key with a total word passed over on the current row
     for (i, c) in grid.sheet.cells.iter().enumerate() {
         if cur_row != Some(c.row) {
             cur_row = Some(c.row);
             text_left = false;
+            skipped = false;
             label = None;
         }
         if out.contains_key(&c.row) || weak.contains_key(&c.row) {
@@ -344,8 +459,37 @@ fn keyword_rows_with(
         }
         match (&label, &c.value) {
             (None, Some(Value::Text(s))) => {
-                if let Some(&level) = kw_of.get(&i) {
-                    let inc = incidental_keyword(s, text_left, n_rows) && !category(c.row, c.col, s);
+                // A key in a run of at least three rows ("Deutschland Insgesamt" on every row of a
+                // long table) is a category, not this row's label: look further right.
+                let repeated = || {
+                    let same = |d: i64| {
+                        let r = c.row as i64 + d;
+                        r >= 0 && text(grid.cell(r as u32, c.col)).is_some_and(|t| t.trim() == s.trim())
+                    };
+                    (same(-1) && (same(1) || same(-2))) || (same(1) && same(2))
+                };
+                let kw = kw_of.get(&i).filter(|_| legacy || !(registers && repeated()));
+                skipped |= kw.is_none() && kw_of.contains_key(&i);
+                if let Some(&level) = kw {
+                    // A free text in a register, or a word that is also a name or a code ("Somme",
+                    // "SOM", "SUMA Kommunikation"): a total only if its numbers add up.
+                    let right = n_rows >= REGISTER_MIN_ROWS && text_right(c.row, c.col);
+                    let inc = if legacy {
+                        incidental_keyword(s, text_left, false, n_rows) && !b1_category(c.row, c.col, s)
+                    } else {
+                        let weak = registers
+                            && (incidental_keyword(s, text_left, right, n_rows)
+                                || ambiguous_keyword(s).is_some_and(|name| name || text_left || data_below(c.row)));
+                        weak && !category(c.row, c.col, s)
+                    };
+                    if registers
+                        && !skipped
+                        && total_keyword_base(s).is_some()
+                        && incidental_keyword(s, text_left, false, n_rows)
+                        && !b1_category(c.row, c.col, s)
+                    {
+                        b1.insert(c.row);
+                    }
                     label = Some((c.row, c.col, level, inc));
                 } else if header_text(s) {
                     text_left = true;
@@ -359,7 +503,8 @@ fn keyword_rows_with(
     }
     drop_repeated_labels(grid, &mut out);
     drop_repeated_labels(grid, &mut weak);
-    (out, weak)
+    b1.retain(|r| weak.contains_key(r));
+    (out, weak, b1)
 }
 
 /// Shortest run of adjacent identical total labels read as a category value.
@@ -455,6 +600,12 @@ pub fn detect(grid: &Grid) -> Vec<TotalCandidate> {
     grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true)).candidates.clone()
 }
 
+/// Everything [`detect`] finds on the sheet (cached on the grid): candidates, keyword rows,
+/// "of which" and average rows, known aggregates.
+pub fn detection<'a>(grid: &'a Grid) -> &'a Detection {
+    grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true))
+}
+
 /// [`detect`] reusing an already built dependency index.
 pub fn detect_with(grid: &Grid, deps: &DependencyIndex) -> Vec<TotalCandidate> {
     grid.totals.get_or_init(|| detect_rows(grid, deps, true)).candidates.clone()
@@ -470,6 +621,38 @@ pub struct Detection {
     pub incidental_rows: Vec<u32>,
     /// Rows with an incidental total word that adds up or closes a group: total rows (sorted).
     pub confirmed_rows: Vec<u32>,
+    /// "Of which" and average rows (sorted by row): neither data nor sums.
+    pub nonsum: Vec<NonSumRow>,
+    /// Rows of known aggregates without a checkable sum (World Bank region and income-group codes:
+    /// `WLD`, `EUU`, `HIC`, …), as (row, label column), sorted.
+    pub aggregates: Vec<(u32, u32)>,
+}
+
+/// A row that is neither data nor a sum of other rows ([`NonSumKind`]): an "of which" part of the
+/// row above it, or an average of the rows above it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonSumRow {
+    pub row: u32,
+    pub label_col: u32,
+    pub kind: NonSumKind,
+    /// One check per number right of the label.
+    pub cells: Vec<NonSumCheck>,
+}
+
+/// One number of a [`NonSumRow`], checked against the rows above.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonSumCheck {
+    pub col: u32,
+    pub value: f64,
+    /// Average: the mean (the median for a "Median" row) of the numbers above it in its section;
+    /// of which: the number of the row it is a part of.
+    pub expected: Option<f64>,
+    /// The cells `expected` comes from.
+    pub source: Option<Rect>,
+    /// `Some(true)`: the mean matches / the part is not larger than the whole; `Some(false)`: the
+    /// part is larger than the whole; `None`: nothing to compare with, or an average that does not
+    /// match (a weighted or rounded one).
+    pub ok: Option<bool>,
 }
 
 /// [`detect_with`], also returning the keyword rows. With `registers`, a total word that is
@@ -479,8 +662,9 @@ pub struct Detection {
 /// trained on). Totals are cached on the grid only for `registers` (see [`detect`]).
 pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Detection {
     let sheet = grid.sheet;
-    let kw_cells = keyword_cells(grid);
-    let (mut kw_rows, weak_rows) = keyword_rows_with(grid, &kw_cells, registers);
+    let kw_cells = keyword_cells(grid, registers);
+    let kw_fn = if registers { total_keyword } else { total_keyword_base };
+    let (mut kw_rows, weak_rows, _) = keyword_rows_with(grid, &kw_cells, registers, false);
     let mut labels = Labels::new(grid);
     let mut out: Vec<TotalCandidate> = Vec::new();
 
@@ -504,8 +688,13 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
         if p.sum_refs.iter().any(|r| !r.is_local(&sheet.name)) {
             continue;
         }
-        let vertical =
+        let above =
             p.sum_refs.iter().all(|r| r.rect.left == f.col && r.rect.right == f.col && r.rect.bottom < f.row);
+        // A subtotal above its group, a grand total at the top (normalized output only).
+        let below = registers
+            && !above
+            && p.sum_refs.iter().all(|r| r.rect.left == f.col && r.rect.right == f.col && r.rect.top > f.row);
+        let vertical = above || below;
         let horizontal = !vertical
             && p.sum_refs.iter().all(|r| r.rect.top == f.row && r.rect.bottom == f.row && r.rect.right < f.col);
         if !vertical && !horizontal {
@@ -514,13 +703,16 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
         let dir = if vertical { Direction::Vertical } else { Direction::Horizontal };
         let mut c = TotalCandidate::new(f.row, f.col, TotalOrigin::Formula, dir);
         c.evidence.push(Evidence::Formula(p.kind));
+        if below {
+            c.evidence.push(Evidence::SourceBelow);
+        }
         c.ranges = p.sum_refs.iter().map(|r| r.rect).collect();
         let keyword = if vertical {
             kw_rows.get(&f.row).filter(|(lc, _)| *lc < f.col).map(|&(lc, lvl)| ((f.row, lc), lvl))
         } else {
             labels
                 .above(f.row, f.col)
-                .and_then(|r| total_keyword(text(grid.cell(r, f.col))?).map(|lvl| ((r, f.col), lvl)))
+                .and_then(|r| kw_fn(text(grid.cell(r, f.col))?).map(|lvl| ((r, f.col), lvl)))
         };
         let area: u64 = p.sum_refs.iter().map(|r| r.area()).sum();
         if area < 2 && keyword.is_none() {
@@ -571,6 +763,14 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
             .map(|c| c.col)
             .collect()
     };
+    // "Of which" and average rows (normalized output only): out of every sum.
+    let nonsum = if registers {
+        nonsum_rows(grid, &kw_rows, &formula_total, &rows_with_cells, &mut columns)
+    } else {
+        Vec::new()
+    };
+    let skip = RowSet::new(nonsum.iter().map(|n| n.row));
+    let budget = std::cell::Cell::new(WALK_BELOW_BUDGET);
 
     // (b0) A row whose total word is incidental (free text in a register) is a total row only if
     // one of its typed numbers is the sum of at least two numbers above it (sections bounded by
@@ -589,34 +789,39 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
         for &(row, (lc, lvl)) in &weak_sorted {
             let cols = typed_cols(row, lc);
             let adds_up = |rows: &KeywordRows, set: &RowSet, columns: &mut FxHashMap<u32, ColumnView>| {
-                let group = if cols.is_empty() { None } else { group_start(grid, rows, &rows_with_cells, row, lc) };
-                cols.iter().any(|&col| {
+                let w = Walk {
+                    grid,
+                    kw_rows: rows,
+                    formula_total: &formula_total,
+                    rows_with_cells: &rows_with_cells,
+                    kw_set: set,
+                    skip: &skip,
+                    more: false, // a weak word needs its rows above to add up
+                    budget: &budget,
+                    spacers: false,
+                };
+                let group =
+                    if cols.is_empty() { None } else { group_start(grid, rows, &rows_with_cells, row, lc, registers) };
+                // More than half of the row's numbers must add up: one number matching the sum of
+                // two above it is a coincidence in a register ("Ukupno: 3 komada stolica | 265"
+                // under 109 and 156).
+                let (mut numbers, mut matches) = (0, 0);
+                for &col in &cols {
                     let value = number(grid.cell(row, col)).unwrap_or(0.0);
+                    if value == 0.0 {
+                        continue;
+                    }
+                    numbers += 1;
                     let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
-                    value != 0.0
-                        && typed_vertical(
-                            grid,
-                            rows,
-                            &formula_total,
-                            &rows_with_cells,
-                            set,
-                            view,
-                            group,
-                            row,
-                            col,
-                            lc,
-                            lvl,
-                            value,
-                        )
-                        .is_some_and(|c| {
-                            c.evidence.contains(&Evidence::ArithmeticMatch) && source_numbers(view, &c) >= 2
-                        })
-                })
+                    matches += typed_vertical(&w, view, group, row, col, lc, lvl, value).is_some_and(|c| {
+                        c.evidence.contains(&Evidence::ArithmeticMatch) && source_numbers(view, &c) >= 2
+                    }) as usize;
+                }
+                (matches, numbers)
             };
-            if closes_group(grid, row, lc)
-                || adds_up(&all_rows, &all_set, &mut columns)
-                || adds_up(&strong_rows, &strong_set, &mut columns)
-            {
+            let (m1, n1) = adds_up(&all_rows, &all_set, &mut columns);
+            let (m2, n2) = if m1 > 0 && 2 * m1 > n1 { (m1, n1) } else { adds_up(&strong_rows, &strong_set, &mut columns) };
+            if closes_group(grid, row, lc) || (m1 > 0 && 2 * m1 > n1) || (m2 > 0 && 2 * m2 > n2) {
                 confirmed.push(row);
                 kw_rows.insert(row, (lc, lvl));
             } else {
@@ -626,31 +831,39 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
     }
     let kw_set = RowSet::new(kw_rows.keys().copied());
 
-    // (b) Typed numbers in keyword rows → column totals over the cells above.
+    // (b) Typed numbers in keyword rows → column totals over the cells above (or below).
     let mut kw_sorted: Vec<_> = kw_rows.iter().map(|(&r, &v)| (r, v)).collect();
     kw_sorted.sort_unstable_by_key(|x| x.0);
-    for &(row, (lc, lvl)) in &kw_sorted {
-        let cols = typed_cols(row, lc);
-        let group = if cols.is_empty() { None } else { group_start(grid, &kw_rows, &rows_with_cells, row, lc) };
-        for col in cols {
-            let value = number(grid.cell(row, col)).unwrap_or(0.0);
-            if let Some(c) = typed_vertical(
-                grid,
-                &kw_rows,
-                &formula_total,
-                &rows_with_cells,
-                &kw_set,
-                columns.entry(col).or_insert_with(|| ColumnView::new(grid, col)),
-                group,
-                row,
-                col,
-                lc,
-                lvl,
-                value,
-            ) {
-                out.push(c);
+    {
+        let w = Walk {
+            grid,
+            kw_rows: &kw_rows,
+            formula_total: &formula_total,
+            rows_with_cells: &rows_with_cells,
+            kw_set: &kw_set,
+            skip: &skip,
+            more: registers,
+            budget: &budget,
+            spacers: false,
+        };
+        for &(row, (lc, lvl)) in &kw_sorted {
+            let cols = typed_cols(row, lc);
+            let group =
+                if cols.is_empty() { None } else { group_start(grid, &kw_rows, &rows_with_cells, row, lc, registers) };
+            for col in cols {
+                let value = number(grid.cell(row, col)).unwrap_or(0.0);
+                let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
+                if let Some(c) = typed_vertical(&w, view, group, row, col, lc, lvl, value) {
+                    out.push(c);
+                }
             }
         }
+    }
+
+    // (b'') Rows without a total word that add up (normalized output only).
+    if registers {
+        let found = unlabelled_totals(grid, &kw_rows, &skip, &formula_total, &mut labels);
+        out.extend(found);
     }
 
     // (b') Typed numbers under a keyword column header → row totals over the cells to the left.
@@ -667,8 +880,17 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
     resolve_nesting(grid, &mut out);
     mark_sibling_support(grid, &mut out);
     out.sort_by_key(|c| (c.row, c.col));
-    Detection { candidates: out, keyword_rows: kw_rows, incidental_rows: incidental, confirmed_rows: confirmed }
+    let aggregates = if registers { aggregate_rows(grid) } else { Vec::new() };
+    Detection {
+        candidates: out,
+        keyword_rows: kw_rows,
+        incidental_rows: incidental,
+        confirmed_rows: confirmed,
+        nonsum,
+        aggregates,
+    }
 }
+
 
 /// Rows a group closed by an "X Total" label may span ([`closes_group`]).
 const MAX_GROUP_ROWS: u32 = 10_000;
@@ -678,7 +900,12 @@ const MAX_GROUP_ROWS: u32 = 10_000;
 /// label repeated). Other columns are not looked at, so a block beside another one (whose own
 /// totals sit on other rows) still closes its groups.
 fn closes_group(grid: &Grid, row: u32, label_col: u32) -> bool {
-    let Some(name) = text(grid.cell(row, label_col)).and_then(group_name) else {
+    closes_group_with(grid, row, label_col, true)
+}
+
+/// [`closes_group`] with or without the group names of the normalized output ([`group_name`]).
+fn closes_group_with(grid: &Grid, row: u32, label_col: u32, more: bool) -> bool {
+    let Some(name) = text(grid.cell(row, label_col)).and_then(|t| group_name(t, more)) else {
         return false;
     };
     for r in (row.saturating_sub(MAX_GROUP_ROWS)..row).rev() {
@@ -713,16 +940,26 @@ fn level_of(k: KeywordLevel) -> TotalLevel {
 }
 
 /// Group name announced by a total label: "Condor - Energy Total" → "condor - energy",
-/// "Total East" / "Ukupno Vojvodina" → "east" / "vojvodina" (pivot-table and report style).
-fn group_name(label: &str) -> Option<String> {
+/// "Total East" / "Ukupno Vojvodina" → "east" / "vojvodina" (pivot-table and report style). With
+/// `more` (normalized output) also "Nord gesamt", "Razem Belgia", "North - total" → "north".
+fn group_name(label: &str, more: bool) -> Option<String> {
     let l = label.trim().trim_end_matches(':').trim().to_lowercase();
     const WORDS: [&str; 6] = ["total", "subtotal", "ukupno", "svega", "укупно", "свега"];
-    for w in WORDS {
+    const MORE: [&str; 12] = [
+        "gesamt", "insgesamt", "summe", "sum", "razem", "celkem", "yhteensä", "összesen", "i alt", "totalt", "всего",
+        "итого",
+    ];
+    let words = WORDS.iter().chain(if more { &MORE[..] } else { &[] });
+    let clean = |s: &str| {
+        let s = if more { s.trim().trim_matches(['-', '–', ':', ',']).trim() } else { s.trim() };
+        Some(s.to_string()).filter(|s| !s.is_empty())
+    };
+    for w in words {
         if let Some(rest) = l.strip_suffix(w).filter(|r| r.ends_with(' ')) {
-            return Some(rest.trim().to_string()).filter(|s| !s.is_empty());
+            return clean(rest);
         }
         if let Some(rest) = l.strip_prefix(w).filter(|r| r.starts_with(' ')) {
-            return Some(rest.trim().to_string()).filter(|s| !s.is_empty());
+            return clean(rest);
         }
     }
     None
@@ -741,8 +978,9 @@ fn group_start(
     rows_with_cells: &RowSet,
     row: u32,
     label_col: u32,
+    more: bool,
 ) -> Option<u32> {
-    let name = group_name(text(grid.cell(row, label_col))?)?;
+    let name = group_name(text(grid.cell(row, label_col))?, more)?;
     let mut start = None;
     let mut r = row;
     while r > 0 && row - r < 10_000 {
@@ -778,13 +1016,31 @@ fn group_start(
     start
 }
 
+/// What the typed-total walks read besides the column itself.
+#[derive(Clone, Copy)]
+struct Walk<'a, 'g> {
+    grid: &'a Grid<'g>,
+    kw_rows: &'a KeywordRows,
+    formula_total: &'a FxHashSet<(u32, u32)>,
+    rows_with_cells: &'a RowSet,
+    kw_set: &'a RowSet,
+    /// Rows that are neither data nor totals ("of which", averages): left out of every sum.
+    skip: &'a RowSet,
+    /// Normalized output: look below a total whose rows above do not add up, and the other
+    /// additions over the keywords the row model was trained on.
+    more: bool,
+    /// Rows the walks below may still step over on this sheet.
+    budget: &'a std::cell::Cell<usize>,
+    /// Step over single blank rows (spacers inside a table); only kept when the sum then matches.
+    spacers: bool,
+}
+
 /// "X Total" whose group starts at the row labelled "X" in the same label column (Excel pivot
 /// tables and outline reports): the source is that block, minus the deeper totals inside it.
 /// `start` is [`group_start`] for the row (the same for every column of it).
 #[allow(clippy::too_many_arguments)]
 fn typed_group(
-    grid: &Grid,
-    kw_rows: &HashMap<u32, (u32, KeywordLevel)>,
+    w: &Walk,
     start: Option<u32>,
     row: u32,
     col: u32,
@@ -797,8 +1053,8 @@ fn typed_group(
     let mut sum = 0.0;
     let mut n = 0;
     for r in start..row {
-        let cell = grid.cell(r, col);
-        if kw_rows.contains_key(&r) {
+        let cell = w.grid.cell(r, col);
+        if w.kw_rows.contains_key(&r) || w.skip.contains(&r) {
             if cell.is_some() {
                 exclude.push((r, col));
             }
@@ -829,13 +1085,16 @@ fn typed_group(
 /// on sheets where a keyword repeats on thousands of rows).
 const MAX_EARLIER_TOTALS: usize = 2000;
 
+/// Rows the walks below a total may step over per sheet, all totals together.
+const WALK_BELOW_BUDGET: usize = 4_000_000;
+
+/// A typed number in a keyword row: a total over the rows above it (its section since the previous
+/// total, or everything above without the earlier totals), else, in the normalized output, over
+/// the rows below it when they add up ([`typed_below`]: a subtotal above its group, a grand total at
+/// the top).
 #[allow(clippy::too_many_arguments)]
 fn typed_vertical(
-    grid: &Grid,
-    kw_rows: &HashMap<u32, (u32, KeywordLevel)>,
-    formula_total: &FxHashSet<(u32, u32)>,
-    rows_with_cells: &RowSet,
-    kw_set: &RowSet,
+    w: &Walk,
     view: &ColumnView,
     group: Option<u32>,
     row: u32,
@@ -844,31 +1103,72 @@ fn typed_vertical(
     lvl: KeywordLevel,
     value: f64,
 ) -> Option<TotalCandidate> {
-    if let Some(c) = typed_group(grid, kw_rows, group, row, col, label_col, lvl, value) {
+    let matched = |c: &TotalCandidate| c.evidence.contains(&Evidence::ArithmeticMatch);
+    let up = typed_above(w, view, group, row, col, label_col, lvl, value);
+    if !w.more || value == 0.0 || up.as_ref().is_some_and(matched) {
+        return up;
+    }
+    if let Some(c) = typed_below(w, view, row, col, label_col, lvl, value) {
+        return Some(c);
+    }
+    // Blank spacer rows inside the table ("a blank row every 5 rows"): only a sum that matches.
+    let ws = Walk { spacers: true, ..*w };
+    typed_above(&ws, view, group, row, col, label_col, lvl, value)
+        .filter(matched)
+        .or_else(|| typed_below(&ws, view, row, col, label_col, lvl, value))
+        .or(up)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn typed_above(
+    w: &Walk,
+    view: &ColumnView,
+    group: Option<u32>,
+    row: u32,
+    col: u32,
+    label_col: u32,
+    lvl: KeywordLevel,
+    value: f64,
+) -> Option<TotalCandidate> {
+    if let Some(c) = typed_group(w, group, row, col, label_col, lvl, value) {
         return Some(c);
     }
     // Walks and sums step along the column's cells instead of probing the cell index per row.
-    let check_formulas = !formula_total.is_empty();
+    let check_formulas = !w.formula_total.is_empty();
 
     // Walk up: data rows until a header text, an empty row or the top; remember earlier totals.
     let mut top = row;
     let mut first_total: Option<u32> = None;
     let mut totals: Vec<u32> = Vec::new();
+    let mut skipped: Vec<u32> = Vec::new();
     let mut passed = 0usize;
     let mut r = row;
     let mut k = view.below(row);
+    let mut blank = false;
     while r > 0 {
         r -= 1;
-        if !rows_with_cells.contains(&r) {
+        if !w.rows_with_cells.contains(&r) {
+            if w.spacers && !blank {
+                blank = true;
+                continue;
+            }
             break;
         }
+        blank = false;
         let cell = if k > 0 && view.rows[k - 1] == r {
             k -= 1;
             Some(view.flags[k])
         } else {
             None
         };
-        if kw_set.contains(&r) || (check_formulas && formula_total.contains(&(r, col))) {
+        if w.skip.contains(&r) {
+            // "of which" / average rows: not data, not a total; the walk goes on above them.
+            if cell.is_some() {
+                skipped.push(r);
+            }
+            continue;
+        }
+        if w.kw_set.contains(&r) || (check_formulas && w.formula_total.contains(&(r, col))) {
             passed += 1;
             if passed > MAX_EARLIER_TOTALS {
                 return None; // not a report's grand total: keyword rows all the way up
@@ -888,7 +1188,9 @@ fn typed_vertical(
     let end = view.below(row);
     // First row at or after `from` (and before `row`) holding one of `flags`, else `row`.
     let first_with = |from: u32, flags: u8| {
-        (view.below(from)..end).find(|&k| view.flags[k] & flags != 0).map_or(row, |k| view.rows[k])
+        (view.below(from)..end)
+            .find(|&k| view.flags[k] & flags != 0 && !w.skip.contains(&view.rows[k]))
+            .map_or(row, |k| view.rows[k])
     };
     let first_value = |from: u32| first_with(from, ColumnView::NUMBER | ColumnView::FORMULA);
     let first_value_or_text =
@@ -907,6 +1209,7 @@ fn typed_vertical(
         for k in view.below(from)..end {
             if view.flags[k] & (ColumnView::NUMBER | ColumnView::NUMBER_TEXT) == 0
                 || (!skip.is_empty() && skip.contains(&view.rows[k]))
+                || w.skip.contains(&view.rows[k])
             {
                 continue;
             }
@@ -970,7 +1273,550 @@ fn typed_vertical(
         // rows): its source is not on the sheet.
         return None;
     }
+    if !skipped.is_empty() {
+        let from = c.ranges[0].top;
+        c.exclude.extend(skipped.iter().filter(|&&r| r >= from).map(|&r| (r, col)));
+        c.exclude.sort_unstable();
+    }
     Some(c)
+}
+
+/// A total above its source (normalized output): a subtotal at the top of its group ("Total
+/// Belgium" over the Belgian rows), a grand total at the top of the table ("Insgesamt" over
+/// "Österreich gesamt", its Länder and "Ausland"). The rows below, down to the next total (its
+/// section), or a run of them from the row below skipping the totals inside (the first one that
+/// adds up), must add up to `value`: there is no default source below.
+fn typed_below(
+    w: &Walk,
+    view: &ColumnView,
+    row: u32,
+    col: u32,
+    label_col: u32,
+    lvl: KeywordLevel,
+    value: f64,
+) -> Option<TotalCandidate> {
+    let check_formulas = !w.formula_total.is_empty();
+    let mut k = view.below(row + 1);
+    let mut r = row;
+    let (mut s_section, mut n_section, mut section_end) = (0.0, 0usize, None::<u32>);
+    let (mut s_all, mut n_all) = (0.0, 0usize);
+    let mut skipped: Vec<u32> = Vec::new();
+    let mut totals: Vec<u32> = Vec::new();
+    let mut matched: Option<u32> = None;
+    let mut last_value = row;
+    let mut blank = false;
+    loop {
+        r += 1;
+        let left = w.budget.get();
+        if left == 0 || totals.len() > MAX_EARLIER_TOTALS {
+            break;
+        }
+        if !w.rows_with_cells.contains(&r) {
+            if w.spacers && !blank {
+                blank = true;
+                continue;
+            }
+            break;
+        }
+        blank = false;
+        w.budget.set(left - 1);
+        let flags = if k < view.rows.len() && view.rows[k] == r {
+            k += 1;
+            Some(view.flags[k - 1])
+        } else {
+            None
+        };
+        if w.skip.contains(&r) {
+            if flags.is_some() {
+                skipped.push(r);
+            }
+            continue;
+        }
+        if w.kw_set.contains(&r) || (check_formulas && w.formula_total.contains(&(r, col))) {
+            if flags.is_some() {
+                totals.push(r);
+            }
+            section_end.get_or_insert(r - 1);
+            continue;
+        }
+        let Some(f) = flags else { continue };
+        if f & ColumnView::LABEL != 0 {
+            break;
+        }
+        if f & (ColumnView::NUMBER | ColumnView::NUMBER_TEXT) == 0 {
+            continue;
+        }
+        let v = view.values[k - 1];
+        last_value = r;
+        if section_end.is_none() {
+            s_section += v;
+            n_section += 1;
+        }
+        s_all += v;
+        n_all += 1;
+        if matched.is_none() && n_all >= 2 && close(value, s_all, true) {
+            matched = Some(r);
+        }
+    }
+    let section_bottom = section_end.unwrap_or(last_value);
+    let mut c = TotalCandidate::new(row, col, TotalOrigin::Typed, Direction::Vertical);
+    c.label = Some((row, label_col));
+    c.evidence.push(Evidence::Keyword(lvl));
+    c.level = level_of(lvl);
+    let bottom = if n_section >= 2 && section_bottom > row && close(value, s_section, true) {
+        section_bottom
+    } else {
+        let m = matched?;
+        let inner: Vec<(u32, u32)> = totals.iter().filter(|&&t| t < m).map(|&t| (t, col)).collect();
+        if !inner.is_empty() {
+            c.exclude = inner;
+            c.level = TotalLevel::GrandTotal;
+            c.evidence.push(Evidence::SumsTotals);
+        }
+        m
+    };
+    c.ranges = vec![Rect { top: row + 1, left: col, bottom, right: col }];
+    c.exclude.extend(skipped.iter().filter(|&&s| s <= bottom).map(|&s| (s, col)));
+    c.exclude.sort_unstable();
+    c.evidence.push(Evidence::ArithmeticMatch);
+    c.evidence.push(Evidence::SourceBelow);
+    Some(c)
+}
+
+/// A label of a [`NonSumKind`] row found by [`nonsum_rows`], before its numbers are checked.
+struct NonSumLabelAt {
+    row: u32,
+    col: u32,
+    kind: NonSumKind,
+    plain: NonSumLabel,
+    median: bool,
+}
+
+/// Labels a row's first two label texts may carry to make it an "of which" or average row.
+const NONSUM_LABEL_TEXTS: usize = 2;
+
+/// Blank rows an "of which" row may sit below the row it is a part of.
+const MAX_SPACER_ROWS: usize = 2;
+
+/// "Of which" and average rows (normalized output; see [`NonSumRow`]). A row is one when its
+/// label (one of its first two label texts, [`nonsum_keyword`]) says so and it holds a number right
+/// of the label, and:
+/// - of which: a row directly above it (past other "of which" rows) holds a number in the same
+///   column: the whole it is part of; the part should not be larger;
+/// - average: in some column its number is the mean (median) of the numbers above it in its section
+///   (since the previous total or average row, past one directly above it: "Total" then "Average"),
+///   or the label is the plain sign or word ("Ø 2012", "Average") over at least two numbers and,
+///   for the word, at the end of its block (a category "Media" between data rows is data).
+fn nonsum_rows(
+    grid: &Grid,
+    kw_rows: &KeywordRows,
+    formula_total: &FxHashSet<(u32, u32)>,
+    rows_with_cells: &RowSet,
+    columns: &mut FxHashMap<u32, ColumnView>,
+) -> Vec<NonSumRow> {
+    let cells = &grid.sheet.cells;
+    let mut seen: FxHashMap<&str, Option<(NonSumKind, NonSumLabel)>> = FxHashMap::default();
+    let mut found: Vec<NonSumLabelAt> = Vec::new();
+    let mut cur_row = None;
+    let mut texts = 0usize;
+    for c in cells {
+        if cur_row != Some(c.row) {
+            cur_row = Some(c.row);
+            texts = 0;
+        }
+        let Some(Value::Text(s)) = &c.value else { continue };
+        if !header_text(s) || s.trim().is_empty() || texts >= NONSUM_LABEL_TEXTS {
+            continue;
+        }
+        texts += 1;
+        if found.last().is_some_and(|f| f.row == c.row) || kw_rows.contains_key(&c.row) {
+            continue;
+        }
+        if let Some((kind, plain)) = *seen.entry(s.as_str()).or_insert_with(|| nonsum_keyword(s)) {
+            let median = kind == NonSumKind::Average && crate::values::norm_key(s).starts_with("median");
+            found.push(NonSumLabelAt { row: c.row, col: c.col, kind, plain, median });
+        }
+    }
+    if found.is_empty() {
+        return Vec::new();
+    }
+    let of_which = RowSet::new(found.iter().filter(|f| f.kind == NonSumKind::OfWhich).map(|f| f.row));
+    let averages = RowSet::new(found.iter().filter(|f| f.kind == NonSumKind::Average).map(|f| f.row));
+    let labelled = RowSet::new(found.iter().map(|f| f.row));
+    let mut out = Vec::new();
+    for f in &found {
+        let nums: Vec<(u32, f64)> = grid
+            .row_cells(f.row)
+            .iter()
+            .map(|&i| &cells[i as usize])
+            .filter(|c| c.col > f.col)
+            .filter_map(|c| match c.value {
+                Some(Value::Number(v)) => Some((c.col, v)),
+                _ => None,
+            })
+            .collect();
+        if nums.is_empty() {
+            continue;
+        }
+        let mut checks = Vec::with_capacity(nums.len());
+        let mut keep = false;
+        for (col, value) in nums {
+            let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
+            let mut check = NonSumCheck { col, value, expected: None, source: None, ok: None };
+            let mut k = view.below(f.row);
+            let mut r = f.row;
+            match f.kind {
+                NonSumKind::OfWhich => {
+                    // The nearest row above that is not itself a part (past a spacer row or two).
+                    let mut blanks = 0;
+                    while r > 0 {
+                        r -= 1;
+                        if !rows_with_cells.contains(&r) {
+                            blanks += 1;
+                            if blanks > MAX_SPACER_ROWS {
+                                break;
+                            }
+                            continue;
+                        }
+                        if of_which.contains(&r) {
+                            continue;
+                        }
+                        let rule = text(grid.cell(r, col))
+                            .is_some_and(|t| !t.trim().is_empty() && t.trim().chars().all(|c| "-=_~*–—.".contains(c)));
+                        if rule {
+                            // a separator line ("-----") between the whole and its part
+                            blanks += 1;
+                            if blanks > MAX_SPACER_ROWS {
+                                break;
+                            }
+                            continue;
+                        }
+                        if let Some(parent) = number(grid.cell(r, col)) {
+                            check.expected = Some(parent);
+                            check.source = Some(Rect { top: r, left: col, bottom: r, right: col });
+                            let within = value.abs() <= parent.abs() * (1.0 + 1e-9) + 1e-9
+                                && (value == 0.0 || parent == 0.0 || (value > 0.0) == (parent > 0.0));
+                            check.ok = Some(within);
+                            keep = true;
+                        }
+                        break;
+                    }
+                }
+                NonSumKind::Average => {
+                    // The section above (since the previous total or average), and everything above
+                    // without the totals and averages (an overall average under group averages).
+                    let mut section: Vec<f64> = Vec::new();
+                    let mut all: Vec<f64> = Vec::new();
+                    let (mut section_top, mut all_top) = (f.row, f.row);
+                    let mut section_done = false;
+                    let mut blank = false;
+                    while r > 0 {
+                        r -= 1;
+                        if !rows_with_cells.contains(&r) {
+                            if !blank {
+                                blank = true; // a spacer row inside the table
+                                continue;
+                            }
+                            break;
+                        }
+                        blank = false;
+                        let flags = if k > 0 && view.rows[k - 1] == r {
+                            k -= 1;
+                            Some(view.flags[k])
+                        } else {
+                            None
+                        };
+                        if kw_rows.contains_key(&r) || formula_total.contains(&(r, col)) || averages.contains(&r) {
+                            // "Total" then "Average": average the rows above the total.
+                            section_done |= !section.is_empty();
+                            continue;
+                        }
+                        if of_which.contains(&r) {
+                            continue;
+                        }
+                        let Some(fl) = flags else { continue };
+                        if fl & ColumnView::LABEL != 0 {
+                            break;
+                        }
+                        if fl & (ColumnView::NUMBER | ColumnView::NUMBER_TEXT) != 0 {
+                            let v = view.values[k];
+                            if !section_done {
+                                section.push(v);
+                                section_top = r;
+                            }
+                            all.push(v);
+                            all_top = r;
+                        }
+                    }
+                    // A "Median" row may hold the mean (and the other way round is not checked).
+                    let fits = |values: &mut Vec<f64>| -> Option<(f64, bool)> {
+                        if values.len() < 2 {
+                            return None;
+                        }
+                        let mean = values.iter().sum::<f64>() / values.len() as f64;
+                        if f.median {
+                            values.sort_by(|a, b| a.total_cmp(b));
+                            let m = values.len() / 2;
+                            let median = if values.len() % 2 == 1 { values[m] } else { (values[m - 1] + values[m]) / 2.0 };
+                            if close(value, median, true) {
+                                return Some((median, true));
+                            }
+                        }
+                        Some((mean, close(value, mean, true)))
+                    };
+                    let s = fits(&mut section);
+                    let a = if all.len() > section.len() { fits(&mut all) } else { None };
+                    let (expected, top, ok) = match (s, a) {
+                        (Some((e, true)), _) => (Some(e), section_top, true),
+                        (_, Some((e, true))) => (Some(e), all_top, true),
+                        (Some((e, false)), _) => (Some(e), section_top, false),
+                        (None, Some((e, false))) => (Some(e), all_top, false),
+                        (None, None) => (None, f.row, false),
+                    };
+                    if let Some(e) = expected {
+                        check.expected = Some(e);
+                        check.source = Some(Rect { top, left: col, bottom: f.row - 1, right: col });
+                        if ok {
+                            check.ok = Some(true);
+                            keep = true;
+                        }
+                    }
+                }
+            }
+            checks.push(check);
+        }
+        // In a register a name starting with an average word, with more text beside it ("AVG
+        // VITRAIS, UNIPESSOAL LDA | NIF | …"), is a record whose number met a mean by chance.
+        if f.kind == NonSumKind::Average && f.plain == NonSumLabel::Phrase && sheet_rows(grid) >= REGISTER_MIN_ROWS {
+            let more_text = grid.row_cells(f.row).iter().map(|&i| &cells[i as usize]).any(|c| {
+                c.col != f.col && matches!(&c.value, Some(Value::Text(t)) if header_text(t) && !t.trim().is_empty())
+            });
+            if more_text {
+                continue;
+            }
+        }
+        if f.kind == NonSumKind::Average && !keep {
+            // Unchecked: only a plain label over at least two numbers; a word at the end of its block.
+            let block_end = !rows_with_cells.contains(&(f.row + 1))
+                || kw_rows.contains_key(&(f.row + 1))
+                || labelled.contains(&(f.row + 1));
+            keep = checks.iter().any(|c| c.expected.is_some())
+                && match f.plain {
+                    NonSumLabel::Sign => true,
+                    NonSumLabel::Bare => block_end,
+                    NonSumLabel::Phrase => false,
+                };
+        }
+        if keep {
+            out.push(NonSumRow { row: f.row, label_col: f.col, kind: f.kind, cells: checks });
+        }
+    }
+    out
+}
+
+/// Fewest numbers a section needs before a row without a total word may be taken for its sum
+/// ([`unlabelled_totals`]).
+const UNLABELLED_MIN_ADDENDS: usize = 3;
+
+/// Fewest numbers above a single-column total without a total word.
+const UNLABELLED_MIN_ADDENDS_ONE_COLUMN: usize = 5;
+
+/// Running sums of one column for [`unlabelled_totals`]: (sum, non-zero numbers, first row).
+#[derive(Default)]
+struct Run {
+    /// Since the previous total row (or the top of the block).
+    section: (f64, usize, u32),
+    /// Since the top of the block, without the total rows.
+    all: (f64, usize, u32),
+    /// Total rows inside `all`.
+    totals: Vec<u32>,
+}
+
+/// Rows without a total word whose numbers are the sum of the rows above them (normalized output):
+/// "France métropolitaine" under the départements, "DOM" under the overseas ones, "France
+/// métropolitaine et DOM" over both. In at least two columns (and in at least two thirds of the
+/// row's numbers, one of them not a small whole number) a number equals the sum of the at least
+/// [`UNLABELLED_MIN_ADDENDS`] non-zero numbers above it,
+/// since the previous total row (or everything above but the totals); a table with one number
+/// column needs [`UNLABELLED_MIN_ADDENDS_ONE_COLUMN`]. A blank row ends a block; a label in a
+/// column, or a row of years, starts that column again.
+fn unlabelled_totals(
+    grid: &Grid,
+    kw_rows: &KeywordRows,
+    skip: &RowSet,
+    formula_total: &FxHashSet<(u32, u32)>,
+    labels: &mut Labels,
+) -> Vec<TotalCandidate> {
+    let cells = &grid.sheet.cells;
+    let formula_rows: FxHashSet<u32> = formula_total.iter().map(|&(r, _)| r).collect();
+    let mut runs: FxHashMap<u32, Run> = FxHashMap::default();
+    let mut out = Vec::new();
+    let mut prev: Option<u32> = None;
+    let mut i = 0;
+    while i < cells.len() {
+        let row = cells[i].row;
+        let mut j = i;
+        while j < cells.len() && cells[j].row == row {
+            j += 1;
+        }
+        let line = &cells[i..j];
+        i = j;
+        if prev.is_some_and(|p| row > p + 1) {
+            runs.clear();
+        }
+        prev = Some(row);
+        let nums: Vec<(u32, f64)> = line
+            .iter()
+            .filter_map(|c| match c.value {
+                Some(Value::Number(v)) => Some((c.col, v)),
+                _ => None,
+            })
+            .collect();
+        for c in line {
+            if matches!(&c.value, Some(Value::Text(t)) if header_text(t) && !t.trim().is_empty()) {
+                runs.remove(&c.col);
+            }
+        }
+        if skip.contains(&row) || nums.is_empty() {
+            continue;
+        }
+        let years = nums.len() >= 2 && nums.iter().all(|&(_, v)| v.fract() == 0.0 && (1800.0..=2100.0).contains(&v));
+        if years {
+            for (col, _) in &nums {
+                runs.remove(col);
+            }
+            continue;
+        }
+        let total_row = kw_rows.contains_key(&row) || formula_rows.contains(&row);
+        let mut matched: Vec<(u32, bool)> = Vec::new(); // (column, over everything above)
+        let mut addends = 0;
+        if !total_row {
+            for &(col, v) in &nums {
+                let Some(run) = runs.get(&col) else { continue };
+                if v == 0.0 || line.iter().any(|c| c.col == col && c.formula.is_some()) {
+                    continue;
+                }
+                if run.section.1 >= UNLABELLED_MIN_ADDENDS && close(v, run.section.0, true) {
+                    matched.push((col, false));
+                    addends = addends.max(run.section.1);
+                } else if !run.totals.is_empty()
+                    && run.all.1 >= UNLABELLED_MIN_ADDENDS
+                    && close(v, run.all.0, true)
+                {
+                    matched.push((col, true));
+                    addends = addends.max(run.all.1);
+                }
+            }
+        }
+        // Small whole numbers add up by chance ("2, 0, 0" over "3"): at least one match must be a
+        // number of three digits or a fraction.
+        let distinctive = matched
+            .iter()
+            .filter(|&&(col, _)| nums.iter().any(|&(c, v)| c == col && (v.abs() >= 100.0 || v.fract() != 0.0)))
+            .count();
+        let found = distinctive >= 1
+            && (matched.len() >= 2 && 3 * matched.len() >= 2 * nums.len()
+                || nums.len() == 1 && matched.len() == 1 && addends >= UNLABELLED_MIN_ADDENDS_ONE_COLUMN);
+        if found {
+            let label = labels.left(row, nums[0].0).map(|lc| (row, lc));
+            for &(col, whole) in &matched {
+                let run = &runs[&col];
+                let mut c = TotalCandidate::new(row, col, TotalOrigin::Typed, Direction::Vertical);
+                c.label = label;
+                if whole {
+                    c.ranges = vec![Rect { top: run.all.2, left: col, bottom: row - 1, right: col }];
+                    c.exclude = run.totals.iter().map(|&t| (t, col)).collect();
+                    c.level = TotalLevel::GrandTotal;
+                    c.evidence.push(Evidence::SumsTotals);
+                } else {
+                    c.ranges = vec![Rect { top: run.section.2, left: col, bottom: row - 1, right: col }];
+                }
+                c.evidence.push(Evidence::ArithmeticMatch);
+                c.evidence.push(Evidence::Unlabelled);
+                out.push(c);
+            }
+        }
+        for &(col, v) in &nums {
+            let run = runs.entry(col).or_insert_with(|| Run {
+                section: (0.0, 0, row),
+                all: (0.0, 0, row),
+                totals: Vec::new(),
+            });
+            if found || total_row {
+                run.section = (0.0, 0, row + 1);
+                run.totals.push(row);
+            } else {
+                // Zeros are no addends: a column of zeros and one small value adds up to it.
+                let n = (v != 0.0) as usize;
+                run.section.0 += v;
+                run.section.1 += n;
+                run.all.0 += v;
+                run.all.1 += n;
+            }
+        }
+    }
+    out
+}
+
+/// World Bank aggregate codes (regions, income groups, lending groups, demographic groups, `WLD`):
+/// rows of a country list that are no country.
+const WB_AGGREGATES: &[&str] = &[
+    "AFE", "AFW", "ARB", "CEB", "CSS", "EAP", "EAR", "EAS", "ECA", "ECS", "EMU", "EUU", "FCS", "HIC", "HPC", "IBD",
+    "IBT", "IDA", "IDB", "IDX", "LAC", "LCN", "LDC", "LIC", "LMC", "LMY", "LTE", "MEA", "MIC", "MNA", "NAC", "OED",
+    "OSS", "PRE", "PSS", "PST", "SAS", "SSA", "SSF", "SST", "TEA", "TEC", "TLA", "TMN", "TSA", "TSS", "UMC", "WLD",
+];
+
+/// A column of country codes needs this many codes, and this many distinct aggregate codes among
+/// them, before its aggregate rows are taken for aggregates.
+const COUNTRY_CODES_MIN: usize = 30;
+const AGGREGATE_CODES_MIN: usize = 5;
+
+/// Rows of known aggregates in a country list (normalized output): a column of three-letter codes
+/// ([`COUNTRY_CODES_MIN`]) with World Bank aggregate codes among them ([`AGGREGATE_CODES_MIN`]
+/// distinct ones): "World | WLD", "European Union | EUU", "High income | HIC". Their values are
+/// weighted or partial, so they are no checkable sums; they are marked so a sum over the
+/// countries does not count them again. Only rows holding a number. (row, label column), sorted.
+fn aggregate_rows(grid: &Grid) -> Vec<(u32, u32)> {
+    let cells = &grid.sheet.cells;
+    let code = |s: &str| s.len() == 3 && s.bytes().all(|b| b.is_ascii_uppercase());
+    let mut per_col: FxHashMap<u32, (usize, FxHashSet<&str>, Vec<u32>)> = FxHashMap::default();
+    for c in cells {
+        if let Some(Value::Text(t)) = &c.value {
+            let t = t.trim();
+            if code(t) {
+                let e = per_col.entry(c.col).or_default();
+                e.0 += 1;
+                if WB_AGGREGATES.contains(&t) {
+                    e.1.insert(t);
+                    e.2.push(c.row);
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for (col, (n, aggs, rows)) in per_col {
+        if n < COUNTRY_CODES_MIN || aggs.len() < AGGREGATE_CODES_MIN {
+            continue;
+        }
+        for row in rows {
+            let line = grid.row_cells(row).iter().map(|&i| &cells[i as usize]);
+            let mut label = None;
+            let mut has_number = false;
+            for c in line {
+                match &c.value {
+                    Some(Value::Number(_)) => has_number = true,
+                    Some(Value::Text(t)) if label.is_none() && header_text(t) && c.col != col => label = Some(c.col),
+                    _ => {}
+                }
+            }
+            if has_number {
+                out.push((row, label.unwrap_or(col)));
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup_by_key(|x| x.0);
+    out
 }
 
 /// Typed vertical totals whose source was not confirmed by arithmetic get
@@ -1002,12 +1848,14 @@ fn mark_sibling_support(grid: &Grid, cands: &mut [TotalCandidate]) {
             if c.origin != TotalOrigin::Typed || c.direction != Direction::Vertical || matched[i] {
                 return false;
             }
+            // A sibling that adds the rows below it says nothing about a source above.
+            let below = |k: usize| cands[k].evidence.contains(&Evidence::SourceBelow);
             let count = |list: &[usize]| {
                 let others = list.iter().filter(|&&j| j != i);
                 let (mut n, mut ok) = (0, 0);
                 for &j in others {
                     n += 1;
-                    ok += matched[j] as usize;
+                    ok += (matched[j] && below(j) == below(i)) as usize;
                 }
                 (n, ok)
             };

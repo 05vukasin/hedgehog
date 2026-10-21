@@ -110,7 +110,11 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
 ### Rows
 
 - **Data rows only.** Header, title, note, blank and repeated-header rows are removed. Total and
-  subtotal rows are removed too, unless `keep_totals` is set.
+  subtotal rows are removed too, unless `keep_totals` is set, and so are the rows that are no data
+  and no sums: **average** rows (`Average`, `Mean`, `Median`, `Ø 2024`, `Durchschnitt`, `Moyenne`,
+  `Prosek`, ...) and **of-which** rows (`of which: exports`, `davon Inland`, `dont : …`, `di cui`,
+  `od toga`, `w tym`, ...), which repeat a part of the row above them. Both are listed on `Totals`
+  (levels `average` and `of_which`).
 - **Missing values are empty cells.** This covers missing tokens (`-`, `n/a`, `..`, `:`, `x`, `null`, ...),
   Excel errors (`#N/A`, `#REF!`, ...) and formulas without a cached value.
 - **Group-header rows** (a label alone on its row, followed by data rows) become a **leading column**.
@@ -122,7 +126,9 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
   `<columns[c].source_column><_src_row>` on `source.sheet` of the table's manifest entry. Row
   labels copied from a table beside or above (`source_column` `null`, named in the table's
   `warnings`) come from that table's label cells in the matching row.
-- **`_row_type`** (only with `keep_totals`): `data`, `subtotal` or `total`.
+- **`_row_type`** (only with `keep_totals`): `data`, `subtotal`, `total`, `average` or `of_which`.
+  Only `data` rows add up to the table's figures: a `total` or `subtotal` row sums data rows, an
+  `average` row averages them, an `of_which` row is a part of the row above it.
 
 ### Values and dtypes
 
@@ -161,13 +167,13 @@ One row per detected total or subtotal cell, registered as an Excel table named 
 | `table` | Table id (`T1`) whose range contains the cell; empty if none |
 | `sheet`, `cell` | Source sheet and address of the total |
 | `label`, `label_cell` | Text that labels it (`Grand total`) and where that text is |
-| `level` | `total`, `subtotal` or `grand_total` |
-| `direction` | `vertical` (adds the cells above) or `horizontal` (adds the cells to its left) |
+| `level` | `total`, `subtotal` or `grand_total`; `average` (a mean of the rows above it) or `of_which` (a part of the row above it) |
+| `direction` | `vertical` (adds the cells above, or below for a subtotal over its group and a grand total at the top) or `horizontal` (adds the cells to its left) |
 | `origin` | `formula` (SUM, SUBTOTAL, `A+B+C`), `typed` (a number in a total-labelled row), or `layout` (a number in a row the layout marked as a total, but whose source range was not found) |
 | `value` | Value in the file (the cached result for formulas) |
-| `recomputed` | Sum of the source cells, recomputed from the cached values |
+| `recomputed` | Sum of the source cells, recomputed from the cached values (for `average`: their mean; for `of_which`: the value of the row above) |
 | `status` | `ok`, `mismatch` or `unknown` |
-| `reason` | `match`, `rounded`, `mismatch`, `double_counted`, `matches_average`, `no_cached_value`, `not_numeric`, `error_in_source`, `missing_source_value`, `no_source`, `unconfirmed`, `not_verified`, `not_additive`, `rounding_difference`, `average_like` ([meanings](concepts.md#totals-and-verification)) |
+| `reason` | `match`, `rounded`, `mismatch`, `double_counted`, `matches_average`, `no_cached_value`, `not_numeric`, `error_in_source`, `missing_source_value`, `no_source`, `unconfirmed`, `not_verified`, `not_additive`, `rounding_difference`, `average_like`, `known_aggregate`; for average rows `matches_mean`, `matches_median`, `unconfirmed`, `no_source`; for of-which rows `within_parent`, `exceeds_parent`, `no_parent` ([meanings](concepts.md#totals-and-verification)) |
 | `sources` | Source ranges, for example `C6:C7` |
 | `formula` | The formula, if any |
 | `kept_in_data` | The total is also in the table data: `keep_totals` is set, or it is a total column (horizontal) |
@@ -424,10 +430,11 @@ Every key below is present in every table's `transformations`, with a count (oft
 - Table detection, header depth and totals come from the rule-based `layout` and `totals` modules
   (see [evaluation.md](evaluation.md) for their measured accuracy). A table they miss ends up cell by
   cell on `Notes`, with kind `other` or `title`.
-- A typed (non-formula) total row is recognized by an English or Serbian/Croatian/Bosnian total
-  label (`Total`, `Subtotal`, `Grand total`, `Ukupno`, ...). A row labelled in another language, such
-  as `Summe` or `Gesamt`, is recognized only when its value is a `SUM`/`SUBTOTAL`/`A+B` formula;
-  otherwise it stays in the data as an ordinary row. Check the `Totals` sheet before aggregating.
+- A typed (non-formula) total row is recognized by its total label in one of the languages listed
+  in [locales.md](locales.md#total-and-note-keywords), or, without one, only when its numbers add up
+  to the rows above it in at least two columns. A total in another language, or an aggregate that is
+  no plain sum of the rows around it (a region in a country list without World Bank codes), stays
+  in the data as an ordinary row. Check the `Totals` sheet before aggregating.
 - Totals are recomputed the way Excel computes them, so numbers stored as text in the source range
   are not added, and a total row over a column of text numbers is not detected as a total. A wrong
   source-range guess shows up as `unknown` / `unconfirmed`, not as `mismatch`. A typed total that does
