@@ -48,6 +48,28 @@ cargo clippy --workspace -- -D warnings     # lints, warnings are errors (as in 
   data on disk plus environment variables (for example `HH_LAYOUT_CORPUS`). Run them with
   `cargo test -p hh_core --test layout_corpus -- --ignored --nocapture`.
 
+## Fuzzing
+
+`fuzz/` holds `hh_fuzz`, a mutation fuzzer that runs on the stable toolchain (cargo-fuzz needs
+nightly). Targets: `csv`, `xlsx`, `xls`, `ods` (the readers, then normalize, the agent catalog and
+the SQL load for small results) and `normalize` (generated grids straight into the pipeline). Zip
+packages are mutated part by part and re-zipped, so the mutations reach the XML parsers. Panics are
+caught and saved once per location; hangs (`--timeout`, 10 s) and aborts (the heap limit
+`--rss-mb`, 1500 MB, stack overflows) end the process, and `fuzz/run.sh` restarts it and keeps the
+input.
+
+```sh
+S=../scripts/run_capped.sh   # always under a memory cap
+$S 2500M build.log cargo build --profile fuzz -p hh_fuzz
+target/fuzz/hh_fuzz seeds /tmp/seeds          # generated seed workbooks; add small real files
+$S 2500M fuzz.log fuzz/run.sh xlsx 600 /tmp/seeds/xlsx /tmp/fuzz-xlsx target/fuzz/hh_fuzz
+target/fuzz/hh_fuzz run /tmp/fuzz-xlsx/crashes/<file>   # reproduce (prints a backtrace)
+```
+
+The `fuzz` profile keeps overflow checks and debug assertions on, so silent wraparounds show up.
+Bugs found in calamine are fixed in `vendor/calamine` (each change marked `hedgehog:`); every fix
+gets a regression test in `core/tests/hostile_files.rs`, built from bytes in the test.
+
 ## Test data
 
 Corpora are several GB and never committed. They live next to the repository, by default in

@@ -72,11 +72,34 @@ pub struct Options {
     pub max_file_bytes: u64,
     /// Normalized files kept in memory; the least recently used is dropped beyond this.
     pub max_open_files: usize,
+    /// Cells per workbook; larger files are refused (memory grows with cells).
+    pub max_cells: u64,
+    /// Time limit for reading and normalizing one file.
+    pub max_seconds: Duration,
 }
+
+/// Default of [`Options::max_seconds`].
+pub const DEFAULT_MAX_SECONDS: u64 = 120;
 
 impl Default for Options {
     fn default() -> Self {
-        Options { query_timeout: sql::DEFAULT_TIMEOUT, max_file_bytes: 256 << 20, max_open_files: 8 }
+        Options {
+            query_timeout: sql::DEFAULT_TIMEOUT,
+            max_file_bytes: 256 << 20,
+            max_open_files: 8,
+            max_cells: hh_core::reader::DEFAULT_MAX_CELLS,
+            max_seconds: Duration::from_secs(DEFAULT_MAX_SECONDS),
+        }
+    }
+}
+
+impl Options {
+    /// Reader options for one file with these limits, its clock starting now.
+    fn read_options(&self) -> hh_core::reader::ReadOptions {
+        let mut o = hh_core::reader::ReadOptions::default();
+        o.limits.max_cells = self.max_cells;
+        o.limits.deadline = Instant::now().checked_add(self.max_seconds);
+        o
     }
 }
 
@@ -187,9 +210,13 @@ impl Session {
             return Ok((sha, true));
         }
         let t0 = Instant::now();
-        let wb = hh_core::open(&path).map_err(|e| ToolError(format!("{}: cannot read: {e}", self.bounds.display(&path))))?;
-        let opts = hh_core::NormalizeOptions { keep_totals: true, ..Default::default() };
-        let norm = hh_core::normalize_workbook(&wb, &opts);
+        let read = self.opts.read_options();
+        let wb = hh_core::reader::open_with(&path, read)
+            .map_err(|e| ToolError(format!("{}: cannot read: {}", self.bounds.display(&path), limit_hint(&e))))?;
+        let opts = hh_core::NormalizeOptions { keep_totals: true, deadline: read.limits.deadline, ..Default::default() };
+        let norm = hh_core::try_normalize_workbook(&wb, &opts).map_err(|e| {
+            ToolError(format!("{}: {e} ({} s; the server's --max-seconds)", self.bounds.display(&path), self.opts.max_seconds.as_secs()))
+        })?;
         // Keep a small workbook for `cells`; large ones are read again when needed.
         let cells: usize = wb.sheets.iter().map(|s| s.cells.len()).sum();
         self.book = (cells <= KEEP_BOOK_CELLS).then(|| (path.clone(), meta.len(), mtime, wb));
@@ -305,7 +332,8 @@ impl Session {
         let fresh = matches!(&self.book, Some((bp, len, m, _)) if *bp == p && *len == meta.len() && *m == mtime);
         if !fresh {
             self.book = None;
-            let wb = hh_core::open(&p).map_err(|e| ToolError(format!("{}: cannot read: {e}", self.bounds.display(&p))))?;
+            let wb = hh_core::reader::open_with(&p, self.opts.read_options())
+                .map_err(|e| ToolError(format!("{}: cannot read: {}", self.bounds.display(&p), limit_hint(&e))))?;
             self.book = Some((p, meta.len(), mtime, wb));
         }
         let wb = &self.book.as_ref().expect("workbook loaded").3;
@@ -328,6 +356,22 @@ impl Session {
     pub fn normalized(&mut self, path: &str) -> Result<&Normalized, ToolError> {
         Ok(&self.opened(path)?.norm)
     }
+}
+
+/// A reader error, with the server flag to raise when the file was refused over a limit.
+fn limit_hint(e: &hh_core::Error) -> String {
+    let s = e.to_string();
+    if !e.is_limit() {
+        return s;
+    }
+    let flag = if s.contains("cells") {
+        " (raise with --max-cells)"
+    } else if s.contains("time limit") {
+        " (raise with --max-seconds)"
+    } else {
+        ""
+    };
+    format!("{s}{flag}")
 }
 
 fn sql_mentions(sql: &str, name: &str) -> bool {

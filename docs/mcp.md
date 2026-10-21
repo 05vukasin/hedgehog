@@ -19,7 +19,7 @@ The same tools are available without MCP from Rust through the `hh_agent` crate
 ## Run it
 
 ```sh
-hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N]
+hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N] [--max-cells N] [--max-seconds N]
 ```
 
 | Flag | Default | Meaning |
@@ -28,6 +28,8 @@ hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-m
 | `--allow PATH` | none | One more file or folder outside the root (repeatable). |
 | `--query-timeout-ms N` | `2000` | Time limit of one SQL query. |
 | `--max-file-mb N` | `256` | Larger files are refused. |
+| `--max-cells N` | `20000000` | Workbooks with more non-empty cells are refused (memory grows with cells). |
+| `--max-seconds N` | `120` | Time limit for reading and normalizing one file. |
 
 Get the binary from a [GitHub release](https://github.com/05vukasin/hedgehog/releases)
 (`hedgehog-<target>`, e.g. `hedgehog-x86_64-unknown-linux-gnu`, `hedgehog-aarch64-apple-darwin`,
@@ -282,6 +284,23 @@ The server only reads; it never writes, deletes or executes anything.
   must lie inside the root or be an allowed path (`--allow`, `_meta.hedgehog.allow`; an allowed file
   does not open its folder). `list_files` follows no symlinked folders and skips hidden entries. Only
   spreadsheet extensions are opened; files above `--max-file-mb` are refused.
+- **Untrusted file contents**: every file is checked before and while it is read, and refused with
+  a one-line tool error that starts with `file refused:`:
+  - a zip package (xlsx, xlsm, xlsb, ods) whose parts decompress to more than 2 GB (zip bombs; the
+    zip reader also refuses to inflate a part past its declared size);
+  - more than `--max-cells` cells (20 million by default). An ODS file's repeated rows and columns
+    are counted before it is parsed, so a few hundred bytes cannot ask for billions of cells;
+  - more than 10 million shared strings;
+  - reading plus normalizing longer than `--max-seconds` (120 s by default).
+
+  Password-protected files (encrypted xlsx / xlsb, encrypted ODS, xls with a password) give
+  `the file is password-protected (encrypted); …`; corrupt files give the reader's error on one
+  line. The readers are fuzzed (`fuzz/`, see [development](development.md#fuzzing)), and the bugs
+  found inside calamine are fixed in a vendored copy (`vendor/calamine`).
+- **Crash isolation**: a panic inside one tool call (a bug hit by a malformed file) becomes that
+  call's error (`internal error in open_file (…); the server is still running …`); the server keeps
+  serving. Release builds unwind on panic (`panic = "unwind"`), which this needs; a binary built
+  with `panic = "abort"` logs a warning at startup.
 - **SQL**: each file has its own in-memory database; after loading, the connection is locked down:
   - an authorizer allows only `SELECT`, reads, recursive CTEs, functions (minus `load_extension` and
     similar) and the read-only pragmas `table_info`/`table_xinfo`/`table_list`; everything else —
@@ -294,7 +313,8 @@ The server only reads; it never writes, deletes or executes anything.
     counting stops after 1,000,000 rows, SQLite heap capped at the loaded data + 512 MB.
 - **Output**: every result is capped at ~12,000 characters.
 
-These limits are covered by tests (`agent/src/sql.rs`, `agent/src/files.rs`, `cli/tests/mcp.rs`).
+These limits are covered by tests (`agent/src/sql.rs`, `agent/src/files.rs`, `cli/tests/mcp.rs`,
+`core/tests/hostile_files.rs`).
 
 ## Memory and speed
 

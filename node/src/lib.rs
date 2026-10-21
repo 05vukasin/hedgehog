@@ -403,10 +403,19 @@ impl Workbook {
     }
 }
 
+/// Runs `f`; a panic (a bug hit by a malformed file) becomes a JS error instead of unwinding
+/// into N-API (which aborts the host process). The addon is built with `panic = "unwind"`.
+fn guarded<T>(what: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
+        let msg = p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default();
+        Err(Error::new(Status::GenericFailure, format!("internal error in {what} ({msg}); the file may be malformed")))
+    })
+}
+
 fn read(path: &str) -> Result<hh_core::Workbook> {
     // The reader's own message for a missing file does not name it.
     std::fs::metadata(path).map_err(|e| invalid(format!("{path}: {e}")))?;
-    hh_core::open(path).map_err(|e| invalid(format!("{path}: {e}")))
+    guarded("open", || hh_core::open(path).map_err(|e| invalid(format!("{path}: {e}"))))
 }
 
 /// Reads a workbook (format detected from content) on the calling thread.
@@ -485,7 +494,9 @@ fn core_options(o: Option<NormalizeOptions>) -> Result<hh_core::NormalizeOptions
 }
 
 fn run_normalize(path: &str, out_dir: &str, opts: &hh_core::NormalizeOptions) -> Result<NormalizeResult> {
-    let out = hh_core::normalize_file(path, out_dir, opts).map_err(|e| Error::new(Status::GenericFailure, e.0))?;
+    let out = guarded("normalize", || {
+        hh_core::normalize_file(path, out_dir, opts).map_err(|e| Error::new(Status::GenericFailure, e.0))
+    })?;
     let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
     Ok(NormalizeResult {
         xlsx_path: s(&out.xlsx_path),
@@ -556,7 +567,7 @@ impl Task for ToolTask {
 
     fn compute(&mut self) -> Result<Self::Output> {
         let run = self.run.take().ok_or_else(|| Error::new(Status::GenericFailure, "tool task ran twice"))?;
-        run(&mut lock(&self.session)).map_err(|e| Error::new(Status::GenericFailure, e.0))
+        guarded("the tool call", || run(&mut lock(&self.session)).map_err(|e| Error::new(Status::GenericFailure, e.0)))
     }
 
     fn resolve(&mut self, _env: Env, text: Self::Output) -> Result<Self::JsValue> {

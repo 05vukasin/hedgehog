@@ -8,6 +8,22 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Robustness for untrusted files** (P4). Per-file limits, checked before and while a file is
+  read (`hh_core::reader::Limits` in `ReadOptions`): parts of a zip package decompressing to more
+  than 2 GB (zip bombs), more than 20 million cells (an ODS file's repeated rows and columns are
+  counted before it is parsed), more than 10 million shared strings, and an optional deadline
+  (`NormalizeOptions::deadline`, `try_normalize_workbook`). Refusals are one-line errors starting
+  with `file refused:` (`Error::is_limit`). `hedgehog mcp` gets `--max-cells` (default 20,000,000)
+  and `--max-seconds` (default 120). Password-protected files (encrypted xlsx / xlsb / ODS, xls
+  with a password) now say so instead of reporting a broken zip or OLE file. See
+  [docs/mcp.md](docs/mcp.md#security-limits).
+- **Crash isolation.** The release profile unwinds on panic (`panic = "unwind"`, was `abort`), and
+  `hedgehog mcp` runs each tool call under `catch_unwind`: a panic becomes that call's error and the
+  server keeps running. The Python (`RuntimeError`) and Node bindings catch panics at their
+  boundary too, so a hostile file can no longer take down the host process.
+- **Fuzzing** (`fuzz/`, `hh_fuzz`): a mutation fuzzer on the stable toolchain for the CSV, xlsx,
+  xls and ODS readers and the normalize pipeline. See [docs/development.md](docs/development.md#fuzzing).
+
 - **Catalog facts** (`open_file`): small tables in full by a cell budget (≤ 400 cells, ≤ 30 rows)
   from `T<n>_all` with a `_row_type` column, so total rows are visible (a 12 × 19 pension table is
   now inlined); per table with total rows, how to select them (`total rows: SELECT … FROM T1_all
@@ -179,6 +195,15 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Fixed
 
+- Crashes, hangs and runaway allocations on malformed files found by the fuzzer (each with a
+  regression test in `core/tests/hostile_files.rs`). In calamine, now vendored with the fixes
+  (`vendor/calamine`, each change marked `hedgehog:`): looping sector chains in xls / OLE files
+  grew memory until the process aborted; a `sharedStrings.xml` `uniqueCount` reserved up to 51 GB;
+  out-of-range reads in xls records and formulas, sector ids past the FAT, truncated files and
+  overlong cell references panicked or wrapped around. In hedgehog: xls and xlsb sheets are read
+  sparsely (two cells far apart no longer allocate the whole rectangle between them); merged areas
+  written bottom-right first get their corners ordered; duplicate column names were made unique in
+  quadratic time (a merged header over 16,000 columns took 22 s).
 - `open_file` on large registers: the catalog took ~48 s on a 176k-row file (a quadratic search
   for measure labels over text columns with ~100k distinct values, and the time coverage computed
   twice); now ~0.45 s. Text columns stop being checked for period labels as soon as a tenth of
