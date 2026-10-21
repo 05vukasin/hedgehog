@@ -454,11 +454,12 @@ fn build_table(
             cur_path = Some(paths.len() - 1);
         }
         // A kept total row belongs only to the groups that contain its whole source: a subtotal
-        // to its group, a grand total (or a total over several groups) to none of them.
+        // to its group, a grand total (or a total over several groups) to none of them. A source
+        // range reaching into the header (a year header read as a number, B17) starts at the body.
         let depth = match (level, row_total.get(row).and_then(|t| t.top)) {
             _ if rt == RowType::Data => path.len(),
             (Some(TotalLevel::GrandTotal), _) => 0,
-            (_, Some(top)) => path_rows.iter().take_while(|&&h| h <= top).count(),
+            (_, Some(top)) => path_rows.iter().take_while(|&&h| h <= top.max(body_top)).count(),
             _ => path.len(),
         };
         row_group.push(match depth {
@@ -523,6 +524,36 @@ fn build_table(
                     }
                 }
                 Slot::NoCache => {}
+            }
+        }
+    }
+    // Total rows take the keys of the block they close (B17): an empty text cell left of the
+    // total's label gets the value every data row of the block (since the previous total row)
+    // shares there, so `WHERE key = '…' AND _row_type = 'total'` finds the block's total.
+    let mut block_start = 0;
+    for j in 0..row_types.len() {
+        if row_types[j] == RowType::Data {
+            continue;
+        }
+        let block = block_start..j;
+        block_start = j + 1;
+        if block.len() < 2 {
+            continue;
+        }
+        let is_text = |s: &Slot| matches!(s, Slot::Val(Value::Text(t)) if !t.trim().is_empty());
+        let Some(label) = (0..ncols).find(|&k| is_text(&slots[k][j])) else { continue };
+        for col in slots.iter_mut().take(label) {
+            if !matches!(col[j], Slot::Empty) {
+                continue;
+            }
+            let Slot::Val(v @ Value::Text(first)) = col[block.start] else { continue };
+            if first.trim().is_empty() {
+                continue;
+            }
+            let shared = block.clone().all(|b| matches!(col[b], Slot::Val(x) if x == v));
+            if shared {
+                col[j] = Slot::Val(v);
+                tr.add(T::GroupKeysFilledDown, 1);
             }
         }
     }

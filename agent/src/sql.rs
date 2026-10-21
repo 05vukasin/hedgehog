@@ -4,7 +4,8 @@
 //! `_row_type` and `_src_row`), view `T<n>` the data rows without `_row_type`. Values are typed:
 //! integers INTEGER, numbers / currency / percent (as a fraction) REAL, dates ISO TEXT
 //! (`YYYY-MM-DD`, or `YYYY-MM-DD hh:mm:ss`), booleans 0/1. An entity column (`"<id> - <name>"`,
-//! [`crate::entity`]) is followed by `<col>_id` and `<col>_name`, split at load.
+//! [`crate::entity`]) is followed by `<col>_id` and `<col>_name`, split at load; `<col>_name` is one
+//! name per ID (its most frequent spelling).
 //!
 //! After loading, the connection is locked down: an authorizer allows only SELECT, reads, a few
 //! read-only pragmas and functions (no ATTACH, no writes, no schema changes, no transactions),
@@ -146,11 +147,13 @@ impl Db {
                 let mut ins = tx.prepare(&format!("INSERT INTO {} VALUES ({marks})", quote_ident(&base)))?;
                 let mut row: Vec<Value> = Vec::with_capacity(slots.len());
                 let mut parts: Vec<(Option<String>, Option<String>)> = vec![(None, None); ents.len()];
+                // B18: one name per ID in `<col>_name`, so grouping by the name does not split an entity.
+                let canon: Vec<_> = ents.iter().map(|e| entity::canonical_names(&t.columns[e.col])).collect();
                 for r in 0..t.rows() {
                     row.clear();
                     for (k, e) in ents.iter().enumerate() {
                         parts[k] = match t.columns[e.col].values.get(r) {
-                            Some(Out::Text(s)) => entity::derived(s),
+                            Some(Out::Text(s)) => entity::derived_canonical(s, &canon[k]),
                             _ => (None, None),
                         };
                     }
