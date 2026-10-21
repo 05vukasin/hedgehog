@@ -375,7 +375,7 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
     }
     let an = analyzer(&analyzer_name).ok_or(format!("unknown analyzer `{analyzer_name}`"))?;
     let root = eval::data_root();
-    let mut tsv = String::from("corpus\tsource\tfiles\tsheets\tcells\tfull_pooled\tfull_file\tcoarse_pooled\tcoarse_file\taccuracy\n");
+    let mut tsv = String::from("corpus\tsource\tfiles\tsheets\tcells\tfull_pooled\tfull_file\tcoarse_pooled\tcoarse_file\taccuracy\ttable_f1_iou50\ttable_f1_iou80\ttable_f1_iou100\n");
     for name in &corpora {
         let t = Instant::now();
         let (corpus, sp) = match name.as_str() {
@@ -399,9 +399,19 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
         println!("  time {:.1} s (analyze {:.1} s)\n", t.elapsed().as_secs_f64(), report.timing.analyze_ms / 1000.0);
         for r in &rows {
             let (fp, ff) = r.full.map_or((String::new(), String::new()), |(a, b)| (format!("{:.4}", a), format!("{:.4}", b)));
+            let tf = |k: usize| r.tables.and_then(|t| t[k].f1()).map_or(String::new(), |f| format!("{f:.4}"));
             tsv.push_str(&format!(
-                "{name}\t{}\t{}\t{}\t{}\t{fp}\t{ff}\t{:.4}\t{:.4}\t{:.4}\n",
-                r.source, r.files, r.sheets, r.cells, r.coarse.0, r.coarse.1, r.accuracy
+                "{name}\t{}\t{}\t{}\t{}\t{fp}\t{ff}\t{:.4}\t{:.4}\t{:.4}\t{}\t{}\t{}\n",
+                r.source,
+                r.files,
+                r.sheets,
+                r.cells,
+                r.coarse.0,
+                r.coarse.1,
+                r.accuracy,
+                tf(0),
+                tf(1),
+                tf(2)
             ));
         }
     }

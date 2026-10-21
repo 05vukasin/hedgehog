@@ -9,11 +9,14 @@
 //!   scores are comparable across corpora.
 //!
 //! Generalization is judged on the coarse scores of corpora a model was not trained on.
+//!
+//! Corpora with table rectangles (DECO, StatSheets, synthetic) also get table-detection
+//! precision / recall / F1 per source, at every [`TABLE_CRITERIA`] threshold.
 
 use std::collections::BTreeMap;
 
-use super::metrics::{Confusion, FileMacro, N_ROLES};
-use super::run::Report;
+use super::metrics::{Confusion, FileMacro, Prf, N_ROLES, TABLE_CRITERIA};
+use super::run::{Report, N_CRIT};
 use crate::analysis::Role;
 
 /// The shared four-role space.
@@ -57,6 +60,10 @@ pub struct SourceScore {
     pub coarse_confusion: Confusion,
     /// Full per-role pooled F1 (None for coarse-only corpora or absent roles).
     pub full_per_role: [Option<f64>; N_ROLES],
+    /// Table detection per [`TABLE_CRITERIA`] entry (None for corpora without table ranges).
+    pub tables: Option<[Prf; N_CRIT]>,
+    /// Header depth over matched tables: (scored, exact).
+    pub header_depth: (usize, usize),
 }
 
 fn source_of(file_id: &str, corpus: &str) -> String {
@@ -70,6 +77,8 @@ struct Acc {
     coarse: Confusion,
     full_fm: FileMacro,
     coarse_fm: FileMacro,
+    tables: [Prf; N_CRIT],
+    header: (usize, usize),
 }
 
 /// Per-source scores plus an `ALL` row (last), from a finished report.
@@ -82,6 +91,8 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
         coarse: Confusion::default(),
         full_fm: FileMacro::default(),
         coarse_fm: FileMacro::default(),
+        tables: [Prf::default(); N_CRIT],
+        header: (0, 0),
     };
     let mut i = 0;
     let sheets = &report.sheets;
@@ -95,6 +106,8 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
             coarse: Confusion::default(),
             full_fm: FileMacro::default(),
             coarse_fm: FileMacro::default(),
+            tables: [Prf::default(); N_CRIT],
+            header: (0, 0),
         });
         a.files += 1;
         all.files += 1;
@@ -107,6 +120,11 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
                 x.coarse.merge(&cc);
                 x.full_fm.add_sheet(c);
                 x.coarse_fm.add_sheet(&cc);
+                for (k, &tp) in sheets[i].table_tp.iter().enumerate() {
+                    x.tables[k].add(Prf::from_matches(tp, sheets[i].gt_tables, sheets[i].pred_tables));
+                }
+                x.header.0 += sheets[i].header_n;
+                x.header.1 += sheets[i].header_ok;
             }
             i += 1;
         }
@@ -126,6 +144,8 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
         coarse_per_role: a.coarse.class_f1(),
         coarse_confusion: a.coarse.clone(),
         full_per_role: if coarse_only { [None; N_ROLES] } else { a.full.class_f1() },
+        tables: report.has_tables.then_some(a.tables),
+        header_depth: a.header,
     };
     let mut out: Vec<SourceScore> = acc.iter().map(|(s, a)| score(s.clone(), a)).collect();
     out.push(score("ALL".into(), &all));
@@ -167,6 +187,16 @@ pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
             if !full.is_empty() {
                 s.push_str(&format!("  full F1 per role:   {}\n", full.join(" · ")));
             }
+            if let Some(t) = &r.tables {
+                s.push_str(&format!("  tables:             {}\n", tables_line(t)));
+                let (hn, hok) = r.header_depth;
+                if hn > 0 {
+                    s.push_str(&format!(
+                        "  header rows exact:  {:.1} ({hok} of {hn} tables matched at IoU>=0.5)\n",
+                        100.0 * hok as f64 / hn as f64
+                    ));
+                }
+            }
             s.push_str("  coarse confusion (rows = truth, cols = predicted; title header data other):\n");
             let keep = [Role::Title, Role::Header, Role::Data, Role::Other].map(super::metrics::role_index);
             for &g in &keep {
@@ -175,7 +205,35 @@ pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
             }
         }
     }
+    if rows.len() > 2 && rows.iter().any(|r| r.tables.is_some()) {
+        s.push_str("  table F1 per source (IoU>=0.5 / 0.8 / 1.0):\n");
+        for r in rows.iter().filter(|r| r.source != "ALL") {
+            if let Some(t) = &r.tables {
+                let f = |k: usize| t[k].f1().map_or("—".into(), |f| format!("{:.1}", 100.0 * f));
+                s.push_str(&format!("    {:<24} {:>5} {:>5} {:>5}\n", r.source, f(0), f(1), f(2)));
+            }
+        }
+    }
     s
+}
+
+/// `gt N pred M · P/R/F1 IoU>=0.5 p/r/f · …` for one source's table counts.
+pub fn tables_line(t: &[Prf; N_CRIT]) -> String {
+    let (gt, pred) = (t[0].tp + t[0].fn_, t[0].tp + t[0].fp);
+    let parts: Vec<String> = TABLE_CRITERIA
+        .iter()
+        .zip(t)
+        .map(|(c, p)| {
+            format!(
+                "{} {:.1}/{:.1}/{}",
+                c.label(),
+                100.0 * p.precision(),
+                100.0 * p.recall(),
+                p.f1().map_or("—".into(), |f| format!("{:.1}", 100.0 * f))
+            )
+        })
+        .collect();
+    format!("gt {gt} pred {pred} · P/R/F1 {}", parts.join(" · "))
 }
 
 #[cfg(test)]

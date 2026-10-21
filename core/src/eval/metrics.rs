@@ -85,6 +85,11 @@ pub const TABLE_CRITERIA: [TableCriterion; 5] = [
 /// Number of one-to-one matches (true positives) between `gt` and `pred` under `crit`,
 /// greedy by best score, ties broken by index order.
 pub fn table_matches(gt: &[Rect], pred: &[Rect], crit: TableCriterion) -> usize {
+    table_pairs(gt, pred, crit).len()
+}
+
+/// The one-to-one matches of [`table_matches`] as (gt index, pred index) pairs.
+pub fn table_pairs(gt: &[Rect], pred: &[Rect], crit: TableCriterion) -> Vec<(usize, usize)> {
     let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
     for (i, g) in gt.iter().enumerate() {
         for (j, p) in pred.iter().enumerate() {
@@ -96,15 +101,23 @@ pub fn table_matches(gt: &[Rect], pred: &[Rect], crit: TableCriterion) -> usize 
     pairs.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
     let mut used_g = vec![false; gt.len()];
     let mut used_p = vec![false; pred.len()];
-    let mut n = 0;
+    let mut out = Vec::new();
     for (_, i, j) in pairs {
         if !used_g[i] && !used_p[j] {
             used_g[i] = true;
             used_p[j] = true;
-            n += 1;
+            out.push((i, j));
         }
     }
-    n
+    out
+}
+
+/// Header depth of a ground-truth table: the labelled rows of `rect` (row, majority role over the
+/// row's labelled cells inside `rect`), top to bottom, give the header as the run of header rows
+/// after any leading title / note / other rows. Returns those rows.
+pub fn gt_header_rows(rows: &[(u32, Role)]) -> Vec<u32> {
+    let start = rows.iter().position(|(_, r)| !matches!(r, Role::Title | Role::Note | Role::Other)).unwrap_or(rows.len());
+    rows[start..].iter().take_while(|(_, r)| *r == Role::Header).map(|(row, _)| *row).collect()
 }
 
 /// True positive / false positive / false negative counts.
