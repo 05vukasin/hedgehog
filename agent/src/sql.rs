@@ -190,6 +190,7 @@ impl Db {
                 entities.push((t.n, ents));
             }
         }
+        crate::views::create_all(&tx, norm)?; // B20: T<n>_long views (views.rs)
         tx.commit()?;
         lock_down(&conn)?;
         set_heap_limit(memory_used() + HEAP_HEADROOM);
