@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashSet};
 use super::extract::{ROW_TYPE, SRC_ROW};
 use super::json::Json;
 use super::typing::{fmt_num, iso};
-use super::{ColRole, Column, Dtype, Normalized, Options, Out, T, Table};
+use super::{ColRole, Column, Dtype, Normalized, Options, Out, T, Table, TotalItem, coverage};
 use crate::model::{Rect, a1};
 use crate::values::{DateOrder, DecimalSep};
 
@@ -152,7 +152,26 @@ fn column_json(c: &Column, index: usize) -> Json {
         .with("example", example.map_or(Json::Null, out_json))
 }
 
-fn table_json(t: &Table) -> Json {
+/// Per-table totals: counts by status and one entry per total row (vertical totals), so an agent
+/// can tell which rows are not in the table's data.
+fn table_totals(t: &Table, totals: &[TotalItem]) -> Json {
+    let tt = super::table_totals(t, totals);
+    let rows: Vec<Json> = tt
+        .rows
+        .into_iter()
+        .map(|r| {
+            Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data)
+        })
+        .collect();
+    Json::obj()
+        .with("count", tt.count)
+        .with("ok", tt.ok)
+        .with("mismatch", tt.mismatch)
+        .with("unknown", tt.unknown)
+        .with("rows", Json::Arr(rows))
+}
+
+fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>) -> Json {
     let body_top = t.header_top + t.header_rows;
     let header_range = (t.header_rows > 0)
         .then(|| range_a1(Rect { top: t.header_top, left: t.rect.left, bottom: body_top - 1, right: t.rect.right }));
@@ -183,10 +202,12 @@ fn table_json(t: &Table) -> Json {
         .with("source", source)
         .with("rows", t.rows())
         .with("confidence", t.confidence)
+        .with("time_coverage", cov.map_or(Json::Null, |c| c.json(false)))
         .with("columns", Json::Arr(t.columns.iter().enumerate().map(|(i, c)| column_json(c, i)).collect()))
         .with("group_column", group)
         .with("source_row_column", SRC_ROW)
         .with("row_type_column", row_type)
+        .with("totals", table_totals(t, totals))
         .with("transformations", tr)
         .with("warnings", t.warnings.clone())
 }
@@ -231,6 +252,7 @@ pub(super) fn build(
                 .with("table", x.table.map(|n| format!("T{n}")))
                 .with("sheet", x.sheet.as_str())
                 .with("cell", x.cell_a1())
+                .with("row", x.row + 1)
                 .with("count", x.count)
                 .with("label", x.label.clone())
                 .with("level", x.level)
@@ -272,6 +294,12 @@ pub(super) fn build(
         hints.push(k, v);
     }
 
+    let covs: Vec<Option<coverage::Coverage>> = norm.tables.iter().map(coverage::table).collect();
+    let with_cov: Vec<(String, coverage::Coverage)> =
+        norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
+    let tables: Vec<Json> =
+        norm.tables.iter().zip(&covs).map(|(t, c)| table_json(t, &norm.totals, c.as_ref())).collect();
+
     Json::obj()
         .with("schema_version", SCHEMA_VERSION)
         .with("generator", Json::obj().with("name", "hedgehog").with("version", env!("CARGO_PKG_VERSION")))
@@ -300,7 +328,8 @@ pub(super) fn build(
                 .with("locale", opts.locale.map(|l| l.as_str()))
                 .with("cell_roles", if opts.rules_only || crate::learned::embedded().is_none() { "rules" } else { "model" }),
         )
-        .with("tables", Json::Arr(norm.tables.iter().map(table_json).collect()))
+        .with("time_coverage", coverage::workbook(&with_cov).map_or(Json::Null, |c| c.json(true)))
+        .with("tables", Json::Arr(tables))
         .with("totals", totals)
         .with("notes", notes)
         .with("cells", cells)

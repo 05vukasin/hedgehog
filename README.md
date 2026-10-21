@@ -132,8 +132,16 @@ pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/
 
 It is not on PyPI yet; once it is, `pip install hedgehog-sheets` will be enough.
 
-The command-line tool: `cargo install --git https://github.com/05vukasin/hedgehog hh_cli` (needs
-Rust). From a clone: `pip install ./py`. Details: [docs/installation.md](docs/installation.md).
+The command-line tool: download `hedgehog-<target>` from a
+[release](https://github.com/05vukasin/hedgehog/releases) (from the next release on), or
+`cargo install --git https://github.com/05vukasin/hedgehog hh_cli` (needs Rust). From a clone: `pip install ./py`. Details: [docs/installation.md](docs/installation.md).
+
+For Node.js and TypeScript (Node 18 or newer), the same package name on npm, with prebuilt native
+binaries and types (from the next release on; until it is on npm, the release has the tarballs):
+
+```sh
+npm install hedgehog-sheets
+```
 
 ## Use it from the command line
 
@@ -197,6 +205,36 @@ s = hedgehog.summarize("sales.xlsx", llm=client)       # one call; s.text, s.usa
 
 More: [docs/python-api.md](docs/python-api.md), [docs/llm.md](docs/llm.md).
 
+## Use it from TypeScript
+
+The npm package `hedgehog-sheets` has the same core, with camelCase names; slow work runs off the
+event loop and returns a Promise. It also has the agent tools of the [MCP server](#as-an-mcp-tool-server)
+in-process, for a TypeScript agent that registers its own tools:
+
+```ts
+import { normalize, open, HedgehogSession } from 'hedgehog-sheets'
+
+const r = await normalize('sales.xlsx', 'out/')          // same files as the command line
+console.log(r.manifest.tables[0].sheet, r.manifest.totals.mismatch, 'wrong total(s)')
+
+const wb = open('sales.xlsx')                            // look inside the original, read-only
+console.log(wb.getCell('Sales', 'B13').value, wb.totals('Sales').at(-2)?.ok)
+
+const s = new HedgehogSession({ root: '.' })             // open_file, query, cells, totals, ...
+console.log(await s.query('sales.xlsx', 'SELECT Product, "Revenue / Q1" FROM T1 ORDER BY 2 DESC LIMIT 2'))
+```
+
+```text
+T1_sales_report_2024 1 wrong total(s)
+4600 false
+Product,Revenue / Q1
+Gizmos,2045
+Widgets,1200.5
+(2 rows)
+```
+
+More: [docs/node-api.md](docs/node-api.md).
+
 ## Use it with an AI agent
 
 This is what hedgehog was built for: an agent that can run Python gets clean tables and a map of the
@@ -224,6 +262,23 @@ Gizmos Sales!B11
 
 More recipes (types, totals, notes, writing corrections back): [docs/agent-recipes.md](docs/agent-recipes.md).
 
+### As an MCP tool server
+
+An agent that cannot run Python can use hedgehog through the
+[Model Context Protocol](https://modelcontextprotocol.io): `hedgehog mcp --root <folder>` serves six
+tools over stdio — `open_file` (a compact catalog of the tables, time coverage and totals check),
+`describe_table`, `query` (read-only SQL over the normalized tables, `T1_all` with the total rows),
+`cells` (source cells to cite), `totals` and `list_files`. Every answer is at most ~3k tokens, so a
+model can work with files that would never fit in its context. Claude Desktop:
+
+```json
+{ "mcpServers": { "hedgehog": { "command": "hedgehog", "args": ["mcp", "--root", "/path/to/spreadsheets"] } } }
+```
+
+Standalone `hedgehog` binaries for Linux, macOS and Windows are attached to each
+[release](https://github.com/05vukasin/hedgehog/releases). Tools, limits and examples:
+[docs/mcp.md](docs/mcp.md).
+
 ## How good is it?
 
 Accuracy is measured, not guessed: hedgehog is scored against spreadsheets that people labelled by
@@ -250,8 +305,9 @@ up on the `Notes` sheet, so a mistake costs structure, never data. Details:
 | [Installation](docs/installation.md) | wheels, extras, command line, from source |
 | [Quickstart](docs/quickstart.md) | a messy sample workbook, end to end |
 | [Agent recipes](docs/agent-recipes.md) | pandas/openpyxl code for AI agents |
+| [MCP server](docs/mcp.md) | `hedgehog mcp`: tools for AI clients over stdio |
 | [Normalized output](docs/normalized-output.md) | every sheet and manifest field |
-| [CLI](docs/cli.md) · [Python API](docs/python-api.md) | full reference |
+| [CLI](docs/cli.md) · [Python API](docs/python-api.md) · [Node API](docs/node-api.md) | full reference |
 | [LLMs](docs/llm.md) · [Locales](docs/locales.md) | AI providers and keys; numbers, dates, currencies |
 | [Concepts](docs/concepts.md) · [Evaluation](docs/evaluation.md) | how it works; how well it works |
 | [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Troubleshooting](docs/troubleshooting.md) | for contributors and when something goes wrong |

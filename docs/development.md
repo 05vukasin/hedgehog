@@ -122,18 +122,32 @@ It is tuned for the GitHub Actions free tier:
 All wheels are `abi3`: one wheel per platform works on CPython 3.9 and newer. The smoke test
 installs the wheel without Rust, generates a small workbook and opens it.
 
+The `node` job builds the Node addon (`npm run build -- --target <triple>`, Cargo profile
+`node-release`: the release profile with unwinding panics) for `x86_64-unknown-linux-gnu`,
+`aarch64-unknown-linux-gnu` (native arm runner), `aarch64-apple-darwin`, `x86_64-apple-darwin`
+(cross-compiled on the Apple Silicon runner, not tested) and `x86_64-pc-windows-msvc`, checks that the
+committed `node/binding.js` / `binding.d.ts` are current, and runs `npm test` and `npm run typecheck`.
+On a tag, the `npm` job makes the platform packages (`hedgehog-sheets-<platform>`, napi-rs
+`create-npm-dirs` / `artifacts` / `prepublish`), packs every package into a `.tgz`, and publishes
+them to npm only when the repository variable `PUBLISH_NPM` is `"true"` (secret `NPM_TOKEN`, with
+provenance). See [node-api.md](node-api.md#building-from-source) for local builds.
+
 To release:
 
-1. Set the version in the workspace `Cargo.toml` (`[workspace.package] version`); the Python
-   package takes its version from there.
+1. Set the version in the workspace `Cargo.toml` (`[workspace.package] version`) and in
+   `node/package.json` (the `npm` job refuses a tag that does not match it); the Python package
+   takes its version from `Cargo.toml`.
 2. Add the release notes to `CHANGELOG.md`.
 3. Commit, then tag and push: `git tag v0.1.0 && git push origin v0.1.0`.
-4. The workflow builds and tests all wheels, then creates a GitHub Release (marked pre-release) with
-   the wheels and the sdist attached.
+4. The workflow builds and tests all wheels, CLI binaries and Node addons, then creates a GitHub
+   Release (marked pre-release) with the wheels, the sdist, the CLI binaries and the npm tarballs
+   attached.
 5. PyPI: the `pypi` job publishes through PyPI trusted publishing (no stored token) only when the
    repository variable `PUBLISH_PYPI` is `"true"` and a `pypi` environment is configured.
+6. npm: the `npm` job publishes the platform packages, then `hedgehog-sheets`, only when the
+   repository variable `PUBLISH_NPM` is `"true"`.
 
-Running the workflow by hand (Actions → release → Run workflow) builds and tests the wheels without
+Running the workflow by hand (Actions → release → Run workflow) builds and tests everything without
 publishing anything. Build artifacts are kept for one day; the release assets are permanent.
 
 ## See also

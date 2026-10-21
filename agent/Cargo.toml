@@ -1,0 +1,16 @@
+[package]
+name = "hh_agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "hedgehog's agent tools (open_file catalog, describe_table, SQL query, cells, totals, list_files) as a plain Rust API"
+
+[dependencies]
+hh_core.workspace = true
+serde_json = "1.0"
+# SQLite compiled from source (portable C, no system library needed); hooks = authorizer and
+# progress handler, limits = sqlite3_limit.
+rusqlite = { version = "0.40", features = ["bundled", "hooks", "limits"] }
+
+[dev-dependencies]
+rust_xlsxwriter.workspace = true

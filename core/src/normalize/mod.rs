@@ -10,7 +10,9 @@
 //!
 //! The source file is only read, never modified.
 
+mod coverage;
 mod extract;
+mod headers;
 pub mod json;
 mod manifest;
 pub mod sha256;
@@ -23,6 +25,8 @@ use crate::model::{Rect, Workbook};
 use crate::values::{DateOrder, DecimalSep, Locale};
 
 pub use manifest::SCHEMA_VERSION;
+/// Shortest decimal text of a number and ISO text of an Excel serial date, as the manifest writes them.
+pub use typing::{fmt_num, iso};
 
 /// Options for [`normalize_file`].
 #[derive(Debug, Clone, Copy, Default)]
@@ -180,6 +184,7 @@ pub enum T {
     UnparsedKeptAsText,
     TextTruncated,
     HeadersFlattened,
+    HeadersCleaned,
     HeaderCellsForwardFilled,
     MergedCellsFilled,
     DuplicateHeadersRenamed,
@@ -196,7 +201,7 @@ pub enum T {
 }
 
 impl T {
-    pub const ALL: [T; 31] = [
+    pub const ALL: [T; 32] = [
         T::NumbersFromText,
         T::PercentFromText,
         T::CurrencyStripped,
@@ -215,6 +220,7 @@ impl T {
         T::UnparsedKeptAsText,
         T::TextTruncated,
         T::HeadersFlattened,
+        T::HeadersCleaned,
         T::HeaderCellsForwardFilled,
         T::MergedCellsFilled,
         T::DuplicateHeadersRenamed,
@@ -250,6 +256,7 @@ impl T {
             T::UnparsedKeptAsText => "unparsed_kept_as_text",
             T::TextTruncated => "text_truncated",
             T::HeadersFlattened => "headers_flattened",
+            T::HeadersCleaned => "headers_cleaned",
             T::HeaderCellsForwardFilled => "header_cells_forward_filled",
             T::MergedCellsFilled => "merged_cells_filled",
             T::DuplicateHeadersRenamed => "duplicate_headers_renamed",
@@ -396,6 +403,79 @@ pub struct Normalized {
     pub notes: Vec<NoteItem>,
     pub cells: CellCounts,
     pub warnings: Vec<String>,
+}
+
+/// Time coverage of a table or workbook, as the manifest's `time_coverage` writes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimeCoverage {
+    /// First period: `2020`, `2020-Q1`, `2020-01`, `2020-W05` or `2020-01-31`.
+    pub from: String,
+    pub to: String,
+    /// day | week | month | quarter | year (the finest found).
+    pub granularity: &'static str,
+    /// `column` (values of date / period columns) or `header` (period-like column headers).
+    pub source: &'static str,
+    /// Column names (workbook: `T<n>.<name>`).
+    pub columns: Vec<String>,
+    /// Table ids the coverage comes from.
+    pub tables: Vec<String>,
+}
+
+/// Time coverage of one table (the manifest's `tables[].time_coverage`).
+pub fn table_time_coverage(t: &Table) -> Option<TimeCoverage> {
+    coverage::table(t).map(|c| c.public())
+}
+
+/// Time coverage of the workbook (the manifest's top-level `time_coverage`).
+pub fn workbook_time_coverage(norm: &Normalized) -> Option<TimeCoverage> {
+    let with_cov: Vec<(String, coverage::Coverage)> =
+        norm.tables.iter().filter_map(|t| coverage::table(t).map(|c| (t.id(), c))).collect();
+    coverage::workbook(&with_cov).map(|c| c.public())
+}
+
+/// One total row of a table (the manifest's `tables[].totals.rows[]`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableTotalRow {
+    /// 1-based source row.
+    pub row: u32,
+    pub label: Option<String>,
+    /// total | subtotal | grand_total
+    pub level: &'static str,
+    pub kept_in_data: bool,
+}
+
+/// A table's totals (the manifest's `tables[].totals`): counts by status and one entry per total
+/// row (vertical totals), in source row order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TableTotals {
+    pub count: usize,
+    pub ok: usize,
+    pub mismatch: usize,
+    pub unknown: usize,
+    pub rows: Vec<TableTotalRow>,
+}
+
+/// The totals of table `t` among `totals` (usually [`Normalized::totals`]).
+pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
+    let mut out = TableTotals::default();
+    let mut rows: std::collections::BTreeMap<u32, TableTotalRow> = std::collections::BTreeMap::new();
+    for x in totals.iter().filter(|x| x.table == Some(t.n)) {
+        match x.status {
+            "ok" => out.ok += x.count,
+            "mismatch" => out.mismatch += x.count,
+            _ => out.unknown += x.count,
+        }
+        if x.direction == "vertical" {
+            let e = rows.entry(x.row).or_insert(TableTotalRow { row: x.row + 1, label: None, level: x.level, kept_in_data: false });
+            if e.label.is_none() {
+                e.label = x.label.clone();
+            }
+            e.kept_in_data |= x.kept_in_data;
+        }
+    }
+    out.count = out.ok + out.mismatch + out.unknown;
+    out.rows = rows.into_values().collect();
+    out
 }
 
 /// Files written by [`normalize_file`].

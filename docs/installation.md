@@ -1,11 +1,12 @@
 # Installation
 
-How to install the Python package (prebuilt wheels, no Rust needed), the optional LLM extras, the
-`hedgehog` command, and how to build everything from source.
+How to install the Python package (prebuilt wheels, no Rust needed), the Node.js / TypeScript
+package, the optional LLM extras, the `hedgehog` command, and how to build everything from source.
 
 | You want | Install |
 |---|---|
 | The Python library | a prebuilt wheel, [below](#python-package) |
+| The Node.js / TypeScript library | `npm install hedgehog-sheets`, [below](#nodejs-and-typescript-package) |
 | An LLM to phrase summaries | an [extra](#optional-extras), such as `hedgehog-sheets[openai]` |
 | The `hedgehog` command | [build the CLI](#the-hedgehog-command) (needs Rust) |
 | To change the code | [from source](#from-source), then [development.md](development.md) |
@@ -71,6 +72,26 @@ pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/
 ```
 
 (Quote the name in shells such as zsh, where `[` is special.) See [llm.md](llm.md) for API keys.
+
+## Node.js and TypeScript package
+
+Also called **`hedgehog-sheets`**, on npm, with types. Node.js 18 or newer on Linux (x64, arm64;
+glibc), macOS (Intel, Apple Silicon) or Windows (x64); prebuilt, no Rust needed.
+
+```sh
+npm install hedgehog-sheets
+```
+
+npm installs the main package plus the one platform package with the native addon
+(`hedgehog-sheets-linux-x64-gnu`, ...). From the next release on, until it is published on npm, the
+GitHub Release has the `.tgz` files: install `hedgehog-sheets-<version>.tgz` together with the one for
+your platform ([node-api.md](node-api.md#install) shows the command). Check the install:
+
+```sh
+node -e "console.log(require('hedgehog-sheets').version())"
+```
+
+From a clone (needs Rust): `cd node && npm ci && npm run build`. API: [node-api.md](node-api.md).
 
 ## The `hedgehog` command
 

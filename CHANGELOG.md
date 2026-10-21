@@ -21,6 +21,28 @@ All notable changes to hedgehog are listed here. The format follows
 - Training scripts: `--style-dropout`, `--exclude`, `--seed`; features are loaded into one float32
   matrix file by file and XGBoost gets `QuantileDMatrix`es, so training on the four corpora fits in
   4 GB (it needed more).
+- **`hedgehog mcp`**, an MCP tool server over stdio (JSON-RPC 2.0, protocol `2025-06-18`, older
+  versions accepted) with six tools: `open_file` (compact catalog with time coverage, tables, total
+  rows, columns and totals check), `describe_table`, `query` (read-only SQLite SQL over `T1`… and
+  `T1_all`… with total rows), `cells`, `totals` and `list_files`. Files are normalized in memory and
+  cached per sha256; file access is bounded by `--root` plus allowed paths; SQL runs under an
+  authorizer, `query_only`, a 2 s time limit and row/size caps; every result is at most ~12,000
+  characters. See [docs/mcp.md](docs/mcp.md).
+- New crate `hh_agent` (`agent/`): the same tools as a plain Rust API (`Session::open_file`,
+  `query`, …, or `Session::call(name, json_args)`), for the MCP server and future bindings.
+  SQLite is compiled in (`rusqlite`, bundled); `hh_core` stays free of it.
+- Releases attach standalone `hedgehog` CLI binaries (`hedgehog-<target>[.exe]` for x86_64/aarch64
+  Linux, x86_64/aarch64 macOS and x86_64 Windows) with `SHA256SUMS.txt`.
+- **Node.js / TypeScript package `hedgehog-sheets`** (new crate `hh_node`, `node/`, napi-rs 3), with
+  types and prebuilt addons for Linux x64/arm64 (glibc), macOS x64/arm64 and Windows x64 as
+  `hedgehog-sheets-<platform>` optional dependencies: `normalize` (libuv thread pool, returns a
+  Promise with the paths and the parsed, typed manifest) and `normalizeSync`; `open` / `openAsync`
+  and `Workbook` (`sheetNames`, `sheets`, `getCell`, `getRange`, `findText`, `totals`), the Python
+  API in camelCase; `HedgehogSession`, the six `hedgehog mcp` tools in-process over `hh_agent`
+  (`openFile`, `describeTable`, `query`, `cells`, `totals`, `listFiles`, `call`, `toolSpecs`). The
+  release workflow builds and tests the addons, attaches the npm tarballs to the GitHub Release and
+  publishes to npm when the repository variable `PUBLISH_NPM` is `true`. See
+  [docs/node-api.md](docs/node-api.md).
 
 - `hedgehog-inspect` (Python entry point, `python -m hedgehog.inspect`) and a `Makefile`: see, file by
   file, the tables, totals check, notes, warnings, what an agent receives and the summary, with or
@@ -40,11 +62,60 @@ All notable changes to hedgehog are listed here. The format follows
   0.4 GB peak memory. No new dependencies.
 - StatSheets benchmark includes its 65 CSV sheets (all align; 21 in the test split). Test split,
   4 roles per file, rules / model: 65.2 / 89.6 → 65.6 / 89.6; pooled 48.0 / 72.2 → 48.1 / 72.3.
+- Manifest **`time_coverage`**, per table and for the workbook: `{from, to, granularity, source,
+  columns}` from date columns, year columns (`Jahr`, `année`, `año`, ...), period text (`2024 Q1`,
+  `Jan 2024`, `2024-03`) or period-like column headers (`2019 | 2020 | 2021`, `Oktober / 2022`).
+  Additive; `schema_version` stays 2. See
+  [normalized-output.md](docs/normalized-output.md#time-coverage).
+- Manifest **per-table `totals`**: counts by status and `rows` (one per total row: `row`, `label`,
+  `level`, `kept_in_data`), so an agent sees which rows are not in a table's data. Every
+  `totals.items[]` entry also has `row`, the 1-based source row.
+- Column names are cleaned for agents (`original_header` unchanged): footnote marks dropped
+  (`20221)` → `2022`, `Rate3)` → `Rate`, `Total²` → `Total`), line-break hyphenation joined
+  (`De-⏎zember` → `Dezember`, `Sep-tember` → `September`, `Benützungs- gebühren` →
+  `Benützungsgebühren`). New transformation count `headers_cleaned`.
+- `check_citations` pairs a cited cell with the number in the neighbouring Markdown table cell, in
+  the same sentence, or in the previous sentence when the text refers back ("478,737. This value is
+  from cell D7"), and flags a cell whose value differs (`Citation.pairing` says how it was paired).
+  A bare table id like `(T1)` / `[T12]` is no longer read as a cell.
+- `hh_core::normalize::{table_time_coverage, workbook_time_coverage, table_totals}`: the manifest's
+  `time_coverage` and `tables[].totals` as Rust values (`TimeCoverage`, `TableTotals`), so other
+  views agree with the manifest.
 
 ### Changed
 
 - The model path computes only the row-segment features the trees test (and the guard's), not all
   ~450: same predictions, less memory and time per sheet.
+- `open_file` catalog (MCP, `hh_agent`, Node `HedgehogSession`), after the gpt-4o-mini chat
+  pilots: every column is listed for tables up to 40 columns (`name[dtype unit]`; ranges up to 14),
+  runs of columns named by consecutive periods as one item (`"2011".."2025"[15 × number]`), wider
+  tables group same-type runs instead of `… 6 more …`; text columns with ≤ 12 distinct values list
+  them all (`"group" values: "Anzahl Bezieher:innen" | …`); `rows mix measures by "group" — filter
+  before aggregating` when a label column separates counts, amounts and rates; tables of ≤ 15 rows ×
+  ≤ 12 columns get their rows as CSV while the catalog stays under its cap. The TIME line, per-table
+  periods, totals counts and total-row labels now come from the manifest's `time_coverage` and
+  `tables[].totals` (years only in titles / sheet / file names are a secondary note), and total
+  rows that stay in the data ("Insgesamt" rows of long tables) are named. `describe_table` lists all
+  values of small label columns and the same mixed-measures line. `hh_agent::TimeCoverage` is now
+  the manifest's; `hh_agent::mentioned_years` gives the weak hints.
+- The Node addon is stripped (`strip = true` in the `node-release` profile; `panic = "unwind"`
+  kept): `hedgehog.linux-x64-gnu.node` 11.8 MB → 9.1 MB here (89.5 MB → 15.8 MB in the
+  hedgehog-cli pilot build).
+
+- Totals in the normalized output: a typed total that does not add up is `unknown`, not
+  `mismatch`, when its column header or row label names a rate, share, index, average or
+  per-capita value (`not_additive`: `%`, `Anteil`, `Quote`, `je Einwohner`, `j.E.`, `per capita`,
+  `Gesamt-VPI (2020=100)`), when it is off by rounding only (`rounding_difference`: at most √n units
+  of the last decimal and under 1%, as in tables "in 1 000"), or when it lies between its smallest
+  and largest source value (`average_like`). Formula totals are not re-judged. Unverified total rows
+  with such a header or label get reason `not_additive` instead of `not_verified`. On the 315 EU
+  open-data files plus the 50 Enron benchmark files: mismatches 2,701 → 355 (EU 2,696 → 352,
+  Enron 5 → 3); `ok` unchanged. The docs sample's wrong grand total (`B13`) is still a
+  mismatch. Detection and `Workbook.totals()` are unchanged.
+- A navigation link (`zur Inhaltsübersicht`, `Back to contents`, `Retour au sommaire`, `Powrót do
+  spisu tablic`, `Inhalt`, ...) is never a table title; the next title-like line is, and the link is
+  a Notes row of kind `other` (15 of the 31 tables of a destatis migration report were titled
+  "zur Inhaltsübersicht").
 
 ### Fixed
 

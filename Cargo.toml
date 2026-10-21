@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "py", "cli"]
+members = ["core", "py", "cli", "agent", "node"]
 
 [workspace.package]
 version = "0.3.1"
@@ -10,6 +10,7 @@ repository = "https://github.com/05vukasin/hedgehog"
 
 [workspace.dependencies]
 hh_core = { path = "core" }
+hh_agent = { path = "agent" }
 calamine = "0.37.0"
 pyo3 = "0.30.1"
 rust_xlsxwriter = { version = "0.99.1", features = ["constant_memory", "zmij"] }
@@ -22,6 +23,13 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 opt-level = 3
+
+# The Node addon (node/, `npm run build`): a Rust panic must become a JS exception, not abort the
+# host process (an editor, a TUI), so it unwinds. Stripped: the unstripped addon is ~90 MB.
+[profile.node-release]
+inherits = "release"
+panic = "unwind"
+strip = true
 
 # Release build with symbols and thin LTO: for profilers and fast iteration on perf work.
 [profile.profiling]

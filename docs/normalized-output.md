@@ -87,6 +87,23 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
   is copied to the right (`2024` over `Plan | Actual` gives `2024 / Plan`, `2024 / Actual`).
 - A duplicate name gets ` (2)`, ` (3)`, and so on. Excel compares table column names
   case-insensitively, and so does this check.
+- Each header part is cleaned for use as a name (the raw cells stay in `original_header`):
+  - footnote marks are removed: `20221)` becomes `2022`, `Veränderungsrate3)` becomes
+    `Veränderungsrate`, `Total²` becomes `Total`, `Einwohner*` becomes `Einwohner`. Only an
+    unmatched `1)`/`12)`/`a)` at the end, or trailing superscripts, `*`, `†`, `‡` count as marks;
+    balanced parentheses (`Gesamt-VPI (2020=100)`, `(in 1 000)`), numbers with three or more digits
+    before `)` and a header that is only a mark (`1)`) are kept;
+  - a word split by a hyphen at a line break is joined (`De-⏎zember` becomes `Dezember`,
+    `Kalender-⏎faktoren` becomes `Kalenderfaktoren`, `Benützungs- gebühren` becomes
+    `Benützungsgebühren`), except before a conjunction (`Ein- und Ausfuhr` stays); before an
+    uppercase word only the break is removed (`Abgaben-⏎Ertragsanteile` becomes
+    `Abgaben-Ertragsanteile`). Without a break, `X-y` is joined only when the result is a month
+    name (`Sep-tember`) or the left part is a capitalized word and the pair is not a common
+    compound (`Nachlassverbindlich-keiten` is joined; `Follow-up`, `Non-food`, `E-mail`, `EU-weit`
+    are not);
+  - whitespace and line breaks collapse to one space.
+
+  `headers_cleaned` counts the columns whose name changed this way.
 - A column without a header is named `col_<source letter>`, for example `col_F`.
 - Names longer than 255 characters are cut.
 
@@ -143,7 +160,7 @@ One row per detected total or subtotal cell, registered as an Excel table named 
 | `value` | Value in the file (the cached result for formulas) |
 | `recomputed` | Sum of the source cells, recomputed from the cached values |
 | `status` | `ok`, `mismatch` or `unknown` |
-| `reason` | `match`, `rounded`, `mismatch`, `double_counted`, `matches_average`, `no_cached_value`, `not_numeric`, `error_in_source`, `missing_source_value`, `no_source`, `unconfirmed`, `not_verified` ([meanings](concepts.md#totals-and-verification)) |
+| `reason` | `match`, `rounded`, `mismatch`, `double_counted`, `matches_average`, `no_cached_value`, `not_numeric`, `error_in_source`, `missing_source_value`, `no_source`, `unconfirmed`, `not_verified`, `not_additive`, `rounding_difference`, `average_like` ([meanings](concepts.md#totals-and-verification)) |
 | `sources` | Source ranges, for example `C6:C7` |
 | `formula` | The formula, if any |
 | `kept_in_data` | The total is also in the table data: `keep_totals` is set, or it is a total column (horizontal) |
@@ -181,7 +198,7 @@ silently. Columns: `sheet`, `cell`, `kind`, `table`, `text`, `formula`. `kind` i
 | `repeated_header` | A header row repeated inside the body |
 | `total_row` | Text in a removed total row other than its label |
 | `total` | An aggregate outside any table |
-| `other` | A cell that belongs to no table |
+| `other` | A cell that belongs to no table, or a navigation link such as `zur Inhaltsübersicht` or `Back to contents` (never a title) |
 
 `table` is set when a title or note could be attached to a table: the nearest table below a title, or
 above a note, within 6 blank rows, with overlapping columns. For the sample:
@@ -224,6 +241,7 @@ file):
   "output": {"xlsx": "sales.normalized.xlsx", "manifest": "sales.manifest.json", "csv": [],
              "sheets": ["README", "T1_sales_report_2024", "Totals", "Notes"]},
   "options": {"keep_totals": false, "csv": false, "locale": null, "cell_roles": "model"},
+  "time_coverage": null,                      // the span over all tables, see below
   "tables": [{
     "id": "T1",
     "sheet": "T1_sales_report_2024",          // output sheet
@@ -237,6 +255,7 @@ file):
     },
     "rows": 4,
     "confidence": 0.95,                       // table-detection confidence, 0..1
+    "time_coverage": null,                    // or {"from", "to", "granularity", "source", "columns"}, see below
     "columns": [
       {"name": "Region", "index": 0, "letter": "A", "role": "group", "dtype": "text", "source_column": null, …},
       {
@@ -256,6 +275,9 @@ file):
     "group_column": "Region",                 // or null
     "source_row_column": "_src_row",
     "row_type_column": null,                  // "_row_type" with keep_totals
+    "totals": {"count": 6, "ok": 5, "mismatch": 1, "unknown": 0,   // this table's totals
+               "rows": [{"row": 8, "label": "Subtotal", "level": "subtotal", "kept_in_data": false}, …,
+                        {"row": 13, "label": "Grand total", "level": "grand_total", "kept_in_data": false}]},
     "transformations": {"numbers_from_text": 7, "percent_from_text": 4, "missing_to_null": 1,
                         "headers_flattened": 2, "merged_cells_filled": 4, "total_rows_removed": 3,
                         "group_header_rows_to_column": 2, …},   // every key is always present
@@ -263,7 +285,7 @@ file):
   }],
   "totals": {"sheet": "Totals", "count": 6, "ok": 5, "mismatch": 1, "unknown": 0,
              "items": [ …,
-               {"table": "T1", "sheet": "Sales", "cell": "B13", "count": 1, "label": "Grand total",
+               {"table": "T1", "sheet": "Sales", "cell": "B13", "row": 13, "count": 1, "label": "Grand total",
                 "level": "grand_total", "direction": "vertical", "origin": "typed",
                 "value": 4600, "recomputed": 4525.5, "status": "mismatch", "reason": "mismatch",
                 "sources": ["B6:B12"], "kept_in_data": false}, …]},
@@ -283,19 +305,22 @@ Field reference:
 | `generator` | object | `name` and `version` of hedgehog. |
 | `source` | object | Input file: `path` as given, `file_name`, `sha256`, `size_bytes`, and per sheet `name`, `used_range`, `cells`, `formulas`, `merges`, `tables` (ids). |
 | `output` | object | File names written (relative to the output directory) and the sheet order of the xlsx. |
+| `time_coverage` | object or null | Period the workbook's tables cover: the span over every table's `time_coverage`, at the finest granularity found, with `source` `column` if any table's coverage comes from column values, `columns` as `T<n>.<name>` and `tables` (ids). See [Time coverage](#time-coverage). |
 | `options` | object | Options used. `locale` is the preset name (`"de"`, `"us"`, ...) or `null` when inferred. `cell_roles` is `"model"` (rules + learned model, the default) or `"rules"` (`--rules-only`); see [learned-model.md](learned-model.md). |
 | `tables[].id` | string | `T1`, `T2`, ... in source order. |
 | `tables[].sheet`, `excel_table` | string | Output sheet and Excel table name (equal). |
 | `tables[].source` | object | Source sheet and ranges, header position, `title` and `title_cell`, attached `notes`. |
 | `tables[].rows` | int | Data rows written (with `keep_totals`: including total rows). |
 | `tables[].confidence` | float | Table-detection confidence, 0 to 1. |
+| `tables[].time_coverage` | object or null | Period the table's data covers. See [Time coverage](#time-coverage). |
 | `tables[].columns[]` | object | One entry per output column, in order. See below. |
 | `tables[].group_column` | string or null | Name of the column made from group-header rows. |
 | `tables[].source_row_column` | string | Always `_src_row`. |
 | `tables[].row_type_column` | string or null | `_row_type` with `keep_totals`, else `null`. |
+| `tables[].totals` | object | This table's totals: `count`, `ok`, `mismatch`, `unknown` (counted like the workbook `totals`), and `rows`: one entry per total row (row of a vertical total) with `row` (1-based source row), `label`, `level` and `kept_in_data` (`false`: the row is not in the table data; with `keep_totals` it is, marked in `_row_type`). |
 | `tables[].transformations` | object | Counts of every change made. See [Transformations](#transformations). |
 | `tables[].warnings` | list of strings | Values kept as text in a typed column, values read with a guessed locale, and similar. |
-| `totals` | object | Summary counts and one item per row of the `Totals` sheet (same fields; `label_cell` and `formula` only on the sheet). |
+| `totals` | object | Summary counts and one item per row of the `Totals` sheet (same fields plus `row`, the 1-based source row of `cell` (the first row of a run); `label_cell` and `formula` only on the sheet). |
 | `notes` | object | Row count of the `Notes` sheet and counts by `kind`. |
 | `cells` | object | Every non-empty source cell counted once: in a table, in a total, or in Notes. |
 | `unassigned_cells` | int | Notes rows not attached to any table. |
@@ -316,6 +341,41 @@ Column fields:
 | `locale` | `decimal` (`"."`, `","` or `null`), `date_order` (`"dmy"`, `"mdy"` or `null`), and `ambiguous`: how many values were read with a guess. `null` means no evidence. |
 | `nulls`, `distinct` | Missing values and distinct non-missing values. |
 | `min`, `max`, `example` | For numbers and dates (dates as ISO strings); `example` is the first non-missing value. |
+
+### Time coverage
+
+`tables[].time_coverage` and the workbook-level `time_coverage` say which period the data covers,
+so an agent can answer "the file has 2015–2017" (or refuse a question about 2025) without a query.
+`null` when nothing period-like was found.
+
+```jsonc
+"time_coverage": {"from": "2020-01", "to": "2025-12", "granularity": "month",
+                  "source": "column", "columns": ["Berichtszeitraum"]}
+```
+
+| Field | Meaning |
+|---|---|
+| `from`, `to` | First and last period, written in its granularity: `2017` (year), `2024-Q1` (quarter), `2024-03` (month), `2024-W05` (ISO week), `2024-03-31` (day). The workbook span may mix forms (`"from": "1950", "to": "2025-12"`). |
+| `granularity` | `year`, `quarter`, `month`, `week` or `day`: the finest found. |
+| `source` | `column`: values of date / period columns. `header`: period-like column headers of a wide table. |
+| `columns` | Names of the columns the coverage was read from. |
+
+Found, in this order (header periods only when no column gives one):
+
+- **Date columns** (`date` / `datetime` dtype): the span of their values. Granularity from the
+  values: all on the 1st of a month gives `month` (all in January: `year`; all in Jan/Apr/Jul/Oct:
+  `quarter`), anything else `day`.
+- **Year columns**: an `integer` column whose values are all 1900–2100 and whose name says year
+  (`Year`, `Jahr`, `Berichtsjahr`, `année`, `año`, `anno`, `år`, `rok`, `jaar`, `godina`, `FY`, ...),
+  or a text / group column of bare years with such a name (or years as group-header rows).
+- **Period text columns**: at least 90% of the distinct values read as a period by the value parsers
+  (`2024 Q1`, `Q3 2024`, `Jan 2024`, `März 2024`, `2024-03`, `2024-W05`, `KW 5/2024`; months in nine
+  languages).
+- **Period headers**: a header part that is a period (`Jan 2024`, `2024 Q1`), a month or quarter name
+  with a year in another part (`Oktober / 2022`), or a year, alone or with one short word
+  (`2019`, `RA 2023`, `2023 Ist`). Two or more such columns are needed when they are all bare years.
+
+Month names without any year (`Januar`, `Februar`, ... as values or headers) give no coverage.
 
 ## Transformations
 
@@ -339,6 +399,7 @@ Every key below is present in every table's `transformations`, with a count (oft
 | `unparsed_kept_as_text` | Values that did not fit their column's dtype (also in `warnings`) |
 | `text_truncated` | Text cut to Excel's cell limit |
 | `headers_flattened` | Header rows joined into the flat header |
+| `headers_cleaned` | Column names changed by header cleanup (footnote marks, line-break hyphenation; see [Header](#header)) |
 | `header_cells_forward_filled` | Blank header cells that took the parent label on their left |
 | `merged_cells_filled` | Header cells covered by a merge, plus body cells under a vertical merge (a body merge fills down its first column only) |
 | `duplicate_headers_renamed`, `missing_headers_named` | Header fixes |
@@ -359,7 +420,11 @@ Every key below is present in every table's `transformations`, with a count (oft
   otherwise it stays in the data as an ordinary row. Check the `Totals` sheet before aggregating.
 - Totals are recomputed the way Excel computes them, so numbers stored as text in the source range
   are not added, and a total row over a column of text numbers is not detected as a total. A wrong
-  source-range guess shows up as `unknown` / `unconfirmed`, not as `mismatch`.
+  source-range guess shows up as `unknown` / `unconfirmed`, not as `mismatch`. A typed total that does
+  not add up but whose header or label names a rate, share or index, that is off by rounding only,
+  or that lies between its smallest and largest source value is `unknown` (`not_additive`,
+  `rounding_difference`, `average_like`), not `mismatch`; such rows are still moved out of the data
+  like other total rows (use `keep_totals` to keep them).
 - Values only: formulas are not recreated in the output. Each one is listed on `Totals` (for totals)
   and counted in `formulas_replaced_by_values`.
 - Cell styles (xlsx / xlsm only) are read for the learned model's features, not used for typing:
