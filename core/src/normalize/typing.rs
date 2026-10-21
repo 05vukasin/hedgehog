@@ -132,6 +132,33 @@ pub(super) fn type_column(
     refine: &mut dyn FnMut(&[&str], bool, &NativeNumbers) -> ColumnHints,
     tr: &mut Transforms,
 ) -> Typed {
+    let t = super::tracing().then(std::time::Instant::now);
+    let typed = type_column_untimed(name, col, slots, rows, first, refine, tr);
+    if let Some(t) = t {
+        TYPING.with(|s| s.set(s.get() + t.elapsed()));
+    }
+    typed
+}
+
+thread_local! {
+    /// Time this thread spent in [`type_column`] while tracing (see [`take_typing_time`]).
+    static TYPING: std::cell::Cell<std::time::Duration> = const { std::cell::Cell::new(std::time::Duration::ZERO) };
+}
+
+/// Time spent typing columns on this thread since the last call (for the trace).
+pub(super) fn take_typing_time() -> std::time::Duration {
+    TYPING.with(|s| s.replace(std::time::Duration::ZERO))
+}
+
+fn type_column_untimed(
+    name: &str,
+    col: u32,
+    slots: &[Slot],
+    rows: &[u32],
+    first: ColumnHints,
+    refine: &mut dyn FnMut(&[&str], bool, &NativeNumbers) -> ColumnHints,
+    tr: &mut Transforms,
+) -> Typed {
     // Pass 0: missing values (cheap) and the number of real values.
     let missing: Vec<Option<bool>> = slots
         .iter()
