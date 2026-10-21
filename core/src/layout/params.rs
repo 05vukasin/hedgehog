@@ -121,6 +121,9 @@ pub const UNIT_ROWS: bool = true;
 /// A row of parent labels (fewer cells, labels only) right over a header row is part of the
 /// header even when its own type votes do not make it one (B53).
 pub const PARENT_HEADER_ROWS: bool = true;
+/// A short label at the left edge right over a header row, below a title, is the header's top
+/// row (`Term` over `Delivery Pt | Q3-2002 | …`, B55).
+pub const LABEL_OVER_HEADER: bool = true;
 /// A header-like row inside a body starts a new table when it has text/years in at least this many
 /// (and this share of) the body's numeric columns (numeric in ≥ half the rows so far).
 pub const SPLIT_MIN_HITS: usize = 2;

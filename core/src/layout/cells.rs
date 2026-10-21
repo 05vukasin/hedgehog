@@ -30,6 +30,8 @@ const MISSING_TOKENS: &[&str] = &[
     "-", "--", "---", "–", "—", "n/a", "na", "n.a.", "#n/a", "x", ".", "..", "...", "?", "null", "none", "nema", "нема",
     // NCES and other US tables: not applicable, rounds to zero, reporting standards not met.
     "†", "#", "‡",
+    // US Census: not applicable, not available.
+    "(x)", "(na)",
 ];
 
 const TOTAL_WORDS: &[&str] = &[
@@ -228,8 +230,8 @@ pub(crate) fn is_text_period(t: &str) -> bool {
     }
 }
 
-/// A split year (school, fiscal or marketing year): `1990-91`, `2011/12`, `2004-2005`, the second
-/// year one after the first. A column label, not a number (B55).
+/// A split year (school, fiscal or marketing year: `1990-91`, `2011/12`, the second year one after
+/// the first) or a range of years (`2004-2008`). A column label, not a number (B55).
 pub(crate) fn is_split_year(t: &str) -> bool {
     let b = t.as_bytes();
     if !(7..=9).contains(&b.len()) || !b[..4].iter().all(u8::is_ascii_digit) || !matches!(b[4], b'-' | b'/') {
@@ -242,7 +244,8 @@ pub(crate) fn is_split_year(t: &str) -> bool {
     }
     match rest.len() {
         2 => rest.parse::<u32>().is_ok_and(|n| n == (y + 1) % 100),
-        4 => rest.parse::<u32>().is_ok_and(|n| n == y + 1),
+        // a range of years (`2004-2008`)
+        4 => rest.parse::<u32>().is_ok_and(|n| n > y && n <= y + 100),
         _ => false,
     }
 }
@@ -251,7 +254,7 @@ pub(crate) fn is_split_year(t: &str) -> bool {
 /// `2016Q4`, `2014M01`, `2020H1`; PX-Web and SDMX exports, B53). Not a number with a scale.
 pub(crate) fn is_period_code(t: &str) -> bool {
     let b = t.as_bytes();
-    if !(6..=7).contains(&b.len()) || !b[..4].iter().all(u8::is_ascii_digit) {
+    if !t.is_ascii() || !(6..=7).contains(&b.len()) || !b[..4].iter().all(u8::is_ascii_digit) {
         return false;
     }
     let year = t[..4].parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n));
@@ -506,6 +509,35 @@ mod tests {
         }
         for s in ["C", "F", "Q1 2003", "Riverbend 2", "See Notes", "[c]"] {
             assert_eq!(text_kind(s), Kind::Text, "{s}");
+        }
+    }
+
+    #[test]
+    fn period_codes_split_years_legends_and_marks() {
+        // PX-Web / SDMX period codes are labels, not numbers with a scale (B53).
+        for s in ["2016K3", "2016Q4", "2014M01", "2014M12", "2020H1"] {
+            assert!(is_period_code(s) && is_text_period(s), "{s}");
+            assert_eq!(text_kind(s), Kind::Text, "{s}");
+        }
+        for s in ["2016K5", "2014M13", "2016K", "16K3", "2016X1", "1500K3"] {
+            assert!(!is_period_code(s), "{s}");
+        }
+        for s in ["1990-91", "2011/12", "1999-00", "2004-2005", "2004-2018"] {
+            assert!(is_split_year(s), "{s}");
+        }
+        for s in ["1990-93", "2004-2003", "2011", "1990-9", "12-34"] {
+            assert!(!is_split_year(s), "{s}");
+        }
+        // Symbol legends under a table are notes; list items and continued sentences are not.
+        for s in ["---Not available.", "# Rounds to zero.", "!Interpret data with caution.", ": not available"] {
+            assert!(is_note_label(s), "{s}");
+        }
+        for s in ["-Counterparty ($MM)", "... aber der Betreiber", "#1 Plant", "---"] {
+            assert!(!is_note_label(s), "{s}");
+        }
+        // Missing-value marks: Eurostat `:` with flags, NCES and Census marks.
+        for s in [": m", ":", ": c", "†", "‡", "#", "(X)", "(NA)"] {
+            assert_eq!(text_kind(s), Kind::Missing, "{s}");
         }
     }
 

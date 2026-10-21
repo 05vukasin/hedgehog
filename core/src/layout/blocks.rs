@@ -444,6 +444,7 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
         && left.rect.bottom == right.rect.bottom
         && left.rect.bottom > left.rect.top + 1
         && right.first_sig.is_empty()
+        && !right.starts_with_header
         && !right.capped
         && !right.has_label_col()
         && right.has_numeric_col()
@@ -462,7 +463,9 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
         && hl >= 4
         && hr >= 2
         && !right.starts_with_header
-        && right.rect.right - right.rect.left < INSIDE_MAX_WIDTH;
+        && right.rect.right - right.rect.left < INSIDE_MAX_WIDTH
+        // numbers, not a small labelled block of its own (`Peak | Start | End`, `Jan | Feb`, B55)
+        && right.counts.values().map(|&(t, _)| t).sum::<u32>() * 10 <= right.counts.values().map(|&(_, n)| n).sum::<u32>();
     ov as f32 >= GAP_MIN_ROW_OVERLAP * hl.max(hr) as f32 || inside
 }
 

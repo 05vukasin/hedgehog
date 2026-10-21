@@ -375,6 +375,11 @@ mod tests {
         assert_eq!(sniff_delimiter(b"\"a;b\",1\n\"c;d;e\",2\n\"f\",3\n"), b',');
         // A title line with no delimiter does not change the vote.
         assert_eq!(sniff_delimiter(b"Report 2024\n\nx;y;z\n1;2;3\n4;5;6\n"), b';');
+        // Quoted headers with `;` and line breaks inside, one record (B53).
+        assert_eq!(
+            sniff_delimiter(b"Year,\"Payroll staff;\nAO/AA;\nHeadcount\",\"Payroll staff;\nEO;\nHeadcount\"\n2026,12,159\n"),
+            b','
+        );
         assert_eq!(sniff_delimiter(b"one column\nonly\n"), b',');
         assert_eq!(sniff_delimiter(b""), b',');
     }

@@ -248,6 +248,31 @@ fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
     r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
 }
 
+/// A short label at the table's left edge right over its header row (`Term` over `Delivery Pt |
+/// Q3-2002 | …`, under the title "Last Week's Peak Power Prices"): the top row of the header, not
+/// a second title (B55).
+fn is_label_over_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
+    let Some(e) = single_text(&rows[k]) else { return false };
+    let t = text(sheet, e).trim();
+    let next = match rows.get(k + 1) {
+        Some(n) if k + 2 < end && n.row == rows[k].row + 1 => n,
+        _ => return false,
+    };
+    LABEL_OVER_HEADER
+        && e.left == rect.left
+        && e.right == e.left
+        && t.chars().count() <= 20
+        && t.split_whitespace().count() <= 2
+        && !t.chars().any(|c| c.is_ascii_digit())
+        && !is_total_label(t)
+        && !is_note_label(t)
+        && !t.contains(':')
+        && next.n() >= 3
+        && next.n_measure() == 0
+        && next.filled().next().is_some_and(|x| x.left == rect.left && x.kind == Kind::Text)
+        && is_header_row(next, &rows[k + 2..end])
+}
+
 /// Number of leading rows (from `start`) that form the header.
 fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect, numbers: bool) -> usize {
     let mut d = 0;
@@ -269,16 +294,24 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             // Parent labels over a header row (`Kalenderkorrigerad | … | Trend` over `2016K3 |
             // 2016K4 | …`; `2011 | 2015 | 2018` over the measures, B53): labels only, spread over
             // the columns of the header row below, which heads the numbers.
-            let parent = d == 0
-                && PARENT_HEADER_ROWS
-                && r.n() >= 2
-                && r.n_measure() == 0
-                && r.n_text() + (r.n_num() - r.n_measure()) == r.n()
-                && start + 2 < end
-                && rows[start + 1].row == r.row + 1
-                && rows[start + 1].n() > r.n()
-                && !is_key_value_row(sheet, &rows[start + 1])
-                && is_header_row(&rows[start + 1], &rows[start + 2..end]);
+            // Up to two parent rows stack (`2011 | 2015` over `Starost | Starost` over the
+            // measures).
+            let k = start + d;
+            let parent_of = |k: usize| {
+                PARENT_HEADER_ROWS
+                    && k + 2 < end
+                    && rows[k].n() >= 2
+                    && rows[k].n_measure() == 0
+                    && rows[k].n_text() + (rows[k].n_num() - rows[k].n_measure()) == rows[k].n()
+                    && rows[k + 1].row == rows[k].row + 1
+                    && rows[k + 1].n() > rows[k].n()
+                    && !is_key_value_row(sheet, &rows[k + 1])
+            };
+            let header_at = |k: usize| is_header_row(&rows[k], &rows[k + 1..end]);
+            let parent = (d == 0 && is_label_over_header(sheet, rows, start, end, rect))
+                || ((d == 0 || (d == 1 && parent_of(start) && !header_at(start)))
+                    && parent_of(k)
+                    && (header_at(k + 1) || (d == 0 && parent_of(k + 1) && header_at(k + 2))));
             if !parent {
                 break;
             }
@@ -499,7 +532,14 @@ fn segment(
             {
                 o += 1;
                 let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
-                if h2 > 0 {
+                // Past key/value rows, only a row that reads as a header by its types (not by
+                // the wide-text prior) starts the table: a form's next `Key: | value` row is not
+                // a header (B57).
+                let past_kv = rows[start..start + o].iter().any(|r| is_key_value_row(sheet, r));
+                let real = !past_kv
+                    || (!is_key_value_row(sheet, &rows[start + o])
+                        && is_header_row(&rows[start + o], &rows[start + o + 1..e]));
+                if h2 > 0 && real {
                     titles = titles.start..start + o;
                     start += o;
                     h = h2;
@@ -768,7 +808,11 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         return;
     }
     let mut s = 0;
-    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1)) {
+    while s + 1 < rows.len()
+        && s < MAX_TITLE_ROWS
+        && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1))
+        && !(s >= 1 && is_label_over_header(sheet, rows, s, rows.len(), region.rect))
+    {
         s += 1;
     }
     let mut e = rows.len();
