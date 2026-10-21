@@ -45,8 +45,8 @@ Status: `open` · `in progress` · `done (run id)`.
 
 | ID | Problem (found in) | Fix | Done when | Status |
 |---|---|---|---|---|
-| B15 | gpt-4o-mini asked for a `"Total"` column 8 times despite the hint (enron-henry-hub) | a total-label error also returns the total rows themselves (CSV), not only the advice | enron-henry-hub with gpt-4o-mini: 0 repeated "Total" errors | open |
-| B16 | the model used the wide table's column names on its long-format copy (de-truck-toll: T3 vs T5) | catalog line: `T5 is the long form of T3 (Saisonbereinigung × Indexwert)` | no column-name errors on de-truck-toll | open |
-| B17 | the "Gesamt" total row has an empty group key, so `WHERE "group" = 'Anzahl Bezieher:innen'` misses it (at-pension) | fill group keys onto total rows of their block | at-pension 4/4 with gpt-4o-mini in 3/3 runs | open |
-| B18 | models still group by name although the catalog says `group by adjudicante_id` (pt-contracts, both models) | make ID grouping the default path (e.g. a per-entity view or names normalized per ID in `<col>_name`) | pt-contracts `top-body` + `variants` pass with a small model | open |
-| B19 | the top-10 suppliers' share of total value is never computed (pt-contracts, all small-model runs) | helper for shares/ranks (view or documented pattern in the catalog) | `top10-share` passes with a small model | open |
+| B15 | gpt-4o-mini asked for a `"Total"` column 8 times despite the hint (enron-henry-hub) | a total-label error also returns the total rows themselves (CSV), not only the advice | enron-henry-hub with gpt-4o-mini: 0 repeated "Total" errors | done (pending rerun) |
+| B16 | the model used the wide table's column names on its long-format copy (de-truck-toll: T3 vs T5) | catalog line: `T5 is the long form of T3 (Saisonbereinigung × Indexwert)` | no column-name errors on de-truck-toll | done (pending rerun) |
+| B17 | the "Gesamt" total row has an empty group key, so `WHERE "group" = 'Anzahl Bezieher:innen'` misses it (at-pension) | fill group keys onto total rows of their block | at-pension 4/4 with gpt-4o-mini in 3/3 runs | done (pending rerun) |
+| B18 | models still group by name although the catalog says `group by adjudicante_id` (pt-contracts, both models) | make ID grouping the default path (e.g. a per-entity view or names normalized per ID in `<col>_name`) | pt-contracts `top-body` + `variants` pass with a small model | done (pending rerun) |
+| B19 | the top-10 suppliers' share of total value is never computed (pt-contracts, all small-model runs) | helper for shares/ranks (view or documented pattern in the catalog) | `top10-share` passes with a small model | done (pending rerun) |
