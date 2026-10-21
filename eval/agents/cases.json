@@ -402,7 +402,7 @@
         "desc": "NPV @ 14%: $4.25 M (4,254.7 in $000s)",
         "num": 4254691.3,
         "tol": 0.01,
-        "ref_sql": "SELECT col_C * 1000 FROM T2_all WHERE col_B = 'NPV @ 14%'"
+        "ref_sql": "SELECT \"1\" * 1000 FROM T2_all WHERE Year = 'NPV @ 14%'"
       },
       {
         "id": "irr",
@@ -411,7 +411,7 @@
           14.4,
           14.6
         ],
-        "ref_sql": "SELECT col_C * 100 FROM T2_all WHERE col_B = 'IRR'"
+        "ref_sql": "SELECT \"1\" * 100 FROM T2_all WHERE Year = 'IRR'"
       }
     ],
     "backlog": []
@@ -1454,7 +1454,7 @@
         "desc": "€4,470.48 bn",
         "num": 4470480000000,
         "tol": 0.001,
-        "ref_sql": "SELECT \"In jeweiligen Preisen / Ursprungswerte / 1\" * 1e9 FROM T1 WHERE Jahr = 2025"
+        "ref_sql": "SELECT \"In jeweiligen Preisen / Ursprungswerte / Mrd. EUR\" * 1e9 FROM T1 WHERE Jahr = 2025"
       },
       {
         "id": "real-growth",
@@ -1463,7 +1463,7 @@
           0.19,
           0.34
         ],
-        "ref_sql": "SELECT \"Preisbereinigt, verkettet / Ursprungswerte / 6\" FROM T1 WHERE Jahr = 2025"
+        "ref_sql": "SELECT \"Preisbereinigt, verkettet / Ursprungswerte / %\" FROM T1 WHERE Jahr = 2025"
       },
       {
         "id": "deficit",
@@ -1471,7 +1471,7 @@
         "num": 107420000000,
         "tol": 0.002,
         "abs": true,
-        "ref_sql": "SELECT \"Finanzierungs-saldo / 11\" * 1e9 FROM T27 WHERE Jahr = 2025"
+        "ref_sql": "SELECT \"Finanzierungs-saldo\" * 1e9 FROM T27 WHERE Jahr = 2025"
       },
       {
         "id": "deficit-pct",
@@ -1488,7 +1488,7 @@
         "desc": "83.53 million (83,531 thousand)",
         "num": 83531000,
         "tol": 0.001,
-        "ref_sql": "SELECT \"Bevölkerung (Einwohner) / 1\" * 1000 FROM T30 WHERE Jahr = 2025"
+        "ref_sql": "SELECT \"Bevölkerung (Einwohner) / 1 000 Personen\" * 1000 FROM T30 WHERE Jahr = 2025"
       },
       {
         "id": "unemployment",
@@ -1497,7 +1497,7 @@
           3.45,
           3.5
         ],
-        "ref_sql": "SELECT \"Erwerbslose in % der Erwerbspersonen (Erwerbslosenquote) / 8\" FROM T30 WHERE Jahr = 2025"
+        "ref_sql": "SELECT \"Erwerbslose in % der Erwerbspersonen (Erwerbslosenquote) / %\" FROM T30 WHERE Jahr = 2025"
       }
     ],
     "backlog": []

@@ -521,6 +521,13 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
 
 fn regions_inner(grid: &Grid) -> Vec<Region> {
     let mut blocks: Vec<Region> = components(grid).into_iter().map(make_region).collect();
+    // Ruling lines and stray years before the blocks' profiles decide the gap merges.
+    for b in &mut blocks {
+        for row in &mut b.rows {
+            mark_rules(grid.sheet, row);
+            drop_stray_years(grid.sheet, row);
+        }
+    }
     if blocks.len() <= 1 {
         return blocks;
     }
