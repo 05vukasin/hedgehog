@@ -39,7 +39,7 @@ All notable changes to hedgehog are listed here. The format follows
   `average_rows` 22 → 100 %, `long_register` 0 → 100 %, `total_labels` 55 → 100 %, `combo` 8 →
   28 %, all families 61 → 81 % (rules 55 → 76 %); no family drops. Structure benchmarks: model
   identical to master, layout total F1 on the synthetic corpus 68.3 → 68.5. EU open data + Enron
-  benchmark files: total cells found 728k → 764k (`ok` 611,692 → 646,282, mismatches 357 → 360).
+  benchmark files: total cells found 728k → 764k (`ok` 611,692 → 646,280, mismatches 357 → 360).
 
 - **Disk cache** of normalized files (agent tools: `hedgehog mcp`, Node `HedgehogSession`): a file
   opened before comes back in a new process in ~2 ms to the catalog and ~20 ms to the first query
