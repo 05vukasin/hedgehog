@@ -249,11 +249,9 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
     while d < MAX_HEADER_ROWS && start + d < end {
         let r = &rows[start + d];
         if is_key_value_row(sheet, r) {
-            // A lone label over key/value metadata is a title, not a header ("Profit Sharing
-            // Summary" over "Operation Day: | 12 May 2001").
-            if d == 1 && single_text(&rows[start]).is_some() {
-                d = 0;
-            }
+            // Rows above key/value metadata are titles or metadata too, not a header ("Profit
+            // Sharing Summary" over "Operation Day: | 12 May 2001").
+            d = 0;
             break;
         }
         if !is_header_row(r, &rows[start + d + 1..end]) || is_note_row(sheet, r) {
