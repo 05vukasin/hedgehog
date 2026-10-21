@@ -590,7 +590,6 @@ pub fn analyze_with(grid: &Grid, model: &RowModel, steps: RefineSteps) -> SheetL
         lay.roles[i] = Role::Other;
     }
     tables::refine(grid, &mut lay, &raw, &rules, steps);
-    tables::empty_records_are_data(grid, &mut lay, &rules);
     crate::normalize::trace("M:tables", t0);
     // The model's features count every total word (as in training); a row whose only one is
     // incidental (free text in a register) and whose numbers do not add up is a record.

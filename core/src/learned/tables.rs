@@ -209,57 +209,6 @@ pub fn refine(grid: &Grid, lay: &mut SheetLayout, raw: &[Role], rules: &[Role], 
     lay.tables = out;
 }
 
-/// Records without values (B44): a row the model calls a group header, that the rules call data,
-/// with at least two cells, each in a column that holds text on most data rows of its table (the
-/// WDI row `Kosovo | XKX | GDP per capita | NY.GDP.PCAP.CD` with no numbers). A group label stands
-/// alone on its row; a row that fills the label columns like the records around it is a record.
-pub fn empty_records_are_data(grid: &Grid, lay: &mut SheetLayout, rules: &[Role]) {
-    let cells = &grid.sheet.cells;
-    for t in &lay.tables {
-        let body = t.header_top + t.header_rows;
-        let rect = Rect { top: body.max(t.rect.top), ..t.rect };
-        if rect.top > rect.bottom {
-            continue;
-        }
-        let idx = grid.cells_in(rect);
-        // Per column: data rows with text, and data rows overall.
-        let mut text_rows: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
-        let mut data_rows: std::collections::HashSet<u32> = std::collections::HashSet::new();
-        for &i in &idx {
-            let c = &cells[i as usize];
-            if lay.roles[i as usize] == Role::Data && !is_blank(&c.value) {
-                data_rows.insert(c.row);
-                if matches!(c.value, Some(Value::Text(_))) {
-                    *text_rows.entry(c.col).or_default() += 1;
-                }
-            }
-        }
-        if data_rows.len() < 4 {
-            continue;
-        }
-        let label_col = |col: u32| text_rows.get(&col).is_some_and(|&n| 2 * n as usize > data_rows.len());
-        let mut k = 0;
-        while k < idx.len() {
-            let row = cells[idx[k] as usize].row;
-            let end = k + idx[k..].iter().take_while(|&&i| cells[i as usize].row == row).count();
-            let filled: Vec<usize> =
-                idx[k..end].iter().map(|&i| i as usize).filter(|&i| !is_blank(&cells[i].value)).collect();
-            let group = filled.iter().filter(|&&i| lay.roles[i] == Role::GroupHeader).count();
-            let rules_data = filled.iter().filter(|&&i| rules[i] == Role::Data).count();
-            if filled.len() >= 2
-                && 2 * group > filled.len()
-                && 2 * rules_data > filled.len()
-                && filled.iter().all(|&i| label_col(cells[i].col))
-            {
-                for &i in &filled {
-                    lay.roles[i] = Role::Data;
-                }
-            }
-            k = end;
-        }
-    }
-}
-
 /// Step 1: a table that is header from top to bottom, directly above a table over the same
 /// columns, becomes the top of that table's header.
 fn merge_header_only(
@@ -833,27 +782,6 @@ mod tests {
             (&["Feb", "7", "8"], D),
         ]);
         assert_eq!(run(&h, vec![table(0, 6, 2, 0, 1)], only(|s| s.split = true), &[(4, H)]).tables.len(), 1);
-    }
-
-    #[test]
-    fn records_without_values_stay_data() {
-        let g = Role::GroupHeader;
-        let f = fix(&[
-            (&["Country", "Code", "1960"], H),
-            (&["Aruba", "ABW", "1"], D),
-            (&["Angola", "AGO", "2"], D),
-            (&["Kosovo", "XKX"], g),
-            (&["Zambia", "ZMB", "3"], D),
-            (&["Europe"], g),
-            (&["France", "FRA", "4"], D),
-        ]);
-        let grid = Grid::new(&f.sheet);
-        let roles: Vec<Role> = f.sheet.cells.iter().map(|c| f.row_roles[c.row as usize]).collect();
-        let rules = vec![D; roles.len()];
-        let mut lay = SheetLayout { tables: vec![table(0, 6, 2, 0, 1)], roles };
-        empty_records_are_data(&grid, &mut lay, &rules);
-        assert_eq!(lay.roles[grid.cell_index(3, 0).unwrap()], D);
-        assert_eq!(lay.roles[grid.cell_index(5, 0).unwrap()], g, "a lone label stays a group");
     }
 
     #[test]

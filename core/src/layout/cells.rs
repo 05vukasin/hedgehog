@@ -45,7 +45,11 @@ const NOTE_WORDS: &[&str] = &[
     "note", "notes", "source", "sources", "napomena", "napomene", "izvor", "izvori", "напомена", "напомене", "извор",
     "извори", "nb", "footnote", "footnotes", "comment", "comments", "remark", "remarks", "prepared", "pripremio",
     "pripremila", "припремио", "disclaimer",
-    // de, fr, es, it, pt, nl, pl, cs, da, sv, fi (B38)
+];
+
+/// Note words in more languages (de, fr, es, it, pt, nl, pl, cs, da, sv, fi; B38), counted only
+/// with a colon after them.
+const NOTE_WORDS_COLON: &[&str] = &[
     "quelle", "quellen", "anmerkung", "anmerkungen", "hinweis", "hinweise", "fussnote", "fußnote", "fussnoten",
     "fußnoten", "remarque", "remarques", "nota", "notas", "fuente", "fuentes", "fonte", "fontes", "opmerking",
     "opmerkingen", "bron", "uwaga", "uwagi", "źródło", "poznámka", "poznámky", "zdroj", "kilde", "källa", "lähde",
@@ -85,7 +89,11 @@ fn text_kind(s: &str) -> Kind {
     }
     // Censored and suppressed values (`<5`, `> 1000`, `confidential`, `[c]`, `see note`) stand
     // in for a number: type-neutral, like a missing token.
-    if t != "C" && t != "F" && crate::values::missing::numeric_annotation(t).is_some() {
+    use crate::values::missing::{NumericAnnotation, numeric_annotation};
+    let annot = numeric_annotation(t);
+    if annot == Some(NumericAnnotation::Censored) && t != "(Z)"
+        || (annot.is_some() && t.chars().filter(|c| c.is_alphabetic()).count() >= 6)
+    {
         return Kind::Missing;
     }
     Kind::Text
@@ -134,7 +142,8 @@ pub(crate) fn is_unit_text(t: &str) -> bool {
     any_unit
 }
 
-/// A ruling line drawn with text: a run of at least 3 of one of `- = _ ~ * . # + – —` (or `|`
+/// A ruling line drawn with text: a run of at least 3 of one of `- = _ ~ – —`, or 4 of `* # +`
+/// (`***` and `...` are missing-value marks), or `|`
 /// alone). Only a whole row of such cells (or a `|` cell) is a ruling line ([`super::blocks`]).
 pub(crate) fn is_rule_text(t: &str) -> bool {
     let t = t.trim();
@@ -143,8 +152,9 @@ pub(crate) fn is_rule_text(t: &str) -> bool {
     }
     let mut it = t.chars();
     let Some(first) = it.next() else { return false };
-    matches!(first, '-' | '=' | '_' | '~' | '*' | '.' | '#' | '+' | '–' | '—')
-        && t.chars().count() >= 3
+    let min = if matches!(first, '-' | '=' | '_' | '~' | '–' | '—') { 3 } else { 4 };
+    matches!(first, '-' | '=' | '_' | '~' | '*' | '#' | '+' | '–' | '—')
+        && t.chars().count() >= min
         && t.chars().all(|c| c == first || (c == ' ' && first != ' '))
 }
 
@@ -255,7 +265,13 @@ pub(crate) fn is_note_label(s: &str) -> bool {
             return true;
         }
     }
-    tokens(t).first().is_some_and(|w| NOTE_WORDS.contains(&w.as_str()))
+    let Some(first) = tokens(t).into_iter().next() else { return false };
+    if NOTE_WORDS.contains(&first.as_str()) {
+        return true;
+    }
+    // Other languages' note words only as a label with a colon ("Quelle:", "Remarque :").
+    NOTE_WORDS_COLON.contains(&first.as_str())
+        && t.chars().skip(first.chars().count()).find(|c| !c.is_whitespace()) == Some(':')
 }
 
 /// `SUM(`/`AVERAGE(`/`MAX(`… over at least two same-sheet cells, anywhere (loose summary cells).

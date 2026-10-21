@@ -422,6 +422,25 @@ fn build_table(
     let mut group_labels: Vec<String> = Vec::new();
     let mut removed_totals = Vec::new();
     let mut body_rows_seen = 0u32;
+    // Text label columns of the records (text on most data rows): a "group header" row that fills
+    // two or more of them like a record, only without values (a WDI country with no data), is a
+    // record, not a group label (B44).
+    let label_cols: HashSet<u32> = {
+        let mut text_rows: HashMap<u32, usize> = HashMap::new();
+        let mut data_rows = 0usize;
+        for (_, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
+            if !idxs.iter().any(|&i| lay.roles[i] == Role::Data) {
+                continue;
+            }
+            data_rows += 1;
+            for &i in idxs {
+                if lay.roles[i] == Role::Data && matches!(&cells[i].value, Some(Value::Text(t)) if !t.trim().is_empty()) {
+                    *text_rows.entry(cells[i].col).or_default() += 1;
+                }
+            }
+        }
+        text_rows.into_iter().filter(|&(_, n)| data_rows >= 4 && 2 * n > data_rows).map(|(c, _)| c).collect()
+    };
     let mut key_cols: HashSet<usize> = HashSet::new();
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
@@ -446,7 +465,13 @@ fn build_table(
         } else {
             idxs
         };
-        let kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
+        let mut kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
+        if kind == RowKind::Group {
+            let filled: Vec<usize> = idxs.iter().copied().filter(|&i| !blank(i)).collect();
+            if filled.len() >= 2 && filled.iter().all(|&i| label_cols.contains(&cells[i].col)) {
+                kind = RowKind::Data;
+            }
+        }
         match kind {
             RowKind::Group => {
                 let label = idxs

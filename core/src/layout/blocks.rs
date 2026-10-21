@@ -429,7 +429,11 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     let ov = overlap(left.rect.top, left.rect.bottom, right.rect.top, right.rect.bottom);
     // Numbers on a few rows inside a taller table's rows, across one spacer column: the sparse
     // columns of that table (MDEA's profit columns S:T, filled on the hours that traded, B43).
-    let inside = right.rect.top > left.rect.top && right.rect.bottom <= left.rect.bottom && hl >= 4;
+    let inside = right.rect.top > left.rect.top
+        && right.rect.bottom <= left.rect.bottom
+        && hl >= 4
+        && !right.starts_with_header
+        && right.rect.right - right.rect.left < INSIDE_MAX_WIDTH;
     ov as f32 >= GAP_MIN_ROW_OVERLAP * hl.max(hr) as f32 || inside
 }
 

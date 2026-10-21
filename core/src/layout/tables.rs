@@ -107,7 +107,11 @@ pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
             })
         })
         .count();
-    2 * keys >= n
+    let pure = r
+        .filled()
+        .filter(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with(':'))
+        .count();
+    2 * keys >= n && (keys >= 2 || (n == 2 && pure == 1 && r.n_text() == 1))
 }
 
 /// Header row relative to the rows below it: more of its cells break the column's body type
@@ -622,6 +626,8 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
             && !at_c.is_empty()
             && at_c.len() <= COMMENT_MAX_CELLS.max((COMMENT_MAX_FRAC * body.len() as f32) as usize)
             && at_c.iter().all(|e| e.kind == Kind::Text)
+            // remarks are scattered, not a run of values down the column
+            && at_c.windows(2).all(|w| w[1].row > w[0].row + 1)
             && left_fill * 2 > body.len()
         {
             comments = at_c.iter().filter_map(|e| e.cell).collect();

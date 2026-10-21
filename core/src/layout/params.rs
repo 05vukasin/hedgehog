@@ -11,6 +11,9 @@ pub const MAX_COL_GAP: u32 = 1;
 /// Max blank columns between exactly row-aligned blocks (or a header-only block on the header
 /// row) that are still one table.
 pub const MAX_COL_GAP_ALIGNED: u32 = 2;
+/// Numbers on a few rows inside a taller block's rows, across one spacer column, join it when
+/// they have no header of their own and are at most this many columns wide (sparse columns).
+pub const INSIDE_MAX_WIDTH: u32 = 4;
 /// Vertical gap merge: column overlap / wider block width must reach this.
 pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 /// Horizontal gap merge: row overlap / taller block height must reach this.
@@ -116,7 +119,7 @@ pub const YEAR_MIN: f64 = 1900.0;
 pub const YEAR_MAX: f64 = 2100.0;
 /// Two or more years on one row are labels only when neighbours differ by at most this much (a
 /// data row whose values happen to lie in the year range jumps further).
-pub const YEAR_MAX_STEP: f64 = 10.0;
+pub const YEAR_MAX_STEP: f64 = 30.0;
 
 /// Outline key column (label on the first row of each group only) → GroupHeader cells.
 pub const KEY_COLUMN_GROUPS: bool = true;
