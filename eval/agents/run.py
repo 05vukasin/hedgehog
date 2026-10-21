@@ -275,12 +275,25 @@ def report(cases: list[dict]) -> None:
     (OUT / "RESULTS.md").write_text("\n".join(L + H + [""] + T + detail) + "\n")
 
 
+def done_before(case: dict) -> bool:
+    """Claude Code's answer doesn't depend on hedgehog: one recorded run per (file, prompt) is enough."""
+    if not RESULTS.exists():
+        return False
+    for line in RESULTS.read_text().splitlines():
+        r = json.loads(line)
+        if r["case"] == case["id"] and r["arm"] == "claude" and r["file"] == case["file"] and r["prompt"] == case["prompt"]:
+            return True
+    return False
+
+
 # ---------- main ----------
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases", default="")
-    ap.add_argument("--arms", default="hedgehog,claude")
+    ap.add_argument("--arms", default="hedgehog", help="hedgehog, claude, claude-hh (comma-separated)")
+    ap.add_argument("--rerun-claude", action="store_true",
+                    help="run the claude arm again even if this case already has a recorded answer for the same file and prompt")
     ap.add_argument("--root", type=Path, default=Path(os.environ.get("HEDGEHOG_DATA") or REPO.parent / "testdata") / "irregular")
     ap.add_argument("--hhc", default=str(Path.home() / ".hedgehog-cli/bin/hedgehog-cli"))
     ap.add_argument("--hedgehog", default=str(Path.home() / ".hedgehog-cli/bin/hedgehog"))
@@ -320,6 +333,9 @@ def main() -> None:
     for case in (c for c in cases if not want or c["id"] in want):
         prompt = f"File: {case['file']}\n\n{case['prompt']}"
         for arm in [a for a in args.arms.split(",") for _ in range(args.repeat)]:
+            if arm == "claude" and not args.rerun_claude and done_before(case):
+                print(f"{case['id']}: claude answer already recorded for this file and prompt; reusing it (--rerun-claude to run again)")
+                break
             cmd, env = command(arm, prompt, args)
             t0 = time.time()
             p = subprocess.run(cmd, cwd=args.root, env=env, capture_output=True, text=True, timeout=args.timeout)

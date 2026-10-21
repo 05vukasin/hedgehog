@@ -35,9 +35,16 @@ general agent that has no hedgehog?**
 
 ## Running
 
+**Claude Code runs once per case.** Its answer does not depend on hedgehog, so the `claude` arm is
+recorded once per (file, prompt) and reused in every report; the runner skips cases that already
+have one (`--rerun-claude` forces a new run, e.g. for a new Claude model). Only new or changed cases
+cost a Claude run. The default arm is `hedgehog`; `claude-hh` depends on hedgehog and is rerun only
+when needed.
+
+
 ```sh
 # from the repo root; the whole run under a memory cap (Claude's pandas on 4.5M cells is heavy)
-../scripts/run_capped.sh 6G /tmp/agents.log python3 eval/agents/run.py                 # all cases, hedgehog + claude
+../scripts/run_capped.sh 6G /tmp/agents.log python3 eval/agents/run.py --repeat 3       # all cases, hedgehog-cli (Claude answers are reused)
 python3 eval/agents/run.py --cases at-pension --arms hedgehog                            # one case, one agent
 python3 eval/agents/run.py --arms hedgehog --hh-model gpt-4o                             # another model
 python3 eval/agents/run.py --report                                                      # rebuild RESULTS.md
