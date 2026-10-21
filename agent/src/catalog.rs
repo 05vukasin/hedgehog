@@ -821,6 +821,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                     }
                 }
             }
+            lines.extend(crate::entity::lines(t)); // B2: "<id> - <name>" columns and their <col>_id (entity.rs)
             if let Some(i) = mixed_measures_by(t, &data) {
                 lines.push(format!("    rows mix measures by {} — filter before aggregating", ident(&names[i])));
             }

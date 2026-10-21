@@ -16,6 +16,8 @@
 
 pub mod catalog;
 pub mod cells;
+pub mod dialect;
+pub mod entity;
 pub mod files;
 pub mod sql;
 pub mod text;
@@ -26,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
 
 use hh_core::model::Workbook;
-use hh_core::normalize::{sha256, ColRole, Normalized, Table};
+use hh_core::normalize::{sha256, ColRole, Dtype, Normalized, Out, Table};
 
 pub use catalog::{mentioned_years, time_coverage, TimeCoverage};
 pub use files::Bounds;
@@ -230,7 +232,9 @@ impl Session {
     pub fn describe_table(&mut self, path: &str, table: &str) -> ToolResult {
         let o = self.opened(path)?;
         let t = catalog::find_table(&o.norm, table)?;
-        Ok(catalog::describe_table(&o.norm, t))
+        let text = catalog::describe_table(&o.norm, t);
+        let ents = o.db.entities.iter().find(|(n, _)| *n == t.n).map(|x| x.1.as_slice()).unwrap_or_default();
+        Ok(with_entities(text, t, ents))
     }
 
     /// `query`: one read-only SELECT; CSV with header, at most `limit` rows (default 50, max 200).
@@ -241,7 +245,7 @@ impl Session {
         let used = tables_in_sql(&o.norm, sql);
         let res = match o.db.query(sql, limit, timeout) {
             Ok(r) => r,
-            Err(e) => return Err(ToolError(sql_error_hint(&o.norm, &used, &e))),
+            Err(e) => return Err(ToolError(sql_error_hint(&o.norm, &o.db, &used, sql, &e))),
         };
         let mut lines = vec![csv_row(&res.header)];
         let mut shown = 0;
@@ -271,7 +275,7 @@ impl Session {
                 }
             }
         }
-        if let Some(hint) = cite_hint(&used, &res.header) {
+        if let Some(hint) = cite_hint(&o.db, &used, &res.header) {
             lines.push(hint);
         }
         let n = text::thousands(res.total);
@@ -344,7 +348,7 @@ fn tables_in_sql<'a>(norm: &'a Normalized, sql: &str) -> Vec<&'a Table> {
     out
 }
 
-fn sql_error_hint(norm: &Normalized, used: &[&Table], err: &str) -> String {
+fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, err: &str) -> String {
     let mut err = err.replace(" - should this be a string literal in single-quotes?", "");
     // SQLite echoes the whole statement ("… in SELECT … at offset 7"); keep the position only.
     if let Some(pos) = err.rfind(" at offset ") {
@@ -367,16 +371,27 @@ fn sql_error_hint(norm: &Normalized, used: &[&Table], err: &str) -> String {
                     names.push((t.id(), name));
                 }
             }
+            for e in db.entities.iter().filter(|(n, _)| *n == t.n).flat_map(|x| &x.1) {
+                names.push((t.id(), e.id_col.clone()));
+                names.push((t.id(), e.name_col.clone()));
+            }
         }
         let close = closest(wanted, names.iter().map(|(_, n)| n.as_str()), 4);
-        if !close.is_empty() {
-            let hits: Vec<String> = names
-                .iter()
-                .filter(|(_, n)| close.contains(&n.as_str()))
-                .take(6)
-                .map(|(t, n)| format!("{t}.{}", quote_ident(n)))
-                .collect();
+        let hits: Vec<String> = names
+            .iter()
+            .filter(|(_, n)| close.contains(&n.as_str()))
+            .take(6)
+            .map(|(t, n)| format!("{t}.{}", quote_ident(n)))
+            .collect();
+        if let Some(h) = row_label_hint(norm, &scope, wanted) {
+            msg.push_str(&format!(" — {h}"));
+            if !hits.is_empty() {
+                msg.push_str(&format!(" (columns with similar names: {})", hits.join(", ")));
+            }
+        } else if !hits.is_empty() {
             msg.push_str(&format!(" — did you mean {}? (quote names with double quotes)", hits.join(", ")));
+        } else if let Some(d) = dialect::hint(err, sql) {
+            msg.push_str(&format!(" — {d}"));
         } else if scope.len() <= 3 {
             let lists: Vec<String> = scope
                 .iter()
@@ -398,6 +413,8 @@ fn sql_error_hint(norm: &Normalized, used: &[&Table], err: &str) -> String {
         let is_col = norm.tables.iter().any(|t| catalog::sql_names(t).iter().any(|n| n.eq_ignore_ascii_case(word)));
         if is_col {
             msg.push_str(&format!(" — {word} is a column name that is also an SQL keyword; quote it: {}", quote_ident(word)));
+        } else if let Some(d) = dialect::hint(err, sql) {
+            msg.push_str(&format!(" — {d}"));
         }
     } else if low.contains("no such table") {
         let ids: Vec<String> = norm.tables.iter().map(|t| t.id()).collect();
@@ -409,8 +426,112 @@ fn sql_error_hint(norm: &Normalized, used: &[&Table], err: &str) -> String {
                 short(&ids.join(", "), 400)
             ));
         }
+    } else if let Some(d) = dialect::hint(err, sql) {
+        msg.push_str(&format!(" — {d}"));
     }
     msg
+}
+
+/// Words that name a total row ("Total", "Gesamt", …), compared without case.
+const TOTAL_WORDS: &[&str] = &[
+    "total", "totals", "grand total", "subtotal", "sub-total", "sub total", "gesamt", "insgesamt", "summe", "gesamtsumme",
+    "zusammen", "totale", "totale generale", "ukupno", "svega", "укупно", "свега", "total general", "totaal", "totalt",
+    "i alt", "yhteensä", "razem", "celkem", "összesen", "suma", "somme", "ensemble", "overall",
+];
+
+fn sql_text(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+/// The text column holding `label` in row `i` of `t`.
+fn label_column(t: &Table, names: &[String], i: usize, label: &str) -> Option<String> {
+    t.columns.iter().zip(names).find_map(|(c, n)| {
+        let hit = matches!(c.role, ColRole::Data | ColRole::Group)
+            && matches!(c.values.get(i), Some(Out::Text(s)) if s.trim().eq_ignore_ascii_case(label.trim()));
+        hit.then(|| n.clone())
+    })
+}
+
+/// When the "missing column" is the label of a total row (or a total word such as "Total") or a
+/// value of a text column: where those rows are and how to select them.
+fn row_label_hint(norm: &Normalized, scope: &[&Table], wanted: &str) -> Option<String> {
+    let w = wanted.trim();
+    if w.chars().count() < 2 {
+        return None;
+    }
+    let lw = w.to_lowercase();
+    let generic = TOTAL_WORDS.contains(&lw.trim_end_matches([':', '.']).trim());
+    let infos: Vec<(&Table, catalog::RowInfo)> = scope.iter().map(|t| (*t, catalog::row_info(norm, t))).collect();
+    let find = |exact: bool| {
+        infos.iter().find_map(|(t, info)| {
+            let hit = |r: &&catalog::TotalRow| !exact || r.label.trim().eq_ignore_ascii_case(w);
+            if let Some(r) = info.total_rows.iter().find(hit) {
+                return Some((*t, r.clone(), true));
+            }
+            info.kept_totals.iter().find(hit).map(|r| (*t, r.clone(), false))
+        })
+    };
+    let quoted = quote_ident(w);
+    if let Some((t, r, in_all)) = find(true).or_else(|| if generic { find(false) } else { None }) {
+        let names = catalog::sql_names(t);
+        let col = t.src_rows.iter().position(|s| s + 1 == r.row).and_then(|i| label_column(t, &names, i, &r.label));
+        let id = t.id();
+        let at = col.as_ref().map(|c| format!(" (label in {})", ident(c))).unwrap_or_default();
+        return Some(if in_all {
+            let kind = r.kind.as_str();
+            format!(
+                "{quoted} is a row label, not a column: {kind} rows are in {id}_all with _row_type = '{kind}'{at}: \
+                 SELECT * FROM {id}_all WHERE _row_type = '{kind}'"
+            )
+        } else {
+            let filter = match &col {
+                Some(c) => format!("WHERE {} = {}", quote_ident(c), sql_text(&r.label)),
+                None => format!("WHERE _src_row = {}", r.row),
+            };
+            format!("{quoted} is a row label, not a column: that total row stays in {id}{at}: SELECT * FROM {id} {filter}")
+        });
+    }
+    if generic {
+        let id = scope.first()?.id();
+        return Some(format!("{quoted} is not a column and {id} has no total rows: compute it, e.g. SELECT SUM(<column>) FROM {id}"));
+    }
+    // A value of a text column (a pipeline, a region) used as a column name.
+    for t in scope {
+        let names = catalog::sql_names(t);
+        for (c, n) in t.columns.iter().zip(&names) {
+            if !matches!(c.role, ColRole::Data | ColRole::Group) || c.dtype != Dtype::Text {
+                continue;
+            }
+            if c.values.iter().any(|v| matches!(v, Out::Text(s) if s.trim().eq_ignore_ascii_case(w))) {
+                return Some(format!(
+                    "{quoted} is a value of column {}, not a column: SELECT * FROM {} WHERE {} = {}",
+                    ident(n),
+                    t.id(),
+                    quote_ident(n),
+                    sql_text(w)
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// `describe_table` text with the table's entity columns (their `<col>_id` and `<col>_name` in the
+/// SQL views) added before the first rows.
+fn with_entities(text: String, t: &Table, ents: &[entity::Entity]) -> String {
+    if ents.is_empty() {
+        return text;
+    }
+    let cols: Vec<String> = ents.iter().map(|e| format!("{}, {}", ident(&e.id_col), ident(&e.name_col))).collect();
+    let mut add = format!("entity columns (the SQL views {} and {}_all also have {}):", t.id(), t.id(), cols.join(", "));
+    for e in ents {
+        add.push_str(&format!("\n  {}", entity::line(e).trim_start()));
+    }
+    let out = match text.find("\nfirst ") {
+        Some(i) => format!("{}\n{add}{}", &text[..i], &text[i..]),
+        None => format!("{text}\n{add}"),
+    };
+    text::cut(out, MAX_CHARS, |n| format!("{n} more lines"), "query on the table for specific columns")
 }
 
 /// The column name in SQLite's `no such column: <name> - …` (`"quoted name"`, `T1.name`, `name`).
@@ -453,18 +574,26 @@ fn missing_column(rest: &str) -> String {
 }
 
 /// With `_src_row` in the result and one table queried: which source cell each column comes from.
-fn cite_hint(used: &[&Table], header: &[String]) -> Option<String> {
+fn cite_hint(db: &sql::Db, used: &[&Table], header: &[String]) -> Option<String> {
     if !header.iter().any(|h| h == "_src_row") || used.len() != 1 {
         return None;
     }
     let t = used[0];
     let names = catalog::sql_names(t);
+    let ents = db.entities.iter().find(|(n, _)| *n == t.n).map(|x| x.1.as_slice()).unwrap_or_default();
     let parts: Vec<String> = header
         .iter()
         .filter_map(|h| {
-            let i = names.iter().position(|n| n == h)?;
+            // An entity column's ID or name part is cited as the cell it comes from.
+            let (i, part) = match names.iter().position(|n| n == h) {
+                Some(i) => (i, ""),
+                None => {
+                    let e = ents.iter().find(|e| e.id_col == *h || e.name_col == *h)?;
+                    (e.col, if e.id_col == *h { " (ID part)" } else { " (name part)" })
+                }
+            };
             let col = t.columns[i].source_col?;
-            Some(format!("{} = {}", ident(h), sheet_ref(&t.source_sheet, &format!("{}<_src_row>", text::letter(col)))))
+            Some(format!("{} = {}{part}", ident(h), sheet_ref(&t.source_sheet, &format!("{}<_src_row>", text::letter(col)))))
         })
         .take(8)
         .collect();

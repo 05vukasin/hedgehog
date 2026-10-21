@@ -149,6 +149,8 @@ fn mcp_session_end_to_end() {
         assert_eq!(t["inputSchema"]["type"], "object", "{t}");
         assert!(t["description"].as_str().unwrap().len() > 40);
     }
+    let query_desc = tools[2]["description"].as_str().unwrap();
+    assert!(query_desc.contains("SQLite") && query_desc.contains("strftime('%m', d)"), "{query_desc}");
 
     // open_file on the xlsx
     let cat = s.ok("open_file", json!({"path": "sales.xlsx"}));

@@ -3,7 +3,8 @@
 //! Layout: table `T<n>_all` holds every row of table n (data, subtotal and total rows, with
 //! `_row_type` and `_src_row`), view `T<n>` the data rows without `_row_type`. Values are typed:
 //! integers INTEGER, numbers / currency / percent (as a fraction) REAL, dates ISO TEXT
-//! (`YYYY-MM-DD`, or `YYYY-MM-DD hh:mm:ss`), booleans 0/1.
+//! (`YYYY-MM-DD`, or `YYYY-MM-DD hh:mm:ss`), booleans 0/1. An entity column (`"<id> - <name>"`,
+//! [`crate::entity`]) is followed by `<col>_id` and `<col>_name`, split at load.
 //!
 //! After loading, the connection is locked down: an authorizer allows only SELECT, reads, a few
 //! read-only pragmas and functions (no ATTACH, no writes, no schema changes, no transactions),
@@ -20,6 +21,7 @@ use rusqlite::types::{Value, ValueRef};
 use rusqlite::Connection;
 
 use crate::catalog::sql_names;
+use crate::entity::{self, Entity};
 use crate::text::{num, quote_ident, short};
 
 /// Default per-query time limit.
@@ -42,6 +44,15 @@ pub struct Db {
     conn: Connection,
     /// (table id, columns left out because SQLite allows at most 2000).
     pub skipped_columns: Vec<(String, usize)>,
+    /// (table number, its entity columns): each adds `<col>_id` and `<col>_name` to the views.
+    pub entities: Vec<(usize, Vec<Entity>)>,
+}
+
+/// One SQL column of a table: a normalized column, or the ID / name part of entity column k.
+enum Slot {
+    Col(usize),
+    Id(usize),
+    Name(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +96,7 @@ impl Db {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=MEMORY;")?;
         let mut skipped_columns = Vec::new();
+        let mut entities = Vec::new();
         let tx = conn.unchecked_transaction()?;
         for t in &norm.tables {
             let names = sql_names(t);
@@ -105,28 +117,61 @@ impl Db {
             let id = t.id();
             let all = format!("{id}_all");
             let has_type = t.columns.iter().any(|c| c.role == ColRole::RowType);
-            let defs: Vec<String> =
-                keep.iter().map(|&i| format!("{} {}", quote_ident(&names[i]), sql_type(t.columns[i].dtype))).collect();
+            // Entity columns get their ID and name parts right after them.
+            let ents: Vec<Entity> = entity::detect(t).into_iter().filter(|e| keep.contains(&e.col)).collect();
+            let mut slots: Vec<Slot> = Vec::with_capacity(keep.len() + 2 * ents.len());
+            for &i in &keep {
+                slots.push(Slot::Col(i));
+                if let Some(k) = ents.iter().position(|e| e.col == i) {
+                    slots.push(Slot::Id(k));
+                    slots.push(Slot::Name(k));
+                }
+            }
+            let slot_name = |s: &Slot| match *s {
+                Slot::Col(i) => names[i].clone(),
+                Slot::Id(k) => ents[k].id_col.clone(),
+                Slot::Name(k) => ents[k].name_col.clone(),
+            };
+            let defs: Vec<String> = slots
+                .iter()
+                .map(|s| {
+                    let ty = if let Slot::Col(i) = *s { sql_type(t.columns[i].dtype) } else { "TEXT" };
+                    format!("{} {ty}", quote_ident(&slot_name(s)))
+                })
+                .collect();
             let base = if has_type { all.clone() } else { id.clone() };
             tx.execute_batch(&format!("CREATE TABLE {} ({})", quote_ident(&base), defs.join(", ")))?;
             {
-                let marks = vec!["?"; keep.len()].join(",");
+                let marks = vec!["?"; slots.len()].join(",");
                 let mut ins = tx.prepare(&format!("INSERT INTO {} VALUES ({marks})", quote_ident(&base)))?;
-                let mut row: Vec<Value> = Vec::with_capacity(keep.len());
+                let mut row: Vec<Value> = Vec::with_capacity(slots.len());
+                let mut parts: Vec<(Option<String>, Option<String>)> = vec![(None, None); ents.len()];
                 for r in 0..t.rows() {
                     row.clear();
-                    for &i in &keep {
-                        let c = &t.columns[i];
-                        row.push(c.values.get(r).map_or(Value::Null, |v| sql_value(v, c.dtype)));
+                    for (k, e) in ents.iter().enumerate() {
+                        parts[k] = match t.columns[e.col].values.get(r) {
+                            Some(Out::Text(s)) => entity::derived(s),
+                            _ => (None, None),
+                        };
+                    }
+                    for s in &slots {
+                        row.push(match *s {
+                            Slot::Col(i) => {
+                                let c = &t.columns[i];
+                                c.values.get(r).map_or(Value::Null, |v| sql_value(v, c.dtype))
+                            }
+                            Slot::Id(k) => parts[k].0.take().map_or(Value::Null, Value::Text),
+                            Slot::Name(k) => parts[k].1.take().map_or(Value::Null, Value::Text),
+                        });
                     }
                     ins.execute(rusqlite::params_from_iter(row.iter()))?;
                 }
             }
             if has_type {
-                let cols: Vec<String> = keep
+                let cols: Vec<String> = slots
                     .iter()
-                    .filter(|&&i| t.columns[i].role != ColRole::RowType)
-                    .map(|&i| quote_ident(&names[i]))
+                    .filter(|s| !matches!(s, Slot::Col(i) if t.columns[*i].role == ColRole::RowType))
+                    .map(|s| quote_ident(&slot_name(s)))
                     .collect();
                 tx.execute_batch(&format!(
                     "CREATE VIEW {} AS SELECT {} FROM {} WHERE \"_row_type\" = 'data'",
@@ -141,11 +186,14 @@ impl Db {
                     quote_ident(&id)
                 ))?;
             }
+            if !ents.is_empty() {
+                entities.push((t.n, ents));
+            }
         }
         tx.commit()?;
         lock_down(&conn)?;
         set_heap_limit(memory_used() + HEAP_HEADROOM);
-        Ok(Db { conn, skipped_columns })
+        Ok(Db { conn, skipped_columns, entities })
     }
 
     /// Runs one read-only statement; returns up to `limit` rows (cells cut to 80 characters) and
