@@ -264,6 +264,7 @@ fn is_label_over_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect:
         && t.chars().count() <= 20
         && t.split_whitespace().count() <= 2
         && !t.chars().any(|c| c.is_ascii_digit())
+        && !super::cells::is_unit_text(t)
         && !is_total_label(t)
         && !is_note_label(t)
         && !t.contains(':')

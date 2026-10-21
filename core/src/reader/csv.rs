@@ -199,17 +199,15 @@ fn sniff_delimiter(head: &[u8]) -> u8 {
         let mut parser = Parser::new(sample, delim);
         let mut counts: BTreeMap<usize, usize> = BTreeMap::new();
         let mut seen = 0;
-        // Records with a quote inside a field: quoted fields split by the wrong delimiter
-        // (`"Payroll staff;⏎AO/AA;⏎Headcount"` read with `;`, B53).
-        let mut stray = 0usize;
         while seen < SNIFF_RECORDS && parser.next_record(&mut rec).unwrap_or(false) {
             seen += 1;
             if rec.len() >= 2 {
                 *counts.entry(rec.len()).or_default() += 1;
             }
-            stray += rec.fields().any(|f| f.contains(&b'"')) as usize;
         }
-        let consistent = counts.values().copied().max().unwrap_or(0).saturating_sub(2 * stray);
+        // Quotes out of place: quoted fields split by the wrong delimiter (`"Payroll staff;⏎AO/AA;⏎
+        // Headcount"` read with `;`, B53).
+        let consistent = counts.values().copied().max().unwrap_or(0).saturating_sub(2 * parser.stray);
         if consistent > best.1 {
             best = (delim, consistent);
         }
@@ -245,6 +243,9 @@ struct Parser<R: BufRead> {
     delim: u8,
     /// The last record ended at a `\r`; a `\n` right after it belongs to that line break.
     skip_lf: bool,
+    /// Quotes out of place so far: inside an unquoted field, or text right after a closing quote
+    /// (the signs of quoted fields split by the wrong delimiter).
+    stray: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -258,7 +259,7 @@ enum State {
 
 impl<R: BufRead> Parser<R> {
     fn new(r: R, delim: u8) -> Self {
-        Parser { r, delim, skip_lf: false }
+        Parser { r, delim, skip_lf: false, stray: 0 }
     }
 
     /// Reads the next record into `rec`. `false` at the end of the input.
@@ -296,6 +297,7 @@ impl<R: BufRead> Parser<R> {
                         state = State::Quoted;
                         continue;
                     }
+                    State::QuoteInQuoted if b != self.delim && b != b'\n' && b != b'\r' => self.stray += 1,
                     _ => {}
                 }
                 if b == self.delim {
@@ -309,6 +311,7 @@ impl<R: BufRead> Parser<R> {
                 } else if b == b'"' && state == State::FieldStart {
                     state = State::Quoted;
                 } else {
+                    self.stray += usize::from(b == b'"');
                     rec.buf.push(b);
                     state = State::Unquoted;
                 }
@@ -379,6 +382,11 @@ mod tests {
         assert_eq!(
             sniff_delimiter(b"Year,\"Payroll staff;\nAO/AA;\nHeadcount\",\"Payroll staff;\nEO;\nHeadcount\"\n2026,12,159\n"),
             b','
+        );
+        // Escaped quotes inside properly quoted fields (JSON geometry) are not out of place.
+        assert_eq!(
+            sniff_delimiter(b"code;name;shape\n1;A;\"{\"\"x\"\": [1, 2], \"\"y\"\": 3}\"\n2;B;\"{\"\"x\"\": [4, 5]}\"\n"),
+            b';'
         );
         assert_eq!(sniff_delimiter(b"one column\nonly\n"), b',');
         assert_eq!(sniff_delimiter(b""), b',');
