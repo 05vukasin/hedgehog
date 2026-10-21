@@ -1,0 +1,12 @@
+{
+  "name": "hedgehog",
+  "version": "0.3.1",
+  "description": "Answer questions about messy spreadsheets (xlsx, xls, xlsb, ods, csv) with hedgehog's tools: a compact catalog of every table, read-only SQLite over the normalized tables, source cells to cite, and totals checks.",
+  "author": {
+    "name": "Vukasin Teslic"
+  },
+  "homepage": "https://github.com/05vukasin/hedgehog/blob/master/docs/mcp.md#claude-code",
+  "repository": "https://github.com/05vukasin/hedgehog",
+  "license": "MIT",
+  "keywords": ["spreadsheet", "excel", "xlsx", "csv", "sql", "mcp"]
+}

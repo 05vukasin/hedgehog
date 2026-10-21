@@ -51,9 +51,46 @@ Get the binary from a [GitHub release](https://github.com/05vukasin/hedgehog/rel
 
 ### Claude Code
 
+**Plugin (tools + skill).** The repository is a Claude Code plugin marketplace. With the `hedgehog`
+binary on your PATH, in Claude Code:
+
+```text
+/plugin marketplace add 05vukasin/hedgehog
+/plugin install hedgehog@hedgehog
+```
+
+or from a shell: `claude plugin marketplace add 05vukasin/hedgehog` and
+`claude plugin install hedgehog@hedgehog` (add `--scope project` to share it through the project's
+`.claude/settings.json`). Restart Claude Code; `/mcp` then lists
+`plugin:hedgehog:hedgehog`. The plugin ([integrations/claude-code](../integrations/claude-code)) has:
+
+- the MCP server: `hedgehog mcp --root ${CLAUDE_PROJECT_DIR}`, so the tools read the project folder
+  (tool names `mcp__plugin_hedgehog_hedgehog__open_file`, …);
+- the `spreadsheets` skill (`/hedgehog:spreadsheets`, which Claude also loads by itself for a
+  spreadsheet question): open the file first and trust the catalog's TIME, total-row, mixed-measure,
+  quality and entity lines; numbers come from SQLite queries (group by `<col>_id` when the catalog
+  says so); check what one row is before summing; verify a surprising result with a second query;
+  cite source cells; write pandas only for what the tools cannot do.
+
+To try it from a clone without installing: `claude --plugin-dir integrations/claude-code`.
+
+**MCP server only.** For the tools without the skill:
+
 ```sh
 claude mcp add hedgehog -- hedgehog mcp --root "$PWD"
 ```
+
+Notes:
+
+- With very many skills installed, Claude Code's skill listing drops descriptions past its
+  character budget, and a skill listed without a description is not chosen by itself. Invoke it as
+  `/hedgehog:spreadsheets`, or raise the budget (`SLASH_COMMAND_TOOL_CHAR_BUDGET=80000`). The MCP
+  server's own instructions still tell Claude to open the file first and use SQL.
+- `claude -p --strict-mcp-config` drops plugin MCP servers too; pass the server with
+  `--mcp-config` (as the [agent comparison](../eval/agents/README.md) does) if you need both.
+- What it buys: on the four cases in [eval/agents](../eval/agents/RESULTS.md), Claude Code with the
+  plugin answered every check right without writing pandas, at roughly a third to two thirds less
+  cost than Claude Code alone; time was about the same (opening a 4.5M-cell file takes ~45 s).
 
 ### Any MCP client
 

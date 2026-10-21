@@ -8,6 +8,14 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Claude Code plugin** (`integrations/claude-code`, marketplace in `.claude-plugin/marketplace.json`):
+  `/plugin marketplace add 05vukasin/hedgehog` then `/plugin install hedgehog@hedgehog` registers
+  `hedgehog mcp` for the project folder and adds a `spreadsheets` skill (open the file first, trust
+  the catalog, SQL for numbers, check what one row is, verify, cite cells, pandas only as a
+  fallback). The agent comparison's `claude-hh` arm now runs Claude Code with this plugin
+  (`--skill-budget` sets the skill-listing budget). See [docs/mcp.md](docs/mcp.md#claude-code).
+- Agent comparison: amounts written as `€2.41B` are read as billions.
+
 - **Tables from the model's row roles** (default path; `--rules-only` unchanged): title and note
   rows at the edges leave the table, header-only blocks join the table below as its header (ABS
   time series), pieces the rules cut off a list rejoin it instead of taking a data row for a

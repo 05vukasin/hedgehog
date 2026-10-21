@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hedgehog": {
+      "command": "hedgehog",
+      "args": ["mcp", "--root", "${CLAUDE_PROJECT_DIR}"]
+    }
+  }
+}

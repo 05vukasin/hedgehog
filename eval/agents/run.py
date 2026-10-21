@@ -8,7 +8,8 @@
 Arms (same prompt text for all):
 - hedgehog:  hedgehog-cli one-shot (`hhc PROMPT -o json`), its own model setting (or --hh-model);
 - claude:    Claude Code (`claude -p PROMPT --output-format json`) with shell + file tools only;
-- claude-hh: Claude Code with hedgehog's tools added over MCP (`hedgehog mcp`).
+- claude-hh: Claude Code with the hedgehog plugin (integrations/claude-code): the `spreadsheets` skill
+             and `hedgehog mcp` (tools mcp__hedgehog__*), plus the same shell + file tools.
 
 Each run appends one record to results.jsonl (metrics, answer, automatic checks) and writes the
 answer to answers/<case>.<arm>.md; RESULTS.md shows the latest run per case and arm. Checks in
@@ -31,6 +32,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+PLUGIN = REPO / "integrations" / "claude-code"  # the Claude Code plugin the claude-hh arm loads
 OUT = HERE  # --out-dir: where results.jsonl, grades.json, RESULTS.md, answers/ and runs/ go
 RESULTS = OUT / "results.jsonl"
 GRADES = OUT / "grades.json"
@@ -75,11 +77,22 @@ def command(arm: str, prompt: str, args) -> tuple[list[str], dict]:
     if args.claude_model:
         cmd += ["--model", args.claude_model]
     if arm == "claude-hh":
+        # The Claude Code plugin (integrations/claude-code): its skill via --plugin-dir, its MCP server
+        # config with the binary under test and the case root filled in. --strict-mcp-config keeps the
+        # user's other MCP servers out (it also drops the plugin's own server, hence the explicit config).
+        server = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]["hedgehog"]
+        server = {**server, "command": args.hedgehog,
+                  "args": [str(args.root) if a == "${CLAUDE_PROJECT_DIR}" else a for a in server["args"]]}
         cfg = OUT / "runs" / "mcp.json"
         cfg.parent.mkdir(exist_ok=True)
-        cfg.write_text(json.dumps({"mcpServers": {"hedgehog": {"command": args.hedgehog, "args": ["mcp", "--root", str(args.root)]}}}))
-        cmd += ["--mcp-config", str(cfg), "--strict-mcp-config"]
-        tools.append("mcp__hedgehog")
+        cfg.write_text(json.dumps({"mcpServers": {"hedgehog": server}}))
+        cmd += ["--plugin-dir", str(PLUGIN), "--mcp-config", str(cfg), "--strict-mcp-config"]
+        tools += ["Skill", "mcp__hedgehog__*"]
+        # With many user skills installed, the skill listing drops descriptions past its character
+        # budget, and a skill without a description is never chosen; raise it so the plugin's skill is
+        # listed as it would be for a user with few skills (this also lists every other skill in full).
+        if args.skill_budget:
+            env["SLASH_COMMAND_TOOL_CHAR_BUDGET"] = str(args.skill_budget)
     return cmd + ["--allowedTools", *tools], env
 
 
@@ -109,7 +122,7 @@ def metrics(arm: str, out) -> dict:
 
 # ---------- scoring ----------
 
-MULT = [(r"bn|billion|mil milhões|mrd\.?|milliard\w*", 1e9), (r"m\b|mn\b|million\w*|mio\.?|milhões", 1e6),
+MULT = [(r"bn|b\b|billion|mil milhões|mrd\.?|milliard\w*", 1e9), (r"m\b|mn\b|million\w*|mio\.?|milhões", 1e6),
         (r"k\b|thousand|tsd\.?", 1e3)]
 NUM = re.compile(r"(?<![\w.])[-−]?\d(?:[\d.,  ]*\d)?")
 
@@ -238,6 +251,8 @@ def main() -> None:
     ap.add_argument("--claude-model", default="")
     ap.add_argument("--timeout", type=int, default=1800)
     ap.add_argument("--max-usd", type=float, default=3.0, help="spending cap per Claude Code run")
+    ap.add_argument("--skill-budget", type=int, default=80000,
+                    help="claude-hh: skill-listing character budget, so the plugin's skill is listed with its description (0 = Claude Code's default)")
     ap.add_argument("--repeat", type=int, default=1, help="runs per case and agent (the worst run counts)")
     ap.add_argument("--out-dir", type=Path, default=HERE, help="where results and answers go (default: this folder)")
     ap.add_argument("--report", action="store_true")
