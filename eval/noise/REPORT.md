@@ -199,6 +199,9 @@ Invariants:
   `label_blocks` (50 → 100% at t = 0) and `stacked` (67 → 95% at t = 1).
 - **Sharp drops** (each is a backlog item B30–B39 in `eval/agents/BACKLOG.md`, section
   "Robustness (noise families)"):
+  - *Fixed since (totals work, B30–B32, B36, B37): `of_which`, `average_rows`, `long_register`,
+    `total_labels` 100% at every intensity on both paths, `subtotals` 100% (model; rules 88–98%),
+    `combo` 8 → 28% at t = 1 (model); the five bullets below describe the state before.*
   - `of_which` 0% from t = 0.25: "of which / davon / od toga" rows stay ordinary data, so a column
     sum double-counts them and the grand total below is `unknown`.
   - `average_rows` 22–40%: "Average / Mean / Ø / Durchschnitt" rows stay data in ~70% of tables.
@@ -254,13 +257,13 @@ the new families and the hints in docs/evaluation.md and BACKLOG.md:
 
 | Not produced by `tools/noise` | New family | Result |
 |---|---|---|
-| "of which / davon" breakdown rows | `of_which` | 0% |
-| average / mean / median rows (only sums, wrong sums, sums as values) | `average_rows` | 22% |
-| subtotals *above* their group, grand total at the top | `subtotals` | 27% |
-| registers with total words at the *start* of free text (B1 found it inside) | `long_register` | 0% |
+| "of which / davon" breakdown rows | `of_which` | 0% → 100% |
+| average / mean / median rows (only sums, wrong sums, sums as values) | `average_rows` | 22% → 100% |
+| subtotals *above* their group, grand total at the top | `subtotals` | 27% → 100% |
+| registers with total words at the *start* of free text (B1 found it inside) | `long_register` | 0% → 100% |
 | `:` and `c` symbols (Eurostat / ONS); free text like `<5` in numeric columns | `locale`, `mixed_types` | 42%, 5% |
 | footnote marks `(r)`, `e`, superscripts at higher rates; legend directly under the table | `footnotes` | 2% |
-| rare / foreign / misspelled total labels (cs, pl, da, fi, hu, ru, typos, ∑) | `total_labels` | 55% |
+| rare / foreign / misspelled total labels (cs, pl, da, fi, hu, ru, typos, ∑) | `total_labels` | 55% → 100% |
 | separator rows (`-----`, `=====`) and `|` columns | `separators` | 37% |
 | comments in the column right of a table, notes inside the body | `notes` | 32% |
 | parent headers written once or centred without a merge | `multirow_header` | 38% |
