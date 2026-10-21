@@ -613,6 +613,15 @@ impl Session {
             (true, true) => format!("({n} rows, showing first {shown})"),
             (false, _) => format!("(more than {n} rows, showing first {shown}; counting stopped)"),
         });
+        if res.cut_values > 0 {
+            lines.push(format!(
+                "note: {} value(s) longer than {} characters end in …[+N chars]; read the rest with substr(col, {}, {})",
+                res.cut_values,
+                text::thousands(sql::MAX_CELL_CHARS),
+                sql::MAX_CELL_CHARS + 1,
+                sql::MAX_CELL_CHARS
+            ));
+        }
         if cut_for_size {
             lines.push(format!(
                 "… cut: {} of the requested rows did not fit; ask for fewer columns or a smaller limit",

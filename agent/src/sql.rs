@@ -27,7 +27,7 @@ use rusqlite::{Connection, OpenFlags};
 
 use crate::catalog::sql_names;
 use crate::entity::{self, Entity};
-use crate::text::{num, quote_ident, short};
+use crate::text::{num, quote_ident};
 
 /// The error of a query stopped by [`Db::set_cancel`]'s flag.
 pub const CANCELLED: &str = "query cancelled";
@@ -37,6 +37,8 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
 pub const COUNT_CAP: usize = 1_000_000;
 /// SQLite's default maximum number of columns is 2000.
 const MAX_SQL_COLUMNS: usize = 1990;
+/// Characters of one text value a query result shows; longer values end in `…[+N chars]` (B47).
+pub const MAX_CELL_CHARS: usize = 2000;
 /// Largest string or blob a query may build.
 const MAX_VALUE_BYTES: i32 = 1_000_000;
 /// Heap SQLite may use on top of the loaded data.
@@ -73,6 +75,8 @@ pub struct QueryResult {
     /// False when counting stopped early: `total` is a lower bound.
     pub complete: bool,
     pub ms: f64,
+    /// Values among `rows` longer than [`MAX_CELL_CHARS`], shown cut with a `…[+N chars]` mark.
+    pub cut_values: usize,
 }
 
 fn sql_type(d: Dtype) -> &'static str {
@@ -312,6 +316,7 @@ impl Db {
         let mut rows_out = Vec::new();
         let mut total = 0usize;
         let mut complete = true;
+        let mut cut_values = 0usize;
         let mut rows = stmt.query([]).map_err(|e| sql_error(&e))?;
         loop {
             match rows.next() {
@@ -319,7 +324,9 @@ impl Db {
                     if rows_out.len() < limit {
                         let mut vals = Vec::with_capacity(ncols);
                         for i in 0..ncols {
-                            vals.push(cell_text(row.get_ref(i).unwrap_or(ValueRef::Null)));
+                            let (v, cut) = cell_text(row.get_ref(i).unwrap_or(ValueRef::Null));
+                            cut_values += usize::from(cut);
+                            vals.push(v);
                         }
                         rows_out.push(vals);
                     }
@@ -344,7 +351,7 @@ impl Db {
                 Err(e) => return Err(sql_error(&e)),
             }
         }
-        Ok(QueryResult { header, rows: rows_out, total, complete, ms: t0.elapsed().as_secs_f64() * 1000.0 })
+        Ok(QueryResult { header, rows: rows_out, total, complete, ms: t0.elapsed().as_secs_f64() * 1000.0, cut_values })
     }
 }
 
@@ -379,13 +386,27 @@ fn first_keyword(q: &str) -> String {
     s.chars().take_while(|c| c.is_ascii_alphabetic()).collect::<String>().to_ascii_lowercase()
 }
 
-fn cell_text(v: ValueRef<'_>) -> String {
+/// The text of one result value and whether it was cut. Text is kept exactly (the CSV quotes
+/// commas, quotes and line breaks) up to [`MAX_CELL_CHARS`] characters, so a value such as a
+/// `group_concat` list can be reused in the next query; a longer one is cut there and marked
+/// `…[+N chars]` (B47).
+fn cell_text(v: ValueRef<'_>) -> (String, bool) {
     match v {
-        ValueRef::Null => String::new(),
-        ValueRef::Integer(i) => i.to_string(),
-        ValueRef::Real(x) => num(x),
-        ValueRef::Text(t) => short(&String::from_utf8_lossy(t), 80),
-        ValueRef::Blob(b) => format!("<blob {} bytes>", b.len()),
+        ValueRef::Null => (String::new(), false),
+        ValueRef::Integer(i) => (i.to_string(), false),
+        ValueRef::Real(x) => (num(x), false),
+        ValueRef::Text(t) => {
+            let s = String::from_utf8_lossy(t);
+            let s: String = s.chars().map(|c| if c.is_control() && c != '\n' && c != '\t' { ' ' } else { c }).collect();
+            let n = s.chars().count();
+            if n <= MAX_CELL_CHARS {
+                return (s, false);
+            }
+            let mut out: String = s.chars().take(MAX_CELL_CHARS).collect();
+            out.push_str(&format!("…[+{} chars]", n - MAX_CELL_CHARS));
+            (out, true)
+        }
+        ValueRef::Blob(b) => (format!("<blob {} bytes>", b.len()), false),
     }
 }
 
@@ -574,5 +595,22 @@ pub(crate) mod tests {
         let r = d.query("SELECT * FROM T1_all", 200, DEFAULT_TIMEOUT).unwrap();
         assert_eq!(r.rows.len(), 200);
         assert_eq!(r.total, 300);
+    }
+
+    #[test]
+    fn long_values_are_kept_up_to_the_cell_limit() {
+        // B47: a group_concat list must come back whole so it can be reused.
+        let d = db();
+        let r = d.query("SELECT group_concat(City, ', ') FROM (SELECT City FROM T1 LIMIT 150)", 5, DEFAULT_TIMEOUT).unwrap();
+        let v = &r.rows[0][0];
+        assert!(v.chars().count() > 80 && v.chars().count() <= MAX_CELL_CHARS, "{}", v.len());
+        assert!(!v.contains('…') && v.ends_with("c149"));
+        assert_eq!(r.cut_values, 0);
+        let q = "SELECT group_concat(City || '-' || Day, ', ') AS x FROM T1_all";
+        let long = d.query(q, 5, DEFAULT_TIMEOUT).unwrap();
+        let full: usize = d.query(&format!("SELECT length(x) FROM ({q})"), 5, DEFAULT_TIMEOUT).unwrap().rows[0][0].parse().unwrap();
+        let v = &long.rows[0][0];
+        assert_eq!(long.cut_values, 1);
+        assert!(v.ends_with(&format!("…[+{} chars]", full - MAX_CELL_CHARS)), "{}", &v[v.len() - 30..]);
     }
 }
