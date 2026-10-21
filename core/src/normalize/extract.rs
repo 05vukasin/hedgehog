@@ -852,10 +852,15 @@ fn copy_row_labels(tables: &mut [Table], layouts: &[Vec<(u32, bool)>]) {
 pub(super) fn process_sheet(
     sheet: &Sheet,
     opts: &Options,
-    layout: (crate::analysis::SheetLayout, Option<String>),
+    layout: super::SheetAnalysis,
     out: &mut Normalized,
 ) {
     let grid = Grid::new(sheet);
+    let (lay, warning, detection) = layout;
+    if let Some(d) = detection {
+        grid.set_totals(d);
+    }
+    let layout = (lay, warning);
     let cells = &sheet.cells;
     let mut info = SheetInfo {
         name: sheet.name.clone(),

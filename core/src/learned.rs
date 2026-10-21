@@ -587,6 +587,17 @@ pub fn analyze_with(grid: &Grid, model: &RowModel, steps: RefineSteps) -> SheetL
     }
     tables::refine(grid, &mut lay, &raw, &rules, steps);
     crate::normalize::trace("M:tables", t0);
+    // The model's features count every total word (as in training); a row whose only one is
+    // incidental (free text in a register) and whose numbers do not add up is a record.
+    let incidental = crate::totals::incidental_rows(grid).records;
+    if !incidental.is_empty() {
+        for (i, c) in grid.sheet.cells.iter().enumerate() {
+            if lay.roles[i] == Role::Total && incidental.binary_search(&c.row).is_ok() {
+                lay.roles[i] = Role::Data;
+            }
+        }
+        crate::normalize::trace("M:incidental_totals", t0);
+    }
     lay
 }
 

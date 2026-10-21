@@ -6,6 +6,7 @@ use std::ops::Range;
 
 use crate::analysis::{DetectedTable, Role};
 use crate::model::{Rect, Sheet, Value};
+use crate::totals::incidental_keyword;
 
 use super::blocks::{Entry, Region, Row, Ty};
 use super::cells::{Agg, Kind, is_note_label, is_total_label, text_of};
@@ -19,6 +20,12 @@ pub(crate) struct Out {
     /// Column-numbering rows join the header ([`COLUMN_NUMBER_ROWS`]; off for the row model's
     /// features, see [`super::analyze_for_model`]).
     pub column_numbers: bool,
+    /// Incidental total words (free text in a register) do not make a row a total row
+    /// ([`incidental_keyword`]; off for the row model's features, see [`super::analyze_for_model`]).
+    pub registers: bool,
+    /// Rows the totals take as labelled by a total word ([`crate::totals::labelled_rows`]: a
+    /// label, a category of its column, or an incidental word confirmed by arithmetic), sorted.
+    pub labelled_totals: Vec<u32>,
 }
 
 fn text<'a>(sheet: &'a Sheet, e: &Entry) -> &'a str {
@@ -121,12 +128,34 @@ fn has_total_label(sheet: &Sheet, r: &Row) -> bool {
     r.entries.iter().filter(|e| e.kind == Kind::Text).take(3).any(|e| is_total_label(text(sheet, e)))
 }
 
-pub(crate) fn is_total_row(sheet: &Sheet, r: &Row) -> bool {
-    if has_total_label(sheet, r) {
-        return true;
+/// [`has_total_label`] for the row's role: in a register, a long text right of other text (a
+/// description or a name holding a total word, [`incidental_keyword`]) does not label the row as a
+/// total unless the totals take the row as labelled (`labelled`). Table boundaries still treat such
+/// rows as before ([`is_total_row`]).
+fn has_own_total_label(sheet: &Sheet, r: &Row, labelled: &[u32]) -> bool {
+    if labelled.binary_search(&r.row).is_ok() {
+        return has_total_label(sheet, r);
     }
+    let rows = match (sheet.cells.first(), sheet.cells.last()) {
+        (Some(a), Some(b)) => b.row - a.row + 1,
+        _ => 0,
+    };
+    r.entries
+        .iter()
+        .filter(|e| e.kind == Kind::Text)
+        .take(3)
+        .enumerate()
+        .any(|(k, e)| is_total_label(text(sheet, e)) && !incidental_keyword(text(sheet, e), k > 0, rows))
+}
+
+/// Most of the row's numbers are aggregate formulas over the cells above.
+fn has_vertical_aggregates(r: &Row) -> bool {
     let vagg = r.entries.iter().filter(|e| e.agg == Agg::Vertical).count();
     vagg > 0 && vagg as f32 >= TOTAL_FORMULA_FRAC * r.n_num() as f32
+}
+
+pub(crate) fn is_total_row(sheet: &Sheet, r: &Row) -> bool {
+    has_total_label(sheet, r) || has_vertical_aggregates(r)
 }
 
 fn is_form(sheet: &Sheet, region: &Region) -> bool {
@@ -549,9 +578,11 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     for k in body_start..seg.end {
         let r = &rows[k];
         let last_body = k + 1 == seg.end;
+        let total_label =
+            if out.registers { has_own_total_label(sheet, r, &out.labelled_totals) } else { has_total_label(sheet, r) };
         let role = if !sig.is_empty() && r.n() >= 2 && signature(sheet, r) == sig {
             Role::Header
-        } else if has_total_label(sheet, r) || (formula_totals_ok && is_total_row(sheet, r)) {
+        } else if total_label || (formula_totals_ok && has_vertical_aggregates(r)) {
             Role::Total
         } else if is_note_row(sheet, r) && (last_body || is_note_label(text(sheet, single_text(r).unwrap()))) {
             Role::Note

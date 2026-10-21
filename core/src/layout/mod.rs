@@ -25,20 +25,28 @@ use tables::Out;
 
 /// Detects tables and assigns one [`Role`] per entry of `grid.sheet.cells` (same order).
 pub fn analyze(grid: &Grid) -> SheetLayout {
-    analyze_inner(grid, params::COLUMN_NUMBER_ROWS)
+    analyze_inner(grid, params::COLUMN_NUMBER_ROWS, true)
 }
 
 /// [`analyze`] as the learned row model's features see it: without the column-numbering rule
 /// (the model was trained on layouts without it, and a numbering row's role feeds its neighbours'
-/// features). The model path applies the rule itself afterwards (`learned::tables`).
+/// features). The model path applies the rule itself afterwards (`learned::tables`). Likewise
+/// without the register rule for incidental total words ([`crate::totals::incidental_keyword`]),
+/// which the model path applies to its output (`learned::analyze_with`).
 pub fn analyze_for_model(grid: &Grid) -> SheetLayout {
-    analyze_inner(grid, false)
+    analyze_inner(grid, false, false)
 }
 
-fn analyze_inner(grid: &Grid, column_numbers: bool) -> SheetLayout {
+fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLayout {
     let sheet = grid.sheet;
-    let mut out =
-        Out { roles: vec![Role::Other; sheet.cells.len()], tables: Vec::new(), loose: Vec::new(), column_numbers };
+    let mut out = Out {
+        roles: vec![Role::Other; sheet.cells.len()],
+        tables: Vec::new(),
+        loose: Vec::new(),
+        column_numbers,
+        registers,
+        labelled_totals: if registers { crate::totals::labelled_rows(grid) } else { Vec::new() },
+    };
     for region in blocks::regions(grid) {
         tables::analyze_region(sheet, region, &mut out);
     }

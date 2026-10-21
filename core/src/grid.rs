@@ -20,6 +20,9 @@ pub struct Grid<'a> {
     /// Built on first use: per row / per column, the cell indices sorted by column / row.
     rows: OnceLock<Lines>,
     cols: OnceLock<Lines>,
+    /// Total detection (with the register rule), built on first use: the layout rules and the
+    /// normalizer both need it.
+    pub(crate) totals: OnceLock<crate::totals::Detection>,
 }
 
 #[inline]
@@ -40,7 +43,18 @@ impl<'a> Grid<'a> {
             used: sheet.used_range(),
             rows: OnceLock::new(),
             cols: OnceLock::new(),
+            totals: OnceLock::new(),
         }
+    }
+
+    /// The cached total detection, if it was run (see `totals::detect`).
+    pub(crate) fn into_totals(self) -> Option<crate::totals::Detection> {
+        self.totals.into_inner()
+    }
+
+    /// Seeds the cached total detection with one run on another grid of the same sheet.
+    pub(crate) fn set_totals(&self, d: crate::totals::Detection) {
+        let _ = self.totals.set(d);
     }
 
     #[inline]

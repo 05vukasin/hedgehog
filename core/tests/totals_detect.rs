@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use hh_core::totals::{
-    self, detect, verify, CheckReason, DependencyIndex, Direction, Evidence, FormulaKind, TotalCandidate, TotalLevel,
-    TotalOrigin,
+    self, detect, verify, CheckReason, DependencyIndex, Direction, Evidence, FormulaKind, IncidentalRows, TotalCandidate,
+    TotalLevel, TotalOrigin,
 };
 use hh_core::{open, Cell, Features, Grid, Rect, Sheet, Value};
 use rust_xlsxwriter::{Formula, Workbook, Worksheet};
@@ -483,4 +483,183 @@ fn collapsed_list_of_group_totals_has_no_visible_source() {
     let c = detect(&grid);
     // Only the first could be read as a total of nothing; none has a source on the sheet.
     assert!(c.is_empty(), "{c:#?}");
+}
+
+/// A procurement register (one contract per row, rows 1..=n): id, contract type, description,
+/// supplier, price. Row `r` gets description `desc(r)` when given.
+fn register(
+    name: &str,
+    n: u32,
+    desc: impl Fn(u32) -> Option<&'static str>,
+    extra: impl FnOnce(&mut Worksheet),
+) -> Sheet {
+    fixture(name, |ws| {
+        for (j, h) in ["id", "type", "description", "supplier", "price"].iter().enumerate() {
+            ws.write_string(0, j as u16, *h).unwrap();
+        }
+        for r in 1..=n {
+            ws.write_number(r, 0, 6_000_000.0 + r as f64).unwrap();
+            ws.write_string(r, 1, if r % 3 == 0 { "Aquisição de serviços" } else { "Aquisição de bens móveis" })
+                .unwrap();
+            ws.write_string(r, 2, desc(r).map_or_else(|| format!("Fornecimento de material {r}"), str::to_string))
+                .unwrap();
+            ws.write_string(r, 3, format!("50{r:07} - Fornecedor {r} Lda")).unwrap();
+            ws.write_number(r, 4, price(r)).unwrap();
+        }
+        extra(ws);
+    })
+}
+
+fn price(r: u32) -> f64 {
+    1000.0 + (r * 37 % 101) as f64
+}
+
+fn pt_desc(r: u32) -> Option<&'static str> {
+    match r {
+        40 => Some("AQUISIÇÃO DE UMA ESTAÇÃO TOTAL"),
+        120 => Some("Prótese total anca tumural cimentada"),
+        200 => Some("507210360 - GLOBAL 2 SEGURANÇA TOTAL LDA"),
+        _ => None,
+    }
+}
+
+#[test]
+fn total_word_in_a_register_description_is_not_a_total() {
+    let sheet = register("register_desc", 260, pt_desc, |_| {});
+    let grid = Grid::new(&sheet);
+    let c = detect(&grid);
+    assert!(c.is_empty(), "{c:#?}");
+    assert!(totals::keyword_rows(&grid).is_empty());
+    assert_eq!(totals::incidental_rows(&grid), IncidentalRows { records: vec![40, 120, 200], totals: vec![] });
+    // The rule layout keeps them as data rows.
+    let lay = hh_core::layout::analyze(&grid);
+    for (i, cell) in sheet.cells.iter().enumerate() {
+        if [40, 120, 200].contains(&cell.row) {
+            assert_eq!(lay.roles[i], hh_core::Role::Data, "{cell:?}");
+        }
+    }
+}
+
+#[test]
+fn register_keeps_its_labelled_total_row() {
+    // A short label ("Total") right of other text still labels the row; it adds up.
+    let sheet = register("register_total", 260, pt_desc, |ws| {
+        ws.write_string(261, 1, "Contratos 2020").unwrap();
+        ws.write_string(261, 2, "Total").unwrap();
+        ws.write_number(261, 4, (1..=260).map(price).sum::<f64>()).unwrap();
+    });
+    let grid = Grid::new(&sheet);
+    let c = detect(&grid);
+    assert_eq!(c.len(), 1, "{c:#?}");
+    let t = at(&c, 261, 4);
+    assert_eq!(t.label, Some((261, 2)));
+    assert_eq!(t.ranges, vec![rect(1, 4, 260, 4)]);
+    assert_eq!(verify(&grid, t).ok, Some(true));
+    let lay = hh_core::layout::analyze(&grid);
+    assert_eq!(lay.roles[grid.cell_index(261, 2).unwrap()], hh_core::Role::Total);
+    assert_eq!(lay.roles[grid.cell_index(40, 2).unwrap()], hh_core::Role::Data);
+}
+
+#[test]
+fn incidental_total_word_that_adds_up_is_a_total() {
+    // A long text right of other text, but its price is the sum of every price above: arithmetic
+    // confirms the total.
+    let sheet = register("register_sum", 260, pt_desc, |ws| {
+        ws.write_string(261, 1, "Contratos 2020").unwrap();
+        ws.write_string(261, 2, "Valor total dos contratos de 2020").unwrap();
+        ws.write_number(261, 4, (1..=260).map(price).sum::<f64>()).unwrap();
+    });
+    let grid = Grid::new(&sheet);
+    let c = detect(&grid);
+    assert_eq!(c.len(), 1, "{c:#?}");
+    assert_eq!(verify(&grid, at(&c, 261, 4)).ok, Some(true));
+    assert_eq!(totals::incidental_rows(&grid), IncidentalRows { records: vec![40, 120, 200], totals: vec![261] });
+    let d = totals::detect_rows(&grid, &DependencyIndex::new(&grid), true);
+    assert_eq!(d.keyword_rows.keys().collect::<Vec<_>>(), vec![&261]);
+}
+
+#[test]
+fn short_sheets_keep_total_words_in_descriptions() {
+    // Below the register length a total word right of other text still labels a total row (a
+    // report: "Region | Total for the region | numbers").
+    let sheet = register("short_report", 20, |r| (r == 10).then_some("Prótese total anca tumural"), |_| {});
+    let grid = Grid::new(&sheet);
+    assert!(totals::keyword_rows(&grid).contains_key(&10));
+    assert_eq!(totals::incidental_rows(&grid), IncidentalRows::default());
+}
+
+#[test]
+fn total_label_recurring_as_a_category_stays_a_total() {
+    // Long-format statistics: per industry, items then "Summe der bezogenen Rohstoffe"; some items
+    // are suppressed, so the sums cannot be checked. The label recurs as a category of its
+    // column and starts with the total word: a label, not free text.
+    let sheet = fixture("category", |ws| {
+        for (j, h) in ["Statistik", "Wirtschaftszweig", "Warenart", "Wert"].iter().enumerate() {
+            ws.write_string(0, j as u16, *h).unwrap();
+        }
+        let mut r = 1;
+        for k in 0..60u32 {
+            for item in ["Kohle", "Holz", "Gips", "Summe der bezogenen Rohstoffe"] {
+                ws.write_string(r, 0, "Material- und Wareneingang").unwrap();
+                ws.write_string(r, 1, format!("Industrie {k}")).unwrap();
+                ws.write_string(r, 2, item).unwrap();
+                ws.write_number(r, 3, if item == "Holz" { 0.0 } else { 100.0 + r as f64 }).unwrap();
+                r += 1;
+            }
+        }
+    });
+    let grid = Grid::new(&sheet);
+    assert_eq!(totals::keyword_rows(&grid).len(), 60);
+    assert_eq!(totals::incidental_rows(&grid), IncidentalRows::default());
+}
+
+#[test]
+fn total_label_closing_each_block_stays_a_total() {
+    // Long-format budget data: per expense type a block of products, closed by "Summe aller
+    // Produkte …" (whose value does not add up: the products are a hierarchy). Rare in its column
+    // (3 of 303 cells), but it recurs and ends each block of identical keys.
+    let sheet = fixture("block_end", |ws| {
+        let mut r = 1;
+        for k in 0..3u32 {
+            for i in 0..101u32 {
+                ws.write_string(r, 0, "Personalausgaben").unwrap();
+                ws.write_string(r, 1, format!("Art {k}")).unwrap();
+                let label = match i {
+                    100 => "Summe aller Produkte einschl. Sonderposten".to_string(),
+                    _ => format!("Produkt {i}"),
+                };
+                ws.write_string(r, 2, label).unwrap();
+                ws.write_number(r, 3, 1000.0 + (i * 7 % 13) as f64).unwrap();
+                r += 1;
+            }
+        }
+    });
+    let grid = Grid::new(&sheet);
+    let mut rows: Vec<u32> = totals::keyword_rows(&grid).into_keys().collect();
+    rows.sort_unstable();
+    assert_eq!(rows, vec![101, 202, 303]);
+    assert_eq!(totals::incidental_rows(&grid), IncidentalRows::default());
+}
+
+#[test]
+fn incidental_total_that_closes_its_group_is_a_total() {
+    // Two blocks side by side on a long sheet: "ACME CORP Total" in the right block's label column
+    // has the left block's text to its left and does not add up, but it closes the group labelled
+    // "ACME CORP" above it (blanks in between): a pivot subtotal, still a total row.
+    let sheet = fixture("closes_group", |ws| {
+        for r in 0..250u32 {
+            ws.write_string(r, 0, format!("Counterparty {r}")).unwrap();
+            ws.write_number(r, 1, r as f64).unwrap();
+            ws.write_number(r, 3, 10.0).unwrap();
+        }
+        ws.write_string(10, 2, "ACME CORP").unwrap();
+        ws.write_string(20, 2, "ACME CORP Total").unwrap();
+        ws.write_number(20, 3, 99999.0).unwrap();
+        ws.write_string(21, 2, "OTHER CORP").unwrap();
+    });
+    let grid = Grid::new(&sheet);
+    assert_eq!(totals::incidental_rows(&grid), IncidentalRows { records: vec![], totals: vec![20] });
+    assert!(detect(&grid).iter().any(|c| (c.row, c.col) == (20, 3)));
+    let lay = hh_core::layout::analyze(&grid);
+    assert_eq!(lay.roles[grid.cell_index(20, 2).unwrap()], hh_core::Role::Total);
 }

@@ -1,4 +1,4 @@
-fb39f83a8c001c5a	1920196	irregular/enron/kam_keiser__17897__ERMS_MTM_Values Nov 30 2001 v2 JH final.xlsx
+31fa30692770920f	1920196	irregular/enron/kam_keiser__17897__ERMS_MTM_Values Nov 30 2001 v2 JH final.xlsx
 15d1d3db772c937f	24566	irregular/enron/dutch_quigley__9378__modeldutch.xlsx
 f2c8204b9221c85e	890220	irregular/enron/benjamin_rogers__1002__NYISO Price Information version 2.xlsx
 7fc43edb1847e61f	653364	irregular/enron/darron_c_giron__7917__NG-PRICE_FinancialOnly.xlsx

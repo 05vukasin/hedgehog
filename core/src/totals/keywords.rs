@@ -185,6 +185,43 @@ pub fn total_keyword(text: &str) -> Option<KeywordLevel> {
     }
 }
 
+/// Sheets spanning at least this many rows are long enough to be registers (one record per row),
+/// where a total word inside a free-text cell is part of the record ("Prótese total anca").
+pub const REGISTER_MIN_ROWS: u32 = 200;
+
+/// Words in a short total label ("Total", "Grand total", "Ukupno Vojvodina", "Summe:"); longer
+/// texts with a total word are descriptions or names when they sit right of other text.
+const SHORT_LABEL_MAX_WORDS: usize = 2;
+
+/// True if `text` has at most [`SHORT_LABEL_MAX_WORDS`] words.
+fn short_label(text: &str) -> bool {
+    !more_tokens_than(text, SHORT_LABEL_MAX_WORDS)
+}
+
+/// A total word that does not, by itself, make its row a total row: in a long sheet (a register,
+/// at least [`REGISTER_MIN_ROWS`] rows from its first to its last cell), a text longer than a
+/// short label, with other text left of it in the row, is a free-text value (a description, a
+/// supplier's name: "AQUISIÇÃO DE UMA ESTAÇÃO TOTAL", "GLOBAL 2 SEGURANÇA TOTAL LDA"), not the row's
+/// label. Such a row is a total only if its numbers add up (see `totals::detect`).
+///
+/// `text_left`: the row holds a non-numeric text cell left of this one; `sheet_rows`: rows from
+/// the sheet's first to its last cell.
+pub fn incidental_keyword(text: &str, text_left: bool, sheet_rows: u32) -> bool {
+    text_left && sheet_rows >= REGISTER_MIN_ROWS && !short_label(text)
+}
+
+/// The text starts or ends with a total word ("Summe der bezogenen Rohstoffe", "Totaal van aantal
+/// eenheden", "Umsatz insgesamt"), as a total label does, rather than holding one in the middle.
+/// Trailing footnote numbers ("Summe aller Produkte 2") are ignored.
+pub fn keyword_at_edge(text: &str) -> bool {
+    let mut toks = tokens(text);
+    while toks.last().is_some_and(|w| w.len() <= 2 && w.bytes().all(|b| b.is_ascii_digit())) {
+        toks.pop();
+    }
+    let edge = |w: Option<&String>| w.is_some_and(|w| total_keyword(w).is_some());
+    edge(toks.first()) || edge(toks.last())
+}
+
 /// German, French, Spanish, Italian, Dutch, Portuguese, Polish and Nordic labels via the shared
 /// multilingual list in `values` ("Summe", "Insgesamt", "Somme", "Totale", "Razem", "Zwischensumme").
 /// Only a keyword at the start of the label counts, and "All …" is left out (too often a category).
@@ -217,6 +254,32 @@ mod tests {
             assert!(ascii_may_hold_keyword(n) && ascii_may_hold_keyword(&up), "{}", String::from_utf8_lossy(n));
         }
         assert!(!ascii_may_hold_keyword(b"Revenue / Q1 to"));
+    }
+
+    #[test]
+    fn incidental_total_words() {
+        use super::{incidental_keyword as inc, REGISTER_MIN_ROWS as N};
+        // Free text right of other text in a register: descriptions, suppliers' names.
+        assert!(inc("AQUISIÇÃO DE UMA ESTAÇÃO TOTAL", true, N));
+        assert!(inc("Prótese total anca", true, 176_513));
+        assert!(inc("507210360 - GLOBAL 2 SEGURANÇA TOTAL LDA", true, N));
+        // Short labels, the row's first text, and short sheets (reports) keep their keyword.
+        for s in ["Total", "TOTAL:", "Grand total", "Ukupno Vojvodina", "Gesamt", "Summe", "Sub-total"] {
+            assert!(!inc(s, true, N), "{s}");
+        }
+        assert!(!inc("AQUISIÇÃO DE UMA ESTAÇÃO TOTAL", false, N));
+        assert!(!inc("Prótese total anca", true, N - 1));
+    }
+
+    #[test]
+    fn total_word_at_the_edge() {
+        use super::keyword_at_edge as edge;
+        assert!(edge("Summe der bezogenen Rohstoffe"));
+        assert!(edge("Totaal van aantal eenheden"));
+        assert!(edge("ANDERSON PETRO Total"));
+        assert!(edge("Summe aller Produkte einschl. besondere Finanzierungsvorgänge 2"));
+        assert!(!edge("Volumendring. Sum tre måneder, rullerende"));
+        assert!(!edge("Prótese total anca"));
     }
 
     #[test]
