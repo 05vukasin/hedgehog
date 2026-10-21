@@ -50,3 +50,18 @@ Status: `open` · `in progress` · `done (run id)`.
 | B17 | the "Gesamt" total row has an empty group key, so `WHERE "group" = 'Anzahl Bezieher:innen'` misses it (at-pension) | fill group keys onto total rows of their block | at-pension 4/4 with gpt-4o-mini in 3/3 runs | open |
 | B18 | models still group by name although the catalog says `group by adjudicante_id` (pt-contracts, both models) | make ID grouping the default path (e.g. a per-entity view or names normalized per ID in `<col>_name`) | pt-contracts `top-body` + `variants` pass with a small model | open |
 | B19 | the top-10 suppliers' share of total value is never computed (pt-contracts, all small-model runs) | helper for shares/ranks (view or documented pattern in the catalog) | `top10-share` passes with a small model | open |
+
+## Found while building the 30 cases (2026-10-21)
+
+| ID | Problem (found in) | Fix | Done when | Status |
+|---|---|---|---|---|
+| B40 | CSV number misread: `40.805` read as 40805 in a column of percentages with 3 decimals (uk-gender-pay-gap) | per-column decimal/thousands decision must use the whole column (values like 12.3, 40.805 → decimal) | uk-gender-pay-gap averages ≈ 12 % | open |
+| B41 | names taken for total rows: 'BEECH TREE TOTAL CARE LIMITED', 'Zusammen interreligiös', 'SUMA Kommunikation', 'Sumas' (a location), 'Somme' (département), 'SOM' (Somalia) | a total word must be a whole word/label (not a prefix of a name or a country code), or confirmed by arithmetic | no false totals on these files | open |
+| B42 | real aggregates not flagged: 'France métropolitaine', 'Deutschland gesamt', 'Ausland', 'World' + WDI regions, CPI 'Ø' annual rows | aggregate detection by arithmetic (row = sum of others) and by known aggregate labels/codes | catalog marks them; sums don't double count | open |
+| B43 | data lost: MDEA S:T profit columns (12–14 May) become 0-row header tables; a lone grand total (June 1 P&L L22) dropped | no cell with a number may end up outside tables/Totals/Notes; header-only tables merge into neighbours | enron-mdea-pl values all present | open |
+| B44 | WDI: invented "group" column; empty country rows taken as group headers | group headers need content below them that differs; empty-value rows are data | wb-gdp-wide without a group column | open |
+| B45 | Destatis: unit row ('Mrd. EUR', '%', '2020 = 100', '1 000 Personen') missing from column names; columns named by footnote numbers | unit rows under headers become column units; footnote markers stripped from names | de-gdp columns carry units | open |
+| B46 | headers from titles/metadata: ONS "Date of publication:", Newco "Year" header row read as data, CPI time from "VPI 2000" header names | metadata key/value rows above a table are notes; a header row of years is a header | correct columns on these files | open |
+| B47 | query output truncates long cells with "…" so `group_concat` results can't be reused | never truncate inside CSV cells beyond a large limit; mark truncation clearly | no "…" inside values under 2k chars | open |
+| B48 | 1,479 MDEA cells without cached formula values show as `formula:…` | report uncached formulas in the catalog quality line; optional evaluation of simple formulas later | catalog says how many cells lack values | open |
+| B49 | minor: "signs … negative (outflows?)" note on Eurostat prices; TIME "1996–2025 (day)" from a start-date column on NYC payroll | sign note only for flow-like labels; time coverage ignores start/hire-date columns | no misleading lines on these files | open |
