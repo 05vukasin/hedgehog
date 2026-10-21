@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use crate::analysis::{DetectedTable, Role};
-use crate::model::{Rect, Sheet};
+use crate::model::{Rect, Sheet, Value};
 
 use super::blocks::{Entry, Region, Row, Ty};
 use super::cells::{Agg, Kind, is_note_label, is_total_label, text_of};
@@ -181,6 +181,10 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             return 0;
         }
     }
+    // A column-numbering row right under the header ("1 2 3 4 …") is part of it.
+    if COLUMN_NUMBER_ROWS && start + d + 1 < end && is_column_number_row(sheet, &rows[start + d]) {
+        d += 1;
+    }
     // Vertical merges in the header (e.g. "Region" over two header rows) push its bottom down.
     let mut last = rows[start + d - 1].row;
     for r in &rows[start..start + d] {
@@ -192,6 +196,12 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         d += 1;
     }
     d
+}
+
+/// A column-numbering row ([`super::column_numbering`]).
+pub(crate) fn is_column_number_row(sheet: &Sheet, r: &Row) -> bool {
+    let vals: Option<Vec<&Value>> = r.filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
+    vals.is_some_and(|v| super::column_numbering(v.into_iter()))
 }
 
 /// A header-like row inside a body with text where the body has numbers starts a new table.
@@ -622,46 +632,77 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     }
 }
 
-/// Outline-style key column: the table's first column holds a label only on the first row of
+/// Outline-style key columns: a label column of the table holds a label only on the first row of
 /// each group and is blank on the rows that follow ("Management | Kevin Presto | …", then
-/// " | Dana Davis | …"). Those labels are group headers (DECO), and normalize fills them down.
+/// " | Dana Davis | …"; "Receipts HH" / "Deliveries HH" once per block). Those labels are group
+/// headers (DECO), and normalize fills them down. Checked for each of the leftmost
+/// [`KEY_MAX_COLS`] columns used by the data rows, up to the first mostly numeric one.
 fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out) {
     if data_rows.len() < KEY_MIN_ROWS {
         return;
     }
-    // The leftmost column used by the data rows.
-    let Some(col) = data_rows.iter().filter_map(|&k| rows[k].filled().next().map(|e| e.left)).min() else {
-        return;
+    let mut cols: Vec<u32> = data_rows.iter().flat_map(|&k| rows[k].filled().map(|e| e.left)).collect();
+    cols.sort_unstable();
+    cols.dedup();
+    // A dense label column (text on nearly every data row): the item names a key column groups.
+    let dense_text = |c: u32| {
+        let n = data_rows.iter().filter(|&&k| rows[k].filled().any(|e| e.left == c && e.kind == Kind::Text)).count();
+        n as f32 >= KEY_DENSE_FRAC * data_rows.len() as f32
     };
-    let key = |k: usize| rows[k].filled().find(|e| e.left == col);
-    let (mut filled, mut labels, mut starts) = (0usize, 0usize, 0usize);
-    for (j, &k) in data_rows.iter().enumerate() {
-        let Some(e) = key(k) else { continue };
-        filled += 1;
-        if e.kind == Kind::Text || e.date {
-            labels += 1;
+    for (pos, &col) in cols.iter().take(KEY_MAX_COLS).enumerate() {
+        if col > rect.left + KEY_MAX_COLS as u32 {
+            break;
         }
-        // Starts a run: other cells on its row, and the next data row leaves the key blank.
-        let others = rows[k].filled().any(|x| x.left != col);
-        if others && data_rows.get(j + 1).is_some_and(|&n| key(n).is_none() && rows[n].n() > 0) {
-            starts += 1;
+        // Past the first column, a key column needs the item names to its right.
+        if pos > 0 && !cols.iter().skip(pos + 1).take(2).any(|&c| dense_text(c)) {
+            continue;
         }
-    }
-    let n = data_rows.len();
-    if filled < 2
-        || filled as f32 > KEY_MAX_FILL * n as f32
-        || (labels as f32) < KEY_MIN_LABEL_FRAC * filled as f32
-        || (starts as f32) < KEY_MIN_START_FRAC * filled as f32
-        || col > rect.left + 1
-    {
-        return;
-    }
-    for &k in data_rows {
-        if let Some(e) = key(k)
-            && rows[k].filled().any(|x| x.left != col)
-            && let Some(i) = e.cell
+        let key = |k: usize| rows[k].filled().find(|e| e.left == col);
+        let (mut filled, mut labels, mut starts, mut numbers) = (0usize, 0usize, 0usize, 0usize);
+        for (j, &k) in data_rows.iter().enumerate() {
+            let Some(e) = key(k) else { continue };
+            filled += 1;
+            if e.kind == Kind::Text || e.date {
+                labels += 1;
+            } else if e.kind == Kind::Num {
+                numbers += 1;
+            }
+            // Starts a run: other cells on its row, and the next data row leaves the key blank.
+            let others = rows[k].filled().any(|x| x.left != col);
+            if others && data_rows.get(j + 1).is_some_and(|&n| key(n).is_none() && rows[n].n() > 0) {
+                starts += 1;
+            }
+        }
+        // A measure column ends the label columns.
+        if numbers * 2 > filled {
+            break;
+        }
+        // Past the first column, every key opens a block: on the first data row, or after a
+        // row that is not data (a total, a blank row).
+        let opens_block = |j: usize| {
+            let k = data_rows[j];
+            j == 0 || data_rows[j - 1] + 1 != k || rows[k - 1].bottom() + 1 < rows[k].row
+        };
+        if pos > 0 && (0..data_rows.len()).any(|j| key(data_rows[j]).is_some() && !opens_block(j)) {
+            continue;
+        }
+        let n = data_rows.len();
+        // Past the first column, blocks of a few rows at least (not a sparse column).
+        let max_fill = if pos == 0 { KEY_MAX_FILL } else { KEY_MAX_FILL_INNER };
+        if filled < 2
+            || filled as f32 > max_fill * n as f32
+            || (labels as f32) < KEY_MIN_LABEL_FRAC * filled as f32
+            || (starts as f32) < KEY_MIN_START_FRAC * filled as f32
         {
-            out.roles[i] = Role::GroupHeader;
+            continue;
+        }
+        for &k in data_rows {
+            if let Some(e) = key(k)
+                && rows[k].filled().any(|x| x.left != col)
+                && let Some(i) = e.cell
+            {
+                out.roles[i] = Role::GroupHeader;
+            }
         }
     }
 }

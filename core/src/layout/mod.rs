@@ -32,7 +32,80 @@ pub fn analyze(grid: &Grid) -> SheetLayout {
     }
     classify_loose(sheet, &mut out);
     out.tables.sort_by_key(|t| (t.rect.top, t.rect.left));
+    separate_tables(&mut out.tables);
     SheetLayout { tables: out.tables, roles: out.roles }
+}
+
+/// Tables on a sheet never overlap: where two rectangles do (a vertical merge hanging below a
+/// table's last row into the next one, a narrow table beside a wide one), one of them gives up the
+/// shared part — whichever cut (an edge of either rectangle moved to just outside the other) loses
+/// the fewest positions. `tables` is sorted by (top, left) and stays so.
+pub(crate) fn separate_tables(tables: &mut [crate::analysis::DetectedTable]) {
+    use crate::model::Rect;
+    let area = |r: Rect| (r.bottom - r.top + 1) as u64 * (r.right - r.left + 1) as u64;
+    for j in 1..tables.len() {
+        for i in 0..j {
+            let (a, b) = (tables[i].rect, tables[j].rect);
+            if !(a.top <= b.bottom && b.top <= a.bottom && a.left <= b.right && b.left <= a.right) {
+                continue;
+            }
+            // (which table, its new rectangle), for every cut that leaves it non-empty.
+            let mut cuts: Vec<(usize, Rect)> = Vec::new();
+            for (k, x, y) in [(i, a, b), (j, b, a)] {
+                if y.top > x.top {
+                    cuts.push((k, Rect { bottom: y.top - 1, ..x }));
+                }
+                if y.bottom < x.bottom {
+                    cuts.push((k, Rect { top: y.bottom + 1, ..x }));
+                }
+                if y.left > x.left {
+                    cuts.push((k, Rect { right: y.left - 1, ..x }));
+                }
+                if y.right < x.right {
+                    cuts.push((k, Rect { left: y.right + 1, ..x }));
+                }
+            }
+            let lost = |&(k, r): &(usize, Rect)| area(tables[k].rect) - area(r);
+            let Some((k, r)) = cuts.iter().min_by_key(|c| lost(c)).copied() else { continue };
+            let t = &mut tables[k];
+            t.rect = r;
+            t.header_top = t.header_top.clamp(r.top, r.bottom);
+            t.header_rows = t.header_rows.min(r.bottom + 1 - t.header_top);
+        }
+    }
+    tables.sort_by_key(|t| (t.rect.top, t.rect.left));
+}
+
+/// Column number of a cell: a whole number `n`, alone or as `(n)`, `[n]`, `n)` or `n.`.
+fn column_number(v: &crate::model::Value) -> Option<i64> {
+    use crate::model::Value;
+    match v {
+        Value::Number(x) if x.fract() == 0.0 && *x >= 0.0 && *x < 1000.0 => Some(*x as i64),
+        Value::Text(t) => {
+            let t = t.trim();
+            let t = t.strip_prefix(['(', '[']).unwrap_or(t);
+            let t = t.strip_suffix([')', ']', '.']).unwrap_or(t);
+            (!t.is_empty() && t.len() <= 3 && t.bytes().all(|b| b.is_ascii_digit())).then(|| t.parse().ok()).flatten()
+        }
+        _ => None,
+    }
+}
+
+/// A column-numbering row (Destatis, Eurostat: `1 2 3 4 5` under the header, so notes can say
+/// "Sp. 3–4"), given its filled cells' values from left to right: at least three column numbers,
+/// counting up by one from at least 1.
+pub fn column_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value>) -> bool {
+    let mut prev: Option<i64> = None;
+    let mut n = 0;
+    for v in values {
+        let Some(k) = column_number(v) else { return false };
+        if prev.map_or(k < 1, |p| k != p + 1) {
+            return false;
+        }
+        prev = Some(k);
+        n += 1;
+    }
+    n >= 3
 }
 
 /// Text near the top of a table → Title; marked or below a table → Note; the rest → Other.
@@ -81,5 +154,50 @@ fn classify_loose(sheet: &Sheet, out: &mut Out) {
                 };
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::DetectedTable;
+    use crate::model::{Rect, Value};
+
+    #[test]
+    fn column_numbering_counts_up_by_one() {
+        let n = |xs: &[&str]| {
+            let v: Vec<Value> = xs
+                .iter()
+                .map(|x| x.parse::<f64>().map_or_else(|_| Value::Text(x.to_string()), Value::Number))
+                .collect();
+            column_numbering(v.iter())
+        };
+        assert!(n(&["1", "2", "3", "4"]));
+        assert!(n(&["(1)", "(2)", "(3)"]));
+        assert!(n(&["3", "4", "5"]));
+        assert!(!n(&["1", "2"]), "too short");
+        assert!(!n(&["1", "3", "4"]), "gap");
+        assert!(!n(&["0", "1", "2"]), "starts at 0");
+        assert!(!n(&["1.5", "2.5", "3.5"]));
+        assert!(!n(&["Year", "1", "2", "3"]));
+        assert!(!n(&["2019", "2020", "2021"]), "years are a header of their own, not numbers");
+    }
+
+    fn t(top: u32, left: u32, bottom: u32, right: u32) -> DetectedTable {
+        DetectedTable { rect: Rect { top, left, bottom, right }, header_top: top, header_rows: 1, confidence: 1.0 }
+    }
+
+    #[test]
+    fn overlapping_tables_are_separated() {
+        // A table hanging over the next one (Finanzstatistik T2 A17:IB43 over T3 A31:HO43).
+        let mut v = vec![t(16, 0, 42, 235), t(30, 0, 42, 222)];
+        separate_tables(&mut v);
+        assert_eq!(v[0].rect, Rect { top: 16, left: 0, bottom: 29, right: 235 });
+        assert_eq!(v[1].rect, Rect { top: 30, left: 0, bottom: 42, right: 222 });
+        // A narrow table sharing one column with a wide one gives up that column.
+        let mut v = vec![t(7, 2, 108, 10), t(21, 0, 60, 2)];
+        separate_tables(&mut v);
+        assert_eq!(v[0].rect, Rect { top: 7, left: 2, bottom: 108, right: 10 });
+        assert_eq!(v[1].rect, Rect { top: 21, left: 0, bottom: 60, right: 1 });
     }
 }

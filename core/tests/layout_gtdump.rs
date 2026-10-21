@@ -1,4 +1,4 @@
-//! Debug aid on DECO **dev** (never test): prints sheets with ground-truth vs predicted roles.
+//! Debug aid on DECO (or `HH_GT_CORPUS=synthetic`) **dev** (never test): prints sheets with ground-truth vs predicted roles.
 //! `HH_GT_FILE=substr` dumps whole matching sheets; `HH_GT_CONF=group_header>data` prints rows
 //! that hold a cell with that (gt>pred) confusion, `HH_GT_LIMIT` rows max (default 60);
 //! `HH_GT_TABLES=1` lists sheets whose tables do not match at IoU≥0.5.
@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use hh_core::eval::{data_root, deco, split::Split};
+use hh_core::eval::{data_root, deco, split::Split, synthetic};
 use hh_core::{a1, layout, open, Grid, Rect, Role, Value};
 
 fn tag(r: Role) -> &'static str {
@@ -54,7 +54,11 @@ fn gtdump() {
     });
     let tables = std::env::var("HH_GT_TABLES").is_ok();
     let limit: usize = std::env::var("HH_GT_LIMIT").ok().and_then(|s| s.parse().ok()).unwrap_or(60);
-    let corpus = deco::load(&data_root()).unwrap();
+    let corpus = match std::env::var("HH_GT_CORPUS").as_deref() {
+        Ok("synthetic") => synthetic::load(&data_root().join("synthetic").join("v0")),
+        _ => deco::load(&data_root()),
+    }
+    .unwrap();
     let mut printed = 0;
     for file in corpus.files.iter().filter(|f| Split::Dev.contains(&f.id)) {
         if file_filter.as_ref().is_some_and(|s| !file.id.contains(s.as_str())) {

@@ -96,6 +96,8 @@ pub const HEADER_PRIOR: bool = true;
 pub const MAX_PRE_HEADER_ROWS: usize = 3;
 /// Text-only tables: the first row is a header if it fills at least this share of the width.
 pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
+/// A column-numbering row (`1 2 3 …`) directly under the header belongs to the header.
+pub const COLUMN_NUMBER_ROWS: bool = true;
 /// A header-like row inside a body starts a new table when it has text/years in at least this many
 /// (and this share of) the body's numeric columns (numeric in ≥ half the rows so far).
 pub const SPLIT_MIN_HITS: usize = 2;
@@ -112,6 +114,12 @@ pub const KEY_MIN_ROWS: usize = 4;
 pub const KEY_MAX_FILL: f32 = 0.5;
 pub const KEY_MIN_LABEL_FRAC: f32 = 0.8;
 pub const KEY_MIN_START_FRAC: f32 = 0.5;
+/// Leftmost columns of a table checked for outline keys (the first two before multi-column keys).
+pub const KEY_MAX_COLS: usize = 3;
+/// … past the first one, only left of a column with text on this share of the data rows.
+pub const KEY_DENSE_FRAC: f32 = 0.8;
+/// … and keys on at most this share of the data rows (blocks of several rows).
+pub const KEY_MAX_FILL_INNER: f32 = 0.25;
 
 /// A group-header row must be followed by at least this many multi-cell rows.
 pub const GROUP_MIN_RUN: usize = 2;
