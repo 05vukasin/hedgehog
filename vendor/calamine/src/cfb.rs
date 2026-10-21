@@ -37,6 +37,8 @@ pub enum CfbError {
     },
     CodePageNotFound(u16),
     SectorBeyondEof(u32),
+    /// hedgehog: a broken sector chain (a loop, or an id past the FAT).
+    Corrupt(&'static str),
 }
 
 impl From<std::io::Error> for CfbError {
@@ -75,6 +77,7 @@ impl std::fmt::Display for CfbError {
             } => write!(f, "Invalid {name}, expecting {expected} found {found:X}"),
             CfbError::CodePageNotFound(e) => write!(f, "Codepage {e:X} not found"),
             CfbError::SectorBeyondEof(i) => write!(f, "Sector {i} points past end of file"),
+            CfbError::Corrupt(what) => write!(f, "Corrupt compound file: {what}"),
         }
     }
 }
@@ -112,9 +115,15 @@ impl Cfb {
         // load fat and dif sectors
         debug!("load difat {h:?}");
         let mut sector_id = h.difat_start;
+        // hedgehog: each sector at most once; a looping DIFAT chain grew `difat` until memory ran out.
+        let mut steps = 0usize;
         while sector_id < RESERVED_SECTORS {
+            steps += 1;
+            if steps > maxid + 1 {
+                return Err(CfbError::Corrupt("DIFAT chain loops"));
+            }
             difat.extend(to_u32(sectors.get(sector_id, reader)?));
-            sector_id = difat.pop().unwrap(); //TODO: check if in infinite loop
+            sector_id = difat.pop().ok_or(CfbError::Corrupt("empty DIFAT sector"))?;
         }
 
         // load the FATs
@@ -128,8 +137,9 @@ impl Cfb {
         debug!("load directories");
         // we want to read the full chain, so pass no size restriction
         let dirs = sectors.get_chain(h.dir_start, &fats, reader, usize::MAX)?;
+        // hedgehog: whole entries only (a chain cut short by the end of the file left a short one)
         let dirs = dirs
-            .chunks(128)
+            .chunks_exact(128)
             .map(|c| Directory::from_slice(c, h.sector_size))
             .collect::<Vec<_>>();
 
@@ -302,7 +312,10 @@ impl Sectors {
             while len < end {
                 let read = r.read(&mut self.data[len..end])?;
                 if read == 0 {
-                    return Ok(&self.data[start..len]);
+                    // hedgehog: the file ends before or inside this sector: keep only what was
+                    // read (the zero fill looked like data later, and `start` may lie past `len`).
+                    self.data.truncate(len);
+                    return Ok(&self.data[start.min(len)..len]);
                 }
                 len += read;
             }
@@ -318,15 +331,27 @@ impl Sectors {
         len: usize,
     ) -> Result<Vec<u8>, CfbError> {
         let mut chain = Vec::new();
+        // hedgehog: a chain visits each sector at most once (a loop grew it until memory ran out)
+        // and its ids must lie in the FAT (indexing past it panicked).
+        let mut steps = 0usize;
         while sector_id != ENDOFCHAIN {
+            steps += 1;
+            if steps > self.maxid as usize + 1 {
+                return Err(CfbError::Corrupt("sector chain loops"));
+            }
             let sector = self.get(sector_id, r)?;
+            if sector.is_empty() {
+                break; // end of file
+            }
             let remaining = len - chain.len();
             let to_copy = sector.len().min(remaining);
             chain.extend_from_slice(&sector[..to_copy]);
             if chain.len() >= len {
                 break;
             }
-            sector_id = fats[sector_id as usize];
+            sector_id = *fats
+                .get(sector_id as usize)
+                .ok_or(CfbError::Corrupt("sector id past the FAT"))?;
         }
         Ok(chain)
     }

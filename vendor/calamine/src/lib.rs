@@ -179,7 +179,11 @@ impl Dimensions {
     }
     /// len
     pub fn len(&self) -> u64 {
-        (self.end.0 - self.start.0 + 1) as u64 * (self.end.1 - self.start.1 + 1) as u64
+        // hedgehog: an inverted (hostile) dimension overflowed; it holds no cells
+        if self.end.0 < self.start.0 || self.end.1 < self.start.1 {
+            return 0;
+        }
+        ((self.end.0 - self.start.0) as u64 + 1) * ((self.end.1 - self.start.1) as u64 + 1)
     }
 }
 

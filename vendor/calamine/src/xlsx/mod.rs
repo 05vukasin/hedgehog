@@ -351,7 +351,9 @@ impl<RS: Read + Seek> Xlsx<RS> {
                 Ok(Event::Start(e)) if e.local_name().as_ref() == "sst" => {
                     if let Some(count) = e.raw_attr("uniqueCount")? {
                         if let Ok(n) = atoi_simd::parse::<usize, true, false>(count.as_bytes()) {
-                            self.strings.reserve(n);
+                            // hedgehog: the declared count is untrusted (uniqueCount="2147483647"
+                            // reserved 51 GB and aborted); the vector grows past this as needed.
+                            self.strings.reserve(n.min(1 << 16));
                         }
                     }
                     break;
@@ -2848,8 +2850,9 @@ pub(crate) fn get_dimension(dimension: &str) -> Result<Dimensions, XlsxError> {
             end: parts[0],
         }),
         2 => {
-            let rows = parts[1].0 - parts[0].0;
-            let columns = parts[1].1 - parts[0].1;
+            // hedgehog: an inverted range overflowed
+            let rows = parts[1].0.saturating_sub(parts[0].0);
+            let columns = parts[1].1.saturating_sub(parts[0].1);
             if rows > MAX_ROWS {
                 warn!("xlsx has more than maximum number of rows ({rows} > {MAX_ROWS})");
             }
@@ -2896,8 +2899,19 @@ fn get_row_and_optional_column(range: &str) -> Result<(u32, Option<u32>), XlsxEr
     let mut row: u32 = 0;
     while i < len {
         match range[i] {
-            c @ b'A'..=b'Z' => col = col * 26 + (c - b'A') as u32 + 1,
-            c @ b'a'..=b'z' => col = col * 26 + (c - b'a') as u32 + 1,
+            // hedgehog: overlong references overflowed (wrapping to arbitrary positions)
+            c @ b'A'..=b'Z' => {
+                col = col
+                    .checked_mul(26)
+                    .and_then(|x| x.checked_add((c - b'A') as u32 + 1))
+                    .ok_or(XlsxError::ColumnNumberOverflow)?
+            }
+            c @ b'a'..=b'z' => {
+                col = col
+                    .checked_mul(26)
+                    .and_then(|x| x.checked_add((c - b'a') as u32 + 1))
+                    .ok_or(XlsxError::ColumnNumberOverflow)?
+            }
             c @ b'0'..=b'9' => {
                 // on first digit, capture it and transition to the row loop
                 row = (c - b'0') as u32;
@@ -2912,7 +2926,12 @@ fn get_row_and_optional_column(range: &str) -> Result<(u32, Option<u32>), XlsxEr
     // Row: accumulate base-10 from remaining digits (1-based in source)
     while i < len {
         match range[i] {
-            c @ b'0'..=b'9' => row = row * 10 + (c - b'0') as u32,
+            c @ b'0'..=b'9' => {
+                row = row
+                    .checked_mul(10)
+                    .and_then(|x| x.checked_add((c - b'0') as u32))
+                    .ok_or(XlsxError::RowNumberOverflow)?
+            }
             c => return Err(XlsxError::Alphanumeric(c)),
         }
         i += 1;

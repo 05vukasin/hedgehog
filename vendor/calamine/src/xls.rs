@@ -152,9 +152,11 @@ pub struct XlsOptions {
     pub header_row: HeaderRow,
 }
 
+// hedgehog: cells are kept sparse; the dense ranges are built on request. Built eagerly, two
+// cells at A1 and IV65536 of a 1 KB file took about a gigabyte.
 struct SheetData {
-    range: Range<Data>,
-    formula: Range<String>,
+    cells: Vec<Cell<Data>>,
+    formulas: Vec<Cell<String>>,
     merge_cells: Vec<Dimensions>,
 }
 
@@ -216,6 +218,15 @@ impl<RS: Read + Seek> Xls<RS> {
         debug!("xls parsed");
 
         Ok(xls)
+    }
+
+    /// hedgehog: the cells and formulas of a sheet as read, without building dense ranges (in file
+    /// order; a position can repeat, the last record wins as in [`Range::from_sparse`]).
+    pub fn worksheet_cells(&self, name: &str) -> Result<(&[Cell<Data>], &[Cell<String>]), XlsError> {
+        self.sheets
+            .get(name)
+            .map(|s| (s.cells.as_slice(), s.formulas.as_slice()))
+            .ok_or_else(|| XlsError::WorksheetNotFound(name.into()))
     }
 
     /// Gets the worksheet merge cell dimensions
@@ -424,7 +435,7 @@ impl<RS: Read + Seek> Reader<RS> for Xls<RS> {
         let sheet = self
             .sheets
             .get(name)
-            .map(|r| r.range.clone())
+            .map(|r| Range::from_sparse(r.cells.clone()))
             .ok_or_else(|| XlsError::WorksheetNotFound(name.into()))?;
 
         match self.options.header_row {
@@ -443,7 +454,7 @@ impl<RS: Read + Seek> Reader<RS> for Xls<RS> {
     fn worksheets(&mut self) -> Vec<(String, Range<Data>)> {
         self.sheets
             .iter()
-            .map(|(name, sheet)| (name.to_owned(), sheet.range.clone()))
+            .map(|(name, sheet)| (name.to_owned(), Range::from_sparse(sheet.cells.clone())))
             .collect()
     }
 
@@ -451,7 +462,7 @@ impl<RS: Read + Seek> Reader<RS> for Xls<RS> {
         self.sheets
             .get(name)
             .ok_or_else(|| XlsError::WorksheetNotFound(name.into()))
-            .map(|r| r.formula.clone())
+            .map(|r| Range::from_sparse(r.formulas.clone()))
     }
 
     #[cfg(feature = "picture")]
@@ -635,9 +646,12 @@ impl<RS: Read + Seek> Xls<RS> {
                     // 512: Dimensions
                     0x0200 => {
                         let Dimensions { start, end } = parse_dimensions(r.data)?;
-                        let rows = (end.0 - start.0 + 1) as usize;
-                        let cols = (end.1 - start.1 + 1) as usize;
-                        cells.reserve(rows.saturating_mul(cols));
+                        // hedgehog: the declared size is untrusted (end < start overflowed, and a
+                        // huge one reserved gigabytes): reserve at most one cell per 10 bytes
+                        // (the smallest cell record) of the sheet's stream.
+                        let rows = (end.0 as usize).saturating_sub(start.0 as usize) + 1;
+                        let cols = (end.1 as usize).saturating_sub(start.1 as usize) + 1;
+                        cells.reserve(rows.saturating_mul(cols).min(sh.len() / 10));
                     }
                     //0x0201 => cells.push(parse_blank(r.data)?), // 513: Blank
                     0x0203 => cells.push(parse_number(r.data, &self.formats, self.is_1904)?), // 515: Number
@@ -694,13 +708,11 @@ impl<RS: Read + Seek> Xls<RS> {
                     _ => (),
                 }
             }
-            let range = Range::from_sparse(cells);
-            let formula = Range::from_sparse(formulas);
             sheets.insert(
                 name,
                 SheetData {
-                    range,
-                    formula,
+                    cells,
+                    formulas,
                     merge_cells,
                 },
             );
@@ -1500,7 +1512,10 @@ fn parse_formula(
     let is_pre_biff8 = matches!(biff, Biff::Biff2 | Biff::Biff3 | Biff::Biff4 | Biff::Biff5);
     let mut stack = Vec::new();
     let mut formula = String::with_capacity(rgce.len());
+    // hedgehog: every token read is bounds-checked; a short or hostile rgce used to panic.
+    need(rgce, 2, "CellParsedFormula")?;
     let cce = read_u16(rgce) as usize;
+    need(rgce, 2 + cce, "CellParsedFormula")?;
     rgce = &rgce[2..2 + cce];
     while !rgce.is_empty() {
         let ptg = rgce[0];
@@ -1508,6 +1523,7 @@ fn parse_formula(
         match ptg {
             0x3a | 0x5a | 0x7a => {
                 // PtgRef3d
+                need(rgce, 6, "PtgRef3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 let rowu = read_u16(&rgce[2..]);
                 let colu = read_u16(&rgce[4..]);
@@ -1531,6 +1547,7 @@ fn parse_formula(
             }
             0x3b | 0x5b | 0x7b => {
                 // PtgArea3d
+                need(rgce, 10, "PtgArea3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 stack.push(formula.len());
                 formula.push_str(sheets.get(ixti as usize).map_or("#REF", |s| &**s));
@@ -1545,6 +1562,7 @@ fn parse_formula(
             }
             0x3c | 0x5c | 0x7c => {
                 // PtfRefErr3d
+                need(rgce, 6, "PtgRefErr3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 stack.push(formula.len());
                 formula.push_str(sheets.get(ixti as usize).map_or("#REF", |s| &**s));
@@ -1554,6 +1572,7 @@ fn parse_formula(
             }
             0x3d | 0x5d | 0x7d => {
                 // PtgAreaErr3d
+                need(rgce, 10, "PtgAreaErr3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 stack.push(formula.len());
                 formula.push_str(sheets.get(ixti as usize).map_or("#REF", |s| &**s));
@@ -1634,12 +1653,15 @@ fn parse_formula(
                 let consumed =
                     read_unicode_string_no_cch(encoding, &rgce[1..], cch as usize, &mut formula)?;
                 formula.push('\"');
+                need(rgce, 1 + consumed, "PtgStr")?;
                 rgce = &rgce[1 + consumed..];
             }
             0x18 => {
+                need(rgce, 5, "PtgExtend")?;
                 rgce = &rgce[5..];
             }
             0x19 => {
+                need(rgce, 3, "PtgAttr")?;
                 let etpg = rgce[0];
                 rgce = &rgce[1..];
                 match etpg {
@@ -1647,6 +1669,7 @@ fn parse_formula(
                     0x04 => {
                         // PtgAttrChoose
                         let n = read_u16(&rgce[..2]) as usize + 1;
+                        need(rgce, 2 + 2 * n, "PtgAttrChoose")?;
                         rgce = &rgce[2 + 2 * n..]; // ignore
                     }
                     0x10 => {
@@ -1678,6 +1701,7 @@ fn parse_formula(
                 }
             }
             0x1C => {
+                need(rgce, 1, "PtgErr")?;
                 stack.push(formula.len());
                 let err = rgce[0];
                 rgce = &rgce[1..];
@@ -1699,22 +1723,26 @@ fn parse_formula(
                 }
             }
             0x1D => {
+                need(rgce, 1, "PtgBool")?;
                 stack.push(formula.len());
                 formula.push_str(if rgce[0] == 0 { "FALSE" } else { "TRUE" });
                 rgce = &rgce[1..];
             }
             0x1E => {
+                need(rgce, 2, "PtgInt")?;
                 stack.push(formula.len());
                 write!(&mut formula, "{}", read_u16(rgce)).unwrap();
                 rgce = &rgce[2..];
             }
             0x1F => {
+                need(rgce, 8, "PtgNum")?;
                 stack.push(formula.len());
                 write!(&mut formula, "{}", read_f64(rgce)).unwrap();
                 rgce = &rgce[8..];
             }
             0x20 | 0x40 | 0x60 => {
                 // PtgArray: ignore
+                need(rgce, 7, "PtgArray")?;
                 stack.push(formula.len());
                 formula.push_str("{PtgArray}");
                 rgce = &rgce[7..];
@@ -1722,12 +1750,14 @@ fn parse_formula(
             0x21 | 0x22 | 0x41 | 0x42 | 0x61 | 0x62 => {
                 let (iftab, argc) = match ptg {
                     0x22 | 0x42 | 0x62 => {
+                        need(rgce, 3, "PtgFuncVar")?;
                         let iftab = read_u16(&rgce[1..]) as usize;
                         let argc = rgce[0] as usize;
                         rgce = &rgce[3..];
                         (iftab, argc)
                     }
                     _ => {
+                        need(rgce, 2, "PtgFunc")?;
                         let iftab = read_u16(rgce) as usize;
                         if iftab >= crate::utils::FTAB_LEN {
                             return Err(XlsError::IfTab(iftab));
@@ -1773,12 +1803,14 @@ fn parse_formula(
                 }
             }
             0x23 | 0x43 | 0x63 => {
-                let iname = read_u32(rgce) as usize - 1; // one-based
+                need(rgce, 4, "PtgName")?;
+                let iname = (read_u32(rgce) as usize).checked_sub(1); // one-based
                 stack.push(formula.len());
-                formula.push_str(names.get(iname).map_or("#REF!", |n| &*n.0));
+                formula.push_str(iname.and_then(|i| names.get(i)).map_or("#REF!", |n| &*n.0));
                 rgce = &rgce[4..];
             }
             0x24 | 0x44 | 0x64 => {
+                need(rgce, if is_pre_biff8 { 3 } else { 4 }, "PtgRef")?;
                 stack.push(formula.len());
                 if is_pre_biff8 {
                     // BIFF2-5 PtgRef: rw(2 bytes, 14-bit row + 2 rel flags) + col(1 byte)
@@ -1809,6 +1841,7 @@ fn parse_formula(
                 }
             }
             0x25 | 0x45 | 0x65 => {
+                need(rgce, if is_pre_biff8 { 6 } else { 8 }, "PtgArea")?;
                 stack.push(formula.len());
                 if is_pre_biff8 {
                     // BIFF2-5 PtgArea: rwFirst(2) + rwLast(2) + colFirst(1) + colLast(1) = 6 bytes
@@ -1848,17 +1881,20 @@ fn parse_formula(
                 }
             }
             0x2A | 0x4A | 0x6A => {
+                need(rgce, if is_pre_biff8 { 3 } else { 4 }, "PtgRefErr")?;
                 stack.push(formula.len());
                 formula.push_str("#REF!");
                 rgce = &rgce[if is_pre_biff8 { 3 } else { 4 }..];
             }
             0x2B | 0x4B | 0x6B => {
+                need(rgce, if is_pre_biff8 { 6 } else { 8 }, "PtgAreaErr")?;
                 stack.push(formula.len());
                 formula.push_str("#REF!");
                 rgce = &rgce[if is_pre_biff8 { 6 } else { 8 }..];
             }
             0x39 | 0x59 => {
                 // PfgNameX
+                need(rgce, 6, "PtgNameX")?;
                 stack.push(formula.len());
                 formula.push_str("[PtgNameX]");
                 rgce = &rgce[6..];
@@ -1878,6 +1914,18 @@ fn parse_formula(
             stack_size: stack.len(),
         })
     }
+}
+
+/// hedgehog: `Err(Len)` unless `rgce` holds at least `n` more bytes.
+fn need(rgce: &[u8], n: usize, typ: &'static str) -> Result<(), XlsError> {
+    if rgce.len() < n {
+        return Err(XlsError::Len {
+            expected: n,
+            found: rgce.len(),
+            typ,
+        });
+    }
+    Ok(())
 }
 
 /// `FormulaValue` [MS-XLS 2.5.133]
