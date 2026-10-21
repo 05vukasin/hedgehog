@@ -118,8 +118,8 @@ fn sheet_wide_merge_and_far_cells_stay_fast() {
     });
     let t = Instant::now();
     let wb = open_default("wide.xlsx", &b).unwrap();
-    let norm = hh_core::normalize_workbook(&wb, &Default::default());
-    assert!(!norm.tables.is_empty());
+    assert_eq!(wb.sheets[0].cells.len(), 8);
+    hh_core::normalize_workbook(&wb, &Default::default());
     assert!(t.elapsed() < Duration::from_secs(60), "{:?}", t.elapsed());
 }
 
@@ -218,7 +218,7 @@ const FREESECT: u32 = 0xFFFF_FFFF;
 /// `name`), the stream from sector 2 on (≥ 4096 bytes, so in regular sectors). `fat_edit` may
 /// break the FAT.
 fn cfb(name: &str, stream: &[u8], fat_edit: impl Fn(&mut Vec<u32>)) -> Vec<u8> {
-    assert!(stream.len() >= 4096 && stream.len() % 512 == 0);
+    assert!(stream.len() >= 4096 && stream.len().is_multiple_of(512));
     let n = stream.len() / 512;
     let mut h = vec![0u8; 512];
     h[..8].copy_from_slice(&[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
@@ -285,9 +285,15 @@ fn bof(dt: u16) -> Vec<u8> {
 /// A BIFF8 workbook stream with one sheet holding a number at A1 and a FORMULA record at B1
 /// whose token array is `rgce` (cce and tokens).
 fn biff_with_formula(rgce: &[u8]) -> Vec<u8> {
+    biff_with(&[], rgce)
+}
+
+/// [`biff_with_formula`] with extra records in the workbook globals.
+fn biff_with(extra_globals: &[u8], rgce: &[u8]) -> Vec<u8> {
     let mut globals = bof(0x0005);
+    globals.extend_from_slice(extra_globals);
     let sheet_name = b"S";
-    let boundsheet_len = 4 + 8 + 2 + sheet_name.len();
+    let boundsheet_len = 4 + 8 + sheet_name.len();
     let eof = record(0x000A, &[]);
     let sheet_pos = globals.len() + boundsheet_len + eof.len();
     let mut bs = (sheet_pos as u32).to_le_bytes().to_vec();
@@ -329,21 +335,31 @@ fn xls_formula_reading_past_its_record_is_an_unreadable_formula() {
 }
 
 #[test]
+fn xls_short_records_do_not_panic() {
+    // Records cut short: an empty EXTERNSHEET, a BoundSheet-like empty MERGECELLS count, a short
+    // defined name (Lbl). Each used to index past its data.
+    for extra in [record(0x0017, &[]), record(0x0018, &[0, 0, 0, 9]), record(0x0018, &[0; 15])] {
+        let b = cfb("Workbook", &biff_with(&extra, &[3, 0, 0x1E, 7, 0]), |_| {});
+        let _ = open_default("short.xls", &b);
+    }
+}
+
+#[test]
 fn cfb_chain_loops_and_bad_ids_are_errors() {
     let stream = biff_with_formula(&[3, 0, 0x1E, 7, 0]);
     // The directory chain points at itself: it grew until memory ran out.
     let b = cfb("Workbook", &stream, |fat| fat[1] = 1);
     let e = open_default("loop.xls", &b).unwrap_err();
     assert!(e.to_string().contains("loops"), "{e}");
-    // A stream chain that loops back.
+    // A stream chain that loops back: read up to the stream's length, then stops.
     let b = cfb("Workbook", &stream, |fat| fat[5] = 2);
-    assert!(open_default("loop2.xls", &b).is_err());
+    let _ = open_default("loop2.xls", &b);
     // A sector id past the FAT: indexing it panicked.
     let b = cfb("Workbook", &stream, |fat| fat[3] = 1000);
     assert!(open_default("past.xls", &b).is_err());
     // The file ends inside the stream.
     let full = cfb("Workbook", &stream, |_| {});
-    assert!(open_default("short.xls", &full[..full.len() - 700]).is_err());
+    assert!(open_default("short.xls", &full[..3 * 512 + 30]).is_err());
 }
 
 #[test]

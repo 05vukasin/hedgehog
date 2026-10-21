@@ -275,9 +275,17 @@ fn read_all<RS: Read + Seek, R: Read + Seek>(
                 };
                 Sheet { name, cells, merges, formats }
             }
+            None if matches!(wb, Sheets::Xlsx(_)) => {
+                // An xlsx part the one-pass reader rejected: values and formulas in two sparse
+                // passes (calamine's dense range spans the cells' bounding box: 38 GB for a
+                // hostile sheet), no formats.
+                let Sheets::Xlsx(x) = &mut wb else { unreachable!() };
+                let cells = xlsx_cells_fallback(x, &name, limits, total)?;
+                let merges = merge_cells(&mut wb, &name);
+                Sheet { name, cells, merges, formats: Vec::new() }
+            }
             None => {
-                // ods (its cell count was checked before calamine parsed it), or an xlsx part the
-                // streaming reader rejected (calamine fails the same way, or it is no worksheet).
+                // ods: its cell count was checked before calamine parsed it.
                 let values = wb.worksheet_range(&name).map_err(err)?;
                 // Some formats can't report formulas; values alone are still useful.
                 let formulas = wb.worksheet_formula(&name).unwrap_or_default();
@@ -323,7 +331,7 @@ fn read_xlsx_cells<RS: Read + Seek>(
     let mut seen: u64 = 0;
     while let Some(rec) = reader.next_cell_with_formula()? {
         seen += 1;
-        if seen % 65_536 == 0 {
+        if seen.is_multiple_of(65_536) {
             limits.check_time().map_err(ReadErr::Limit)?;
             limits.check_cells(before + recs.len() as u64).map_err(ReadErr::Limit)?;
         }
@@ -420,7 +428,7 @@ fn xlsb_cells<RS: Read + Seek>(x: &mut calamine::Xlsb<RS>, name: &str, limits: &
         let mut seen: u64 = 0;
         while let Some(c) = r.next_cell().map_err(err)? {
             seen += 1;
-            if seen % 65_536 == 0 {
+            if seen.is_multiple_of(65_536) {
                 limits.check_time()?;
                 limits.check_cells(before + cells.len() as u64)?;
             }
@@ -439,7 +447,7 @@ fn xlsb_cells<RS: Read + Seek>(x: &mut calamine::Xlsb<RS>, name: &str, limits: &
     let mut seen: u64 = 0;
     while let Some(f) = r.next_formula().map_err(err)? {
         seen += 1;
-        if seen % 65_536 == 0 {
+        if seen.is_multiple_of(65_536) {
             limits.check_time()?;
             limits.check_cells(before + cells.len() as u64)?;
         }
@@ -450,6 +458,54 @@ fn xlsb_cells<RS: Read + Seek>(x: &mut calamine::Xlsb<RS>, name: &str, limits: &
         cells.entry((row, col)).or_insert(Cell { row, col, value: None, formula: None }).formula =
             Some(f.get_value().trim_start_matches('=').to_string());
     }
+    Ok(cells.into_values().collect())
+}
+
+/// [`read_xlsx_cells`]'s fallback: values, then formulas (a formula error drops the formulas
+/// only, as calamine's `worksheet_formula` did); a part that is no worksheet is an empty sheet.
+fn xlsx_cells_fallback<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str, limits: &Limits, before: u64) -> Result<Vec<Cell>, Error> {
+    let mut cells: BTreeMap<(u32, u32), Cell> = BTreeMap::new();
+    {
+        let mut r = match x.worksheet_cells_reader(name) {
+            Ok(r) => r,
+            Err(XlsxError::NotAWorksheet(_)) => return Ok(Vec::new()),
+            Err(e) => return Err(err(e)),
+        };
+        let mut seen: u64 = 0;
+        while let Some(c) = r.next_cell().map_err(err)? {
+            seen += 1;
+            if seen.is_multiple_of(65_536) {
+                limits.check_time()?;
+                limits.check_cells(before + cells.len() as u64)?;
+            }
+            let (row, col) = c.get_position();
+            match convert_ref(c.get_value().clone()) {
+                Some(value) => {
+                    cells.insert((row, col), Cell { row, col, value: Some(value), formula: None });
+                }
+                None => {
+                    cells.remove(&(row, col));
+                }
+            }
+        }
+    }
+    let mut formulas: Vec<(u32, u32, String)> = Vec::new();
+    let read_formulas = (|| -> Result<(), XlsxError> {
+        let mut r = x.worksheet_cells_reader(name)?;
+        while let Some(f) = r.next_formula()? {
+            if !f.get_value().is_empty() {
+                let (row, col) = f.get_position();
+                formulas.push((row, col, f.get_value().trim_start_matches('=').to_string()));
+            }
+        }
+        Ok(())
+    })();
+    if read_formulas.is_ok() {
+        for (row, col, f) in formulas {
+            cells.entry((row, col)).or_insert(Cell { row, col, value: None, formula: None }).formula = Some(f);
+        }
+    }
+    limits.check_cells(before + cells.len() as u64)?;
     Ok(cells.into_values().collect())
 }
 

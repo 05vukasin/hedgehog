@@ -105,7 +105,7 @@ static ALLOC: Counting = Counting;
 pub struct Rng(u64);
 
 impl Rng {
-    pub fn next(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         // xorshift64*
         let mut x = self.0;
         x ^= x >> 12;
@@ -115,10 +115,10 @@ impl Rng {
         x.wrapping_mul(0x2545_f491_4f6c_dd1d)
     }
     pub fn below(&mut self, n: usize) -> usize {
-        if n == 0 { 0 } else { (self.next() % n as u64) as usize }
+        if n == 0 { 0 } else { (self.next_u64() % n as u64) as usize }
     }
     pub fn chance(&mut self, num: u64, den: u64) -> bool {
-        self.next() % den < num
+        self.next_u64() % den < num
     }
     pub fn pick<'a, T>(&mut self, v: &'a [T]) -> &'a T {
         &v[self.below(v.len())]
@@ -407,7 +407,7 @@ fn mutate_bytes(rng: &mut Rng, v: &mut Vec<u8>, tokens: &[&str], other: Option<&
             2 => {
                 let i = rng.below(len + 1);
                 let k = 1 + rng.below(8);
-                let bytes: Vec<u8> = (0..k).map(|_| rng.next() as u8).collect();
+                let bytes: Vec<u8> = (0..k).map(|_| rng.next_u64() as u8).collect();
                 v.splice(i..i, bytes);
             }
             3 if len > 0 => {
@@ -423,7 +423,7 @@ fn mutate_bytes(rng: &mut Rng, v: &mut Vec<u8>, tokens: &[&str], other: Option<&
                 let j = rng.below(len + 1);
                 v.splice(j..j, chunk);
             }
-            5 | 6 | 7 => {
+            5..=7 => {
                 let i = rng.below(len + 1);
                 v.splice(i..i, rng.pick(tokens).bytes());
             }

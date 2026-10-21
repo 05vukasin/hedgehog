@@ -867,7 +867,10 @@ fn parse_extern_sheet(r: &Record<'_>, biff: Biff) -> Vec<Xti> {
         Biff::Biff8 => {
             // Single record with cXTI count + array of 6-byte XTI structs
             let cxti = read_u16(r.data) as usize;
-            r.data[2..]
+            // hedgehog: an empty record panicked
+            r.data
+                .get(2..)
+                .unwrap_or_default()
                 .as_chunks::<6>()
                 .0
                 .iter()
