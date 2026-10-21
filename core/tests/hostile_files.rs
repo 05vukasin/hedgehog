@@ -9,7 +9,10 @@ use std::time::{Duration, Instant};
 use hh_core::reader::{open_with, Limits, ReadOptions};
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("hh_hostile_{}", std::process::id()));
+    // One folder per call: tests run in parallel and several use the same file name.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let d = std::env::temp_dir().join(format!("hh_hostile_{}_{n}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
     d.join(name)
 }
@@ -67,6 +70,9 @@ fn open_bytes(name: &str, bytes: &[u8], opts: ReadOptions) -> Result<hh_core::Wo
     std::fs::write(&p, bytes).unwrap();
     let r = open_with(&p, opts);
     std::fs::remove_file(&p).ok();
+    if let Some(d) = p.parent() {
+        std::fs::remove_dir(d).ok();
+    }
     r
 }
 
