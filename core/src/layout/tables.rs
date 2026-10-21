@@ -277,7 +277,9 @@ fn is_label_over_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect:
 /// Number of leading rows (from `start`) that form the header.
 fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect, numbers: bool) -> usize {
     let mut d = 0;
-    while d < MAX_HEADER_ROWS && start + d < end {
+    // A parent row the type votes did not take does not count against the header-row limit.
+    let mut extra = 0;
+    while d < MAX_HEADER_ROWS + extra && start + d < end {
         let r = &rows[start + d];
         if is_key_value_row(sheet, r) {
             // Rows above key/value metadata are titles or metadata too, not a header ("Profit
@@ -301,7 +303,9 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             let parent_of = |k: usize| {
                 PARENT_HEADER_ROWS
                     && k + 2 < end
-                    && rows[k].n() >= 2
+                    // two labels or more, or one merged over a group of columns (`2019` over
+                    // `Population | Area | Births`, B39)
+                    && (rows[k].n() >= 2 || rows[k].filled().next().is_some_and(|e| e.right > e.left))
                     && rows[k].n_measure() == 0
                     && rows[k].n_text() + (rows[k].n_num() - rows[k].n_measure()) == rows[k].n()
                     && rows[k + 1].row == rows[k].row + 1
@@ -316,6 +320,7 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             if !parent {
                 break;
             }
+            extra = 1;
         }
         // A lone label below the first header row starts a group, not another header level.
         if d > 0 && single_text(r).is_some_and(|e| e.right == e.left) {
@@ -802,7 +807,60 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     true
 }
 
+/// Tables side by side without a blank column between them (B35): a title row with one title per
+/// table right over a shared header row, each later title over a text label column that follows a
+/// numeric column (`Extract from gapminder | … | Hospital activity` over `country | year | pop |
+/// gdpPercap | Ward | Beds`). The pieces between the titles' columns.
+fn split_adjacent_tables(region: &Region) -> Option<Vec<Region>> {
+    let rows = &region.rows;
+    if !SPLIT_ADJACENT_BY_TITLES || rows.len() < 5 {
+        return None;
+    }
+    let (t, h) = (&rows[0], &rows[1]);
+    let titles: Vec<&Entry> = t.filled().collect();
+    if titles.len() < 2
+        || titles.iter().any(|e| e.kind != Kind::Text)
+        || titles[0].left != region.rect.left
+        || h.row != t.row + 1
+        || h.n() < 4
+        || h.n_measure() > 0
+    {
+        return None;
+    }
+    let body = &rows[2..];
+    let share = |c: u32, text: bool| {
+        let hit = |e: &Entry| e.left == c && if text { e.kind == Kind::Text } else { e.kind == Kind::Num && !e.label_num };
+        body.iter().filter(|r| r.filled().any(hit)).count() as f32 / body.len() as f32
+    };
+    let mut cuts = vec![region.rect.left];
+    for e in &titles[1..] {
+        let c = e.left;
+        let headed = h.filled().any(|x| x.left == c) && h.filled().any(|x| x.right + 1 == c);
+        if !headed || share(c, true) < ADJACENT_SPLIT_SHARE || share(c - 1, false) < ADJACENT_SPLIT_SHARE {
+            return None;
+        }
+        cuts.push(c);
+    }
+    let mut out = Vec::new();
+    for (k, &lo) in cuts.iter().enumerate() {
+        let hi = cuts.get(k + 1).map_or(region.rect.right, |&c| c - 1);
+        let piece: Vec<Row> = rows
+            .iter()
+            .map(|r| Row { row: r.row, entries: r.entries.iter().filter(|e| e.left >= lo && e.left <= hi).cloned().collect() })
+            .filter(|r| !r.entries.is_empty())
+            .collect();
+        out.push(Region { rect: bounds(&piece), rows: piece });
+    }
+    Some(out)
+}
+
 pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
+    if let Some(parts) = split_adjacent_tables(&region) {
+        for p in parts {
+            analyze_region(sheet, p, out);
+        }
+        return;
+    }
     let rows = &region.rows;
     if rows.len() < MIN_TABLE_ROWS || region.width() < MIN_TABLE_COLS || is_form(sheet, &region) {
         out.loose.push(region);

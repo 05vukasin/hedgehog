@@ -325,6 +325,38 @@ All notable changes to hedgehog are listed here. The format follows
   - a row the model calls a group header that fills the label columns like the records around it
     (a WDI country without values) is a record: no invented `group` column;
   - an index named after its base year (`VPI 2000`, `HICP 2015`) is not a period for time coverage.
+- **Layout regressions of the merge above, statistics-database exports and long TSVs** (B53–B57;
+  every structure-benchmark number now at or above both the release before the layout work and
+  that work itself; DECO model table F1 at IoU ≥ 0.5 / 0.8 / 1.0 69.4 / 57.9 / 38.4 → 75.0 / 62.8 /
+  41.4, header rows exact 81.4 → 81.8 %, StatSheets 92.4 / 88.1 / 75.9 → 93.8 / 89.9 / 77.9 and
+  71.6 → 73.1 %; 13 of 19 files without a table in the 1,093-file sweep now have one):
+  - two row-aligned blocks with their own row labels are two tables side by side only when each
+    has a header or a label and two value columns; a header-less two-column label/value block stays
+    with its neighbour (gstorey `Totals_xx`: the `TOTAL $$` summary is a table again, not Notes);
+  - a form's `Key: | value` rows are never its header, not even the next one past the metadata
+    rows ("Brothers Production": header at row 2 again);
+  - statistics-database exports (PX-Web, SCB, SURS: a header, one data row, then footnotes, source
+    and contact lines) get their table: a block of single lines in the first column below a blank
+    row is notes, up to two rows of parent labels over a header row are header rows, and period
+    codes (`2016K3`, `2016Q4`, `2014M01`), split years (`1990-91`, `2011/12`) and year ranges
+    (`2004-2008`) are header labels, not numbers;
+  - Eurostat's `: m` (missing, with a flag letter) is a missing value, so a long-format TSV with
+    such rows stays one table (`gov_10a_main.tsv`: 345 tables → 1; three more Eurostat TSVs
+    66–87 → 1); NCES and Census marks (`†`, `‡`, `#`, `(X)`) are blanks and symbol legends
+    (`---Not available.`) are notes, so they no longer split tables;
+  - header-less blocks of numbers on exactly the same rows, up to two blank columns apart and with
+    nothing above them, are column groups of one table (DECO `IPG INDEX`: 63 tables → 7); numbers
+    inside a taller table's rows join it only when they carry no labels of their own;
+  - a short label at the left edge right over the header row, below the title, is the header's top
+    row (`Term` over `Delivery Pt | Q3-2002 | …`); a label merged over a group of columns above the
+    header names them in the rules too (`2019 / Population`; noise `label_blocks` rules 50–82 → 100 %
+    at every intensity);
+  - two tables touching without a blank column are split where a second title stands right over the
+    header above a text label column (noise `side_by_side` t = 0.25 / 0.5: 87 → 93 / 47 → 53 %);
+  - CSV delimiter detection counts quotes out of place against a delimiter: a quoted header with
+    `;` and line breaks inside no longer turns a comma-separated file into one column (Charity
+    Commission workforce CSVs: 0 → 1 table).
+- `eval/noise` builds again against the vendored calamine (its own workspace lacked the `[patch]`).
 
 - Total words in names and descriptions (B32, B41): in a register (200+ rows) a description or
   name of more than three words that is its row's first text with more text right of it ("Total

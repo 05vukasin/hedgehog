@@ -17,6 +17,10 @@ pub const INSIDE_MAX_WIDTH: u32 = 4;
 /// Row-aligned blocks that each have row labels and numbers are separate tables side by side
 /// only when both are at least this many columns wide (a label and two values, B35/B55).
 pub const SBS_MIN_COLS: u32 = 3;
+/// Tables side by side without a blank column: split at a second title over a text label column
+/// right of a numeric column (B35), when at least this share of the body rows agree.
+pub const SPLIT_ADJACENT_BY_TITLES: bool = true;
+pub const ADJACENT_SPLIT_SHARE: f32 = 0.8;
 /// Vertical gap merge: column overlap / wider block width must reach this.
 pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 /// Horizontal gap merge: row overlap / taller block height must reach this.
