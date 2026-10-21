@@ -65,7 +65,26 @@ All notable changes to hedgehog are listed here. The format follows
   the same sentence, or in the previous sentence when the text refers back ("478,737. This value is
   from cell D7"), and flags a cell whose value differs (`Citation.pairing` says how it was paired).
   A bare table id like `(T1)` / `[T12]` is no longer read as a cell.
+- `hh_core::normalize::{table_time_coverage, workbook_time_coverage, table_totals}`: the manifest's
+  `time_coverage` and `tables[].totals` as Rust values (`TimeCoverage`, `TableTotals`), so other
+  views agree with the manifest.
 ### Changed
+
+- `open_file` catalog (MCP, `hh_agent`, Node `HedgehogSession`), after the gpt-4o-mini chat
+  pilots: every column is listed for tables up to 40 columns (`name[dtype unit]`; ranges up to 14),
+  runs of columns named by consecutive periods as one item (`"2011".."2025"[15 × number]`), wider
+  tables group same-type runs instead of `… 6 more …`; text columns with ≤ 12 distinct values list
+  them all (`"group" values: "Anzahl Bezieher:innen" | …`); `rows mix measures by "group" — filter
+  before aggregating` when a label column separates counts, amounts and rates; tables of ≤ 15 rows ×
+  ≤ 12 columns get their rows as CSV while the catalog stays under its cap. The TIME line, per-table
+  periods, totals counts and total-row labels now come from the manifest's `time_coverage` and
+  `tables[].totals` (years only in titles / sheet / file names are a secondary note), and total
+  rows that stay in the data ("Insgesamt" rows of long tables) are named. `describe_table` lists all
+  values of small label columns and the same mixed-measures line. `hh_agent::TimeCoverage` is now
+  the manifest's; `hh_agent::mentioned_years` gives the weak hints.
+- The Node addon is stripped (`strip = true` in the `node-release` profile; `panic = "unwind"`
+  kept): `hedgehog.linux-x64-gnu.node` 11.8 MB → 9.1 MB here (89.5 MB → 15.8 MB in the
+  hedgehog-cli pilot build).
 
 - Totals in the normalized output: a typed total that does not add up is `unknown`, not
   `mismatch`, when its column header or row label names a rate, share, index, average or

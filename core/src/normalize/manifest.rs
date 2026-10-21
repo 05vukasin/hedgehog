@@ -155,33 +155,19 @@ fn column_json(c: &Column, index: usize) -> Json {
 /// Per-table totals: counts by status and one entry per total row (vertical totals), so an agent
 /// can tell which rows are not in the table's data.
 fn table_totals(t: &Table, totals: &[TotalItem]) -> Json {
-    let (mut ok, mut bad, mut unknown) = (0usize, 0usize, 0usize);
-    let mut rows: BTreeMap<u32, (Option<&str>, &str, bool)> = BTreeMap::new();
-    for x in totals.iter().filter(|x| x.table == Some(t.n)) {
-        match x.status {
-            "ok" => ok += x.count,
-            "mismatch" => bad += x.count,
-            _ => unknown += x.count,
-        }
-        if x.direction == "vertical" {
-            let e = rows.entry(x.row).or_insert((None, x.level, false));
-            if e.0.is_none() {
-                e.0 = x.label.as_deref();
-            }
-            e.2 |= x.kept_in_data;
-        }
-    }
-    let rows: Vec<Json> = rows
+    let tt = super::table_totals(t, totals);
+    let rows: Vec<Json> = tt
+        .rows
         .into_iter()
-        .map(|(r, (label, level, kept))| {
-            Json::obj().with("row", r + 1).with("label", label).with("level", level).with("kept_in_data", kept)
+        .map(|r| {
+            Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data)
         })
         .collect();
     Json::obj()
-        .with("count", ok + bad + unknown)
-        .with("ok", ok)
-        .with("mismatch", bad)
-        .with("unknown", unknown)
+        .with("count", tt.count)
+        .with("ok", tt.ok)
+        .with("mismatch", tt.mismatch)
+        .with("unknown", tt.unknown)
         .with("rows", Json::Arr(rows))
 }
 

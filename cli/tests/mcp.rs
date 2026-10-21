@@ -157,6 +157,8 @@ fn mcp_session_end_to_end() {
     assert!(cat.contains("T1 "), "{cat}");
     assert!(cat.contains("'Total'@8"), "total row label and row in the catalog:\n{cat}");
     assert!(cat.contains("\"Revenue Q1\"[number"), "{cat}");
+    // a small table: its rows inline
+    assert!(cat.contains("all 4 rows (CSV):\n    City,Units,Revenue Q1,Revenue Q2\n    Beograd,10,1200.5,1300\n"), "{cat}");
 
     // query: data rows, sorted
     let q = s.ok("query", json!({"path": "sales.xlsx", "sql": "SELECT City, \"Revenue Q1\", _src_row FROM T1 ORDER BY \"Revenue Q1\" DESC"}));
@@ -210,7 +212,8 @@ fn mcp_session_end_to_end() {
     // CSV
     let cat = s.ok("open_file", json!({"path": "data/prices.csv"}));
     assert!(cat.starts_with("FILE data/prices.csv"), "{cat}");
-    assert!(cat.contains("TIME 2024 (month"), "{cat}");
+    assert!(cat.contains("TIME 2024-01–2024-12 (month, from columns T1.Date)"), "{cat}");
+    assert!(cat.contains("Product values: \"Milk\" | \"Bread\""), "{cat}");
     let q = s.ok("query", json!({"path": "data/prices.csv", "sql": "SELECT Product, count(*) AS n, min(Date) AS first FROM T1 GROUP BY Product ORDER BY Product"}));
     assert_eq!(q, "Product,n,first\nBread,12,2024-01-01\nMilk,12,2024-01-01\n(2 rows)");
 

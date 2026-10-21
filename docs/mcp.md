@@ -84,8 +84,8 @@ tables). Tables are named `T1`, `T2`, … per file, as in the [manifest](normali
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `open_file` | `path` | The catalog: file line, time coverage, tables with source range, rows, total rows, columns (type, unit, value range), group column, totals check, notes, warnings. Long catalogs list tables one line each. |
-| `describe_table` | `path`, `table` | Every column (SQL name, dtype, unit, nulls, distinct, min..max or example, source column ← header cells), source and header range, group column, total rows, first 5 rows as CSV. |
+| `open_file` | `path` | The catalog: file line, time coverage, tables with source range, rows, total rows, every column (type, unit; value ranges for up to 14 columns), all values of small label columns, mixed measures, group column, totals check, the rows of small tables as CSV, notes, warnings. Long catalogs list tables one line each. See [The catalog](#the-catalog). |
+| `describe_table` | `path`, `table` | Every column (SQL name, dtype, unit, nulls, distinct, min..max, example or all values (≤ 12), source column ← header cells), source and header range, group column, total rows, first 5 rows as CSV. |
 | `query` | `path`, `sql`, `limit?` | One read-only SQLite `SELECT`/`WITH` as CSV with a header, at most `limit` rows (default 50, max 200), then `(<n> rows)` or `(<n> rows, showing first <k>)`. |
 | `cells` | `path`, `sheet`, `range` | Original source cells (max 200) as `A1<TAB>value` lines, formulas after the value, merged areas marked. |
 | `totals` | `path`, `table?`, `status?` | Counts per status (`ok`, `mismatch`, `unknown`), then up to 50 items, mismatches first: cell, label, value, recomputed, sources, reason. |
@@ -113,9 +113,12 @@ query results that include `_src_row` say which column maps to which source colu
 
 ```text
 FILE eu_at_opendata/003_pen_02_02.xlsx · 1 sheet · 244 cells (97% in tables) · 1 table · roles: model
-TIME 2011–2025 (year; column headers 2011–2025; titles/notes/sheet or file names 2017–2020)
-T1  'AUSGLEICHSZULAGEN - alleinstehend/verheiratet' ← '2_2'!A1:R18 · 11 rows (+1 total row: 'Gesamt'@9 — only in T1_all)
-    columns (19): "group"[text group e.g. "Anzahl Bezieher:innen"] Richtsatz[text e.g. "Alleinstehend"] "2011"[number 264.04..234671] … 6 more … "2020/ 2025"[number -0.0794415..0.317943] "2024/ 2025"[number -0.0142203..0.0460032]
+TIME 2011–2025 (year, from column headers in T1)
+T1  'AUSGLEICHSZULAGEN - alleinstehend/verheiratet' ← '2_2'!A1:R18 · 11 rows (+1 total row: 'Gesamt'@9 — only in T1_all) · 1 total row stays in T1 ('Gesamt'@15) — exclude it before summing
+    columns (19): "group"[text group] Richtsatz[text] "2011".."2025"[15 × number] "2020/ 2025"[number] "2024/ 2025"[number]
+    "group" values: "Anzahl Bezieher:innen" | "Durchschnittshöhe in Euro" | "Richtsätze in Euro"
+    Richtsatz values: "Alleinstehend" | "davon Männer" | "davon Frauen" | "Verheiratet ***" | "Gesamt"
+    rows mix measures by "group" — filter before aggregating
     group column: "group" · totals: 0 ok, 0 mismatch, 30 unknown
 TOTALS 0 ok, 0 mismatch, 30 unknown (call totals for details)
 NOTES 7 cells (note 5, title 2); e.g. '2_2'!A1: "AUSGLEICHSZULAGEN - alleinstehend/verheiratet"
@@ -144,13 +147,41 @@ SQL error: near "group": syntax error (at character 7) — group is a column nam
 SQL error: no such column: "Dezember / 2021" (at character 7) — did you mean T1."De-zember / 20211)", T1."No-vember / 2021", …? (quote names with double quotes)
 ```
 
+### The catalog
+
+Per table (when the whole catalog fits in ~12,000 characters):
+
+- **Head line**: id, title, source range, data rows; total rows taken out of the data (only in
+  `T<n>_all`); total rows the totals check found that stay in the data (an "Insgesamt" row of a long
+  table: exclude them before summing); the table's period when the file has several tables.
+- **Columns**: every column. Up to 14 columns with their value range (numbers, dates) or an example;
+  up to 40 as `name[dtype unit]`; runs of 4+ columns named by consecutive periods are written as one
+  item without hiding any (`"2011".."2025"[15 × number]`, `"Thu / 2002-01-31".."Tue / 2002-01-01"[31
+  × integer]`); wider tables also group runs of 3+ same-type columns (`describe_table` lists them).
+- **Values**: text columns with at most 12 distinct values list all of them, so a model filters by
+  the exact label.
+- **Mixed measures**: `rows mix measures by "group" — filter before aggregating` when one label
+  column separates counts, amounts, rates (by units and words in the labels, such as `Anzahl` and
+  `in Euro`, or by numbers of very different size under each label).
+- **Small tables** (≤ 15 data rows, ≤ 12 columns): all data rows as CSV under the table, added in
+  table order while the catalog stays under its cap (the values lines are then left out).
+
+When the full catalog is too long it lists every table on one line (`describe_table` gives the
+columns); with very many tables the last line says which were cut.
+
+The totals summary, total-row labels and rows, and the time coverage are the ones the
+[manifest](normalized-output.md) has (`tables[].totals`, `time_coverage`), from the same functions.
+
 ### The catalog's TIME line
 
-Which years the file covers, and from what: date columns (range, distinct values, monthly/daily…),
-year columns (`Jahr`, `Year`, …), years in column headers, and — weaker — years in titles, notes,
-sheet and file names. When tables differ (a monthly and an annual table) it says `mixed: year,
-month — check what one row is before summing`. An agent should check it before answering a question
-about a period the file may not cover.
+The manifest's [time coverage](normalized-output.md#time-coverage): the period the data covers
+(`TIME 2020-01–2025-12 (month, from columns T3.Berichtszeitraum)`), at the finest granularity found,
+from date / period columns or period-like column headers. When tables differ (a monthly and an
+annual table) it says `mixed: year (T5, …), month (T3) — check what one row is before summing`.
+Years that only titles, notes, sheet or file names mention are a secondary note: added when they lie
+outside the data's period, or the whole line when the data has no dates
+(`TIME 2023 (only mentioned in titles/notes/sheet or file names; no date or period columns)`). An
+agent should check it before answering a question about a period the file may not cover.
 
 ## Security limits
 
