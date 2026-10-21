@@ -432,6 +432,7 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     let inside = right.rect.top > left.rect.top
         && right.rect.bottom <= left.rect.bottom
         && hl >= 4
+        && hr >= 2
         && !right.starts_with_header
         && right.rect.right - right.rect.left < INSIDE_MAX_WIDTH;
     ov as f32 >= GAP_MIN_ROW_OVERLAP * hl.max(hr) as f32 || inside
