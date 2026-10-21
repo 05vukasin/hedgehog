@@ -25,6 +25,8 @@ pub mod files;
 pub mod sql;
 pub mod text;
 pub mod tools;
+pub mod types;
+pub mod views;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

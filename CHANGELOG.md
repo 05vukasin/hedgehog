@@ -22,6 +22,24 @@ All notable changes to hedgehog are listed here. The format follows
   call runs; `notifications/cancelled` drops a queued call or stops a running query (SQLite
   interrupt) or the wait for a normalization. See [docs/mcp.md](docs/mcp.md#cancelling-a-call).
 
+- **Long views of wide period tables** (`hedgehog mcp`, Node, hedgehog-cli; B20): a table with 4 or
+  more numeric columns named by periods (`"2011".."2025"`, `Jan 2024`, `2024 Q1`, `Thu / 2002-01-31`)
+  gets a SQL view `T<n>_long` with its key columns, `period` (normalized: `2025`, `2025-Q1`,
+  `2025-03`, `2025-03-31`), `period_label`, `value`, `_src_row` and `_src_col` (plus `measure`
+  when the periods repeat for several measures), so a model filters `WHERE period = '2025'`
+  instead of picking a column. As with `T<n>` / `T<n>_all`, `T<n>_long` has the data rows and
+  `T<n>_long_all` also the total rows (`_row_type`). Plain views: nothing is copied at load. The catalog has one line per long view (`T1_long: one row per ("group",
+  Richtsatz, period) — … use for trends/filters by year`, with the label to filter first when the
+  rows mix measures); `describe_table T1_long` describes T1. `hh_core::normalize::header_period`
+  exposes how the time coverage reads period headers. See [docs/mcp.md](docs/mcp.md#sql-tables).
+- **Semantic column types** in the catalog and `describe_table` (B21): `id`, `name`, `dim`,
+  `period`, `amount` (with currency), `count`, `rate`, `avg`, `index`, `free text`, `mixed`, from
+  header words in eight languages, currency / unit, the table title and value statistics:
+  `"2025"[number EUR · amount]`, `Indexwert[number · index — don't sum]`; a `do not sum:` line per
+  table with average / rate / index columns (or rows, when a label column mixes measures). Columns
+  the file adds up itself are never flagged. Catalog size on the four agent-eval files (with B15–B19):
+  6,517 → 6,788 (pt-contracts), 3,396 → 4,068 (at-pension), 9,982 → 11,415 (enron-henry-hub, all
+  rows of T1/T2 still inline), 4,782 → 5,310 characters (de-truck-toll). See [docs/mcp.md](docs/mcp.md#the-catalog).
 - **Agent accuracy with small models (B15, B16, B18, B19)**, from the hedgehog-cli runs:
   - A `no such column` that names a total-row label (`"Total"`, `"Gesamt"`) or a value of a text
     column (`"SEA ROBIN"`) still explains where those rows are, and now also returns them: the

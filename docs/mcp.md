@@ -122,7 +122,7 @@ tables). Tables are named `T1`, `T2`, … per file, as in the [manifest](normali
 | Tool | Arguments | Returns |
 |---|---|---|
 | `open_file` | `path` | The catalog: file line, time coverage, tables with source range, rows, total rows, every column (type, unit; value ranges for up to 14 columns), all values of small label columns, mixed measures, group column, totals check, the rows of small tables as CSV, notes, warnings. Long catalogs list tables one line each. See [The catalog](#the-catalog). |
-| `describe_table` | `path`, `table` | Every column (SQL name, dtype, unit, nulls, distinct, min..max, example or all values (≤ 12), source column ← header cells), source and header range, group column, total rows, entity columns (`<col>_id`, `<col>_name`), first 5 rows as CSV. |
+| `describe_table` | `path`, `table` | Every column (SQL name, dtype with its semantic type, unit, nulls, distinct, min..max, example or all values (≤ 12), source column ← header cells), source and header range, group column, total rows, entity columns (`<col>_id`, `<col>_name`), first 5 rows as CSV. |
 | `query` | `path`, `sql`, `limit?` | One read-only SQLite `SELECT`/`WITH` as CSV with a header, at most `limit` rows (default 50, max 200), then `(<n> rows)` or `(<n> rows, showing first <k>)`. |
 | `cells` | `path`, `sheet`, `range` | Original source cells (max 200) as `A1<TAB>value` lines, formulas after the value, merged areas marked. |
 | `totals` | `path`, `table?`, `status?` | Counts per status (`ok`, `mismatch`, `unknown`), then up to 50 items, mismatches first: cell, label, value, recomputed, sources, reason. |
@@ -137,6 +137,19 @@ For table *n*:
 - `T<n>_all` — the same plus total and subtotal rows, with `_row_type` = `data`, `subtotal` or
   `total`. Use it for overall figures the file states itself (a "Gesamt" or "Total" row); never add
   those rows to the data rows.
+- `T<n>_long` — only for a table with a run of 4 or more numeric columns named by periods of one
+  granularity (`"2011".."2025"`, `Jan 2024`, `2024 Q1`, `Oktober / 2022`, `Thu / 2002-01-31`,
+  `Rev 2024-03`): the period columns as rows, so a model filters `WHERE period = '2025'` instead of
+  choosing a column. Columns: the table's key columns (group, label, ID and dimension columns, up
+  to 8), `measure` when the period columns repeat for several measures (`Umsatz / 2023`,
+  `Kosten / 2023` → `measure` = `Umsatz` | `Kosten`), `period` (normalized: `2025`, `2025-Q1`,
+  `2025-03`, `2025-W05`, `2025-03-31`), `period_label` (the column name), `value`, `_src_row`
+  and `_src_col` (the value's source cell is `<_src_col><_src_row>`). Like `T<n>`, it has the data
+  rows only; `T<n>_long_all` also has the total rows, with `_row_type` (as `T<n>_all`). Empty
+  cells are left out. Both are plain views (a `UNION ALL` over `T<n>` / `T<n>_all`), so nothing is
+  copied at load; a filter on `period` reads only that column (a 20,000 × 120 month table:
+  `WHERE period = '2019-03'` grouped by region in ~15 ms; a full `GROUP BY period` over all 2.4 M
+  values ~1.4 s).
 
 Types: integers `INTEGER`; numbers, currency and percentages `REAL` (a percentage as a fraction,
 0.15 = 15 %); dates ISO text (`2024-03-31`, or `2024-03-31 10:30:00`); booleans 0/1; text `TEXT`.
@@ -170,17 +183,24 @@ maps `<col>_id` to the source cell it comes from.
 FILE eu_at_opendata/003_pen_02_02.xlsx · 1 sheet · 244 cells (97% in tables) · 1 table · roles: model
 TIME 2011–2025 (year, from column headers in T1)
 T1  'AUSGLEICHSZULAGEN - alleinstehend/verheiratet' ← '2_2'!A1:R18 · 11 rows (+1 total row: 'Gesamt'@9 — only in T1_all) · 1 total row stays in T1 ('Gesamt'@15) — exclude it before summing
-    columns (19): "group"[text group] Richtsatz[text] "2011".."2025"[15 × number] "2020/ 2025"[number] "2024/ 2025"[number]
+    columns (19): "group"[text group] Richtsatz[text · dim] "2011".."2025"[15 × number · mixed] "2020/ 2025"[number · rate — don't sum] "2024/ 2025"[number · rate — don't sum]
     "group" values: "Anzahl Bezieher:innen" | "Durchschnittshöhe in Euro" | "Richtsätze in Euro"
     Richtsatz values: "Alleinstehend" | "davon Männer" | "davon Frauen" | "Verheiratet ***" | "Gesamt"
     rows mix measures by "group" — filter before aggregating
+    T1_long: one row per ("group", Richtsatz, period) — 15 columns "2011".."2025" as rows: period '2011'..'2025', value; use for trends/filters by year · rows mix measures: filter "group" first · total rows only in T1_long_all (_row_type)
+    do not sum: "2020/ 2025" (rate), "2024/ 2025" (rate), rows "group" = 'Durchschnittshöhe in Euro' (avg EUR) — use AVG, a weighted mean or the file's own total
     group column: "group" · totals: 0 ok, 0 mismatch, 30 unknown
 TOTALS 0 ok, 0 mismatch, 30 unknown (call totals for details)
 NOTES 7 cells (note 5, title 2); e.g. '2_2'!A1: "AUSGLEICHSZULAGEN - alleinstehend/verheiratet"
 WARNINGS none
 SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL long view T1_long (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)
 (normalized in 0.0 s)
 ```
+
+The trend of one series from the long view, with the cell of every value:
+`SELECT period, value, _src_col, _src_row FROM T1_long WHERE Richtsatz = 'Alleinstehend' AND "group" LIKE 'Durchschnitt%'`
+gives `2011,264.3,B,11` … `2025,403.19,P,11` (15 rows).
 
 `query` with `SELECT "group", Richtsatz, "2024", "2025", _row_type, _src_row FROM T1_all WHERE Richtsatz IN ('Alleinstehend', 'Gesamt') ORDER BY _src_row`:
 
@@ -233,6 +253,29 @@ Per table (when the whole catalog fits in ~12,000 characters):
   × integer]`); wider tables also group runs of 3+ same-type columns (`describe_table` lists them).
 - **Values**: text columns with at most 12 distinct values list all of them, so a model filters by
   the exact label.
+- **Column types**: each item says what the column is after its storage type:
+  `id`, `name` (a label per row), `dim` (a small category), `period`, a measure (`amount` with its
+  currency when known from the values, the header or the title, `count`, `rate`, `avg`, `index`),
+  `free text`, or `mixed` (numbers of a table whose rows mix measures). Averages, rates and indexes
+  say `— don't sum`: `"2025"[number EUR · amount]`, `"gleitender 7-Tage-Durchschnitt KSB"[number ·
+  avg — don't sum 68..106.5]`, `Indexwert[number · index — don't sum]`. Numbers whose header,
+  unit, currency and title say nothing are left untagged (plain quantities). Types come from header
+  words in English, German, French, Spanish, Portuguese, Italian, Dutch and Serbian (`Anzahl`,
+  `Durchschnitt`, `Prozent`, `taxa`, `moyenne`, `aantal`, `prosečna` …), the currency / unit
+  normalization found, the table title for bare period headers (`"2025"` in an index table), a
+  header naming two years (`"2020/ 2025"`: a change, so a rate) and value statistics (distinct
+  values, text length, running numbers). A column the file itself adds up (a vertical total that
+  checks out) is never flagged `don't sum`. `describe_table` shows the type in its dtype field
+  (`number · avg — don't sum`).
+- **Do not sum**: `do not sum: unbereinigt (index), "gleitender 7-Tage-Durchschnitt KSB" (avg), …
+  — use AVG, a weighted mean or the file's own total`; for a table whose rows mix measures, the
+  labels whose rows are averages / rates / indexes: `do not sum: rows "group" = 'Durchschnittshöhe
+  in Euro' (avg EUR)`.
+- **Long view**: `T1_long: one row per ("group", Richtsatz, period) — 15 columns "2011".."2025" as
+  rows: period '2011'..'2025', value; use for trends/filters by year · rows mix measures: filter
+  "group" first · total rows only in T1_long_all (_row_type)` (see [SQL tables](#sql-tables)); tables listed
+  briefly or as "same layout as" get ` · T4_long (by day)`, and the SQL line at the end lists the
+  long views.
 - **Mixed measures**: `rows mix measures by "group" — filter before aggregating` when one label
   column separates counts, amounts, rates (by units and words in the labels, such as `Anzahl` and
   `in Euro`, or by numbers of very different size under each label).

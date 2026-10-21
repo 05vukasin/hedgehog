@@ -273,6 +273,7 @@ fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
             entities.push((t.n, ents));
         }
     }
+    crate::views::create_all(&tx, norm)?; // B20: T<n>_long views (views.rs)
     tx.commit()?;
     Ok((skipped_columns, entities))
 }
