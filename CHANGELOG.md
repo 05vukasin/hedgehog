@@ -8,6 +8,20 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Disk cache** of normalized files (agent tools: `hedgehog mcp`, Node `HedgehogSession`): a file
+  opened before comes back in a new process in ~2 ms to the catalog and ~20 ms to the first query
+  answer (Portugal's 4.5M-cell contracts register: 15 s → 2.3 ms / 19 ms; peak memory 1.2 GB →
+  0.54 GB). Keyed by content hash, build and options; `HEDGEHOG_CACHE_DIR`, `HEDGEHOG_CACHE=0`,
+  `HEDGEHOG_CACHE_MAX_MB` (default 2048, least recently used removed first); atomic writes, damaged
+  entries rebuilt, `0700`/`0600` permissions. The (path, size, mtime) → sha256 shortcut is kept
+  there too. Catalogs are byte-identical with and without the cache. See
+  [docs/mcp.md](docs/mcp.md#disk-cache).
+- **Catalog first** (`open_file`): the catalog returns as soon as the file is normalized; the SQL
+  tables are built on another thread (into the cache, read-only from there).
+- **`hedgehog mcp` cancels**: tool calls run on a worker thread; `ping` / `tools/list` answer while a
+  call runs; `notifications/cancelled` drops a queued call or stops a running query (SQLite
+  interrupt) or the wait for a normalization. See [docs/mcp.md](docs/mcp.md#cancelling-a-call).
+
 - **Catalog facts** (`open_file`): small tables in full by a cell budget (≤ 400 cells, ≤ 30 rows)
   from `T<n>_all` with a `_row_type` column, so total rows are visible (a 12 × 19 pension table is
   now inlined); per table with total rows, how to select them (`total rows: SELECT … FROM T1_all

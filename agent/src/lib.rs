@@ -8,7 +8,8 @@
 //!
 //! Files are read only. Each file is normalized once per content hash (sha256) in memory
 //! ([`hh_core::normalize_workbook`] with total rows kept) and loaded into its own read-only
-//! in-memory SQLite database ([`sql`]). File access is bounded by a root folder plus explicitly
+//! SQLite database ([`sql`]). The result is kept in a disk cache ([`cache`]), so a later session
+//! reopens the file in milliseconds. File access is bounded by a root folder plus explicitly
 //! allowed paths ([`files::Bounds`]).
 //!
 //! This crate is separate from `hh_core` so the core stays free of SQLite (a C library) and of

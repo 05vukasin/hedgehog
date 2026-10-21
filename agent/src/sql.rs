@@ -1,4 +1,5 @@
-//! Read-only SQL over a normalized workbook: one in-memory SQLite database per file.
+//! Read-only SQL over a normalized workbook: one SQLite database per file (in memory, or the disk
+//! cache's file opened read-only).
 //!
 //! Layout: table `T<n>_all` holds every row of table n (data, subtotal and total rows, with
 //! `_row_type` and `_src_row`), view `T<n>` the data rows without `_row_type`. Values are typed:

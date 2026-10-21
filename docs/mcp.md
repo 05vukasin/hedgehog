@@ -282,7 +282,8 @@ The server only reads; it never writes, deletes or executes anything.
   must lie inside the root or be an allowed path (`--allow`, `_meta.hedgehog.allow`; an allowed file
   does not open its folder). `list_files` follows no symlinked folders and skips hidden entries. Only
   spreadsheet extensions are opened; files above `--max-file-mb` are refused.
-- **SQL**: each file has its own in-memory database; after loading, the connection is locked down:
+- **SQL**: each file has its own database (in memory, or the disk cache's file opened read-only);
+  after loading, the connection is locked down:
   - an authorizer allows only `SELECT`, reads, recursive CTEs, functions (minus `load_extension` and
     similar) and the read-only pragmas `table_info`/`table_xinfo`/`table_list`; everything else —
     `INSERT`/`UPDATE`/`DELETE`, `CREATE`/`DROP`/`ALTER`, `ATTACH`/`DETACH`, other `PRAGMA`s,
@@ -298,9 +299,47 @@ These limits are covered by tests (`agent/src/sql.rs`, `agent/src/files.rs`, `cl
 
 ## Memory and speed
 
-Opening a file costs what `hedgehog normalize` costs (without writing the output files), plus the
-SQLite copy of the tables. The largest file in the test corpus (`eu_ch_bfs/036_36752511_master.xlsx`,
-7.2 MB, 1.5 million cells, 5 tables) opens in about 20 s with a peak of ~790 MB (`normalize` alone:
-~820 MB peak); a second `open_file` of the same content takes milliseconds. Small files open in
-10–300 ms. At most 8 files stay in memory; the least recently used is dropped. Run
-`hedgehog mcp` with stderr visible to see per-call time and memory.
+The first open of a file costs what `hedgehog normalize` costs (without writing the output files).
+The catalog comes back as soon as the file is normalized; the SQL tables are built on another thread
+meanwhile, and the first `query` waits for them if it comes sooner. After that the file is in the
+[disk cache](#disk-cache): any later session, in any process, gets the catalog in about 2 ms and
+query answers in milliseconds.
+
+| File (new process each time, best of 3) | First open: catalog / first query | Reopen from the cache: catalog / first query | Peak memory first / reopen |
+|---|---|---|---|
+| `eu_pt_opendata/001_contratos2020.xlsx` (40 MB, 4.5M cells) | 15.0 s / 16.5 s | 2.3 ms / 19 ms | 1.2 GB / 0.54 GB |
+| `eu_ch_bfs/036_36752511_master.xlsx` (7 MB, 1.5M cells) | 12.2 s / 12.8 s | 2.5 ms / 3.2 ms | 0.89 GB / 0.36 GB |
+| `enron/andrea_ring__3__HHmonthlyavg.xlsx` | 29 ms / 31 ms | 2.3 ms / 2.5 ms | 13 MB / 6 MB |
+| `eu_at_opendata/003_pen_02_02.xlsx` | 12 ms / 13 ms | 2.3 ms / 2.6 ms | 11 MB / 6 MB |
+
+Times are from spawning `hedgehog mcp` to the response. A reopened file's normalized form (which
+`describe_table`, `totals` and SQL error hints need) is read on another thread right after
+`open_file` (about 1 s for the 4.5M-cell file). At most 8 files stay in memory per session; the
+least recently used is dropped. Run `hedgehog mcp` with stderr visible to see per-call time and
+memory.
+
+## Disk cache
+
+Normalized files are kept on disk so a new session does not normalize them again. An entry holds a
+file's SQLite database (opened read-only in place), its normalized form and its catalog; it is keyed
+by the file's sha256, the hedgehog build (a hash of the sources and the row model, so an upgrade
+never reads an older build's results) and the normalize options. A file whose path, size and
+modification time are unchanged is not even hashed again (`hashes.tsv`).
+
+| | |
+|---|---|
+| Location | `$HEDGEHOG_CACHE_DIR`, else `$XDG_CACHE_HOME/hedgehog` or `~/.cache/hedgehog` (Linux), `~/Library/Caches/hedgehog` (macOS), `%LOCALAPPDATA%\hedgehog\cache` (Windows) |
+| Off | `HEDGEHOG_CACHE=0` |
+| Size cap | 2 GB (`HEDGEHOG_CACHE_MAX_MB`); the least recently used entries are removed first. A 4.5M-cell file takes ~360 MB. |
+| Safety | entries are written to a temporary folder and renamed into place, so readers never see half an entry; an entry that fails a check (size, header, a database that does not open) is removed and the file normalized again |
+| Privacy | the cache holds your data (cell values, file paths): folders are created `0700`, files `0600` (Unix). Nothing leaves the machine. Delete the folder to clear it. |
+
+The Node `HedgehogSession` uses the same cache.
+
+## Cancelling a call
+
+`hedgehog mcp` runs tool calls on a worker thread, one at a time in arrival order, and keeps reading
+input: `ping` and `tools/list` are answered at once, and `notifications/cancelled` with a
+`requestId` drops a queued call or stops the running one. A running query is interrupted; a running
+normalization is left to finish in the background (it is written to the disk cache, so asking again
+is fast) while the call ends. A cancelled call gets no response.
