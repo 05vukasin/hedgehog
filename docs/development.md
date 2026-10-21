@@ -48,6 +48,20 @@ cargo clippy --workspace -- -D warnings     # lints, warnings are errors (as in 
   data on disk plus environment variables (for example `HH_LAYOUT_CORPUS`). Run them with
   `cargo test -p hh_core --test layout_corpus -- --ignored --nocapture`.
 
+### Testing in tiers
+
+The full gate takes 1–2 hours. Don't run it for every small change; test what the change can
+affect, and run the full gate once at the end of a batch.
+
+| Tier | When | What | Time |
+|---|---|---|---|
+| 1. Targeted | after each small change | `cargo test -p <crate> <filter>` for the touched module; the specific files, eval cases (`check_cases.py --cases …`) or noise family (`noise_eval --family …`, `--repro`) the change is about | seconds to ~2 min |
+| 2. Merge | when merging a branch | tests of the affected crates; clippy; golden check; only the benchmarks/noise families the changed area can affect (layout/totals/values → both benchmark analyzers; agent/ → agent tests + Node; docs/eval only → nothing heavy) | ~5–10 min |
+| 3. Full verify | once per batch, before a release or a published comparison | everything: `cargo test --workspace`, clippy, golden, both benchmark analyzers on all corpora, all noise families, the file sweep, `check_cases.py`, Node, Python, then the agent eval | ~1–2 h |
+
+If tier 2 turns up a surprise, widen the test for that area only. Heavy jobs go through
+`scripts/run_capped.sh` (see the memory notes in the repo's parent folder).
+
 ## Fuzzing
 
 `fuzz/` holds `hh_fuzz`, a mutation fuzzer that runs on the stable toolchain (cargo-fuzz needs
