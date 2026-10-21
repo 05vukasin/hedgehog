@@ -46,7 +46,7 @@ fn big_sheet() -> Sheet {
     }
     cells.sort_by_key(|c| (c.0, c.1));
     let cells = cells.into_iter().map(|(row, col, value, formula)| Cell { row, col, value, formula }).collect();
-    Sheet { name: "big".into(), cells, merges }
+    Sheet { name: "big".into(), cells, merges, formats: vec![] }
 }
 
 #[test]

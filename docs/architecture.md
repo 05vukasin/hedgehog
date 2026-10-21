@@ -52,7 +52,7 @@ built-in `core` library. Users only see `import hedgehog` and the `hedgehog` com
 
 | Module | Role |
 |---|---|
-| `reader` | Opens xlsx, xlsm, xlsb, xls and ods through [calamine](https://crates.io/crates/calamine) into the model. Repairs workbooks that list a hidden sheet with an empty relationship id. Styles are not available from calamine. CSV / TSV is read by its own streaming reader (`reader/csv.rs`) as one sheet: only unambiguous plain numbers become numbers, the rest stays text for `values`. |
+| `reader` | Opens xlsx, xlsm, xlsb, xls and ods through [calamine](https://crates.io/crates/calamine) into the model. Repairs workbooks that list a hidden sheet with an empty relationship id. calamine gives no styles: for xlsx / xlsm, `reader/styles.rs` resolves `xl/styles.xml` into one packed `Format` per cell (bold, borders, fills, font size, alignment, number format kind) during the byte scan of each sheet that also finds the merged areas (`reader/merges.rs`), only when asked (`reader::open_with`) or when the embedded model reads formatting features. CSV / TSV is read by its own streaming reader (`reader/csv.rs`) as one sheet: only unambiguous plain numbers become numbers, the rest stays text for `values`. |
 | `model` | `Workbook → Sheet → Cell { row, col, value, formula }` plus merged ranges. `Value` is number, text, bool, date (Excel serial) or error. Coordinates are 0-based. |
 | `grid` | Fast lookups over one sheet: cell at (row, col), merges, used range. |
 | `analysis` | The output types of layout: `Role` (seven cell roles), `DetectedTable`, `SheetLayout`. |
@@ -117,7 +117,7 @@ Not built yet; see the roadmap in the [README](../README.md#status-and-roadmap):
 - semantic column types (city, country, tax ID, currency amount, period, ...);
 - metric definitions that become Excel formulas;
 - an MCP server exposing the agent tools;
-- a style-aware reader (bold, borders, fills, number formats), which calamine does not provide.
+- styles from xls and ods files (xlsx / xlsm styles are read).
 
 ## See also
 

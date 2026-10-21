@@ -261,7 +261,7 @@ mod tests {
             Rect { top: 0, left: 10, bottom: 1_048_575, right: 16_383 },  // whole-sheet-ish
             Rect { top: 0, left: 2, bottom: 1, right: 2 },                // overlaps the first
         ];
-        let sheet = Sheet { name: "s".into(), cells: vec![cell(0, 0), cell(5, 5)], merges };
+        let sheet = Sheet { name: "s".into(), cells: vec![cell(0, 0), cell(5, 5)], merges, formats: vec![] };
         let g = Grid::new(&sheet);
         assert_eq!(g.merge_index_at(0, 1), Some(0));
         assert_eq!(g.merge_index_at(0, 2), Some(3)); // last listed wins
@@ -282,6 +282,7 @@ mod tests {
             name: "s".into(),
             cells: vec![cell(3, 0), cell(1, 1), cell(1, 0), dup, cell(0, 1)],
             merges: vec![],
+            formats: vec![],
         };
         let g = Grid::new(&sheet);
         assert_eq!(g.cell_index(1, 1), Some(3));

@@ -171,6 +171,25 @@ Leave-one-corpus-out (`tools/train/rows.py`: train on three corpora, test on the
 roles per file): DECO 73.6 → 74.8, StatSheets 66.7 → 78.0, Strudel 79.1 → 86.6, synthetic
 93.7 → 94.5. More in [learned-model.md](learned-model.md).
 
+**Formatting features** (bold, fills, borders, font size, number format, ... from xlsx styles;
+[learned-model.md](learned-model.md#formatting-features)), leave-one-corpus-out on the current
+rows (StatSheets with its CSV sheets), four roles per file, mean of three seeds, without → with:
+DECO 75.2 → 75.6, StatSheets 79.9 → 80.1, Strudel 86.6 → 87.3, synthetic 94.3 → 94.7. Retrained
+on everything, the best candidate (`--style-dropout 0.3`, master's training rows) against the
+shipped model, test splits:
+
+| | 7 roles pooled / per file | 4 roles pooled / per file |
+|---|---|---|
+| DECO shipped / with formatting | 67.3 / 59.6 → 67.5 / 59.5 | 80.0 / 70.9 → 81.3 / 70.8 |
+| StatSheets | — | 72.3 / 89.6 → 72.7 / 89.9 |
+| Strudel | 63.2 / 61.6 → 64.1 / 62.1 | 87.5 / 90.5 → 88.6 / 91.3 |
+| Synthetic | 93.0 / 91.3 → 93.7 / 92.4 | 97.1 / 98.0 → 97.4 / 98.2 |
+| European sample | 61.3 / 65.4 → 61.4 / 63.6 | 87.2 / 84.7 → 88.1 / 85.1 |
+
+It is not shipped: the European sample loses 1.8 points per file in seven roles (group headers
+33 → 25, 36 cells) and DECO totals 78.7 → 72.7; a retrain without formatting loses as much on the
+European sample (65.4 → 64.5), so this is mostly retraining variance.
+
 ## European open-data sample
 
 A check on files none of the corpora above come from: 31 sheets from 20 European open-data

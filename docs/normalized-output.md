@@ -427,8 +427,9 @@ Every key below is present in every table's `transformations`, with a count (oft
   like other total rows (use `keep_totals` to keep them).
 - Values only: formulas are not recreated in the output. Each one is listed on `Totals` (for totals)
   and counted in `formulas_replaced_by_values`.
-- Cell styles are not read (the reader gets none). A percentage stored as a number, such as 0.12 shown
-  as `12%` in Excel, stays a `number` unless the column also has `%` text.
+- Cell styles (xlsx / xlsm only) are read for the learned model's features, not used for typing:
+  a percentage stored as a number, such as 0.12 shown as `12%` in Excel, stays a `number` unless
+  the column also has `%` text.
 
 ## See also
 

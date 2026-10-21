@@ -376,7 +376,7 @@ pub fn breakdown(dir: &Path, analyzer: &dyn Analyzer, opts: &BreakdownOptions) -
     let mut out = Breakdown { values_checked: opts.values, ..Default::default() };
     for p in gt_files(dir)?.into_iter().take(opts.limit.unwrap_or(usize::MAX)) {
         let (f, j) = read_gt(dir, &p)?;
-        let Ok(wb) = crate::reader::open(&f.path) else { continue };
+        let Ok(wb) = super::open(&f.path) else { continue };
         let profile = j.get("profile").and_then(J::str).unwrap_or("?").to_string();
         let op_sets: Vec<Vec<String>> = j
             .get("op_sets")

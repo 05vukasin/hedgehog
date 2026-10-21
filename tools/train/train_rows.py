@@ -31,7 +31,7 @@ import numpy as np
 import pandas as pd
 
 from export_trees import convert, scores
-from rows import COARSE, ROLES, load, per_file_macro
+from rows import COARSE, ROLES, load_xy, per_file_macro, style_columns, style_dropout, without_styles
 
 NAMES = ["title", "header", "data", "other"]
 FULL_SOURCES = {"deco", "strudel", "synthetic"}
@@ -78,15 +78,19 @@ def weights(df: pd.DataFrame, y: np.ndarray, k: int) -> np.ndarray:
     return (w * (cw / cw[np.argmax(freq)])[y]).astype(np.float32)
 
 
-def train(X, y, w, valid, k, args, feats):
+def train(X, rows, y, w, valid, k, args, feats, drop):
+    """Trains on the rows `rows` of X (y, w, valid aligned with `rows`), without copying X whole."""
     import xgboost as xgb
 
     params = {"objective": "multi:softprob", "num_class": k, "tree_method": "hist", "max_depth": args.depth,
               "eta": args.eta, "subsample": 0.8, "colsample_bytree": 0.5, "min_child_weight": 2,
-              "eval_metric": "mlogloss", "nthread": args.threads}
+              "eval_metric": "mlogloss", "nthread": args.threads, "seed": args.seed}
     fit = ~valid
-    return xgb.train(params, xgb.DMatrix(X[fit], y[fit], weight=w[fit], feature_names=feats), args.rounds,
-                     evals=[(xgb.DMatrix(X[valid], y[valid], weight=w[valid], feature_names=feats), "v")],
+    cols = style_columns(feats) if args.style_dropout > 0 else []
+    dfit = xgb.QuantileDMatrix(without_styles(X, rows[fit], drop, cols), y[fit], weight=w[fit], feature_names=feats)
+    dvalid = xgb.QuantileDMatrix(without_styles(X, rows[valid], drop, cols), y[valid], weight=w[valid],
+                                 feature_names=feats, ref=dfit)
+    return xgb.train(params, dfit, args.rounds, evals=[(dvalid, "v")],
                      early_stopping_rounds=40, verbose_eval=False)
 
 
@@ -104,13 +108,20 @@ def main() -> None:
     ap.add_argument("--rounds", type=int, default=600)
     ap.add_argument("--depth", type=int, default=8)
     ap.add_argument("--eta", type=float, default=0.08)
+    ap.add_argument("--style-dropout", type=float, default=0.0,
+                    help="share of training sheets whose formatting features are zeroed")
+    ap.add_argument("--seed", type=int, default=0, help="XGBoost seed (row and column sampling)")
+    ap.add_argument("--exclude", default="", help="comma-separated cell-feature prefixes to leave out (e.g. `s_`)")
     args = ap.parse_args()
     import xgboost as xgb
 
     args.out.mkdir(parents=True, exist_ok=True)
-    df = load(args.data)
-    feats = [c for c in df.columns if c[:2] in ("g_", "m_", "f_", "u_", "d_")]
-    X = df[feats].to_numpy(np.float32)
+    df, X, feats = load_xy(args.data, keep=("m_l_role", "m_x_total_cand", "u_l_role", "d_l_role",
+                                            "m_x_row_vtotals", "m_t_in_keyword_total_row"))
+    excl = tuple(e for e in args.exclude.split(",") if e)
+    if excl:
+        cols = [i for i, f in enumerate(feats) if not (f[:2] != "g_" and f[2:].startswith(excl))]
+        X, feats = X[:, cols], [feats[i] for i in cols]
     label = df["label"].to_numpy()
     src = df["source"].to_numpy()
     test = df["split"].to_numpy() == "test"
@@ -120,11 +131,13 @@ def main() -> None:
     print(f"{len(df):,} segments, {len(feats)} features; train {(~test).sum():,} (valid {valid.sum():,}), test {test.sum():,}")
 
     t = time.time()
+    drop = style_dropout(df, args.style_dropout)
     tr = ~test
     yc = COARSE[label]
-    coarse = train(X[tr], yc[tr], weights(df[tr], yc[tr], 4), valid[tr], 4, args, feats)
+    coarse = train(X, np.flatnonzero(tr), yc[tr], weights(df[tr], yc[tr], 4), valid[tr], 4, args, feats, drop)
     full_tr = tr & np.isin(src, list(FULL_SOURCES))
-    fine = train(X[full_tr], label[full_tr], weights(df[full_tr], label[full_tr], 7), valid[full_tr], 7, args, feats)
+    fine = train(X, np.flatnonzero(full_tr), label[full_tr], weights(df[full_tr], label[full_tr], 7), valid[full_tr], 7,
+                 args, feats, drop)
     print(f"coarse {coarse.best_iteration + 1} rounds, fine {fine.best_iteration + 1} rounds, {time.time() - t:.0f} s")
 
     dt = df[test].reset_index(drop=True)

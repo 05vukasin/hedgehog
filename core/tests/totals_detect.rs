@@ -315,7 +315,7 @@ fn other_sheet_and_non_sum_formulas_are_not_totals() {
 }
 
 fn synthetic(cells: Vec<Cell>) -> Sheet {
-    Sheet { name: "S".into(), cells, merges: vec![] }
+    Sheet { name: "S".into(), cells, merges: vec![], formats: vec![] }
 }
 
 fn num(row: u32, col: u32, v: f64) -> Cell {

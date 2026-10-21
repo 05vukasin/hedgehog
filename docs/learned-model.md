@@ -19,7 +19,8 @@ any CPU without a GPU or extra dependencies, and it is on by default.
    header depth still come from the rules.
 2. **Cell features.** About 110 numbers per cell: what the value is (number, text, date, keyword),
    its neighbours, its row and column statistics, whether it is a total, and the role the rules gave
-   it and its neighbours.
+   it and its neighbours. For xlsx / xlsm files there are also 14 formatting features (`s_*`, see
+   [below](#formatting-features)); the shipped model does not use them yet.
 3. **Row segments.** The filled cells of one sheet row, split where more than two empty columns
    separate them. 97% of rows in the labelled corpora have a single role, and studies of
    spreadsheet layout (Koci et al. 2016) found that classifying cells one by one makes more mistakes
@@ -65,6 +66,65 @@ model trained on the other three (leave-one-corpus-out). It still beat the rules
 corpus (per file, four roles): DECO 73.6 → 74.8, StatSheets 66.7 → 78.0, Strudel 79.1 → 86.6,
 synthetic 93.7 → 94.5. The gain is not a memorized corpus. Details and how to reproduce them:
 [evaluation.md](evaluation.md#cross-corpus-benchmark).
+
+## Formatting features
+
+People spot titles, headers and totals by their formatting. calamine reads no styles, so hedgehog
+reads them itself for xlsx / xlsm: `xl/styles.xml` is resolved into one packed 32-bit
+[`Format`](../core/src/model.rs) per cell format, and the `s` attribute of every cell is picked up
+in the same streaming pass over the sheet XML that finds the merged areas (4 bytes per cell in
+`Sheet::formats`; xls, xlsb, ods and CSV have none). Reading them costs 15–35% more read time, so
+it is opt-in: `reader::open` reads formats only when the embedded model uses a formatting feature
+(today it does not, so `normalize`, `open` and the bindings read exactly as before);
+`reader::open_with(path, ReadOptions { formats: true })` asks for them, `hedgehog features`
+always does, and `hedgehog benchmark` / `eval` do when a `$HEDGEHOG_MODEL` reads them. The
+features, per cell:
+
+| Feature | Meaning |
+|---|---|
+| `s_known` | 1 when the file's styles were read, else 0 and every other `s_*` is 0 |
+| `s_bold`, `s_italic`, `s_underline`, `s_color`, `s_fill`, `s_wrap` | on/off, minus the sheet's share (bold in an all-bold sheet says nothing) |
+| `s_border_top`, `s_border_bottom`, `s_border_lr` | borders (left + right counted), minus the sheet's mean |
+| `s_font_rel` | font size / the sheet's most common size |
+| `s_indent` | indent level |
+| `s_align` | 0 general, 1 left, 2 center, 3 right, 4 other |
+| `s_numfmt` | 0 general, 1 integer, 2 decimal, 3 thousands, 4 percent, 5 currency, 6 date/time, 7 text, 8 other |
+
+The training sheets are nearly all xlsx (StatSheets 69% of cells, the others 100%), production files
+often are not, so `--style-dropout 0.3` zeroes the formatting features of 30% of the training
+sheets: the model learns to do without them. Without it, held-out StatSheets (46% of its rows
+without styles) lost 0.9 points.
+
+**Generalization** (leave-one-corpus-out, `tools/train/rows.py`, four roles per file, mean of
+three seeds; same rows with and without the `s_*` features):
+
+| Held out | without formatting | with formatting |
+|---|---|---|
+| DECO | 75.2 | **75.6** |
+| StatSheets | 79.9 | **80.1** |
+| Strudel | 86.6 | **87.3** |
+| Synthetic | 94.3 | **94.7** |
+
+Pooled four-role F1 rises more (DECO 60.5 → 61.3, StatSheets 56.4 → 58.5, Strudel 79.0 → 80.0,
+synthetic 90.5 → 91.8). Formatting carries 3–5% of the trees' total gain (bold most, then borders,
+font size, number format).
+
+**Not shipped yet.** Retrained on all corpora, models with formatting beat the shipped model on
+Strudel, StatSheets and the synthetic set and on most DECO scores, but five of six candidates
+(three seeds, two versions of the training rows) lost 0.7 to 1.8 points of 7-role per-file F1 on
+the European sample, all lost points on its 36 group-header cells, and the sixth lost on Strudel
+group headers and synthetic notes. Retraining *without* formatting on the same data loses about as much (European sample
+65.4 → 63.9 to 64.5 per file), so the shipped model is a favourable draw rather than formatting
+being harmful; the release rule (no corpus worse, the European sample never worse) still keeps
+the shipped model. The features cost nothing at prediction or read time until a model uses them.
+
+**Seed variance.** Retraining the same configuration with another XGBoost seed, or after the
+10% validation-file sample changes (adding StatSheets' CSV sheets redrew it), moves the small
+roles by up to about ±5 points of F1 (group headers, notes, `other`) and the European sample's
+per-file score by about ±1 point; the large corpora move by a few tenths. Retraining the shipped
+configuration on its own rows reproduces it exactly. Comparisons between feature sets therefore
+use the mean of several seeds (as in the leave-one-corpus-out table above), and a single retrain
+judged against the shipped model can fail the release rule by chance.
 
 ## Speed and memory
 
@@ -120,8 +180,8 @@ export HEDGEHOG_DATA=/path/to/testdata
 for c in deco statsheets strudel synthetic; do
   hedgehog features --level row --corpus $c --out rows_$c.csv     # features + labels per row segment
 done
-python tools/train/rows.py rows_*.csv          # leave-one-corpus-out check
-python tools/train/train_rows.py rows_*.csv --out models/      # train, size sweep, export
+python tools/train/rows.py rows_*.csv --style-dropout 0.3      # leave-one-corpus-out check
+python tools/train/train_rows.py rows_*.csv --style-dropout 0.3 --out models/   # train, size sweep, export
 cp models/coarse.json core/models/row_coarse.json
 cp models/fine.json core/models/row_fine.json
 hedgehog pack-model core/models                # → core/models/row_model.bin (embedded)
@@ -129,7 +189,11 @@ hedgehog benchmark --analyzer model            # scores on every test split
 ```
 
 `hedgehog features --level row` and the library compute the features with the same code, so a
-trained model sees in production exactly what it saw in training. A unit test checks that the
+trained model sees in production exactly what it saw in training (at prediction time only the
+segment features the trees test are computed, and the formatting features only when the model
+reads them). Both scripts keep about one float32 copy of the features in memory (about 1.4 GB
+for the four corpora; they fit a 4 GB limit). `--exclude s_` trains without the formatting
+features; `--seed N` changes XGBoost's sampling. A unit test checks that the
 embedded binary decodes to the same trees as the JSON files.
 
 ## See also
