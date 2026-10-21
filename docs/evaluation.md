@@ -299,6 +299,10 @@ labels move these a lot):
   at about 17 ms per file including process start. Twelve of them list a `veryHidden` sheet with an
   empty relationship id, which the underlying `calamine` reader rejects; hedgehog removes that entry
   in memory and reads the rest of the workbook.
+- **Noise robustness:** `eval/noise` applies 21 independently designed noise families (intensity 0–1) to
+  clean tables with known content and checks invariants on the normalized output (every value once, in
+  the right column with its labels; totals found and verified; notes out of the data). Robustness
+  curves per family, rules vs model, and failing seeds: [eval/noise/REPORT.md](../eval/noise/REPORT.md).
 - **Normalization:** covered by tests on generated messy workbooks (`core/tests/normalize_messy.rs`,
   `py/tests/test_normalize.py`); there is no corpus-level score for it yet.
 
