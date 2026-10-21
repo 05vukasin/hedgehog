@@ -8,6 +8,20 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Disk cache** of normalized files (agent tools: `hedgehog mcp`, Node `HedgehogSession`): a file
+  opened before comes back in a new process in ~2 ms to the catalog and ~20 ms to the first query
+  answer (Portugal's 4.5M-cell contracts register: 15 s → 2.3 ms / 19 ms; peak memory 1.2 GB →
+  0.54 GB). Keyed by content hash, build and options; `HEDGEHOG_CACHE_DIR`, `HEDGEHOG_CACHE=0`,
+  `HEDGEHOG_CACHE_MAX_MB` (default 2048, least recently used removed first); atomic writes, damaged
+  entries rebuilt, `0700`/`0600` permissions. The (path, size, mtime) → sha256 shortcut is kept
+  there too. Catalogs are byte-identical with and without the cache. See
+  [docs/mcp.md](docs/mcp.md#disk-cache).
+- **Catalog first** (`open_file`): the catalog returns as soon as the file is normalized; the SQL
+  tables are built on another thread (into the cache, read-only from there).
+- **`hedgehog mcp` cancels**: tool calls run on a worker thread; `ping` / `tools/list` answer while a
+  call runs; `notifications/cancelled` drops a queued call or stops a running query (SQLite
+  interrupt) or the wait for a normalization. See [docs/mcp.md](docs/mcp.md#cancelling-a-call).
+
 - **Agent accuracy with small models (B15, B16, B18, B19)**, from the hedgehog-cli runs:
   - A `no such column` that names a total-row label (`"Total"`, `"Gesamt"`) or a value of a text
     column (`"SEA ROBIN"`) still explains where those rows are, and now also returns them: the
