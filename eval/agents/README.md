@@ -121,7 +121,7 @@ python3 -I eval/agents/check_cases.py --schema-only                             
 
 The headline compares a weak harness plus hedgehog with a strong harness without it, so it mixes two
 things. The tool swap holds everything except the tool fixed: **one minimal loop**
-([swap/agent.py](swap/agent.py), ~120 lines, OpenAI chat completions with function calling), **one
+([swap/agent.py](swap/agent.py), ~100 lines, OpenAI chat completions with function calling), **one
 small model** (`--swap-model`, default gpt-4.1-mini), the same system prompt except a one-line tool
 introduction, temperature 0.2, at most 20 model calls (the last one may not call tools, so every run
 ends with an answer) and the same prompt as the other arms. MCP server instructions are not added to
