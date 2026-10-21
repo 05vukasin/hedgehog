@@ -13,7 +13,7 @@ pub const MAX_COL_GAP: u32 = 1;
 pub const MAX_COL_GAP_ALIGNED: u32 = 2;
 /// Numbers on a few rows inside a taller block's rows, across one spacer column, join it when
 /// they have no header of their own and are at most this many columns wide (sparse columns).
-pub const INSIDE_MAX_WIDTH: u32 = 4;
+pub const INSIDE_MAX_WIDTH: u32 = 2;
 /// Vertical gap merge: column overlap / wider block width must reach this.
 pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 /// Horizontal gap merge: row overlap / taller block height must reach this.
