@@ -8,6 +8,25 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Long views of wide period tables** (`hedgehog mcp`, Node, hedgehog-cli; B20): a table with 4 or
+  more numeric columns named by periods (`"2011".."2025"`, `Jan 2024`, `2024 Q1`, `Thu / 2002-01-31`)
+  gets a SQL view `T<n>_long` with its key columns, `period` (normalized: `2025`, `2025-Q1`,
+  `2025-03`, `2025-03-31`), `period_label`, `value`, `_row_type`, `_src_row` and `_src_col`
+  (plus `measure` when the periods repeat for several measures), so a model filters
+  `WHERE period = '2025'` instead of picking a column. A plain view over `T<n>_all`: nothing is
+  copied at load. The catalog has one line per long view (`T1_long: one row per ("group",
+  Richtsatz, period) — … use for trends/filters by year`, with the label to filter first when the
+  rows mix measures); `describe_table T1_long` describes T1. `hh_core::normalize::header_period`
+  exposes how the time coverage reads period headers. See [docs/mcp.md](docs/mcp.md#sql-tables).
+- **Semantic column types** in the catalog and `describe_table` (B21): `id`, `name`, `dim`,
+  `period`, `amount` (with currency), `count`, `rate`, `avg`, `index`, `free text`, `mixed`, from
+  header words in eight languages, currency / unit, the table title and value statistics:
+  `"2025"[number EUR · amount]`, `Indexwert[number · index — don't sum]`; a `do not sum:` line per
+  table with average / rate / index columns (or rows, when a label column mixes measures). Columns
+  the file adds up itself are never flagged. Catalog size on the four agent-eval files: 5,833 →
+  6,104 (pt-contracts), 3,375 → 3,978 (at-pension), 9,749 → 11,071 (enron-henry-hub), 4,506 →
+  5,034 characters (de-truck-toll). See [docs/mcp.md](docs/mcp.md#the-catalog).
+
 - **Catalog facts** (`open_file`): small tables in full by a cell budget (≤ 400 cells, ≤ 30 rows)
   from `T<n>_all` with a `_row_type` column, so total rows are visible (a 12 × 19 pension table is
   now inlined); per table with total rows, how to select them (`total rows: SELECT … FROM T1_all
