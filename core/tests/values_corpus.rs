@@ -211,7 +211,7 @@ fn csv_sheet(path: &Path, max_rows: usize) -> Option<Sheet> {
         }
         push(&mut field, &mut col);
     }
-    Some(Sheet { name: path.file_name()?.to_string_lossy().into_owned(), cells, merges: Vec::new() })
+    Some(Sheet { name: path.file_name()?.to_string_lossy().into_owned(), cells, merges: Vec::new(), formats: Vec::new() })
 }
 
 fn csv_files(dir: &Path) -> Vec<PathBuf> {

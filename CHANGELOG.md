@@ -8,6 +8,20 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Cell formatting from xlsx / xlsm styles**: `Sheet::formats` holds one packed `Format` per cell
+  (bold, italic, underline, font colour, size, fill, borders, alignment, indent, wrap, number
+  format kind), read from `xl/styles.xml` and the cells' `s` attributes in the pass that already
+  scans each sheet for merged areas (4 bytes per cell; other formats: empty, never guessed). 14
+  `s_*` features for the learned model, relative to the sheet where that matters. In
+  leave-one-corpus-out training they help every held-out corpus (four roles per file, mean of three
+  seeds: DECO 75.2 → 75.6, StatSheets 79.9 → 80.1, Strudel 86.6 → 87.3, synthetic 94.3 → 94.7), but
+  the retrained model did not beat the shipped one on the European sample, so the shipped model is
+  unchanged and does not read them yet. See
+  [docs/learned-model.md](docs/learned-model.md#formatting-features).
+- Training scripts: `--style-dropout`, `--exclude`, `--seed`; features are loaded into one float32
+  matrix file by file and XGBoost gets `QuantileDMatrix`es, so training on the four corpora fits in
+  4 GB (it needed more).
+
 - `hedgehog-inspect` (Python entry point, `python -m hedgehog.inspect`) and a `Makefile`: see, file by
   file, the tables, totals check, notes, warnings, what an agent receives and the summary, with or
   without an LLM from `.env`, and ask the agent a question.
@@ -26,6 +40,12 @@ All notable changes to hedgehog are listed here. The format follows
   0.4 GB peak memory. No new dependencies.
 - StatSheets benchmark includes its 65 CSV sheets (all align; 21 in the test split). Test split,
   4 roles per file, rules / model: 65.2 / 89.6 → 65.6 / 89.6; pooled 48.0 / 72.2 → 48.1 / 72.3.
+
+### Changed
+
+- The model path computes only the row-segment features the trees test (and the guard's), not all
+  ~450: same predictions, less memory and time per sheet.
+
 ### Fixed
 
 - Typed totals over a column with missing-value tokens (`n/a`, `-`, `*`, `#N/A`): the tokens were

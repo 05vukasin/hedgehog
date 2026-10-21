@@ -291,6 +291,9 @@ impl TreeModel {
 /// Rows into a table body from which the mid-table guard of [`analyze`] applies.
 const GUARD_DEPTH: u32 = 10;
 
+/// Segment features the mid-table guard of [`analyze`] reads.
+const GUARD_FEATURES: [&str; 6] = ["m_l_role", "u_l_role", "d_l_role", "m_c_row_cells", "u_c_row_cells", "d_c_row_cells"];
+
 /// Empty columns allowed inside one row segment.
 pub const MAX_GAP: u32 = 2;
 
@@ -337,26 +340,41 @@ fn prefixed(prefix: &str, base: &[&'static str]) -> Vec<&'static str> {
 /// its mean over the segment (`m_`), its value in the first cell (`f_`), and its mean over the whole
 /// sheet row above (`u_`) and below (`d_`; 0 when that row is empty). One feature row per segment.
 pub fn segment_features(grid: &Grid, f: &Features) -> (Vec<Segment>, Features) {
+    segment_features_where(grid, f, |_| true)
+}
+
+/// [`segment_features`] with only the segment features `keep` accepts (geometry always): what a
+/// model needs, without the memory of the columns it never reads.
+pub fn segment_features_where(grid: &Grid, f: &Features, keep: impl Fn(&str) -> bool) -> (Vec<Segment>, Features) {
     let sheet = grid.sheet;
-    let nf = f.names().len();
+    let names = f.names();
+    let nf = names.len();
     let cols: Vec<&[f32]> = (0..nf).map(|i| f.column(i)).collect();
+    let (m_names, f_names, u_names, d_names) =
+        (prefixed("m", names), prefixed("f", names), prefixed("u", names), prefixed("d", names));
     let mut rows: Vec<u32> = sheet.cells.iter().map(|c| c.row).collect();
     rows.sort_unstable();
     rows.dedup();
-    // Mean features of every non-empty row, row-major.
-    let mut means = vec![0f32; rows.len() * nf];
+    // Mean features of every non-empty row, row-major, for the features needed above / below.
+    let row_feats: Vec<usize> = (0..nf).filter(|&k| keep(u_names[k]) || keep(d_names[k])).collect();
+    let nr = row_feats.len();
+    let mut slot = vec![usize::MAX; nf];
+    for (j, &k) in row_feats.iter().enumerate() {
+        slot[k] = j;
+    }
+    let mut means = vec![0f32; rows.len() * nr];
     for (ri, &r) in rows.iter().enumerate() {
         let idx = grid.row_cells(r);
-        let m = &mut means[ri * nf..(ri + 1) * nf];
+        let m = &mut means[ri * nr..(ri + 1) * nr];
         for &i in idx {
-            for (k, c) in cols.iter().enumerate() {
-                m[k] += c[i as usize];
+            for (j, &k) in row_feats.iter().enumerate() {
+                m[j] += cols[k][i as usize];
             }
         }
         let n = idx.len().max(1) as f32;
         m.iter_mut().for_each(|x| *x /= n);
     }
-    let mean_of = |r: u32| rows.binary_search(&r).ok().map(|ri| &means[ri * nf..(ri + 1) * nf]);
+    let mean_of = |r: u32| rows.binary_search(&r).ok().map(|ri| &means[ri * nr..(ri + 1) * nr]);
     let mut segs = Vec::new();
     let mut geom: Vec<[f32; 9]> = Vec::new();
     for (ri, &r) in rows.iter().enumerate() {
@@ -394,20 +412,19 @@ pub fn segment_features(grid: &Grid, f: &Features) -> (Vec<Segment>, Features) {
     for (g, name) in GEOMETRY.iter().enumerate() {
         out.add(name, geom.iter().map(|x| x[g]).collect());
     }
-    let names = f.names();
-    let (m_names, f_names, u_names, d_names) =
-        (prefixed("m", names), prefixed("f", names), prefixed("u", names), prefixed("d", names));
-    for (k, c) in cols.iter().enumerate() {
+    for (k, c) in cols.iter().enumerate().filter(|(k, _)| keep(m_names[*k])) {
         out.add(m_names[k], segs.iter().map(|s| s.members.iter().map(|&i| c[i as usize]).sum::<f32>() / s.members.len() as f32).collect());
     }
-    for (k, c) in cols.iter().enumerate() {
+    for (k, c) in cols.iter().enumerate().filter(|(k, _)| keep(f_names[*k])) {
         out.add(f_names[k], segs.iter().map(|s| c[s.members[0] as usize]).collect());
     }
-    for k in 0..nf {
-        out.add(u_names[k], segs.iter().map(|s| s.row.checked_sub(1).and_then(mean_of).map_or(0.0, |m| m[k])).collect());
+    for k in (0..nf).filter(|&k| keep(u_names[k])) {
+        let j = slot[k];
+        out.add(u_names[k], segs.iter().map(|s| s.row.checked_sub(1).and_then(mean_of).map_or(0.0, |m| m[j])).collect());
     }
-    for k in 0..nf {
-        out.add(d_names[k], segs.iter().map(|s| mean_of(s.row + 1).map_or(0.0, |m| m[k])).collect());
+    for k in (0..nf).filter(|&k| keep(d_names[k])) {
+        let j = slot[k];
+        out.add(d_names[k], segs.iter().map(|s| mean_of(s.row + 1).map_or(0.0, |m| m[j])).collect());
     }
     (segs, out)
 }
@@ -456,6 +473,15 @@ impl RowModel {
         Ok(RowModel { coarse, fine })
     }
 
+    /// Segment features [`analyze`] reads: those the trees test, and the mid-table guard's.
+    pub fn needed_features(&self) -> std::collections::HashSet<&str> {
+        let mut need: std::collections::HashSet<&str> = GUARD_FEATURES.into_iter().collect();
+        for m in [&self.coarse, &self.fine] {
+            need.extend(m.used.iter().map(|&k| m.features[k].as_str()));
+        }
+        need
+    }
+
     /// Role per row of `f` (one per segment).
     pub fn predict(&self, f: &Features) -> Result<Vec<Role>, String> {
         let coarse_of = |r: Role| crate::eval::benchmark::coarse(r);
@@ -490,9 +516,11 @@ impl RowModel {
 /// segment (a group label in the key column of a data row): those keep the rules' role.
 pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
     let t0 = std::time::Instant::now();
-    let (mut lay, f) = crate::eval::export::layout_and_features(grid);
+    let need = model.needed_features();
+    let styles = need.iter().any(|n| n.get(1..4) == Some("_s_"));
+    let (mut lay, f) = crate::eval::export::layout_and_features(grid, styles);
     crate::normalize::trace("M:layout+features", t0);
-    let (segs, sf) = segment_features(grid, &f);
+    let (segs, sf) = segment_features_where(grid, &f, |n| need.contains(n));
     drop(f);
     crate::normalize::trace("M:segment_features", t0);
     let Ok(mut pred) = model.predict(&sf) else { return lay };
@@ -501,14 +529,8 @@ pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
     // between data rows (a sub-header such as "Males") is much sparser than the data around it. So a row
     // the rules call data, with data rows directly above and below, stays data when the model calls
     // it a title or note, or a header while holding at least half as many cells as its neighbours.
-    if let (Some(m), Some(u), Some(d), Some(mc), Some(uc), Some(dc)) = (
-        sf.get("m_l_role"),
-        sf.get("u_l_role"),
-        sf.get("d_l_role"),
-        sf.get("m_c_row_cells"),
-        sf.get("u_c_row_cells"),
-        sf.get("d_c_row_cells"),
-    ) {
+    let [m, u, d, mc, uc, dc] = GUARD_FEATURES.map(|n| sf.get(n));
+    if let (Some(m), Some(u), Some(d), Some(mc), Some(uc), Some(dc)) = (m, u, d, mc, uc, dc) {
         let data = crate::eval::export::role_id(Role::Data) as f32;
         // Deep inside a rules table: at least GUARD_DEPTH rows below the start of its body (the
         // first rows may be a header block the rules missed).
@@ -574,13 +596,35 @@ mod tests {
             cells.push(cell(row, 1, Value::Number(100.0 + k as f64 * 17.5)));
             cells.push(cell(row, 2, Value::Number(3.0 + k as f64)));
         }
-        let sheet = Sheet { name: "s".into(), cells, merges: vec![] };
+        let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
         let grid = Grid::new(&sheet);
         let lay = analyze(&grid, m);
         let role_at = |row: u32, col: u32| lay.roles[grid.cell_index(row, col).unwrap()];
         assert_eq!(role_at(0, 0), Role::Title);
         assert_eq!(role_at(2, 1), Role::Header);
         assert_eq!(role_at(4, 1), Role::Data);
+    }
+
+    #[test]
+    fn filtered_segment_features_match_the_full_ones() {
+        use crate::model::{Cell, Sheet, Value};
+        let mut cells = Vec::new();
+        for r in 0..6u32 {
+            for c in [0u32, 1, 2, 6] {
+                let v = if r == 0 { Value::Text(format!("h{c}")) } else { Value::Number((r * 10 + c) as f64) };
+                cells.push(Cell { row: r * 2, col: c, value: Some(v), formula: None });
+            }
+        }
+        let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+        let grid = Grid::new(&sheet);
+        let f = crate::eval::export::sheet_features(&grid);
+        let (_, all) = segment_features(&grid, &f);
+        let want = ["g_cells", "m_l_role", "f_c_kind", "u_l_role", "d_c_row_cells"];
+        let (_, some) = segment_features_where(&grid, &f, |n| want.contains(&n));
+        assert_eq!(some.names().len(), want.len() + GEOMETRY.len() - 1);
+        for n in want {
+            assert_eq!(some.get(n), all.get(n), "{n}");
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! Reads xlsx / xlsm / xlsb / xls / ods into the [`Workbook`] model via calamine, and CSV / TSV
 //! with the reader in `reader/csv.rs`.
-//! Calamine gives values, formulas and merges but no styles; a style-aware reader can replace
-//! this module later without changing the model.
+//! Calamine gives values, formulas and merges but no styles; for xlsx / xlsm the cell formats
+//! come from our own scan of `xl/styles.xml` and the sheet XML (`reader/styles.rs`).
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -19,6 +19,7 @@ use crate::model::{Cell, Rect, Sheet, Value, Workbook};
 
 mod csv;
 mod merges;
+mod styles;
 
 #[derive(Debug)]
 pub struct Error(String);
@@ -164,19 +165,20 @@ fn read_all<RS: Read + Seek, R: Read + Seek>(
         };
         let sheet = match cells {
             Some((cells, dims)) => {
-                // Merged areas sit after the cells; a byte scan finds them much faster than a
-                // second full XML parse. Anything unexpected → calamine's parse.
-                let merges = match scanner.as_mut().and_then(|s| s.merges(&name, dims)) {
-                    Some(m) => {
+                // Merged areas sit after the cells; a byte scan finds them (and every cell's
+                // format) much faster than a second full XML parse. Anything unexpected →
+                // calamine's parse of the merges, and no formats.
+                let (merges, formats) = match scanner.as_mut().and_then(|s| s.scan(&name, dims, &cells)) {
+                    Some((m, f)) => {
                         merges::SCANNED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        m
+                        (m, f.unwrap_or_default())
                     }
                     None => {
                         merges::FALLBACK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        merge_cells(&mut wb, &name)
+                        (merge_cells(&mut wb, &name), Vec::new())
                     }
                 };
-                Sheet { name, cells, merges }
+                Sheet { name, cells, merges, formats }
             }
             None => {
                 let values = wb.worksheet_range(&name).map_err(err)?;
@@ -323,7 +325,7 @@ fn build_sheet(name: String, values: &Range<Data>, formulas: &Range<String>, mer
             .or_insert(Cell { row, col, value: None, formula: None })
             .formula = Some(f.trim_start_matches('=').to_string());
     }
-    Sheet { name, cells: cells.into_values().collect(), merges }
+    Sheet { name, cells: cells.into_values().collect(), merges, formats: Vec::new() }
 }
 
 /// [`convert`] for a borrowed xlsx value (shared strings are copied once, not twice).

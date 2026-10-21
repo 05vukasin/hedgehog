@@ -278,7 +278,7 @@ mod tests {
                     Rect { top: t, left: l, bottom: t + rnd(4), right: l + rnd(4) }
                 })
                 .collect();
-            let sheet = Sheet { name: "s".into(), cells, merges };
+            let sheet = Sheet { name: "s".into(), cells, merges, formats: vec![] };
             let grid = Grid::new(&sheet);
             let Some(first) = sheet.cells.first() else { continue };
             let mut bb = Rect { top: first.row, left: first.col, bottom: first.row, right: first.col };
@@ -309,6 +309,7 @@ mod tests {
             name: "s".into(),
             cells: vec![cell(0, 0), cell(0, 1), cell(1_048_575, 16_383)],
             merges: vec![Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }],
+            formats: vec![],
         };
         let layout = analyze(&Grid::new(&sheet));
         assert_eq!(layout.tables.len(), 1);

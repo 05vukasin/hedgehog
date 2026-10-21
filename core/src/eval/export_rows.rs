@@ -134,7 +134,7 @@ mod tests {
             .iter()
             .map(|&c| Cell { row: 0, col: c, value: Some(Value::Number(1.0)), formula: None })
             .collect();
-        let sheet = crate::model::Sheet { name: "s".into(), cells, merges: vec![] };
+        let sheet = crate::model::Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
         let grid = Grid::new(&sheet);
         let f = sheet_features(&grid);
         let (segs, sf) = crate::learned::segment_features(&grid, &f);
