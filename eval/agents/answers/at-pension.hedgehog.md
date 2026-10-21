@@ -1,12 +1,7 @@
-# at-pension · hedgehog · 2026-10-21T12:00:00+00:00 · gpt-4o-mini
+# at-pension · hedgehog · 2026-10-21T07:03:22+00:00 · gpt-4o-mini
 
-Run `20261021T120000Z-at-pension-hedgehog-adhoc` (ad-hoc one-question run (narrower prompt than the case))
+Run `20261021T070322Z-at-pension-hedgehog`
 
-In 2024, the number of people who received the supplement is as follows:
+In 2024, a total of **190,423** people received the equalization supplement (Ausgleichszulage), and in 2025, this number was **189,537** (from T1, _src_row 9).
 
-- **Total (Gesamt)**: 163,230 (Alleinstehend)
-- **Men (davon Männer)**: 42,628
-- **Women (davon Frauen)**: 120,602
-- **Married (Verheiratet ***)**: 27,193
-
-These figures are sourced from the table in the file `eu_at_opendata/003_pen_02_02.xlsx`, specifically from the columns for the year 2024.
+For the average monthly amount in 2025, single recipients received an average of **€287.27** and married recipients received **€409.79** (from T1, _src_row 11 and 14).

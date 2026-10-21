@@ -15,5 +15,32 @@
  },
  "20261021T120000Z-at-pension-hedgehog-adhoc": {
   "note": "reported 163,230 (single recipients) as the total; the 'Gesamt' total row (190,423) is only in T1_all and not in the inline table; 12 turns / 11 tool calls / 50k tokens for one number"
+ },
+ "20261021T070132Z-pt-contracts-hedgehog": {
+  "variants": false,
+  "price-column": true,
+  "by-count": false,
+  "covid": false,
+  "note": "used the contract price this time (totals right), but Infraestruturas de Portugal appears as #1 (€507 M) and again as an unnamed 'Another body' (€229 M); suppliers ranked by value, not count; top-10 share not computed; 'noticeable increase … starting in March' is wrong; invented placeholders ('Another supplier … not named'); 1 SQL error"
+ },
+ "20261021T070316Z-pt-contracts-claude": {
+  "variants": true,
+  "price-column": true,
+  "by-count": true,
+  "covid": true,
+  "note": "grouped by tax ID, removed 20 duplicates, explained 26,723 undated simplified awards, both top-10 shares (4.0 % by count, 11.4 % by value), COVID: no overall jump but COVID purchases surged"
+ },
+ "20261021T070322Z-at-pension-hedgehog": {
+  "note": "totals right (Gesamt row); both 2025 averages wrong (€287.27 / €409.79 instead of €403.19 / €594.20) — read the wrong cells"
+ },
+ "20261021T070353Z-enron-henry-hub-hedgehog": {
+  "note": "top 3 and totals right; 8 of 15 tool calls failed querying a 'Total' column that does not exist (total rows are _row_type='total' in T1_all, label in col_C); net flow wrong (added the negative deliveries: 638,018); January max wrong (Jan 31, 201,935): the daily grid T3 has no pipeline or receipts/deliveries labels (B8)"
+ },
+ "20261021T070433Z-de-truck-toll-hedgehog": {
+  "direction": true
+ },
+ "20261021T070453Z-de-truck-toll-claude": {
+  "direction": true,
+  "note": "also noted the index base (2021=100) and that Destatis calls the daily adjusted series experimental"
  }
 }
