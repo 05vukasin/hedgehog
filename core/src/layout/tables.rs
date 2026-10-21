@@ -140,12 +140,10 @@ fn has_own_total_label(sheet: &Sheet, r: &Row, labelled: &[u32]) -> bool {
         (Some(a), Some(b)) => b.row - a.row + 1,
         _ => 0,
     };
-    r.entries
-        .iter()
-        .filter(|e| e.kind == Kind::Text)
-        .take(3)
-        .enumerate()
-        .any(|(k, e)| is_total_label(text(sheet, e)) && !incidental_keyword(text(sheet, e), k > 0, rows))
+    let texts = r.entries.iter().filter(|e| e.kind == Kind::Text).count();
+    r.entries.iter().filter(|e| e.kind == Kind::Text).take(3).enumerate().any(|(k, e)| {
+        is_total_label(text(sheet, e)) && !incidental_keyword(text(sheet, e), k > 0, k + 1 < texts, rows)
+    })
 }
 
 /// Most of the row's numbers are aggregate formulas over the cells above.

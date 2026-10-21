@@ -17,10 +17,13 @@ pub mod verify;
 
 pub use deps::DependencyIndex;
 pub use detect::{
-    detect, detect_rows, detect_with, incidental_rows, keyword_rows, labelled_rows, Detection, Direction, Evidence,
-    IncidentalRows, TotalCandidate, TotalLevel, TotalOrigin,
+    detect, detect_rows, detect_with, detection, incidental_rows, keyword_rows, labelled_rows, Detection, Direction,
+    Evidence, IncidentalRows, NonSumCheck, NonSumRow, TotalCandidate, TotalLevel, TotalOrigin,
 };
 pub use features::compute;
 pub use formula::{parse, FormulaKind, ParsedFormula, Ref, RefKind};
-pub use keywords::{incidental_keyword, total_keyword, KeywordLevel};
-pub use verify::{verify, CheckReason, TotalCheck};
+pub use keywords::{
+    ambiguous_keyword, incidental_keyword, nonsum_keyword, total_keyword, total_keyword_base, KeywordLevel, NonSumKind,
+    NonSumLabel,
+};
+pub use verify::{numeric_text, verify, CheckReason, TotalCheck};
