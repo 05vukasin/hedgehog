@@ -41,7 +41,9 @@ rule-based detector (`core/src/layout/`) works like this:
    on the first row of the receipts, `Deliveries HH` on the first row of the deliveries, a pipeline
    name on every row next to it) is a group key, and normalize fills it down, so every row says
    which block it belongs to.
-
+6. **Repeated headers.** A body row that repeats the header (a page break in a long list) is
+   dropped from the data. Rows with labels are compared by their labels; a header of dates or years
+   only repeats with the same dates, so a row of numbers under it (all zeros, say) stays data.
 
 In the default path the learned row model then corrects the tables: it trims title and note rows
 at the edges (the table range is the header plus the body), deepens or shortens the header, merges
@@ -49,6 +51,18 @@ pieces the rules cut apart (a header-only block above a table, a list cut at a c
 and splits stacked tables at a new header, and no two tables overlap (where two rectangles would,
 the one that keeps its header and loses the fewest positions gives up the shared part). See
 [learned-model.md](learned-model.md#how-it-works); `--rules-only` keeps the rules' tables.
+
+**Shared row labels.** Reports often name their rows once: a summary with flow and pipeline
+columns, then a daily grid beside it and one grid per month below it, numbers only, in the same
+rows. Normalize gives such a grid copies of the summary's label columns, so every row says what it
+is (`SELECT col_C, "Wed / 2002-01-23" FROM T3 WHERE col_B = 'Receipts HH'`). It does so only when
+the grid has no labels of its own (no text, date or group column, no column of distinct whole
+numbers in order such as years) and its body repeats the summary's row for row: the same data and
+total rows with the same blank rows between them, at least 4 data rows, either in the same sheet
+rows (beside it, the summary on the left) or shifted down (below it, overlapping columns; the
+nearest such summary). The summary needs a label column that names at least 80% of its rows. The
+copies keep the summary's column names, have no `source_column` (their cells belong to the
+summary), are counted as `row_labels_copied` and named in a table warning.
 
 Each detected table gets a confidence between 0 and 1, reported in the manifest. The cost is linear in
 the number of filled cells, never in the area of the used range, so a sheet with a few cells at

@@ -28,7 +28,7 @@ Status: `open` · `in progress` · `done (run id)`.
 
 | ID | Problem (found in) | Fix | Done when | Status |
 |---|---|---|---|---|
-| B8 | Daily grids T3–T7 lose their row labels: the pipeline names sit in the left block and go to `Notes` as repeated headers (enron-henry-hub) | side-by-side and stacked blocks that share the row labels of a neighbouring block get those labels as a key column | "which pipeline had the highest single-day receipts in January" is answerable by SQL | in progress (agent: layout) |
+| B8 | Daily grids T2–T7 have no row labels (the pipeline names are only in T1), and their first data row (all zeros) went to `Notes` as a "repeated header" of the date header (enron-henry-hub) | a header of dates repeats only with the same dates; a numbers-only grid beside or below a labelled table whose rows it repeats one for one gets copies of that table's label columns (`row_labels_copied`) | "which pipeline had the highest single-day receipts in January" is answerable by SQL | done (pending rerun): SQL gives 23 Jan 2002 = 606,356 and NGPL 256,338 |
 
 ## Phase 4: the agent (hedgehog-cli) and the tool pool
 

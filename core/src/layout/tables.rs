@@ -143,8 +143,24 @@ fn is_form(sheet: &Sheet, region: &Region) -> bool {
 
 pub(crate) type Signature = Vec<(u32, String)>;
 
+/// What a row says, cell by cell, for spotting a repeated header: each filled cell's column and
+/// its lower-cased text (a number counts as an empty text, so the labels decide). A row without
+/// any text is told by its values instead: a header of dates repeats only with the same dates,
+/// and a row of numbers under it is data, not a repeat of it.
 pub(crate) fn signature(sheet: &Sheet, r: &Row) -> Signature {
-    r.filled().map(|e| (e.left, text(sheet, e).trim().to_lowercase())).collect()
+    let value = |e: &Entry| e.cell.and_then(|i| sheet.cells[i].value.as_ref());
+    let labelled = r.filled().any(|e| matches!(value(e), Some(Value::Text(_))));
+    r.filled()
+        .map(|e| {
+            let key = match value(e) {
+                Some(Value::Text(s)) => s.trim().to_lowercase(),
+                // A control character keeps a value apart from any text.
+                Some(v) if !labelled => format!("\u{1}{v:?}"),
+                _ => String::new(),
+            };
+            (e.left, key)
+        })
+        .collect()
 }
 
 fn is_wide_text_row(r: &Row, rect: Rect) -> bool {

@@ -8,6 +8,15 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Shared row labels**: a grid of numbers with no labels of its own, beside or below a table
+  whose rows it repeats one for one (same data rows, total rows and blank rows; at least 4 data
+  rows), gets copies of that table's label columns, named like the originals, with no
+  `source_column`, counted as `row_labels_copied` and named in a table warning. The Enron Henry Hub
+  report's daily grids (`T2`–`T7`) now say which pipeline and flow each row is, so "total receipts
+  per day in January" (23 January, 606,356) and "the pipeline with the highest single-day receipts"
+  are SQL queries. On the 315 EU files and the 50 Enron benchmark files, 2 tables get labels (an
+  Istat `segue` block beside its region names, a block of measurements beside its sample ids); on
+  a sample of 399 other Enron files, 5 (price, quote and position grids beside their names).
 - **Tables from the model's row roles** (default path; `--rules-only` unchanged): title and note
   rows at the edges leave the table, header-only blocks join the table below as its header (ABS
   time series), pieces the rules cut off a list rejoin it instead of taking a data row for a
@@ -138,6 +147,10 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Fixed
 
+- A row of numbers under a header of dates or years only (all zeros in the first row of a daily
+  grid) is data, not a repeated header: repeated headers are compared by value where the header has
+  no text. The Enron Henry Hub report kept 163 data cells in `Notes`; DECO header F1 (rules)
+  56.3 → 81.7, model path 84.1 → 85.4. A labelled row still repeats by its labels.
 - Tables on one sheet no longer overlap in the default (model) path (Finanzstatistik T2
   `A17:IB43` over T3 `A31:HO43`, from a vertical merge hanging below a table).
 
