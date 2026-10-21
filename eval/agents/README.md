@@ -116,3 +116,88 @@ schema, opens every file and recomputes every reference:
 ../scripts/run_capped.sh 4G /tmp/check.log python3 -I eval/agents/check_cases.py   # all cases (pt-contracts needs 4G)
 python3 -I eval/agents/check_cases.py --schema-only                                 # no hedgehog calls
 ```
+
+## Tool swap
+
+The headline compares a weak harness plus hedgehog with a strong harness without it, so it mixes two
+things. The tool swap holds everything except the tool fixed: **one minimal loop**
+([swap/agent.py](swap/agent.py), ~120 lines, OpenAI chat completions with function calling), **one
+small model** (`--swap-model`, default gpt-4.1-mini), the same system prompt except a one-line tool
+introduction, temperature 0.2, at most 20 model calls (the last one may not call tools, so every run
+ends with an answer) and the same prompt as the other arms. MCP server instructions are not added to
+the prompt; each tool set has only its tool descriptions. Only the tool set changes:
+
+| Arm | Tools | Notes |
+|---|---|---|
+| `swap-hedgehog` | the six tools of `hedgehog mcp --root <case root>` | the binary under test (`--hedgehog`); results capped at 32k characters |
+| `swap-excelmcp` | the 21 read and analysis tools of [excel-csv-mcp-server](https://github.com/ishayoyo/excel-mcp) 1.0.2 (MIT; read_file, get_range, filter_rows, aggregate, pivot_table, data_profile, …) | the server named in the efficiency plan. Its write, export, formatting and LLM-calling tools are not offered. The most-starred alternative, haris-musa/excel-mcp-server, has only raw cell reads. Results capped at 32k characters. |
+| `swap-pandas` | one tool, `python(code)`: a persistent Python session (like a notebook cell) with pandas 2.2.3, openpyxl, python-calamine and xlrd | 60 s per call, 2 GB, results capped at 8000 characters. A first version that started a fresh process for every call scored badly because the model wrote notebook-style code (bare expressions, variables from earlier calls), so that version measured the harness, not pandas. |
+| `swap-markdown` | no tools: the file converted to markdown by MarkItDown 0.1.3 goes into the prompt | cut at the model's context window minus 24k tokens (`--swap-md-tokens`). If MarkItDown fails (it runs out of memory on the 4.5M-cell file), a streaming openpyxl reader writes the same kind of table. Each run records the converter, the tokens kept and whether the file was cut. |
+
+No SheetCompressor arm: SpreadsheetLLM has no official implementation, and the community ports are
+unreviewed.
+
+**Isolation.** Model-written code, the third-party MCP server and MarkItDown (which parses the
+untrusted file) run under bubblewrap: no network, a read-only `/usr` and interpreter, no view of
+the home folder, an empty environment (no API keys), and a working folder that holds only a copy of
+the case's files. Memory is capped with `prlimit`, and node with `--max-old-space-size=1536`. The
+third-party packages are pinned and installed under `$SWAP_DIR` (default `/tmp/claude-1000/w1swap`)
+by [swap/setup.sh](swap/setup.sh), never globally, with npm install scripts disabled.
+
+```sh
+eval/agents/swap/setup.sh                                    # once: pinned, isolated installs
+../scripts/run_capped.sh 2500M /tmp/swap.log python3 eval/agents/run.py \
+  --arms swap-hedgehog,swap-excelmcp,swap-pandas,swap-markdown --repeat 3 \
+  --hedgehog target/release/hedgehog --out-dir /tmp/swap      # pt-contracts needs 4G
+```
+
+RESULTS.md gets a "Tool swap" table (checks mean and worst, time, tokens, cost, $ and tokens per
+passed check, tool calls) and a per-case matrix whenever `results.jsonl` holds swap runs. Each run's
+full trace (every model message and tool call with its result) is in `runs/<run>.jsonl`.
+
+### First run (2026-10-21, 4 cases × 3 runs, gpt-4.1-mini)
+
+Automatic checks only (25; the 5 judgement checks are left out). Worst = each case's worst run.
+`swap-hedgehog` used the master binary from before B15–B19.
+
+| Tool set | Checks mean | Checks worst | Time | Input / output tokens | Cost | $ / pass | Tokens / pass |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **hedgehog MCP** | **18.7/25 (75 %)** | **18/25** | 88 s | 89k / 4.9k | $0.021 | **$0.0011** | **5.0k** |
+| markdown in context | 13.7/25 (55 %) | 12/25 | 211 s | 1,907k / 11.0k | $0.399 | $0.0292 | 140k |
+| pandas code tool | 11.3/25 (45 %) | 4/25 | 110 s | 91k / 5.2k | $0.026 | $0.0023 | 8.5k |
+| generic Excel MCP | 6.7/25 (27 %) | 5/25 | 320 s | 1,969k / 4.1k | $0.262 | $0.0393 | 296k |
+
+| Case | hedgehog MCP | generic Excel MCP | pandas | markdown |
+|---|---:|---:|---:|---:|
+| pt-contracts (4.5M cells) | 7.0 (7) / 9 | 1.0 (0) / 9 | 4.7 (0) / 9 | 0.0 (0) / 9 (cut at 1.02M tokens) |
+| at-pension (small, total row) | 2.0 (2) / 4 | 0.0 (0) / 4 | 2.7 (0) / 4 | 4.0 (4) / 4 |
+| enron-henry-hub (7 tables) | 5.7 (5) / 8 | 5.7 (5) / 8 | 0.0 (0) / 8 | 7.3 (6) / 8 |
+| de-truck-toll (9 sheets, daily) | 4.0 (4) / 4 | 0.0 (0) / 4 | 4.0 (4) / 4 | 2.3 (2) / 4 (854k tokens) |
+
+hedgehog has the best worst run and the lowest cost and tokens per passed check, and it is the only
+tool set that is stable on the large file. The other tool sets fail as follows:
+
+- **hedgehog.** pt-contracts: the top body is split across two spellings of the same tax ID, and no
+  top-10 share is given (B18). at-pension: the model sums `T1` without the `Gesamt` row, which is
+  only in `T1_all`, so it reports the singles count (163,230) as the total (B15/B17). enron: 2 of 3
+  runs give a single pipeline's maximum day instead of the day with the highest total receipts. The
+  third run finds the right day but sums the whole February grid for the totals.
+- **Markdown.** It is perfect when the whole file fits in a few thousand tokens. It gets nothing on
+  pt-contracts: MarkItDown runs out of memory, the fallback keeps about 1M tokens (roughly 10 % of
+  the rows), and the model cannot aggregate them. On de-truck-toll the 854k-token prompt fits and the model
+  finds the maximum day, but it cannot average 365 daily values without a tool, so the yearly KSB
+  averages are wrong (5 of 6). On enron, 1 of 3 runs gets the January maximum day wrong. It is also the most
+  expensive arm: 1M input tokens per question on big files.
+- **pandas.** It is accurate when it finishes: 7/9 on pt-contracts at 5k tokens, and 4/4 on
+  de-truck-toll. It does not finish reliably on messy layouts. On enron all 3 runs used the 20 turns
+  working out the two-row headers and gave no numbers. On at-pension one run decided the 2024/2025
+  columns were "relative changes". One pt-contracts run picked up a partial sum. The worst run (4/25)
+  is the problem, not the mean.
+- **Generic Excel MCP.** It has no notion of tables: `get_headers` returns the title cell as rich-text
+  JSON, and `get_file_info` reports 16,357 columns for an 18-column sheet. The model pages raw cells
+  until the 20-turn limit (9 of 12 runs), and 6 runs end with a plan instead of an answer. At-pension
+  reports the wrong rows (224,209 and €287.27). Its token use is the highest of the tool arms (≈2M
+  input tokens per 4 cases).
+
+Raw results of this run: `/tmp/claude-1000/w1swap/eval` (results.jsonl, runs/, answers/). OpenAI
+spend for the whole benchmark, including a smoke run and the discarded stateless-pandas runs: $2.25.
