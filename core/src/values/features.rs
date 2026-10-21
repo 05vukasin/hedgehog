@@ -176,34 +176,73 @@ pub fn compute(grid: &Grid, out: &mut Features) {
 /// [`compute`] with an optional explicit locale for the whole sheet (overrides inference).
 pub fn compute_with(grid: &Grid, out: &mut Features, locale: Option<Locale>) {
     let cells = &grid.sheet.cells;
-    let hints = sheet_column_hints_with(grid, locale);
+    let mut values = Values::new(grid, locale);
     let mut cols: Vec<Vec<f32>> = (0..N).map(|_| Vec::with_capacity(cells.len())).collect();
-    // Registers repeat the same values on many rows: a text's or number's features depend only on
-    // the value and its column's hints (and the formula flag, set per cell), so each pair is
-    // computed once.
-    let mut memo: rustc_hash::FxHashMap<(&str, ColumnHints), [f32; N]> = rustc_hash::FxHashMap::default();
-    let mut num_memo: rustc_hash::FxHashMap<(u64, ColumnHints), [f32; N]> = rustc_hash::FxHashMap::default();
     for c in cells {
-        let h = hints.get(&c.col).copied().unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
-        let row = match &c.value {
-            Some(Value::Text(t)) => {
-                let mut r = *memo.entry((t.as_str(), h)).or_insert_with(|| cell_features(c, h));
-                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
-                r
-            }
-            Some(Value::Number(x)) => {
-                let mut r = *num_memo.entry((x.to_bits(), h)).or_insert_with(|| cell_features(c, h));
-                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
-                r
-            }
-            _ => cell_features(c, h),
-        };
-        for (col, v) in cols.iter_mut().zip(row) {
+        for (col, v) in cols.iter_mut().zip(values.cell(c)) {
             col.push(v);
         }
     }
     for ((name, _), col) in FEATURES.iter().zip(cols) {
         out.add(name, col);
+    }
+}
+
+/// Entries per memo of [`Values`] (~170 bytes each).
+const MEMO_MAX: usize = 1 << 16;
+
+/// The `v_*` features one cell at a time: the sheet's column hints (first pass) plus a memo of
+/// what each value gave ([`compute_with`] is exactly this, cell by cell).
+pub struct Values<'a> {
+    hints: std::sync::Arc<HashMap<u32, ColumnHints>>,
+    locale: Option<Locale>,
+    // Registers repeat the same values on many rows: a text's or number's features depend only on
+    // the value and its column's hints (and the formula flag, set per cell), so each pair is
+    // computed once.
+    memo: rustc_hash::FxHashMap<(&'a str, ColumnHints), [f32; N]>,
+    num_memo: rustc_hash::FxHashMap<(u64, ColumnHints), [f32; N]>,
+}
+
+impl<'a> Values<'a> {
+    pub fn new(grid: &Grid<'a>, locale: Option<Locale>) -> Values<'a> {
+        Values {
+            hints: std::sync::Arc::new(sheet_column_hints_with(grid, locale)),
+            locale,
+            memo: Default::default(),
+            num_memo: Default::default(),
+        }
+    }
+
+    /// Another [`Values`] over the same sheet and hints, with memos of its own (for another thread).
+    pub fn fork(&self) -> Values<'a> {
+        Values { hints: self.hints.clone(), locale: self.locale, memo: Default::default(), num_memo: Default::default() }
+    }
+
+    /// The [`FEATURES`] of `c`, a cell of the sheet given to [`Values::new`].
+    pub fn cell(&mut self, c: &'a Cell) -> [f32; N] {
+        let locale = self.locale;
+        let h = self.hints.get(&c.col).copied().unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
+        // The memos only save work: past this size they start over (a sheet of millions of
+        // distinct values would otherwise hold a feature row per value).
+        if self.memo.len() >= MEMO_MAX {
+            self.memo.clear();
+        }
+        if self.num_memo.len() >= MEMO_MAX {
+            self.num_memo.clear();
+        }
+        match &c.value {
+            Some(Value::Text(t)) => {
+                let mut r = *self.memo.entry((t.as_str(), h)).or_insert_with(|| cell_features(c, h));
+                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
+                r
+            }
+            Some(Value::Number(x)) => {
+                let mut r = *self.num_memo.entry((x.to_bits(), h)).or_insert_with(|| cell_features(c, h));
+                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
+                r
+            }
+            _ => cell_features(c, h),
+        }
     }
 }
 
