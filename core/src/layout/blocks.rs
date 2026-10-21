@@ -23,6 +23,9 @@ pub(crate) struct Entry {
     /// Date value (subset of `label_num`).
     pub date: bool,
     pub agg: Agg,
+    /// Part of a ruling line drawn with text (`-----`, `=====`, a `|` column; B38): never a
+    /// table break.
+    pub rule: bool,
     /// Index into `sheet.cells`.
     pub cell: Option<usize>,
 }
@@ -59,7 +62,7 @@ pub(crate) struct Row {
 impl Row {
     /// Entries that hold something (not empty merges).
     pub fn filled(&self) -> impl Iterator<Item = &Entry> {
-        self.entries.iter().filter(|e| !matches!(e.kind, Kind::Blank | Kind::Rule))
+        self.entries.iter().filter(|e| e.kind != Kind::Blank)
     }
     pub fn n(&self) -> usize {
         self.filled().count()
@@ -142,6 +145,7 @@ fn entries_of(grid: &Grid) -> Vec<Entry> {
             label_num: is_label_number(c),
             date: matches!(c.value, Some(crate::model::Value::DateTime(_))),
             agg,
+            rule: false,
             cell: Some(i),
         });
     }
@@ -156,6 +160,7 @@ fn entries_of(grid: &Grid) -> Vec<Entry> {
                 label_num: false,
                 date: false,
                 agg: Agg::None,
+                rule: false,
                 cell: None,
             });
         }
@@ -463,7 +468,7 @@ fn mark_rules(sheet: &Sheet, row: &mut Row) {
     let all = row.filled().count() > 0 && row.filled().all(rule);
     for e in &mut row.entries {
         if e.kind != Kind::Blank && (pipe(e) || (all && rule(e))) {
-            e.kind = Kind::Rule;
+            e.rule = true;
         }
     }
 }

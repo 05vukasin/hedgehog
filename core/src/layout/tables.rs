@@ -285,9 +285,6 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         }
     }
     // A ruling line drawn under the header (`-------- | -----`) underlines it.
-    while start + d + 1 < end && rows[start + d].n() == 0 && rows[start + d].entries.iter().any(|e| e.kind == Kind::Rule) {
-        d += 1;
-    }
     // A column-numbering row right under the header ("1 2 3 4 …") is part of it, and so is a
     // unit row ("Mrd. EUR | % | 2020 = 100", B45), in either order.
     for _ in 0..2 {
@@ -333,6 +330,9 @@ fn starts_new_table(
     header_sig: &Signature,
 ) -> bool {
     let r = &rows[k];
+    if r.filled().all(|e| e.rule) {
+        return false; // a ruling line (B38)
+    }
     if numeric_cols.is_empty() || r.n() < 2 || !is_header_row(r, &rows[k + 1..end]) {
         return false;
     }
@@ -677,21 +677,8 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     let formula_totals_ok = (formula_totals as f32) <= TOTAL_MAX_ROW_FRAC * body_len as f32 || body_len < 4;
     let mut body_cells = 0usize;
     let mut data_rows: Vec<usize> = Vec::new();
-    let mut prev_role = if seg.header > 0 { Role::Header } else { Role::Data };
     for k in body_start..seg.end {
         let r = &rows[k];
-        // A ruling line under a header (or a repeated header) underlines it: header; inside the
-        // body it is part of the table (data, as annotated corpora label it). Normalize leaves
-        // it out of the data either way.
-        if r.n() == 0 && r.entries.iter().any(|e| e.kind == Kind::Rule) {
-            let role = if prev_role == Role::Header { Role::Header } else { Role::Data };
-            for e in r.entries.iter().filter(|e| e.kind == Kind::Rule && e.left <= rect.right) {
-                if let Some(i) = e.cell {
-                    out.roles[i] = role;
-                }
-            }
-            continue;
-        }
         let last_body = k + 1 == seg.end;
         let total_label =
             if out.registers { has_own_total_label(sheet, r, &out.labelled_totals) } else { has_total_label(sheet, r) };
@@ -707,11 +694,10 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
             Role::Data
         };
         set_upto(out, r, role, rect.right);
-        prev_role = role;
         if role == Role::Data {
             data_rows.push(k);
             for e in r.entries.iter().filter(|e| e.left <= rect.right) {
-                body_cells += !matches!(e.kind, Kind::Blank | Kind::Rule) as usize;
+                body_cells += (e.kind != Kind::Blank) as usize;
                 let c = col_counts.entry(e.left).or_default();
                 match e.kind {
                     Kind::Text => c.0 += 1,

@@ -41,7 +41,7 @@ fn coarse(k: usize) -> usize {
 
 fn class_of(sheet: &Sheet, e: &Entry) -> u8 {
     let Some(i) = e.cell else { return EMPTY };
-    if matches!(e.kind, Kind::Missing | Kind::Blank | Kind::Rule) {
+    if matches!(e.kind, Kind::Missing | Kind::Blank) || e.rule {
         return EMPTY;
     }
     let c = &sheet.cells[i];

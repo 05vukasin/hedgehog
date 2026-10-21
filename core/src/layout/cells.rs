@@ -14,9 +14,6 @@ pub(crate) enum Kind {
     Missing,
     /// Empty merged area (no value at its anchor).
     Blank,
-    /// A ruling line drawn with characters (`-----`, `=====`, `_____`, `~~~~~`, a `|` column):
-    /// not content, and not a blank either (it keeps the table connected). Never table data (B38).
-    Rule,
 }
 
 /// How a formula aggregates other cells.
