@@ -24,6 +24,23 @@
 //! println!("{}", report.scoreboard());
 //! ```
 
+/// Read cell formats when evaluation opens a file (see [`set_read_formats`]).
+static READ_FORMATS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Makes the evaluation harness read cell formats (for a model that is not the embedded one but
+/// reads `s_*` features). The embedded model's needs are covered by [`crate::reader::ReadOptions`].
+pub fn set_read_formats(on: bool) {
+    READ_FORMATS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Opens a corpus file for scoring: [`crate::reader::ReadOptions::default`], plus formats when
+/// [`set_read_formats`] asked for them.
+pub fn open(path: &std::path::Path) -> Result<crate::model::Workbook, crate::reader::Error> {
+    let mut o = crate::reader::ReadOptions::default();
+    o.formats |= READ_FORMATS.load(std::sync::atomic::Ordering::Relaxed);
+    crate::reader::open_with(path, o)
+}
+
 pub mod baseline;
 pub mod bench;
 pub mod benchmark;

@@ -302,7 +302,7 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
     let mut counts: BTreeMap<&'static str, u64> = BTreeMap::new();
     for (file, (source, sheets)) in by_file {
         let path = base.join(&file);
-        let Ok(wb) = crate::reader::open(&path) else {
+        let Ok(wb) = super::open(&path) else {
             unreadable += sheets.len();
             continue;
         };

@@ -116,14 +116,34 @@ fn open_sheets(path: &Path) -> Result<Sheets<BufReader<File>>, calamine::Error> 
     }
 }
 
+/// What [`open_with`] reads besides values, formulas and merged areas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReadOptions {
+    /// Cell formats (`Sheet::formats`, xlsx / xlsm only). Costs an extra look at every cell tag
+    /// (about 15–35% more read time) and 4 bytes per cell.
+    pub formats: bool,
+}
+
+impl Default for ReadOptions {
+    /// Formats only when the embedded learned model reads them.
+    fn default() -> Self {
+        ReadOptions { formats: crate::learned::embedded().is_some_and(|m| m.reads_formats()) }
+    }
+}
+
+/// Opens a workbook with [`ReadOptions::default`].
 pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
+    open_with(path, ReadOptions::default())
+}
+
+pub fn open_with(path: impl AsRef<Path>, opts: ReadOptions) -> Result<Workbook, Error> {
     let path = path.as_ref();
     if is_delimited_text(path) {
         return csv::open(path);
     }
     match open_sheets(path) {
         Ok(wb) => {
-            let scan = || merges::Scanner::new(File::open(path).ok()?);
+            let scan = || merges::Scanner::new(File::open(path).ok()?, opts.formats);
             read_all(wb, scan)
         }
         // Some converted workbooks list a veryHidden sheet with `r:id=""` (a leftover VBA module
@@ -131,7 +151,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
         Err(e) if e.to_string().contains("Relationship not found") => {
             let repaired = repair_unlinked_sheets(path).map_err(|_| err(e))?;
             let wb = open_workbook_auto_from_rs(Cursor::new(repaired.as_slice())).map_err(err)?;
-            read_all(wb, || merges::Scanner::new(Cursor::new(repaired.as_slice())))
+            read_all(wb, || merges::Scanner::new(Cursor::new(repaired.as_slice()), opts.formats))
         }
         Err(e) => Err(err(e)),
     }

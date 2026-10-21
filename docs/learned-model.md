@@ -73,7 +73,12 @@ People spot titles, headers and totals by their formatting. calamine reads no st
 reads them itself for xlsx / xlsm: `xl/styles.xml` is resolved into one packed 32-bit
 [`Format`](../core/src/model.rs) per cell format, and the `s` attribute of every cell is picked up
 in the same streaming pass over the sheet XML that finds the merged areas (4 bytes per cell in
-`Sheet::formats`; xls, xlsb, ods and CSV have none). The features, per cell:
+`Sheet::formats`; xls, xlsb, ods and CSV have none). Reading them costs 15–35% more read time, so
+it is opt-in: `reader::open` reads formats only when the embedded model uses a formatting feature
+(today it does not, so `normalize`, `open` and the bindings read exactly as before);
+`reader::open_with(path, ReadOptions { formats: true })` asks for them, `hedgehog features`
+always does, and `hedgehog benchmark` / `eval` do when a `$HEDGEHOG_MODEL` reads them. The
+features, per cell:
 
 | Feature | Meaning |
 |---|---|
@@ -111,7 +116,15 @@ the European sample, all lost points on its 36 group-header cells, and the sixth
 group headers and synthetic notes. Retraining *without* formatting on the same data loses about as much (European sample
 65.4 → 63.9 to 64.5 per file), so the shipped model is a favourable draw rather than formatting
 being harmful; the release rule (no corpus worse, the European sample never worse) still keeps
-the shipped model. The features cost nothing at prediction time until a model uses them.
+the shipped model. The features cost nothing at prediction or read time until a model uses them.
+
+**Seed variance.** Retraining the same configuration with another XGBoost seed, or after the
+10% validation-file sample changes (adding StatSheets' CSV sheets redrew it), moves the small
+roles by up to about ±5 points of F1 (group headers, notes, `other`) and the European sample's
+per-file score by about ±1 point; the large corpora move by a few tenths. Retraining the shipped
+configuration on its own rows reproduces it exactly. Comparisons between feature sets therefore
+use the mean of several seeds (as in the leave-one-corpus-out table above), and a single retrain
+judged against the shipped model can fail the release rule by chance.
 
 ## Speed and memory
 

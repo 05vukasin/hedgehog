@@ -11,7 +11,9 @@ All notable changes to hedgehog are listed here. The format follows
 - **Cell formatting from xlsx / xlsm styles**: `Sheet::formats` holds one packed `Format` per cell
   (bold, italic, underline, font colour, size, fill, borders, alignment, indent, wrap, number
   format kind), read from `xl/styles.xml` and the cells' `s` attributes in the pass that already
-  scans each sheet for merged areas (4 bytes per cell; other formats: empty, never guessed). 14
+  scans each sheet for merged areas (4 bytes per cell; other formats: empty, never guessed).
+  Opt-in: `reader::open_with(path, ReadOptions { formats: true })`; plain `open` reads them only
+  when the embedded model uses them (not yet), so read time and memory are unchanged. 14
   `s_*` features for the learned model, relative to the sheet where that matters. In
   leave-one-corpus-out training they help every held-out corpus (four roles per file, mean of three
   seeds: DECO 75.2 → 75.6, StatSheets 79.9 → 80.1, Strudel 86.6 → 87.3, synthetic 94.3 → 94.7), but

@@ -482,6 +482,12 @@ impl RowModel {
         need
     }
 
+    /// Whether the trees test any formatting feature (`?_s_*`): then the reader must read cell
+    /// formats for this model.
+    pub fn reads_formats(&self) -> bool {
+        self.needed_features().iter().any(|n| n.get(1..4) == Some("_s_"))
+    }
+
     /// Role per row of `f` (one per segment).
     pub fn predict(&self, f: &Features) -> Result<Vec<Role>, String> {
         let coarse_of = |r: Role| crate::eval::benchmark::coarse(r);
@@ -517,7 +523,7 @@ impl RowModel {
 pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
     let t0 = std::time::Instant::now();
     let need = model.needed_features();
-    let styles = need.iter().any(|n| n.get(1..4) == Some("_s_"));
+    let styles = model.reads_formats();
     let (mut lay, f) = crate::eval::export::layout_and_features(grid, styles);
     crate::normalize::trace("M:layout+features", t0);
     let (segs, sf) = segment_features_where(grid, &f, |n| need.contains(n));

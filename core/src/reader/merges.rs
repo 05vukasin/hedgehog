@@ -34,7 +34,8 @@ pub struct Scanner<R: Read + Seek> {
 }
 
 impl<R: Read + Seek> Scanner<R> {
-    pub fn new(reader: R) -> Option<Self> {
+    /// `formats`: also resolve the workbook's styles, so [`Scanner::scan`] returns cell formats.
+    pub fn new(reader: R, formats: bool) -> Option<Self> {
         let mut zip = zip::ZipArchive::new(reader).ok()?;
         // Workbook part, like calamine's read_package_relationships (last officeDocument wins).
         let rels = read_small(&mut zip, "_rels/.rels")?;
@@ -89,6 +90,7 @@ impl<R: Read + Seek> Scanner<R> {
             parts.insert(name, path);
         }
         let xfs = styles_target
+            .filter(|_| formats)
             .and_then(|t| {
                 let t = std::str::from_utf8(&t).ok()?.to_string();
                 let path = match t.strip_prefix('/') {

@@ -28,7 +28,10 @@ fn xlsx_formats_reach_cells_and_features() {
     ws.write(8, 2, 3.0).unwrap();
     wb.save(&path).unwrap();
 
-    let book = hh_core::reader::open(&path).unwrap();
+    let plain = hh_core::reader::open(&path).unwrap();
+    // The embedded model reads no formatting features, so a plain open skips them.
+    assert!(plain.sheets[0].formats.is_empty());
+    let book = hh_core::reader::open_with(&path, hh_core::reader::ReadOptions { formats: true }).unwrap();
     std::fs::remove_file(&path).ok();
     let sheet = &book.sheets[0];
     assert_eq!(sheet.formats.len(), sheet.cells.len());
