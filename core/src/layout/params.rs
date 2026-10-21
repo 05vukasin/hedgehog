@@ -120,6 +120,8 @@ pub const YEAR_MAX: f64 = 2100.0;
 /// Two or more years on one row are labels only when neighbours differ by at most this much (a
 /// data row whose values happen to lie in the year range jumps further).
 pub const YEAR_MAX_STEP: f64 = 30.0;
+/// Periods written as text (`2010-01`) are labels only when at least this many share a row.
+pub const TEXT_PERIOD_MIN_RUN: usize = 3;
 
 /// Outline key column (label on the first row of each group only) → GroupHeader cells.
 pub const KEY_COLUMN_GROUPS: bool = true;

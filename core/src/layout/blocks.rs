@@ -474,6 +474,18 @@ fn mark_rules(sheet: &Sheet, row: &mut Row) {
 }
 
 fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
+    // Periods written as text (`2010-01`) label columns only as a run across the row (a header
+    // of periods); one or two text dates on a record are values.
+    let text_period = |e: &Entry| {
+        e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])).is_some_and(|t| super::cells::is_text_period(t.trim()))
+    };
+    if row.entries.iter().filter(|e| e.label_num && text_period(e)).count() < TEXT_PERIOD_MIN_RUN {
+        for k in 0..row.entries.len() {
+            if row.entries[k].label_num && text_period(&row.entries[k]) {
+                row.entries[k].label_num = false;
+            }
+        }
+    }
     let years: Vec<(usize, f64)> = row
         .entries
         .iter()

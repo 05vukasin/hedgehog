@@ -80,12 +80,15 @@ pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
 }
 
 /// A sentence alone on the last row of a block ("Data as reported by the departments; not
-/// audited."): one text cell of at least [`NOTE_SENTENCE_WORDS`] words and
-/// [`NOTE_SENTENCE_LEN`] characters. Only for the rows that end a block (B38).
+/// audited."): one text cell ending with a full stop, of at least [`NOTE_SENTENCE_WORDS`] words
+/// and [`NOTE_SENTENCE_LEN`] characters. Only for the rows that end a block (B38).
 fn is_trailing_sentence(sheet: &Sheet, r: &Row) -> bool {
     let Some(e) = single_text(r) else { return false };
     let t = text(sheet, e).trim();
-    !is_total_label(t) && t.chars().count() >= NOTE_SENTENCE_LEN && t.split_whitespace().count() >= NOTE_SENTENCE_WORDS
+    !is_total_label(t)
+        && t.ends_with('.')
+        && t.chars().count() >= NOTE_SENTENCE_LEN
+        && t.split_whitespace().count() >= NOTE_SENTENCE_WORDS
 }
 
 /// Metadata written as key/value pairs on one row ("Date of publication: | 15 Sep 2026 | … |
