@@ -1308,7 +1308,7 @@ mod tests {
         assert!(c.starts_with("FILE x.xlsx · 2 sheets · "), "{c}");
         assert!(c.contains("TIME 2001–2003 (year, from column headers in T1, T2)"), "{c}");
         assert!(c.contains("T1  'Table 1 title' ← 'Sheet 1'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T1_all) · time 2001–2003 (year)"), "{c}");
-        assert!(c.contains("columns (4): Region[text] \"2001\"[number 0.25..0.25]"), "{c}");
+        assert!(c.contains("columns (4): Region[text · dim] \"2001\"[number 0.25..0.25]"), "{c}");
         assert!(c.contains("T2  'Table 2 title' ← 'Sheet 2'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T2_all) · time 2001–2003 (year) · same columns as T1"), "{c}");
         // Small tables: all rows inline (total rows marked), so the values to filter on need no
         // extra line.
@@ -1364,11 +1364,11 @@ mod tests {
         assert!(!c.contains("more"), "{c}");
         // Year columns: one run, nothing hidden.
         let c = catalog(&book(1, 15, true), "x.xlsx", MAX_CHARS);
-        assert!(c.contains("columns (16): Region[text] \"2001\"..\"2015\"[15 × number]"), "{c}");
+        assert!(c.contains("columns (16): Region[text · dim] \"2001\"..\"2015\"[15 × number]"), "{c}");
         // Wider than 40: runs of same-type columns.
         let c = catalog(&book(1, 60, false), "x.xlsx", MAX_CHARS);
         assert!(
-            c.contains("columns (62): Region[text] \"Measure 1-0 long header text\"..\"Measure 1-60 long header text\"[61 × number]"),
+            c.contains("columns (62): Region[text · dim] \"Measure 1-0 long header text\"..\"Measure 1-60 long header text\"[61 × number]"),
             "{c}"
         );
     }
@@ -1455,7 +1455,7 @@ mod tests {
         t.row_types = vec![RowType::Data; 31];
         let c = catalog(&many, "x.xlsx", MAX_CHARS);
         assert!(!c.contains("Region values"), "{c}");
-        assert!(c.contains("Region[text e.g. \"r0\"]"), "{c}");
+        assert!(c.contains("Region[text · id e.g. \"r0\"]"), "{c}");
     }
 
     #[test]

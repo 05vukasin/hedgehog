@@ -68,7 +68,9 @@ pub struct LongView {
 /// A word that is (part of) a period: digits and separators only (`2024`, `2024-03`,
 /// `31.01.2002`, `2020/`), a quarter / half / week number (`Q1`, `H2`, `W05`, `1Q`), a month or
 /// period label, a weekday, or anything the date parser reads.
-fn period_word(w: &str) -> bool {
+/// `dated`: the header has a full date or ISO month (`2002-02-05`), so a month word next to it is
+/// not its period (`Avg` is August in Serbian, `Mar` March).
+fn period_word(w: &str, dated: bool) -> bool {
     let lw = w.trim_end_matches(['.', ',', ':']).to_lowercase();
     let digits = lw.chars().filter(|c| c.is_ascii_digit()).count();
     if digits > 0 && lw.chars().all(|c| c.is_ascii_digit() || "-./:".contains(c)) {
@@ -80,7 +82,7 @@ fn period_word(w: &str) -> bool {
         return true;
     }
     WEEKDAYS.contains(&lw.as_str())
-        || hh_core::values::date::is_period_label(w)
+        || (!dated && hh_core::values::date::is_period_label(w))
         || (digits > 0 && hh_core::values::parse_date(w, None).is_some())
 }
 
@@ -92,15 +94,18 @@ fn header_rest(name: &str) -> String {
         Some((head, tail)) if tail.ends_with(')') && tail[..tail.len() - 1].bytes().all(|b| b.is_ascii_digit()) => head,
         _ => name,
     };
+    let dated = name.split(|c: char| c.is_whitespace()).any(|w| {
+        w.len() >= 7 && w.bytes().filter(u8::is_ascii_digit).count() >= 6 && w.bytes().all(|b| b.is_ascii_digit() || b"-./".contains(&b))
+    });
     let mut parts: Vec<String> = Vec::new();
     for part in name.split(" / ") {
         let p = part.trim();
-        if p.is_empty() || hh_core::values::date::is_period_label(p) {
+        if p.is_empty() || (!dated && hh_core::values::date::is_period_label(p)) {
             continue;
         }
         let words: Vec<&str> = p
             .split_whitespace()
-            .filter(|w| !period_word(w))
+            .filter(|w| !period_word(w, dated))
             .collect();
         if !words.is_empty() {
             parts.push(words.join(" "));
@@ -350,6 +355,119 @@ pub fn brief_text(lv: &LongView) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sql::{Db, DEFAULT_TIMEOUT};
+    use hh_core::normalize::{Column, Normalized, Out, RowType, Transforms};
+    use hh_core::Rect;
+
+    fn col(name: &str, role: ColRole, dtype: Dtype, src: u32, values: Vec<Out>) -> Column {
+        Column {
+            name: name.into(),
+            role,
+            source_col: Some(src),
+            original_header: vec![(name.into(), (0, src))],
+            dtype,
+            unit: None,
+            currency: None,
+            decimal: None,
+            date_order: None,
+            ambiguous: 0,
+            values,
+        }
+    }
+
+    /// Region × 2021..2024 plus a change column and a total row.
+    fn wide() -> Normalized {
+        let regions = ["North", "South", "Total"];
+        let mut columns = vec![
+            col("Region", ColRole::Data, Dtype::Text, 0, regions.iter().map(|r| Out::Text((*r).into())).collect()),
+        ];
+        for (k, y) in [2021, 2022, 2023, 2024].iter().enumerate() {
+            let vals = vec![Out::Num(10.0 * (k + 1) as f64), Out::Num(1.0 + k as f64), Out::Num(11.0 * (k + 1) as f64)];
+            let vals = if *y == 2022 { vec![Out::Null, vals[1].clone(), vals[2].clone()] } else { vals };
+            columns.push(col(&y.to_string(), ColRole::Data, Dtype::Number, 1 + k as u32, vals));
+        }
+        columns.push(col("2021/ 2024", ColRole::Data, Dtype::Number, 5, vec![Out::Num(0.5); 3]));
+        columns.push(col("_src_row", ColRole::SrcRow, Dtype::Integer, 0, (0..3).map(|i| Out::Num(i as f64 + 2.0)).collect()));
+        columns.push(col(
+            "_row_type",
+            ColRole::RowType,
+            Dtype::Text,
+            0,
+            ["data", "data", "total"].iter().map(|s| Out::Text((*s).into())).collect(),
+        ));
+        let t = Table {
+            n: 1,
+            sheet: "T1_x".into(),
+            source_sheet: "Sheet1".into(),
+            rect: Rect { top: 0, left: 0, bottom: 3, right: 5 },
+            header_top: 0,
+            header_rows: 1,
+            title: Some(("Sales in EUR".into(), (0, 0))),
+            notes: vec![],
+            confidence: 0.9,
+            columns,
+            src_rows: (1..=3).collect(),
+            row_types: vec![RowType::Data, RowType::Data, RowType::Total],
+            transforms: Transforms::default(),
+            warnings: vec![],
+        };
+        Normalized { tables: vec![t], ..Default::default() }
+    }
+
+    #[test]
+    fn long_view_rows_and_filters() {
+        let norm = wide();
+        let t = &norm.tables[0];
+        let lv = table_view(t).expect("a long view");
+        assert_eq!(lv.name, "T1_long");
+        assert_eq!(lv.periods.len(), 4, "the change column 2021/ 2024 is not a period");
+        assert_eq!(lv.keys, vec![0]);
+        assert!(!lv.has_measure);
+        let db = Db::load(&norm).unwrap();
+        let r = db.query("SELECT period, value, _src_col, _src_row FROM T1_long WHERE Region = 'South' ORDER BY period", 50, DEFAULT_TIMEOUT).unwrap();
+        assert_eq!(r.rows, vec![
+            vec!["2021", "1", "B", "3"],
+            vec!["2022", "2", "C", "3"],
+            vec!["2023", "3", "D", "3"],
+            vec!["2024", "4", "E", "3"],
+        ]);
+        // Empty cells are left out; total rows are in, marked.
+        let n = db.query("SELECT count(*) FROM T1_long WHERE _row_type = 'data'", 5, DEFAULT_TIMEOUT).unwrap();
+        assert_eq!(n.rows[0][0], "7");
+        let tot = db.query("SELECT value FROM T1_long WHERE _row_type = 'total' AND period = '2024'", 5, DEFAULT_TIMEOUT).unwrap();
+        assert_eq!(tot.rows[0][0], "44");
+        let line = catalog_line(t, &lv, None, true);
+        assert!(line.contains("T1_long: one row per (Region, period)"), "{line}");
+        assert!(line.contains("period '2021'..'2024'") && line.contains("by year") && line.contains("total rows"), "{line}");
+        // B21: types from the title (bare year headers), the change column, the label column.
+        let tys = crate::types::classify(t, &sql_names(t), None, &[]);
+        let ty = |i: usize| tys[i].clone().unwrap();
+        assert_eq!((ty(1).sem, ty(1).currency.as_deref()), (Sem::Amount, Some("EUR")));
+        assert_eq!(ty(5).sem, Sem::Rate);
+        assert_eq!(ty(0).sem, Sem::Dimension);
+        let no_sum = crate::types::no_sum_line(t, &sql_names(t), &tys, None).unwrap();
+        assert!(no_sum.contains("\"2021/ 2024\" (rate)"), "{no_sum}");
+    }
+
+    #[test]
+    fn repeated_periods_get_a_measure_column() {
+        let mut norm = wide();
+        let t = &mut norm.tables[0];
+        let extra: Vec<Column> = (0..4)
+            .map(|k| col(&format!("Cost / {}", 2021 + k), ColRole::Data, Dtype::Number, 10 + k, vec![Out::Num(1.0); 3]))
+            .collect();
+        for (k, c) in t.columns.iter_mut().enumerate().skip(1).take(4) {
+            c.name = format!("Sales / {}", 2020 + k);
+        }
+        let at = t.columns.len() - 2;
+        t.columns.splice(at..at, extra);
+        let lv = table_view(t).expect("a long view");
+        assert!(lv.has_measure);
+        assert_eq!(lv.periods.len(), 8);
+        let db = Db::load(&norm).unwrap();
+        let r = db.query("SELECT measure, count(*) FROM T1_long WHERE period = '2023' GROUP BY measure ORDER BY measure", 5, DEFAULT_TIMEOUT).unwrap();
+        assert_eq!(r.rows, vec![vec!["Cost", "3"], vec!["Sales", "3"]]);
+    }
 
     #[test]
     fn rests() {
