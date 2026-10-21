@@ -41,8 +41,9 @@ pub struct Options {
     pub locale: Option<Locale>,
     /// Cell roles from the layout rules only, without the learned row model ([`crate::learned`]).
     pub rules_only: bool,
-    /// Sheets with more cells than this use the rules alone (the model's features take about
-    /// 440 bytes per cell). None: [`DEFAULT_MODEL_MAX_CELLS`].
+    /// Sheets with more cells than this use the rules alone. None: [`DEFAULT_MODEL_MAX_CELLS`].
+    /// (The model's input is streamed, a few dozen bytes per cell on row-major sheets; the limit
+    /// stays where it was so results on huge sheets do not change.)
     pub model_max_cells: Option<usize>,
     /// Stop after this instant: [`try_normalize_workbook`] (and [`normalize_file`], which also
     /// stops reading) returns an error; sheets not started by then are skipped.
@@ -701,14 +702,29 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// Development aid: with `HEDGEHOG_TRACE=1`, prints elapsed time and peak memory (Linux) per stage
 /// to stderr.
 pub(crate) fn trace(stage: &str, since: std::time::Instant) {
+    if tracing() {
+        trace_ms(stage, since.elapsed());
+    }
+}
+
+/// Whether `HEDGEHOG_TRACE` is on (read once per process).
+pub(crate) fn tracing() -> bool {
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
-    if !*ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0")) {
+    *ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0"))
+}
+
+/// [`trace`] with a measured duration: sub-steps (`layout.blocks`, `M.values`, …) are indented under
+/// their stage. A sub-step's time is its own (not since the stage started); the peak is the process
+/// peak when the line is printed.
+pub(crate) fn trace_ms(stage: &str, took: std::time::Duration) {
+    if !tracing() {
         return;
     }
     let peak = std::fs::read_to_string("/proc/self/status")
         .ok()
         .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM:")).map(|l| l[6..].trim().to_string()))
         .unwrap_or_default();
-    eprintln!("[trace] {stage:<16} {:>9.1} ms  peak {peak}", since.elapsed().as_secs_f64() * 1000.0);
+    let indent = if stage.contains('.') { "  " } else { "" };
+    eprintln!("[trace] {indent}{stage:<16} {:>9.1} ms  peak {peak}", took.as_secs_f64() * 1000.0);
 }

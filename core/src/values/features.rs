@@ -75,8 +75,9 @@ impl ColumnHints {
 
 /// Column evidence for word-like currency codes: a cell already read with a currency, or text
 /// mentioning one (`Amount (USD)`, `$`, `Currency`).
-fn currency_evidence(s: &str) -> bool {
-    parse_number(s, NumberHint::default()).is_some_and(|p| p.currency.is_some()) || mentions_currency(s)
+/// `p` is `parse_number(s, NumberHint::default())`, which the callers need anyway.
+fn currency_evidence_parsed(s: &str, p: Option<&super::number::ParsedNumber>) -> bool {
+    p.is_some_and(|p| p.currency.is_some()) || mentions_currency(s)
 }
 
 /// Infers decimal convention and day/month order from a column's text values.
@@ -90,9 +91,11 @@ pub fn infer_column_with<'a>(values: impl IntoIterator<Item = &'a str>, native: 
     let mut o = DateOrderVotes::default();
     let mut cur = false;
     for s in values {
-        d.add(s);
+        // One default reading serves the decimal vote and the currency evidence.
+        let p = parse_number(s, NumberHint::default());
+        d.add_parsed(s, p.as_ref());
         o.add(s);
-        cur = cur || currency_evidence(s);
+        cur = cur || currency_evidence_parsed(s, p.as_ref());
     }
     ColumnHints { decimal: d.decision_with(native), date_order: o.decision(), currency_context: cur }
 }
@@ -109,9 +112,11 @@ pub fn sheet_column_hints(grid: &Grid) -> HashMap<u32, ColumnHints> {
 
 /// Like [`sheet_column_hints`], but an explicit `locale` overrides inference for every column.
 pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u32, ColumnHints> {
-    let mut votes: HashMap<u32, (DecimalVotes, DateOrderVotes)> = HashMap::new();
-    let mut currency_cols: HashMap<u32, bool> = HashMap::new();
-    let mut natives: HashMap<u32, NativeNumbers> = HashMap::new();
+    // Per column: votes and currency evidence (integer counts and flags, so the order in which
+    // cells or columns are merged does not matter).
+    let mut votes: rustc_hash::FxHashMap<u32, (DecimalVotes, DateOrderVotes)> = Default::default();
+    let mut currency_cols: rustc_hash::FxHashMap<u32, bool> = Default::default();
+    let mut natives: rustc_hash::FxHashMap<u32, NativeNumbers> = Default::default();
     // Each text's votes and currency evidence depend only on the text: computed once per text.
     let mut memo: rustc_hash::FxHashMap<&str, (DecimalVotes, DateOrderVotes, bool)> = rustc_hash::FxHashMap::default();
     for c in &grid.sheet.cells {
@@ -124,11 +129,13 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
         if let Some(Value::Text(s)) = &c.value {
             let (d, o, cur_ev) = *memo.entry(s.as_str()).or_insert_with(|| {
                 let (mut d, mut o) = (DecimalVotes::default(), DateOrderVotes::default());
+                // One default reading serves the decimal vote and the currency evidence.
+                let p = parse_number(s, NumberHint::default());
                 if locale.is_none() {
-                    d.add(s);
+                    d.add_parsed(s, p.as_ref());
                     o.add(s);
                 }
-                (d, o, currency_evidence(s))
+                (d, o, currency_evidence_parsed(s, p.as_ref()))
             });
             let e = votes.entry(c.col).or_default();
             e.0.merge(&d);
@@ -176,34 +183,73 @@ pub fn compute(grid: &Grid, out: &mut Features) {
 /// [`compute`] with an optional explicit locale for the whole sheet (overrides inference).
 pub fn compute_with(grid: &Grid, out: &mut Features, locale: Option<Locale>) {
     let cells = &grid.sheet.cells;
-    let hints = sheet_column_hints_with(grid, locale);
+    let mut values = Values::new(grid, locale);
     let mut cols: Vec<Vec<f32>> = (0..N).map(|_| Vec::with_capacity(cells.len())).collect();
-    // Registers repeat the same values on many rows: a text's or number's features depend only on
-    // the value and its column's hints (and the formula flag, set per cell), so each pair is
-    // computed once.
-    let mut memo: rustc_hash::FxHashMap<(&str, ColumnHints), [f32; N]> = rustc_hash::FxHashMap::default();
-    let mut num_memo: rustc_hash::FxHashMap<(u64, ColumnHints), [f32; N]> = rustc_hash::FxHashMap::default();
     for c in cells {
-        let h = hints.get(&c.col).copied().unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
-        let row = match &c.value {
-            Some(Value::Text(t)) => {
-                let mut r = *memo.entry((t.as_str(), h)).or_insert_with(|| cell_features(c, h));
-                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
-                r
-            }
-            Some(Value::Number(x)) => {
-                let mut r = *num_memo.entry((x.to_bits(), h)).or_insert_with(|| cell_features(c, h));
-                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
-                r
-            }
-            _ => cell_features(c, h),
-        };
-        for (col, v) in cols.iter_mut().zip(row) {
+        for (col, v) in cols.iter_mut().zip(values.cell(c)) {
             col.push(v);
         }
     }
     for ((name, _), col) in FEATURES.iter().zip(cols) {
         out.add(name, col);
+    }
+}
+
+/// Entries per memo of [`Values`] (~170 bytes each).
+const MEMO_MAX: usize = 1 << 16;
+
+/// The `v_*` features one cell at a time: the sheet's column hints (first pass) plus a memo of
+/// what each value gave ([`compute_with`] is exactly this, cell by cell).
+pub struct Values<'a> {
+    hints: std::sync::Arc<HashMap<u32, ColumnHints>>,
+    locale: Option<Locale>,
+    // Registers repeat the same values on many rows: a text's or number's features depend only on
+    // the value and its column's hints (and the formula flag, set per cell), so each pair is
+    // computed once.
+    memo: rustc_hash::FxHashMap<(&'a str, ColumnHints), [f32; N]>,
+    num_memo: rustc_hash::FxHashMap<(u64, ColumnHints), [f32; N]>,
+}
+
+impl<'a> Values<'a> {
+    pub fn new(grid: &Grid<'a>, locale: Option<Locale>) -> Values<'a> {
+        Values {
+            hints: std::sync::Arc::new(sheet_column_hints_with(grid, locale)),
+            locale,
+            memo: Default::default(),
+            num_memo: Default::default(),
+        }
+    }
+
+    /// Another [`Values`] over the same sheet and hints, with memos of its own (for another thread).
+    pub fn fork(&self) -> Values<'a> {
+        Values { hints: self.hints.clone(), locale: self.locale, memo: Default::default(), num_memo: Default::default() }
+    }
+
+    /// The [`FEATURES`] of `c`, a cell of the sheet given to [`Values::new`].
+    pub fn cell(&mut self, c: &'a Cell) -> [f32; N] {
+        let locale = self.locale;
+        let h = self.hints.get(&c.col).copied().unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
+        // The memos only save work: past this size they start over (a sheet of millions of
+        // distinct values would otherwise hold a feature row per value).
+        if self.memo.len() >= MEMO_MAX {
+            self.memo.clear();
+        }
+        if self.num_memo.len() >= MEMO_MAX {
+            self.num_memo.clear();
+        }
+        match &c.value {
+            Some(Value::Text(t)) => {
+                let mut r = *self.memo.entry((t.as_str(), h)).or_insert_with(|| cell_features(c, h));
+                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
+                r
+            }
+            Some(Value::Number(x)) => {
+                let mut r = *self.num_memo.entry((x.to_bits(), h)).or_insert_with(|| cell_features(c, h));
+                r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
+                r
+            }
+            _ => cell_features(c, h),
+        }
     }
 }
 

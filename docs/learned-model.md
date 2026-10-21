@@ -40,8 +40,10 @@ any CPU without a GPU or extra dependencies, and it is on by default.
      at least half as full as its neighbours. Titles and notes live at the edges of tables; a real
      sub-header between data rows is much sparser than the data around it. Without this, one
      176,000-row register lost 780,000 cells to `Notes`.
-   - Sheets with more than 1,000,000 cells use the rules alone (the features take about 440
-     bytes per cell); the manifest lists a warning for each.
+   - Sheets with more than 1,000,000 cells use the rules alone; the manifest lists a warning for
+     each. (The limit dates from when the features took about 440 bytes per cell; they are now
+     streamed, but raising the limit would change results on huge sheets, so that is a separate
+     decision.)
 
 6. **Tables from row roles** (`core/src/learned/tables.rs`). Per table, each row's role is the
    majority role of its cells inside the rectangle, and:
@@ -184,14 +186,18 @@ On 365 real files (315 European government spreadsheets and 50 Enron files):
 
 Measured on v0.3.1, 16-core laptop.
 
-The model's features take about 440 bytes per cell of the sheet being analyzed, so a sheet near
-the 1,000,000-cell limit needs up to about 0.75 GB more than the rules alone; `--model-max-cells`
-lowers the limit on machines with little memory.
+Since P7 the model's input is streamed (a first pass of sheet-wide counts, then a three-row
+window; see [architecture.md](architecture.md#performance-notes)) instead of a feature matrix of
+about 440 bytes per cell, with the same output. On the files above: 5 sheets / 1.5M cells
+14.3 s → 7.5 s and 0.78 → 0.57 GB at the end of the analysis; the 947k-cell sheet 19.6 s → 14.3 s,
+1.44 → 1.20 GB; 23 sheets / 3.1M cells 16.4 s → 13.1 s, 0.81 → 0.59 GB (best of 3, the whole
+`normalize`). `--model-max-cells` still lowers the limit on machines with little memory.
 
 What keeps it fast: the model labels rows, not cells (about 25 times fewer predictions); the fine
 model only evaluates the trees of roles inside the family the coarse model chose; trees are
-packed into 16-byte nodes and evaluated a block of rows at a time; repeated texts and numbers are
-parsed once per sheet; on sheets of 20,000+ cells the feature groups run on parallel threads, and
+packed into 16-byte nodes and walked eight rows at a time in lockstep, a block of rows at a time;
+repeated texts and numbers are parsed once per sheet; on sheets of 20,000+ cells the first passes
+run on parallel threads and the rows are walked in up to four parallel chunks, and
 the sheets of a workbook are analyzed in parallel when they hold at most 300,000 cells together
 (larger workbooks go one sheet at a time, so peak memory is set by the largest sheet). A single-core machine runs the same code
 sequentially and gets the same result.

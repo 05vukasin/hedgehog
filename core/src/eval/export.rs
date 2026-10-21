@@ -60,7 +60,7 @@ pub fn sheet_features_with(grid: &Grid, lay: &crate::analysis::SheetLayout) -> F
 }
 
 /// Sheets with at least this many cells compute their feature groups on parallel threads.
-const PARALLEL_MIN_CELLS: usize = 20_000;
+pub(crate) const PARALLEL_MIN_CELLS: usize = 20_000;
 
 /// The rule layout and [`sheet_features`] of a sheet, the independent parts (layout, context,
 /// values, totals) on parallel threads for larger sheets. Same result as the sequential path.
@@ -113,37 +113,153 @@ fn finish(
     f: &mut Features,
     styles: bool,
 ) {
-    let cells = &grid.sheet.cells;
-    let role_at = |r: i64, c: i64| -> f32 {
-        if r < 0 || c < 0 {
-            return -1.0;
+    let n = grid.sheet.cells.len();
+    let lx = LayoutTotals::new(grid, lay, cands);
+    let mut cols: Vec<Vec<f32>> = (0..LAYOUT_TOTALS.len()).map(|_| Vec::with_capacity(n)).collect();
+    for i in 0..n {
+        for (col, v) in cols.iter_mut().zip(lx.cell(i)) {
+            col.push(v);
         }
-        grid.cell_index(r as u32, c as u32).map_or(-1.0, |i| role_id(lay.roles[i]) as f32)
-    };
-    let mut cols: [Vec<f32>; 6] = Default::default();
-    for (i, c) in cells.iter().enumerate() {
-        let (r, k) = (c.row as i64, c.col as i64);
-        cols[0].push(role_id(lay.roles[i]) as f32);
-        cols[1].push(role_at(r - 1, k));
-        cols[2].push(role_at(r + 1, k));
-        cols[3].push(role_at(r, k - 1));
-        cols[4].push(role_at(r, k + 1));
-        let in_table = lay.tables.iter().any(|t| {
-            t.rect.top <= c.row && c.row <= t.rect.bottom && t.rect.left <= c.col && c.col <= t.rect.right
-        });
-        cols[5].push(in_table as u8 as f32);
     }
-    let [a, b, d, e, g, h] = cols;
-    f.add("l_role", a);
-    f.add("l_role_up", b);
-    f.add("l_role_down", d);
-    f.add("l_role_left", e);
-    f.add("l_role_right", g);
-    f.add("l_in_table", h);
-    add_total_context(grid, cands, f);
+    drop(lx);
+    for (name, col) in LAYOUT_TOTALS.iter().zip(cols) {
+        f.add(name, col);
+    }
     if styles {
         add_style_features(grid, f);
     }
+}
+
+/// The `l_*` (rule layout) and `x_*` (detected totals) features, in column order.
+pub const LAYOUT_TOTALS: [&str; 11] = [
+    "l_role",
+    "l_role_up",
+    "l_role_down",
+    "l_role_left",
+    "l_role_right",
+    "l_in_table",
+    "x_total_cand",
+    "x_total_level",
+    "x_row_vtotals",
+    "x_row_vtotal_frac",
+    "x_col_htotal_frac",
+];
+
+/// The [`LAYOUT_TOTALS`] features one cell at a time (what [`finish`] adds, cell by cell).
+///
+/// `x_*`: detected totals around the cell. DECO labels a whole total row (its label and every
+/// number), so whether the row holds detected totals matters as much as the cell itself.
+pub(crate) struct LayoutTotals<'g> {
+    grid: &'g Grid<'g>,
+    lay: &'g crate::analysis::SheetLayout,
+    in_table: Vec<bool>,
+    /// Candidate cells: (`x_total_cand`, `x_total_level`); the last candidate on a cell decides.
+    cand: rustc_hash::FxHashMap<usize, (f32, f32)>,
+    /// Rows with vertical total candidates: (count, count / numbers in the row).
+    row_v: rustc_hash::FxHashMap<u32, (u32, f32)>,
+    /// Columns with horizontal total candidates: count / numbers in the column.
+    col_h: rustc_hash::FxHashMap<u32, f32>,
+}
+
+impl<'g> LayoutTotals<'g> {
+    pub(crate) fn new(
+        grid: &'g Grid<'g>,
+        lay: &'g crate::analysis::SheetLayout,
+        cands: &[crate::totals::TotalCandidate],
+    ) -> LayoutTotals<'g> {
+        use crate::totals::{Direction, TotalLevel};
+        let mut cand = rustc_hash::FxHashMap::default();
+        let mut row_v: rustc_hash::FxHashMap<u32, u32> = Default::default();
+        let mut col_h: rustc_hash::FxHashMap<u32, u32> = Default::default();
+        for c in cands {
+            let Some(i) = grid.cell_index(c.row, c.col) else { continue };
+            let vertical = c.direction == Direction::Vertical;
+            let level = match c.level {
+                TotalLevel::Total => 1.0,
+                TotalLevel::Subtotal => 2.0,
+                TotalLevel::GrandTotal => 3.0,
+            };
+            cand.insert(i, (if vertical { 1.0 } else { 2.0 }, level));
+            if vertical {
+                *row_v.entry(c.row).or_default() += 1;
+            } else {
+                *col_h.entry(c.col).or_default() += 1;
+            }
+        }
+        let cells = &grid.sheet.cells;
+        let numeric = |idx: &[u32]| {
+            idx.iter().filter(|&&i| matches!(cells[i as usize].value, Some(crate::model::Value::Number(_)))).count().max(1)
+        };
+        // A row or column without candidates has 0 / numbers = +0.0.
+        let row_v = row_v.into_iter().map(|(r, v)| (r, (v, v as f32 / numeric(grid.row_cells(r)) as f32))).collect();
+        let col_h = col_h.into_iter().map(|(c, h)| (c, h as f32 / numeric(grid.col_cells(c)) as f32)).collect();
+        LayoutTotals { grid, lay, in_table: in_tables(&grid.sheet.cells, &lay.tables), cand, row_v, col_h }
+    }
+
+    /// The [`LAYOUT_TOTALS`] of cell `i` (index into `sheet.cells`), in order.
+    pub(crate) fn cell(&self, i: usize) -> [f32; LAYOUT_TOTALS.len()] {
+        let grid = self.grid;
+        let cells = &grid.sheet.cells;
+        let roles = &self.lay.roles;
+        let role_at = |r: i64, c: i64| -> f32 {
+            if r < 0 || c < 0 {
+                return -1.0;
+            }
+            grid.cell_index(r as u32, c as u32).map_or(-1.0, |i| role_id(roles[i]) as f32)
+        };
+        let c = &cells[i];
+        let (r, k) = (c.row as i64, c.col as i64);
+        let (cand, level) = self.cand.get(&i).copied().unwrap_or((0.0, 0.0));
+        let (v, rf) = self.row_v.get(&c.row).copied().unwrap_or((0, 0.0));
+        let cf = self.col_h.get(&c.col).copied().unwrap_or(0.0);
+        [
+            role_id(roles[i]) as f32,
+            role_at(r - 1, k),
+            role_at(r + 1, k),
+            role_at(r, k - 1),
+            role_at(r, k + 1),
+            self.in_table[i] as u8 as f32,
+            cand,
+            level,
+            v as f32,
+            rf,
+            cf,
+        ]
+    }
+}
+
+/// Per cell: whether any table's rectangle contains it (`l_in_table`). A sweep over the rows with
+/// the tables that span the current row, instead of testing every table for every cell:
+/// O(cells × overlapping tables + tables · log) rather than O(cells × tables).
+pub(crate) fn in_tables(cells: &[crate::model::Cell], tables: &[crate::analysis::DetectedTable]) -> Vec<bool> {
+    let inside = |r: &crate::model::Rect, c: &crate::model::Cell| r.left <= c.col && c.col <= r.right;
+    let mut rects: Vec<crate::model::Rect> = tables.iter().map(|t| t.rect).collect();
+    rects.sort_by_key(|r| r.top);
+    let mut order: Vec<u32> = Vec::new();
+    if !cells.windows(2).all(|w| w[0].row <= w[1].row) {
+        order = (0..cells.len() as u32).collect();
+        order.sort_by_key(|&i| cells[i as usize].row);
+    }
+    let mut out = vec![false; cells.len()];
+    let mut active: Vec<crate::model::Rect> = Vec::new();
+    let (mut next, mut row) = (0usize, None::<u32>);
+    for k in 0..cells.len() {
+        let i = if order.is_empty() { k } else { order[k] as usize };
+        let c = &cells[i];
+        if row != Some(c.row) {
+            row = Some(c.row);
+            // Rows only grow: a table that ended above this row is done for good.
+            active.retain(|r| r.bottom >= c.row);
+            while next < rects.len() && rects[next].top <= c.row {
+                if rects[next].bottom >= c.row {
+                    active.push(rects[next]);
+                }
+                next += 1;
+            }
+        }
+        out[i] = active.iter().any(|r| inside(r, c));
+    }
+    out
 }
 
 /// The formatting features (`s_*`), in column order.
@@ -242,52 +358,6 @@ fn add_style_features(grid: &Grid, f: &mut Features) {
     }
 }
 
-/// `x_*`: detected totals around the cell. DECO labels a whole total row (its label and every
-/// number), so whether the row holds detected totals matters as much as the cell itself.
-fn add_total_context(grid: &Grid, cands: &[crate::totals::TotalCandidate], f: &mut Features) {
-    use crate::totals::{Direction, TotalLevel};
-    use rustc_hash::FxHashMap;
-    let cells = &grid.sheet.cells;
-    let n = cells.len();
-    let mut cand = vec![0f32; n];
-    let mut level = vec![0f32; n];
-    let mut row_v: FxHashMap<u32, u32> = FxHashMap::default();
-    let mut col_h: FxHashMap<u32, u32> = FxHashMap::default();
-    for c in cands {
-        let Some(i) = grid.cell_index(c.row, c.col) else { continue };
-        let vertical = c.direction == Direction::Vertical;
-        cand[i] = if vertical { 1.0 } else { 2.0 };
-        level[i] = match c.level {
-            TotalLevel::Total => 1.0,
-            TotalLevel::Subtotal => 2.0,
-            TotalLevel::GrandTotal => 3.0,
-        };
-        if vertical {
-            *row_v.entry(c.row).or_default() += 1;
-        } else {
-            *col_h.entry(c.col).or_default() += 1;
-        }
-    }
-    let numeric = |idx: &[u32]| {
-        idx.iter().filter(|&&i| matches!(cells[i as usize].value, Some(crate::model::Value::Number(_)))).count().max(1)
-    };
-    let mut row_frac_memo: FxHashMap<u32, f32> = FxHashMap::default();
-    let mut col_frac_memo: FxHashMap<u32, f32> = FxHashMap::default();
-    let (mut rv, mut rf, mut cf) = (Vec::with_capacity(n), Vec::with_capacity(n), Vec::with_capacity(n));
-    for c in cells {
-        let v = row_v.get(&c.row).copied().unwrap_or(0);
-        rv.push(v as f32);
-        rf.push(*row_frac_memo.entry(c.row).or_insert_with(|| v as f32 / numeric(grid.row_cells(c.row)) as f32));
-        let h = col_h.get(&c.col).copied().unwrap_or(0);
-        cf.push(*col_frac_memo.entry(c.col).or_insert_with(|| h as f32 / numeric(grid.col_cells(c.col)) as f32));
-    }
-    f.add("x_total_cand", cand);
-    f.add("x_total_level", level);
-    f.add("x_row_vtotals", rv);
-    f.add("x_row_vtotal_frac", rf);
-    f.add("x_col_htotal_frac", cf);
-}
-
 fn quote(s: &str) -> String {
     if s.contains([',', '"', '\n', '\r']) {
         format!("\"{}\"", s.replace('"', "\"\""))
@@ -367,4 +437,44 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
         }
     }
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::DetectedTable;
+    use crate::model::{Cell, Rect, Value};
+
+    #[test]
+    fn in_tables_matches_testing_every_table() {
+        let t = |top, left, bottom, right| DetectedTable {
+            rect: Rect { top, left, bottom, right },
+            header_top: top,
+            header_rows: 1,
+            confidence: 1.0,
+        };
+        let tables = vec![t(5, 0, 9, 3), t(0, 2, 20, 2), t(12, 1, 14, 6), t(30, 0, 30, 0), t(8, 5, 12, 9)];
+        let mut cells = Vec::new();
+        for r in 0..35u32 {
+            for c in 0..11u32 {
+                if (r * 7 + c * 3) % 4 != 0 {
+                    cells.push(Cell { row: r, col: c, value: Some(Value::Number(1.0)), formula: None });
+                }
+            }
+        }
+        let brute = |cells: &[Cell]| -> Vec<bool> {
+            cells
+                .iter()
+                .map(|c| {
+                    tables.iter().any(|t| {
+                        t.rect.top <= c.row && c.row <= t.rect.bottom && t.rect.left <= c.col && c.col <= t.rect.right
+                    })
+                })
+                .collect()
+        };
+        assert_eq!(in_tables(&cells, &tables), brute(&cells));
+        cells.reverse(); // not sorted by row
+        assert_eq!(in_tables(&cells, &tables), brute(&cells));
+        assert!(in_tables(&cells, &[]).iter().all(|&x| !x));
+    }
 }

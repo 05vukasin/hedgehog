@@ -1262,6 +1262,7 @@ pub(super) fn process_sheet(
     }
     copy_row_labels(&mut out.tables[first..], &layouts);
     super::trace("build_tables", t0);
+    super::trace_ms("build_tables.typing", super::typing::take_typing_time());
     let tables = &out.tables[first..];
     let table_at = |row: u32, col: u32| -> Option<usize> {
         tables

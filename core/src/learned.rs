@@ -11,6 +11,8 @@ use crate::eval::synthetic::{parse_json, J};
 use crate::features::Features;
 use crate::grid::Grid;
 
+mod stream;
+pub use stream::equivalence;
 mod tables;
 pub use tables::Steps as RefineSteps;
 
@@ -30,7 +32,7 @@ const LEAF: u32 = u32::MAX;
 const BLOCK: usize = 256;
 
 /// A multi-class tree ensemble.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TreeModel {
     pub features: Vec<String>,
     pub classes: Vec<Role>,
@@ -41,6 +43,23 @@ pub struct TreeModel {
     roots: Vec<(u32, u8)>,
     /// Positions in `features` of the features the trees actually test.
     used: Vec<usize>,
+    /// Evaluation form of `nodes` (see [`TreeModel::prepare`]): a leaf points to itself on both
+    /// sides with a NaN threshold (`x < NaN` is false, so a walk that reached it stays there), so
+    /// every walk takes exactly its tree's depth in steps, without a leaf test.
+    walk: Vec<Node>,
+    /// Leaf value per node (0 for splits).
+    leaf: Vec<f32>,
+    /// Depth of each tree (longest root-to-leaf path), in `roots` order.
+    depth: Vec<u8>,
+}
+
+/// Equal models: the same features, classes, base scores and trees (the evaluation form is derived
+/// from them; its NaN thresholds never compare equal).
+impl PartialEq for TreeModel {
+    fn eq(&self, o: &TreeModel) -> bool {
+        (&self.features, &self.classes, &self.base, &self.nodes, &self.roots, &self.used)
+            == (&o.features, &o.classes, &o.base, &o.nodes, &o.roots, &o.used)
+    }
 }
 
 fn role_named(s: &str) -> Option<Role> {
@@ -67,7 +86,7 @@ impl TreeModel {
         if classes.is_empty() || base.len() != classes.len() {
             return Err("model needs one base score per class".into());
         }
-        let mut m = TreeModel { features, classes, base, nodes: Vec::new(), roots: Vec::new(), used: Vec::new() };
+        let mut m = TreeModel { features, classes, base, nodes: Vec::new(), roots: Vec::new(), used: Vec::new(), walk: Vec::new(), leaf: Vec::new(), depth: Vec::new() };
         let mut compact: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
         for t in j.get("trees").map(J::arr).unwrap_or(&[]) {
             let nums = |k: &str| -> Vec<f64> { t.get(k).map(J::arr).unwrap_or(&[]).iter().filter_map(J::num).collect() };
@@ -100,7 +119,106 @@ impl TreeModel {
             }
             m.roots.push((off, class as u8));
         }
+        m.prepare()?;
         Ok(m)
+    }
+
+    /// Builds the evaluation form (`walk`, `leaf`, `depth`) from `nodes` and `roots`. Errors on
+    /// trees that are not trees (a node reached twice, a path deeper than 255).
+    fn prepare(&mut self) -> Result<(), String> {
+        let mut seen = vec![false; self.nodes.len()];
+        self.walk = self
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, n)| {
+                if n.feat == LEAF {
+                    Node { feat: 0, thr: f32::NAN, left: i as u32, right: i as u32 }
+                } else {
+                    *n
+                }
+            })
+            .collect();
+        self.leaf = self.nodes.iter().map(|n| if n.feat == LEAF { n.thr } else { 0.0 }).collect();
+        self.depth.clear();
+        for &(root, _) in &self.roots {
+            let mut depth = 0u8;
+            let mut stack = vec![(root, 0u8)];
+            while let Some((i, d)) = stack.pop() {
+                if std::mem::replace(&mut seen[i as usize], true) {
+                    return Err("tree nodes shared or cyclic".into());
+                }
+                let n = self.nodes[i as usize];
+                if n.feat == LEAF {
+                    depth = depth.max(d);
+                    continue;
+                }
+                if d == u8::MAX {
+                    return Err("tree deeper than 255 levels".into());
+                }
+                stack.push((n.left, d + 1));
+                stack.push((n.right, d + 1));
+            }
+            self.depth.push(depth);
+        }
+        Ok(())
+    }
+
+    /// Adds every tree's leaf value to `out` (`n` rows × classes, holding the base scores) for the
+    /// `n` rows of `x` (row-major, one value per entry of `used`), tree by tree in model order, so
+    /// each score is the same sum in the same order whatever the block size. With `mask`
+    /// (`n` × classes), a row only evaluates the trees of the classes it allows.
+    ///
+    /// The rows of a block walk each tree [`LANES`] at a time in lockstep, for exactly the tree's
+    /// depth (leaves loop to themselves, see `walk`): independent loads instead of one dependent
+    /// chain per row, and no leaf test. The leaf each row reaches is the one the plain walk
+    /// (`x < threshold` → left, until a leaf) reaches.
+    fn add_block(&self, x: &[f32], n: usize, mask: Option<&[bool]>, out: &mut [f32]) {
+        let (k, nu) = (self.classes.len(), self.used.len());
+        if n == 0 {
+            return;
+        }
+        for (&(root, class), &depth) in self.roots.iter().zip(&self.depth) {
+            let c = class as usize;
+            let mut b = 0;
+            while b < n {
+                let lanes = LANES.min(n - b);
+                let mut active = [false; LANES];
+                let mut any = false;
+                // Lanes past the last row walk the last row; their result is not used.
+                let mut off = [0usize; LANES];
+                for l in 0..LANES {
+                    off[l] = (b + l).min(n - 1) * nu;
+                    if l < lanes {
+                        active[l] = mask.is_none_or(|m| m[(b + l) * k + c]);
+                        any |= active[l];
+                    }
+                }
+                if any {
+                    let mut idx = [root; LANES];
+                    for _ in 0..depth {
+                        for l in 0..LANES {
+                            let node = self.walk[idx[l] as usize];
+                            idx[l] = if x[off[l] + node.feat as usize] < node.thr { node.left } else { node.right };
+                        }
+                    }
+                    for l in 0..lanes {
+                        if active[l] {
+                            out[(b + l) * k + c] += self.leaf[idx[l] as usize];
+                        }
+                    }
+                }
+                b += LANES;
+            }
+        }
+    }
+
+    /// The columns of `f` the trees read, in `used` order. Errors if one is missing.
+    fn columns<'f>(&self, f: &'f Features) -> Result<Vec<&'f [f32]>, String> {
+        self.used
+            .iter()
+            .map(|&k| f.get(&self.features[k]).ok_or(format!("feature `{}` not computed", self.features[k])))
+            .collect()
     }
 
     pub fn trees(&self) -> usize {
@@ -197,52 +315,24 @@ impl TreeModel {
             }
             roots.push((root, class));
         }
-        Ok((TreeModel { features, classes, base, nodes, roots, used }, r.0))
+        let mut m = TreeModel { features, classes, base, nodes, roots, used, walk: Vec::new(), leaf: Vec::new(), depth: Vec::new() };
+        m.prepare()?;
+        Ok((m, r.0))
     }
 
     /// Raw class scores, row-major (`rows × classes`). Errors if a model feature is missing.
     pub fn scores(&self, f: &Features) -> Result<Vec<f32>, String> {
-        let cols: Vec<&[f32]> = self
-            .used
-            .iter()
-            .map(|&k| f.get(&self.features[k]).ok_or(format!("feature `{}` not computed", self.features[k])))
-            .collect::<Result<_, _>>()?;
-        let (k, nu, rows) = (self.classes.len(), cols.len(), f.rows());
-        let mut out = vec![0f32; rows * k];
-        for s in out.chunks_exact_mut(k) {
-            s.copy_from_slice(&self.base);
-        }
-        let mut x = vec![0f32; BLOCK * nu];
-        for start in (0..rows).step_by(BLOCK) {
-            let n = BLOCK.min(rows - start);
-            for (c, col) in cols.iter().enumerate() {
-                for b in 0..n {
-                    x[b * nu + c] = col[start + b];
-                }
-            }
-            for &(root, class) in &self.roots {
-                for b in 0..n {
-                    let xb = &x[b * nu..(b + 1) * nu];
-                    let mut node = self.nodes[root as usize];
-                    while node.feat != LEAF {
-                        let next = if xb[node.feat as usize] < node.thr { node.left } else { node.right };
-                        node = self.nodes[next as usize];
-                    }
-                    out[(start + b) * k + class as usize] += node.thr;
-                }
-            }
-        }
-        Ok(out)
+        self.scores_masked(f, None::<fn(usize, usize) -> bool>)
     }
 
     /// Like [`TreeModel::scores`], but row `i` only evaluates the trees of classes `c` with
     /// `allowed(i, c)`; the scores of other classes stay at their base value.
     pub fn scores_where(&self, f: &Features, allowed: impl Fn(usize, usize) -> bool) -> Result<Vec<f32>, String> {
-        let cols: Vec<&[f32]> = self
-            .used
-            .iter()
-            .map(|&k| f.get(&self.features[k]).ok_or(format!("feature `{}` not computed", self.features[k])))
-            .collect::<Result<_, _>>()?;
+        self.scores_masked(f, Some(allowed))
+    }
+
+    fn scores_masked(&self, f: &Features, allowed: Option<impl Fn(usize, usize) -> bool>) -> Result<Vec<f32>, String> {
+        let cols = self.columns(f)?;
         let (k, nu, rows) = (self.classes.len(), cols.len(), f.rows());
         let mut out = vec![0f32; rows * k];
         for s in out.chunks_exact_mut(k) {
@@ -257,39 +347,53 @@ impl TreeModel {
                     x[b * nu + c] = col[start + b];
                 }
             }
-            for b in 0..n {
-                for c in 0..k {
-                    mask[b * k + c] = allowed(start + b, c);
+            if let Some(allowed) = &allowed {
+                for b in 0..n {
+                    for c in 0..k {
+                        mask[b * k + c] = allowed(start + b, c);
+                    }
                 }
             }
+            let m = allowed.as_ref().map(|_| &mask[..n * k]);
+            self.add_block(&x[..n * nu], n, m, &mut out[start * k..(start + n) * k]);
+        }
+        Ok(out)
+    }
+
+    /// [`TreeModel::scores`] by the plain walk, one row and one tree at a time (`x < threshold` →
+    /// left, until a leaf): the reference the lockstep evaluation is checked against, bit for bit.
+    pub fn scores_reference(&self, f: &Features) -> Result<Vec<f32>, String> {
+        let cols = self.columns(f)?;
+        let (k, rows) = (self.classes.len(), f.rows());
+        let mut out = vec![0f32; rows * k];
+        for (i, s) in out.chunks_exact_mut(k).enumerate() {
+            s.copy_from_slice(&self.base);
             for &(root, class) in &self.roots {
-                for b in 0..n {
-                    if !mask[b * k + class as usize] {
-                        continue;
-                    }
-                    let xb = &x[b * nu..(b + 1) * nu];
-                    let mut node = self.nodes[root as usize];
-                    while node.feat != LEAF {
-                        let next = if xb[node.feat as usize] < node.thr { node.left } else { node.right };
-                        node = self.nodes[next as usize];
-                    }
-                    out[(start + b) * k + class as usize] += node.thr;
+                let mut node = self.nodes[root as usize];
+                while node.feat != LEAF {
+                    let next = if cols[node.feat as usize][i] < node.thr { node.left } else { node.right };
+                    node = self.nodes[next as usize];
                 }
+                s[class as usize] += node.thr;
             }
         }
         Ok(out)
     }
 
+    /// The winning class of a row's scores (the first of equal maxima).
+    fn argmax(&self, s: &[f32]) -> usize {
+        (0..self.classes.len()).fold(0, |b, c| if s[c] > s[b] { c } else { b })
+    }
+
     /// Role per row of `f` (the class with the highest score). Errors if a model feature is missing.
     pub fn predict(&self, f: &Features) -> Result<Vec<Role>, String> {
         let k = self.classes.len();
-        Ok(self
-            .scores(f)?
-            .chunks_exact(k)
-            .map(|s| self.classes[(0..k).fold(0, |b, c| if s[c] > s[b] { c } else { b })])
-            .collect())
+        Ok(self.scores(f)?.chunks_exact(k).map(|s| self.classes[self.argmax(s)]).collect())
     }
 }
+
+/// Rows of one tree walked together in lockstep by [`TreeModel::add_block`].
+const LANES: usize = 8;
 
 /// Rows into a table body from which the mid-table guard of [`analyze`] applies.
 const GUARD_DEPTH: u32 = 10;
@@ -493,30 +597,83 @@ impl RowModel {
 
     /// Role per row of `f` (one per segment).
     pub fn predict(&self, f: &Features) -> Result<Vec<Role>, String> {
+        let (cc, cf) = (self.coarse.columns(f)?, self.fine.columns(f)?);
+        let rows = f.rows();
+        let mut s = Scratch::new(self);
+        let mut out = Vec::with_capacity(rows);
+        for start in (0..rows).step_by(BLOCK) {
+            let n = BLOCK.min(rows - start);
+            for (x, cols) in [(&mut s.xc, &cc), (&mut s.xf, &cf)] {
+                let nu = cols.len();
+                for (c, col) in cols.iter().enumerate() {
+                    for b in 0..n {
+                        x[b * nu + c] = col[start + b];
+                    }
+                }
+            }
+            self.predict_block(&mut s, n, &mut out);
+        }
+        Ok(out)
+    }
+
+    /// Roles of the `n` rows whose features are in `s.xc` (coarse model's `used` order) and
+    /// `s.xf` (fine model's), appended to `out`. Every row is scored on its own, so the roles do
+    /// not depend on how rows are grouped into blocks.
+    fn predict_block(&self, s: &mut Scratch, n: usize, out: &mut Vec<Role>) {
         let coarse_of = |r: Role| crate::eval::benchmark::coarse(r);
-        let families = self.coarse.predict(f)?;
+        let (kc, kf) = (self.coarse.classes.len(), self.fine.classes.len());
+        let (nuc, nuf) = (self.coarse.used.len(), self.fine.used.len());
+        for row in s.sc[..n * kc].chunks_exact_mut(kc) {
+            row.copy_from_slice(&self.coarse.base);
+        }
+        self.coarse.add_block(&s.xc[..n * nuc], n, None, &mut s.sc[..n * kc]);
         // Only the fine roles inside a row's family can win: skip the other roles' trees, and a
         // family with a single fine role (title) needs no fine trees at all.
         let fine_classes = &self.fine.classes;
-        let single: Vec<bool> = families
-            .iter()
-            .map(|&fam| fine_classes.iter().filter(|&&c| coarse_of(c) == fam).count() <= 1)
-            .collect();
-        let pf = self.fine.scores_where(f, |i, c| !single[i] && coarse_of(fine_classes[c]) == families[i])?;
-        let kf = fine_classes.len();
-        Ok((0..f.rows())
-            .map(|i| {
-                let family = families[i];
-                let sf = &pf[i * kf..(i + 1) * kf];
-                let mut best: Option<usize> = None;
-                for c in 0..kf {
-                    if coarse_of(self.fine.classes[c]) == family && best.is_none_or(|b| sf[c] > sf[b]) {
-                        best = Some(c);
-                    }
+        let mut families = [Role::Other; BLOCK];
+        for (b, family) in families.iter_mut().enumerate().take(n) {
+            let fam = self.coarse.classes[self.coarse.argmax(&s.sc[b * kc..(b + 1) * kc])];
+            *family = fam;
+            let single = fine_classes.iter().filter(|&&c| coarse_of(c) == fam).count() <= 1;
+            for (m, &c) in s.mask[b * kf..(b + 1) * kf].iter_mut().zip(fine_classes) {
+                *m = !single && coarse_of(c) == fam;
+            }
+        }
+        for row in s.sf[..n * kf].chunks_exact_mut(kf) {
+            row.copy_from_slice(&self.fine.base);
+        }
+        self.fine.add_block(&s.xf[..n * nuf], n, Some(&s.mask[..n * kf]), &mut s.sf[..n * kf]);
+        for (b, &family) in families.iter().enumerate().take(n) {
+            let sf = &s.sf[b * kf..(b + 1) * kf];
+            let mut best: Option<usize> = None;
+            for c in 0..kf {
+                if coarse_of(fine_classes[c]) == family && best.is_none_or(|x| sf[c] > sf[x]) {
+                    best = Some(c);
                 }
-                best.map_or(family, |b| self.fine.classes[b])
-            })
-            .collect())
+            }
+            out.push(best.map_or(family, |x| fine_classes[x]));
+        }
+    }
+}
+
+/// Buffers for one block of [`RowModel::predict_block`].
+struct Scratch {
+    xc: Vec<f32>,
+    xf: Vec<f32>,
+    sc: Vec<f32>,
+    sf: Vec<f32>,
+    mask: Vec<bool>,
+}
+
+impl Scratch {
+    fn new(m: &RowModel) -> Scratch {
+        Scratch {
+            xc: vec![0.0; BLOCK * m.coarse.used.len()],
+            xf: vec![0.0; BLOCK * m.fine.used.len()],
+            sc: vec![0.0; BLOCK * m.coarse.classes.len()],
+            sf: vec![0.0; BLOCK * m.fine.classes.len()],
+            mask: vec![false; BLOCK * m.fine.classes.len()],
+        }
     }
 }
 
@@ -531,23 +688,50 @@ pub fn analyze(grid: &Grid, model: &RowModel) -> SheetLayout {
 
 /// [`analyze`] with a chosen set of table refinements (`RefineSteps::NONE`: the rules' tables).
 pub fn analyze_with(grid: &Grid, model: &RowModel, steps: RefineSteps) -> SheetLayout {
+    analyze_on(grid, model, steps, Input::Auto)
+}
+
+/// How [`analyze_on`] builds the model's input: streamed where possible (see [`stream`]), or
+/// always through the materialized feature matrix. Both give the same result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Input {
+    Auto,
+    Materialized,
+}
+
+/// [`analyze_with`] with a chosen input path (the equivalence tests compare the two).
+pub fn analyze_on(grid: &Grid, model: &RowModel, steps: RefineSteps, input: Input) -> SheetLayout {
     let t0 = std::time::Instant::now();
-    let need = model.needed_features();
     let styles = model.reads_formats();
-    let (mut lay, f) = crate::eval::export::layout_and_features(grid, styles);
-    crate::normalize::trace("M:layout+features", t0);
-    let (segs, sf) = segment_features_where(grid, &f, |n| need.contains(n));
-    drop(f);
-    crate::normalize::trace("M:segment_features", t0);
-    let Ok(mut pred) = model.predict(&sf) else { return lay };
-    crate::normalize::trace("M:trees", t0);
+    let (mut lay, segs, mut pred, guard) = if input == Input::Auto && !styles && stream::eligible(grid) {
+        let (lay, s) = stream::run(grid, model);
+        let Some(s) = s else { return lay };
+        crate::normalize::trace("M:features+trees", t0);
+        (lay, s.segs, s.pred, Some(s.guard))
+    } else {
+        let need = model.needed_features();
+        let (lay, f) = crate::eval::export::layout_and_features(grid, styles);
+        crate::normalize::trace("M:layout+features", t0);
+        let (segs, sf) = segment_features_where(grid, &f, |n| need.contains(n));
+        drop(f);
+        crate::normalize::trace("M:segment_features", t0);
+        let Ok(pred) = model.predict(&sf) else { return lay };
+        crate::normalize::trace("M:trees", t0);
+        let [m, u, d, mc, uc, dc] = GUARD_FEATURES.map(|n| sf.get(n));
+        let guard = match (m, u, d, mc, uc, dc) {
+            (Some(m), Some(u), Some(d), Some(mc), Some(uc), Some(dc)) => {
+                Some((0..sf.rows()).map(|k| [m[k], u[k], d[k], mc[k], uc[k], dc[k]]).collect::<Vec<_>>())
+            }
+            _ => None,
+        };
+        (lay, segs, pred, guard)
+    };
     let raw_pred = pred.clone();
     // Titles and notes sit at the edges of a table, not between its data rows; and a header row
     // between data rows (a sub-header such as "Males") is much sparser than the data around it. So a row
     // the rules call data, with data rows directly above and below, stays data when the model calls
     // it a title or note, or a header while holding at least half as many cells as its neighbours.
-    let [m, u, d, mc, uc, dc] = GUARD_FEATURES.map(|n| sf.get(n));
-    if let (Some(m), Some(u), Some(d), Some(mc), Some(uc), Some(dc)) = (m, u, d, mc, uc, dc) {
+    if let Some(g) = &guard {
         let data = crate::eval::export::role_id(Role::Data) as f32;
         // Deep inside a rules table: at least GUARD_DEPTH rows below the start of its body (the
         // first rows may be a header block the rules missed).
@@ -558,10 +742,11 @@ pub fn analyze_with(grid: &Grid, model: &RowModel, steps: RefineSteps) -> SheetL
             })
         };
         for (k, p) in pred.iter_mut().enumerate() {
-            if !(m[k] == data && u[k] == data && d[k] == data && deep(segs[k].row, segs[k].left)) {
+            let [m, u, d, mc, uc, dc] = g[k];
+            if !(m == data && u == data && d == data && deep(segs[k].row, segs[k].left)) {
                 continue;
             }
-            let full = 2.0 * mc[k] >= uc[k].min(dc[k]);
+            let full = 2.0 * mc >= uc.min(dc);
             if matches!(*p, Role::Title | Role::Note) || (*p == Role::Header && full) {
                 *p = Role::Data;
             }
@@ -662,6 +847,117 @@ mod tests {
         for n in want {
             assert_eq!(some.get(n), all.get(n), "{n}");
         }
+    }
+
+    /// A sheet with a bit of everything the features look at: a title, headers, numbers stored as
+    /// numbers and as text, dates, formulas and totals, blank rows, side-by-side blocks, segments
+    /// split by wide gaps, merges, negative zero, and a note.
+    fn mixed_sheet(seed: u64, rows: u32) -> crate::model::Sheet {
+        use crate::model::{Cell, Rect, Sheet, Value};
+        let mut s = seed;
+        let mut rnd = move |n: u64| {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (s >> 33) % n
+        };
+        let mut cells = Vec::new();
+        let cell = |row: u32, col: u32, v: Value, f: Option<&str>| Cell { row, col, value: Some(v), formula: f.map(str::to_string) };
+        cells.push(cell(0, 0, Value::Text("Quarterly report".into()), None));
+        for (c, h) in ["Region", "Q1", "Q2", "Q3", "", "", "Code", "Note"].iter().enumerate() {
+            if !h.is_empty() {
+                cells.push(cell(2, c as u32, Value::Text(h.to_string()), None));
+            }
+        }
+        let mut r = 3;
+        while r < rows {
+            if rnd(17) == 0 {
+                r += 1 + rnd(3) as u32; // blank rows
+                continue;
+            }
+            let total = rnd(23) == 0;
+            cells.push(cell(r, 0, Value::Text(if total { "Total".into() } else { format!("Region {}", rnd(9)) }), None));
+            for c in 1..4u32 {
+                let v = match rnd(7) {
+                    0 => Value::Text(format!("{},{}", rnd(900), rnd(99))),
+                    1 => Value::Number(-0.0),
+                    2 => Value::DateTime(40000.0 + rnd(3000) as f64),
+                    _ => Value::Number(rnd(10_000) as f64 / 4.0),
+                };
+                let f = if total { Some("SUM(B4:B9)") } else { None };
+                cells.push(cell(r, c, v, f));
+            }
+            if rnd(3) > 0 {
+                cells.push(cell(r, 6, Value::Text(format!("{:05}", rnd(500))), None));
+            }
+            if rnd(5) == 0 {
+                cells.push(cell(r, 7, Value::Text("see note 1".into()), None));
+            }
+            if rnd(11) == 0 {
+                // A small block to the right.
+                cells.push(cell(r, 12, Value::Number(rnd(50) as f64), None));
+                cells.push(cell(r, 13, Value::Bool(rnd(2) == 0), None));
+            }
+            r += 1;
+        }
+        cells.push(cell(r + 2, 0, Value::Text("Source: statistical office, provisional figures".into()), None));
+        let merges = vec![Rect { top: 0, left: 0, bottom: 0, right: 3 }];
+        Sheet { name: "s".into(), cells, merges, formats: vec![] }
+    }
+
+    #[test]
+    fn streamed_input_matches_the_materialized_one() {
+        let m = embedded().unwrap();
+        for (seed, rows) in [(1, 12), (2, 60), (3, 400), (4, 7)] {
+            let sheet = mixed_sheet(seed, rows);
+            let grid = Grid::new(&sheet);
+            let n = equivalence(&grid, m, &[1, 2, 3, 5]).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+            assert!(n > 0);
+        }
+        // Not row-major: the materialized path, same layout either way.
+        let mut sheet = mixed_sheet(5, 40);
+        sheet.cells.reverse();
+        let grid = Grid::new(&sheet);
+        assert_eq!(equivalence(&grid, m, &[2]), Ok(0));
+    }
+
+    #[test]
+    fn lockstep_trees_match_the_plain_walk() {
+        let m = embedded().unwrap();
+        let sheet = mixed_sheet(9, 300);
+        let grid = Grid::new(&sheet);
+        let f = crate::eval::export::sheet_features(&grid);
+        let (_, mut sf) = segment_features(&grid, &f);
+        // Values on and around thresholds, NaN and infinities.
+        let n = sf.rows();
+        let mut extra = Features::new(n);
+        let names: Vec<&'static str> = sf.names().to_vec();
+        for (j, name) in names.iter().enumerate() {
+            let col: Vec<f32> = (0..n)
+                .map(|i| match (i + j) % 11 {
+                    0 => f32::NAN,
+                    1 => f32::INFINITY,
+                    2 => f32::NEG_INFINITY,
+                    3 => -0.0,
+                    _ => sf.column(j)[i],
+                })
+                .collect();
+            extra.add(name, col);
+        }
+        for f in [&sf, &extra] {
+            for t in [&m.coarse, &m.fine] {
+                let (a, b) = (t.scores(f).unwrap(), t.scores_reference(f).unwrap());
+                assert!(a.iter().zip(&b).all(|(x, y)| x.to_bits() == y.to_bits()));
+            }
+        }
+        sf = extra;
+        assert_eq!(m.predict(&sf).unwrap().len(), n);
+    }
+
+    #[test]
+    fn broken_trees_are_refused() {
+        // A node pointing back at the root would loop forever.
+        let text = r#"{"format":"hh-trees-1","classes":["title"],"features":["a"],"base":[0.0],
+            "trees":[{"class":0,"f":[0,0,0],"t":[0.5,0,0],"l":[1,-1,-1],"r":[0,-1,-1],"v":[0,1.0,-1.0]}]}"#;
+        assert!(TreeModel::from_json(text).is_err());
     }
 
     #[test]

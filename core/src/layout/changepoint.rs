@@ -103,7 +103,10 @@ struct Sigs {
     col_of: Vec<u32>,
 }
 
-fn signatures(sheet: &Sheet, rows: &[Row]) -> Option<Sigs> {
+/// `None` when the block is too wide for the search: more than [`CP_MAX_COLS`] columns, or
+/// `n` rows × columns over [`CP_MAX_WORK`]. The column count only grows while rows are read, so
+/// the second test stops as soon as it fails instead of classifying the rest of the block first.
+fn signatures(sheet: &Sheet, rows: &[Row], n: usize) -> Option<Sigs> {
     // Column → index: a flat table over the block's column span (blocks are at most a few
     // thousand columns wide; wider ones fall back to a map).
     let lo = rows.iter().map(|r| r.left()).min().unwrap_or(0);
@@ -152,6 +155,9 @@ fn signatures(sheet: &Sheet, rows: &[Row]) -> Option<Sigs> {
                 *slot = ncols as u16;
                 col_of.push(e.left);
                 ncols += 1;
+                if n.saturating_mul(ncols) > CP_MAX_WORK {
+                    return None;
+                }
             }
             v.push((*slot, k));
         }
@@ -160,23 +166,47 @@ fn signatures(sheet: &Sheet, rows: &[Row]) -> Option<Sigs> {
     Some(Sigs { rows: out, data, ncols, col_of })
 }
 
+thread_local! {
+    /// Time this thread spent in [`boundaries`]: (signatures, search). Read by the layout's trace.
+    static SPENT: std::cell::Cell<(std::time::Duration, std::time::Duration)> = Default::default();
+}
+
+/// Cumulative (signatures, search) time of [`boundaries`] on this thread.
+pub(crate) fn time_spent() -> (std::time::Duration, std::time::Duration) {
+    SPENT.with(|s| s.get())
+}
+
 /// Row indices (into `rows`) in `a+1..b` where a new table starts.
 pub(crate) fn boundaries(sheet: &Sheet, rows: &[Row], a: usize, b: usize, header: &Signature) -> Vec<usize> {
     let n = b.saturating_sub(a);
     if n < 2 * CP_MIN_ROWS {
         return Vec::new();
     }
-    let Some(sigs) = signatures(sheet, &rows[a..b]) else { return Vec::new() };
+    let t = crate::normalize::tracing().then(std::time::Instant::now);
+    let sigs = signatures(sheet, &rows[a..b], n);
+    if let Some(t) = t {
+        SPENT.with(|s| s.set((s.get().0 + t.elapsed(), s.get().1)));
+    }
+    let Some(sigs) = sigs else { return Vec::new() };
     if sigs.ncols == 0 || n.saturating_mul(sigs.ncols) > CP_MAX_WORK {
         return Vec::new();
     }
+    let t = crate::normalize::tracing().then(std::time::Instant::now);
+    let cuts = search(sheet, rows, &sigs, a, b, header);
+    if let Some(t) = t {
+        SPENT.with(|s| s.set((s.get().0, s.get().1 + t.elapsed())));
+    }
+    cuts
+}
+
+fn search(sheet: &Sheet, rows: &[Row], sigs: &Sigs, a: usize, b: usize, header: &Signature) -> Vec<usize> {
     let mut cuts = Vec::new();
     let mut stack = vec![(a, b)];
     while let Some((lo, hi)) = stack.pop() {
         if cuts.len() >= CP_MAX_CUTS {
             break;
         }
-        if let Some(t) = best_cut(sheet, rows, &sigs, a, lo, hi, header) {
+        if let Some(t) = best_cut(sheet, rows, sigs, a, lo, hi, header) {
             cuts.push(t);
             stack.push((lo, t));
             stack.push((t, hi));

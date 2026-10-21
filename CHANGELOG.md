@@ -246,6 +246,25 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Changed
 
+- **Faster, leaner model path, same output** (P7 "exact wins"; every output byte unchanged). The
+  row model's input is streamed instead of materialized: a first pass holds the sheet-wide counts,
+  sets and rectangles the features read, then the rows are walked with a three-row window (up to
+  four chunks in parallel) and segments are scored in blocks, so neither the per-cell feature
+  matrix (~440 bytes per cell) nor the segment matrix (~1.8 kB per segment) is built. Trees are
+  walked eight rows at a time in lockstep with leaves that loop to themselves (no leaf test, same
+  leaf, same sum order). On the largest model files (best of 3): bfs036 (1.5M cells) 14.3 s →
+  7.5 s, pt008 (1.2M cells, 632k formulas) 19.6 s → 14.3 s, nl019 16.4 s → 13.1 s, uk069
+  12.4 s → 10.8 s; peak memory during analysis 783 → 566 MB, 1443 → 1202 MB, 811 → 587 MB,
+  912 → 642 MB. Also: the change-point search stops classifying a block's rows as soon as rows ×
+  columns passes its cap (it used to classify every row first), `l_in_table` is a row sweep instead
+  of a test of every table per cell, and the column-convention vote parses each text once (it
+  parsed it twice). Rules-only files are unchanged within noise. `HEDGEHOG_TRACE=1` now prints
+  sub-steps (`layout.blocks`, `layout.cp_signatures`, `M.stream`, `build_tables.typing`, …).
+  Checked: `learned::equivalence` (every segment feature bit for bit, every role, every class
+  score against the plain tree walk, the final layout; rows in 1 and 4 chunks) on 34,742 sheets /
+  8.4M segments of the benchmark corpora and `testdata/irregular`; normalized output and manifest
+  identical to master on 1,302 files, single-threaded and threaded; golden check and benchmark TSVs
+  identical. See [docs/architecture.md](docs/architecture.md#performance-notes).
 - **`query` keeps long values whole** (B47): text values come back exactly (CSV-quoted) up to 2,000
   characters instead of being cut at 80 with `…`, so a `group_concat` list can be reused in the next
   query; a longer value ends in `…[+N chars]` with a `note:` on reading the rest with `substr`.

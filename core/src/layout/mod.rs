@@ -40,6 +40,7 @@ pub fn analyze_for_model(grid: &Grid) -> SheetLayout {
 
 fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLayout {
     let sheet = grid.sheet;
+    let t = std::time::Instant::now();
     let mut out = Out {
         roles: vec![Role::Other; sheet.cells.len()],
         tables: Vec::new(),
@@ -48,11 +49,25 @@ fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLay
         registers,
         labelled_totals: if registers { crate::totals::labelled_rows(grid) } else { Vec::new() },
     };
-    for region in blocks::regions(grid) {
+    let trace = crate::normalize::trace_ms;
+    trace("layout.totals", t.elapsed());
+    let t = std::time::Instant::now();
+    let regions = blocks::regions(grid);
+    trace("layout.blocks", t.elapsed());
+    let t = std::time::Instant::now();
+    let (sigs, search) = changepoint::time_spent();
+    for region in regions {
         tables::analyze_region(sheet, region, &mut out);
     }
+    let (sigs2, search2) = changepoint::time_spent();
+    let (sigs, search) = (sigs2.saturating_sub(sigs), search2.saturating_sub(search));
+    trace("layout.regions", t.elapsed().saturating_sub(sigs + search));
+    trace("layout.cp_signatures", sigs);
+    trace("layout.cp_search", search);
+    let t = std::time::Instant::now();
     classify_loose(sheet, &mut out);
     out.tables.sort_by_key(|t| (t.rect.top, t.rect.left));
+    trace("layout.loose", t.elapsed());
     SheetLayout { tables: out.tables, roles: out.roles }
 }
 
