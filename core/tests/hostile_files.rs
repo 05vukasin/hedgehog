@@ -209,6 +209,24 @@ fn ods_repeat_bomb_is_refused_before_parsing() {
     assert!(e.to_string().contains("password-protected"), "{e}");
 }
 
+#[test]
+fn ods_with_backslash_entry_names_opens() {
+    // B52: some Windows tools write `META-INF\manifest.xml` (uk_gov RTS accompanying tables).
+    let cell = "<table:table-cell office:value-type=\"float\" office:value=\"1\"><text:p>1</text:p></table:table-cell>";
+    let backslash = |bytes: Vec<u8>| {
+        let p: Vec<(String, Vec<u8>)> = parts(&bytes).into_iter().map(|(n, d)| (n.replace('/', "\\"), d)).collect();
+        assert!(p.iter().any(|(n, _)| n == "META-INF\\manifest.xml"));
+        zip_of(&p)
+    };
+    let ok = backslash(ods(&format!("<table:table-row>{cell}{cell}</table:table-row>"), ""));
+    let wb = open_default("ok.ods", &ok).unwrap();
+    assert_eq!(wb.sheets[0].cells.len(), 2);
+    // The password check still reads the manifest.
+    let enc = backslash(ods(&format!("<table:table-row>{cell}</table:table-row>"), "<manifest:encryption-data manifest:checksum-type=\"SHA1\"/>"));
+    let e = open_default("enc.ods", &enc).unwrap_err();
+    assert!(e.to_string().contains("password-protected"), "{e}");
+}
+
 // -- OLE / xls ---------------------------------------------------------------------------------
 
 const ENDOFCHAIN: u32 = 0xFFFF_FFFE;

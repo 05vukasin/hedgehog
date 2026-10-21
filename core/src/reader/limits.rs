@@ -165,7 +165,9 @@ pub(super) fn check_zip(path: &Path, limits: &Limits) -> Result<(), Error> {
         }
     }
     if ods {
-        if let Ok(m) = zip.by_name("META-INF/manifest.xml") {
+        // B52: some writers store `META-INF\manifest.xml` with a backslash.
+        let manifest = if zip.index_for_name("META-INF/manifest.xml").is_some() { "META-INF/manifest.xml" } else { "META-INF\\manifest.xml" };
+        if let Ok(m) = zip.by_name(manifest) {
             let mut s = Vec::new();
             let _ = m.take(4 << 20).read_to_end(&mut s);
             if memmem::find(&s, b"encryption-data").is_some() {
