@@ -246,6 +246,19 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Changed
 
+- **`query` keeps long values whole** (B47): text values come back exactly (CSV-quoted) up to 2,000
+  characters instead of being cut at 80 with `…`, so a `group_concat` list can be reused in the next
+  query; a longer value ends in `…[+N chars]` with a `note:` on reading the rest with `substr`.
+- **Formulas without a saved value are reported** (B48): the catalog says `FORMULAS 1,479 cells
+  without a saved value (e.g. May1!H13): NULL in the tables, not evaluated`, the quality line counts
+  them per table, and `hedgehog cells` prints such a cell as `no_saved_value:=<formula>` (was
+  `formula:<formula>`). Nothing is evaluated. Disk cache entries of earlier builds are not reused.
+- **Sign note only for flows** (B49): the `signs: … (outflows?)` line needs flow labels (receipts /
+  deliveries, debit / credit, in / out, …) or runs holding a tenth of the signed rows, and never
+  appears for price, rate or index columns (Eurostat electricity prices lost a misleading note).
+- **Time coverage ignores entity dates** (B49): start, hire, birth, expiry and valid-from date
+  columns count only when a table has no other period column (NYC payroll: `1996-06-23–2025 (day)`
+  → `2014–2025 (year, from fiscal_year)`; Chicago business licenses no longer run to 2030).
 - The model path computes only the row-segment features the trees test (and the guard's), not all
   ~450: same predictions, less memory and time per sheet.
 - `open_file` catalog (MCP, `hh_agent`, Node `HedgehogSession`), after the gpt-4o-mini chat
@@ -281,6 +294,15 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Fixed
 
+- **Register names taken for totals** (B50): in a register, a total word right of the record's own
+  keys (`GROWTH WIRELESS LLC | TOTAL WIRELESS`, a counterparty `TOTAL` beside a deal id) needs its
+  numbers to add up, and words only the rule layout reads as aggregates (`MAXIMUM MARKETING
+  SERVICES INC`, `MORE THAN AVERAGE LLC`) no longer label a row that holds other text. Chicago
+  business licenses: 87 records (1,112 cells on Totals, 1,639 on Notes) back in the data; the
+  header `Customer | Resource | Total | 1 … 24` of an Enron sheet is no longer a total row.
+- **ODS files with backslash paths** (B52): zip entries named `META-INF\manifest.xml` (written by
+  some Windows tools) are found, so such files open instead of failing with `'META-INF/manifest.xml'
+  file not found`; the xlsb workbook relationships part is looked up the same way.
 - Crashes, hangs and runaway allocations on malformed files found by the fuzzer (each with a
   regression test in `core/tests/hostile_files.rs`). In calamine, now vendored with the fixes
   (`vendor/calamine`, each change marked `hedgehog:`): looping sector chains in xls / OLE files

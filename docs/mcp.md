@@ -125,8 +125,8 @@ tables). Tables are named `T1`, `T2`, … per file, as in the [manifest](normali
 |---|---|---|
 | `open_file` | `path` | The catalog: file line, time coverage, tables with source range, rows, total rows, every column (type, unit; value ranges for up to 14 columns), all values of small label columns, mixed measures, group column, totals check, the rows of small tables as CSV, notes, warnings. Long catalogs list tables one line each. See [The catalog](#the-catalog). |
 | `describe_table` | `path`, `table` | Every column (SQL name, dtype with its semantic type, unit, nulls, distinct, min..max, example or all values (≤ 12), source column ← header cells), source and header range, group column, total rows, entity columns (`<col>_id`, `<col>_name`), first 5 rows as CSV. |
-| `query` | `path`, `sql`, `limit?` | One read-only SQLite `SELECT`/`WITH` as CSV with a header, at most `limit` rows (default 50, max 200), then `(<n> rows)` or `(<n> rows, showing first <k>)`. |
-| `cells` | `path`, `sheet`, `range` | Original source cells (max 200) as `A1<TAB>value` lines, formulas after the value, merged areas marked. |
+| `query` | `path`, `sql`, `limit?` | One read-only SQLite `SELECT`/`WITH` as CSV with a header, at most `limit` rows (default 50, max 200), then `(<n> rows)` or `(<n> rows, showing first <k>)`. Text values are returned whole up to 2,000 characters (a `group_concat` list can be pasted into the next query); a longer value ends in `…[+N chars]` and a `note:` says to read the rest with `substr(col, 2001, 2000)`. |
+| `cells` | `path`, `sheet`, `range` | Original source cells (max 200) as `A1<TAB>value` lines, formulas after the value, merged areas marked; a formula saved without a value shows `(formula without a saved value)` and its formula. |
 | `totals` | `path`, `table?`, `status?` | Counts per status (`ok`, `mismatch`, `unknown`), then up to 50 items, mismatches first: cell, label, value, recomputed, sources, reason. |
 | `list_files` | `folder?`, `pattern?` | Spreadsheets under the folder (xlsx, xlsm, xlsb, xls, ods, csv, tsv) with size and modified date; max 200 lines. `pattern`: a glob (`*.csv`), words that must all appear (`linz 2022`) or alternatives (`preis\|price`). |
 
@@ -303,7 +303,10 @@ Per table (when the whole catalog fits in ~12,000 characters):
   label column, their `_src_row` and sign (`_src_row 51 positive, 65 negative`).
 - **Signs**: `signs: col_B 'Deliveries HH' rows are all negative (outflows?) — a net figure is the
   SUM over all rows, not a difference` when a block of rows holds only negative numbers next to
-  positive ones (by a label column, else by `_src_row` ranges).
+  positive ones: by a label column whose labels (or the number columns' names) name flows (receipts
+  / deliveries, debit / credit, in / out, purchases / sales, payments, imports / exports …), else by
+  `_src_row` ranges that hold at least a tenth of the signed rows. Never for price, rate or index
+  columns; scattered negative values are counted on the quality line instead.
 - **Small tables** (≤ 400 cells as rows × columns of `T<n>_all` with `_row_type`, ≤ 30 rows):
   every row as CSV under the table, total rows included and marked in a `_row_type` column (the
   values lines are then left out).
@@ -316,8 +319,12 @@ Per table (when the whole catalog fits in ~12,000 characters):
 - **Quality** (tables with ≥ 20 data rows): `quality:` with duplicates in an ID column that is
   otherwise unique (≤ 5 % repeats), empty date cells and the label that explains them
   (`dataCelebracaoContrato empty in 26,722 rows (15 %): tipoprocedimento = 'Ajuste direto
-  simplificado' (all its 26,261 rows) … — counts by this date leave them out`) and negative
-  amounts (cells naming several entities are on the entity line).
+  simplificado' (all its 26,261 rows) … — counts by this date leave them out`), negative
+  amounts (cells naming several entities are on the entity line) and formula cells saved without a
+  value (`12 formula cells without a saved value (NULL, not evaluated)`, any table size).
+- **Formulas without values** (whole file): `FORMULAS 1,479 cells without a saved value (e.g.
+  May1!H13): NULL in the tables, not evaluated; cells shows the formula`, before `TOTALS`, when the
+  file was saved by a tool that did not calculate. hedgehog never evaluates formulas.
 
 The table lines come first; the optional parts are added while the catalog stays under its cap:
 total-row and sign lines first, then small tables' rows, then amount and quality lines, each in
@@ -333,7 +340,10 @@ The totals summary, total-row labels and rows, and the time coverage are the one
 
 The manifest's [time coverage](normalized-output.md#time-coverage): the period the data covers
 (`TIME 2020-01–2025-12 (month, from columns T3.Berichtszeitraum)`), at the finest granularity found,
-from date / period columns or period-like column headers. When tables differ (a monthly and an
+from date / period columns or period-like column headers. Dates that describe the row's entity
+(start, hire, birth, expiry, valid-from: `agency_start_date`, `Hire Date`, `DOB`) count only when a
+table has no other date or period column, so a payroll's `fiscal_year` decides its period, not the
+employees' start dates. When tables differ (a monthly and an
 annual table) it says `mixed: year (T5, …), month (T3) — check what one row is before summing`.
 Years that only titles, notes, sheet or file names mention are a secondary note: added when they lie
 outside the data's period, or the whole line when the data has no dates
