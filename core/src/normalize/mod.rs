@@ -438,6 +438,13 @@ pub fn table_time_coverage(t: &Table) -> Option<TimeCoverage> {
     coverage::table(t).map(|c| c.public())
 }
 
+/// The period a column header names (`2025`, `Jan 2024`, `2024 Q1`, `Oktober / 2022`,
+/// `Thu / 2002-01-31`), as the time coverage reads headers: its label (`2025`, `2024-01`,
+/// `2024-Q1`, `2022-10`, `2002-01-31`) and granularity (`year`, `quarter`, `month`, `week`, `day`).
+pub fn header_period(name: &str) -> Option<(String, &'static str)> {
+    coverage::header_period_label(name)
+}
+
 /// Time coverage of the workbook (the manifest's top-level `time_coverage`).
 pub fn workbook_time_coverage(norm: &Normalized) -> Option<TimeCoverage> {
     let with_cov: Vec<(String, coverage::Coverage)> =

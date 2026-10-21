@@ -19,6 +19,8 @@ impl Server {
         let mut child = Command::new(env!("CARGO_BIN_EXE_hedgehog"))
             .args(["mcp", "--root"])
             .arg(root)
+            // A private disk cache next to the fixtures, never the user's.
+            .env("HEDGEHOG_CACHE_DIR", root.parent().unwrap_or(root).join("cache"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -267,6 +269,36 @@ fn allow_paths_from_initialize_and_old_protocol() {
     // the allowed file only, not its folder
     let (_, err) = s.tool("list_files", json!({"folder": dir.join("outside").to_str().unwrap()}));
     assert!(err);
+    drop(s);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn calls_run_off_the_reading_thread_and_cancel() {
+    let dir = fixtures("cancel");
+    let mut s = Server::start(&dir.join("root"));
+    s.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}));
+    s.ok("open_file", json!({"path": "data/prices.csv"}));
+    // An endless query (the 2 s limit would stop it), then a ping: the ping is answered first.
+    let endless = "WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM r) SELECT count(*) FROM r";
+    let call = |id: i64, sql: &str| {
+        json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
+               "params": {"name": "query", "arguments": {"path": "data/prices.csv", "sql": sql}}})
+        .to_string()
+    };
+    let t0 = std::time::Instant::now();
+    s.send_raw(&call(100, endless));
+    s.send_raw(&json!({"jsonrpc": "2.0", "id": 101, "method": "ping"}).to_string());
+    assert_eq!(s.recv()["id"], 101);
+    assert!(t0.elapsed() < std::time::Duration::from_millis(1500), "the ping waited for the query");
+    // Cancel it and one still queued behind it: neither gets a response; the next call works.
+    s.send_raw(&call(102, "SELECT 1"));
+    s.send_raw(&json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 102}}).to_string());
+    s.send_raw(&json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 100, "reason": "user"}}).to_string());
+    s.next = 103;
+    let text = s.ok("query", json!({"path": "data/prices.csv", "sql": "SELECT count(*) FROM T1"}));
+    assert!(text.starts_with("count(*)\n24"), "{text}");
+    assert!(t0.elapsed() < std::time::Duration::from_millis(1900), "the cancel did not stop the query");
     drop(s);
     let _ = std::fs::remove_dir_all(&dir);
 }

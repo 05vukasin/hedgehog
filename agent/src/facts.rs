@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use hh_core::normalize::{ColRole, Column, Dtype, Out, RowType, Table};
 
 use crate::catalog::{data_cols, is_date, is_numeric, label_values, measure_classes, name_period, out_text, plural, RowInfo};
-use crate::text::{csv_row, ident, num, short, thousands};
+use crate::text::{csv_row, ident, num, quote_ident, short, thousands};
 
 /// A small table is inlined in full when its rows × columns (as in `T<n>_all`, with `_row_type`)
 /// are at most this many cells …
@@ -494,6 +494,182 @@ pub fn numbers_lines(t: &Table, names: &[String], rows: &[usize], ranges_shown: 
         .collect();
     if !rest.is_empty() {
         out.insert(0, format!("    numbers: {}", rest.join(" · ")));
+    }
+    out
+}
+
+// ------------------------------------------------------------------------------------------------
+// shares (B19)
+
+/// A text column with at least this many distinct values can be ranked by (when there is no
+/// entity column).
+const SHARE_KEY_MIN_DISTINCT: usize = 10;
+
+/// How to compute a share of the total (e.g. of the top 10) for a table with a summable amount
+/// column: one ready query over the first such column, ranked by `key` (an SQL expression: an
+/// entity's `<col>_id`) or else a text column with many values. None for small tables or without such columns.
+pub fn share_line(t: &Table, names: &[String], rows: &[usize], key: Option<String>) -> Option<String> {
+    if rows.len() < NUMBERS_MIN_ROWS {
+        return None;
+    }
+    let am = amounts(t, names, rows);
+    let a = am.iter().find(|a| a.money && a.summable).or_else(|| am.iter().find(|a| a.summable))?;
+    let key = match key {
+        Some(k) => k,
+        None => data_cols(t)
+            .find(|(_, c)| {
+                if c.dtype != Dtype::Text {
+                    return false;
+                }
+                let mut seen: HashSet<&str> = HashSet::new();
+                for &r in rows {
+                    if let Some(Out::Text(s)) = c.values.get(r) {
+                        seen.insert(s);
+                        if seen.len() >= SHARE_KEY_MIN_DISTINCT {
+                            return true;
+                        }
+                    }
+                }
+                false
+            })
+            .map(|(i, _)| quote_ident(&names[i]))?,
+    };
+    let (x, k, id) = (quote_ident(a.name), key, t.id());
+    Some(format!(
+        "    share of the total (e.g. top 10 by {k}): SELECT 100.0 * SUM(v) / (SELECT SUM({x}) FROM {id}) AS pct \
+         FROM (SELECT SUM({x}) AS v FROM {id} GROUP BY {k} ORDER BY v DESC LIMIT 10)"
+    ))
+}
+
+// ------------------------------------------------------------------------------------------------
+// long and wide forms of one table (B16)
+
+/// Rows of the long table compared with the wide one.
+const TWIN_SAMPLE: usize = 40;
+/// Distinct values of the long table's category column, at most.
+const TWIN_MAX_CATEGORIES: usize = 50;
+
+/// A value as a join key.
+fn key_text(v: Option<&Out>) -> String {
+    match v {
+        None | Some(Out::Null) => String::new(),
+        Some(Out::Text(s)) => s.trim().to_string(),
+        Some(Out::Num(x) | Out::Date(x)) => num(*x),
+        Some(Out::Bool(b)) => b.to_string(),
+    }
+}
+
+fn num_at(c: &Column, r: usize) -> Option<f64> {
+    match c.values.get(r) {
+        Some(Out::Num(x)) => Some(*x),
+        _ => None,
+    }
+}
+
+/// Pairs of tables where one is the long form of the other: the long table has a category column
+/// whose values are column names of the wide table and a value column, and on sampled rows its
+/// value equals the wide table's cell (same key columns, the category's column). Returns
+/// (table index, line) for both tables of each pair, e.g. `T5 is the long form of T3: one row per
+/// Datum × Saisonbereinigung, value in Indexwert`.
+pub fn long_forms(tables: &[Table]) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    for (li, l) in tables.iter().enumerate() {
+        let lrows = crate::catalog::data_rows(l);
+        if lrows.len() < 4 || out.iter().any(|(k, _)| *k == li) {
+            continue;
+        }
+        let lnames = crate::catalog::sql_names(l);
+        for (ci, c) in data_cols(l) {
+            if c.dtype != Dtype::Text {
+                continue;
+            }
+            let mut cats: Vec<&str> = Vec::new();
+            for &r in &lrows {
+                if let Some(Out::Text(s)) = c.values.get(r)
+                    && !cats.contains(&s.trim())
+                {
+                    cats.push(s.trim());
+                    if cats.len() > TWIN_MAX_CATEGORIES {
+                        break;
+                    }
+                }
+            }
+            if !(2..=TWIN_MAX_CATEGORIES).contains(&cats.len()) {
+                continue;
+            }
+            for (wi, w) in tables.iter().enumerate() {
+                if wi == li || out.iter().any(|(k, _)| *k == wi) {
+                    continue;
+                }
+                let wnames = crate::catalog::sql_names(w);
+                let find = |name: &str| wnames.iter().position(|n| n.trim().eq_ignore_ascii_case(name.trim()));
+                let Some(targets) = cats
+                    .iter()
+                    .map(|cat| find(cat).filter(|&k| is_numeric(w.columns[k].dtype)))
+                    .collect::<Option<Vec<usize>>>()
+                else {
+                    continue;
+                };
+                // Key columns: the other columns both tables have, by name.
+                let keys: Vec<(usize, usize)> = data_cols(l)
+                    .filter(|(i, lc)| *i != ci && !matches!(lc.dtype, Dtype::Number | Dtype::Currency | Dtype::Percent | Dtype::Empty))
+                    .filter_map(|(i, _)| find(&lnames[i]).filter(|k| !targets.contains(k)).map(|k| (i, k)))
+                    .collect();
+                if keys.is_empty() {
+                    continue;
+                }
+                let wrows = crate::catalog::data_rows(w);
+                let mut index: HashMap<Vec<String>, usize> = HashMap::with_capacity(wrows.len());
+                for &r in &wrows {
+                    index.insert(keys.iter().map(|&(_, k)| key_text(w.columns[k].values.get(r))).collect(), r);
+                }
+                if index.len() * 10 < wrows.len() * 9 {
+                    continue; // the keys do not identify the wide table's rows
+                }
+                let step = (lrows.len() / TWIN_SAMPLE).max(1);
+                let sample: Vec<usize> = lrows.iter().step_by(step).take(TWIN_SAMPLE).copied().collect();
+                let value = data_cols(l).filter(|(i, vc)| *i != ci && is_numeric(vc.dtype) && !keys.iter().any(|k| k.0 == *i)).find(|(_, vc)| {
+                    let (mut seen, mut same) = (0, 0);
+                    for &r in &sample {
+                        let Some(Out::Text(cat)) = c.values.get(r) else { continue };
+                        let Some(pos) = cats.iter().position(|x| *x == cat.trim()) else { continue };
+                        let key: Vec<String> = keys.iter().map(|&(i, _)| key_text(l.columns[i].values.get(r))).collect();
+                        let (Some(&wr), Some(a)) = (index.get(&key), num_at(vc, r)) else { continue };
+                        seen += 1;
+                        if num_at(&w.columns[targets[pos]], wr).is_some_and(|b| (a - b).abs() <= 1e-9 * a.abs().max(1.0)) {
+                            same += 1;
+                        }
+                    }
+                    seen >= 4.min(sample.len()) && same * 10 >= seen * 9
+                });
+                let Some((vi, _)) = value else { continue };
+                // The key shown: the first that alone tells the wide rows apart, else all of them.
+                let unique = keys.iter().find(|&&(_, k)| {
+                    let set: HashSet<String> = wrows.iter().map(|&r| key_text(w.columns[k].values.get(r))).collect();
+                    set.len() == wrows.len()
+                });
+                let key_names: Vec<String> = match unique {
+                    Some(&(i, _)) => vec![ident(&lnames[i])],
+                    None => keys.iter().map(|&(i, _)| ident(&lnames[i])).collect(),
+                };
+                let line = format!(
+                    "    {} is the long form of {}: one row per {} × {}, value in {} ({} has one column per {} value)",
+                    l.id(),
+                    w.id(),
+                    key_names.join(" × "),
+                    ident(&lnames[ci]),
+                    ident(&lnames[vi]),
+                    w.id(),
+                    ident(&lnames[ci])
+                );
+                out.push((li, line.clone()));
+                out.push((wi, line));
+                break;
+            }
+            if out.iter().any(|(k, _)| *k == li) {
+                break;
+            }
+        }
     }
     out
 }

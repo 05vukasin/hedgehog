@@ -1,11 +1,19 @@
 //! `hedgehog mcp`: an MCP tool server over stdio (JSON-RPC 2.0, one message per line).
 //!
-//! A thin wrapper over [`hh_agent::Session`]: `initialize`, `ping`, `tools/list`, `tools/call`;
-//! notifications are accepted and ignored. Nothing but protocol messages goes to stdout; logs go
-//! to stderr. Blocking, single-threaded: one request at a time.
+//! A thin wrapper over [`hh_agent::Session`]: `initialize`, `ping`, `tools/list`, `tools/call`.
+//! Nothing but protocol messages goes to stdout; logs go to stderr.
+//!
+//! Requests run one at a time, in arrival order, on a worker thread that owns the session; the
+//! main thread keeps reading, answers `ping` and `tools/list` at once, and handles
+//! `notifications/cancelled`: a queued request is dropped, a running one is stopped (a query is
+//! interrupted; waiting for a normalization ends and the normalization finishes in the background
+//! into the disk cache). A cancelled request gets no response. Other notifications are ignored.
 
+use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use hh_agent::{Options, Session, TOOL_NAMES};
@@ -56,28 +64,63 @@ pub fn run(args: &[&str]) -> Result<(), String> {
         log("warning: built with panic = \"abort\": a crash in one tool call ends the server (build with the release profile, which unwinds)");
     }
     let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
-    serve(session, stdin.lock(), stdout.lock()).map_err(|e| e.to_string())
+    serve(session, stdin.lock(), std::io::stdout()).map_err(|e| e.to_string())
 }
 
 fn log(msg: &str) {
     eprintln!("[hedgehog mcp] {msg}");
 }
 
+/// Requests waiting for or running on the worker, by id (JSON text), for cancellation.
+#[derive(Default)]
+struct Calls {
+    queued: HashSet<String>,
+    running: Option<String>,
+    /// The running request was cancelled: its response is dropped.
+    running_cancelled: bool,
+}
+
+/// Work for the worker thread: one message, or a batch answered as one array.
+enum Job {
+    One(Value),
+    Batch(Vec<Value>),
+}
+
+/// The id of a request as a key (`None` for notifications and non-objects).
+fn id_key(msg: &Value) -> Option<String> {
+    let obj = msg.as_object()?;
+    obj.get("method")?;
+    obj.get("id").map(Value::to_string)
+}
+
 /// Reads messages from `input` until EOF and writes responses to `out`.
-pub fn serve(mut session: Session, mut input: impl BufRead, mut out: impl Write) -> std::io::Result<()> {
+pub fn serve(session: Session, mut input: impl BufRead, out: impl Write + Send + 'static) -> std::io::Result<()> {
+    let out = Arc::new(Mutex::new(out));
+    let calls = Arc::new(Mutex::new(Calls::default()));
+    let cancel = session.cancel_flag();
+    let (tx, rx) = mpsc::channel::<Job>();
+    let worker = {
+        let (out, calls, cancel) = (out.clone(), calls.clone(), cancel.clone());
+        std::thread::Builder::new().name("hedgehog-mcp".into()).spawn(move || work(session, rx, &out, &calls, &cancel))?
+    };
+    let send = |v: &Value| -> std::io::Result<()> { write(&mut *out.lock().unwrap_or_else(|e| e.into_inner()), v) };
     let mut buf = Vec::new();
-    loop {
+    let res = loop {
         buf.clear();
-        let n = std::io::Read::take(input.by_ref(), MAX_LINE as u64 + 1).read_until(b'\n', &mut buf)?;
+        let n = match std::io::Read::take(input.by_ref(), MAX_LINE as u64 + 1).read_until(b'\n', &mut buf) {
+            Ok(n) => n,
+            Err(e) => break Err(e),
+        };
         if n == 0 {
-            return Ok(());
+            break Ok(());
         }
         if buf.len() > MAX_LINE && !buf.ends_with(b"\n") {
             // Skip the rest of the oversized line.
             let mut sink = Vec::new();
-            input.read_until(b'\n', &mut sink)?;
-            write(&mut out, &error(Value::Null, -32600, "request too large"))?;
+            if let Err(e) = input.read_until(b'\n', &mut sink) {
+                break Err(e);
+            }
+            send(&error(Value::Null, -32600, "request too large"))?;
             continue;
         }
         let line = String::from_utf8_lossy(&buf);
@@ -85,16 +128,99 @@ pub fn serve(mut session: Session, mut input: impl BufRead, mut out: impl Write)
         if line.is_empty() {
             continue;
         }
-        let reply = match serde_json::from_str::<Value>(line) {
-            Err(e) => Some(error(Value::Null, -32700, &format!("parse error: {e}"))),
-            Ok(Value::Array(batch)) => {
-                let replies: Vec<Value> = batch.into_iter().filter_map(|m| handle(&mut session, m)).collect();
-                (!replies.is_empty()).then_some(Value::Array(replies))
+        let job = match serde_json::from_str::<Value>(line) {
+            Err(e) => {
+                send(&error(Value::Null, -32700, &format!("parse error: {e}")))?;
+                continue;
             }
-            Ok(msg) => handle(&mut session, msg),
+            Ok(Value::Array(batch)) => {
+                for m in &batch {
+                    note_cancel(m, &calls, &cancel);
+                }
+                Job::Batch(batch)
+            }
+            Ok(msg) => {
+                if note_cancel(&msg, &calls, &cancel) {
+                    continue;
+                }
+                // Answered at once, also while a call runs.
+                let method = msg.get("method").and_then(Value::as_str);
+                if let (Some("ping" | "tools/list"), Some(id)) = (method, msg.get("id")) {
+                    let r = if method == Some("ping") { json!({}) } else { json!({"tools": hh_agent::tool_specs()}) };
+                    send(&ok(id.clone(), r))?;
+                    continue;
+                }
+                Job::One(msg)
+            }
         };
-        if let Some(r) = reply {
-            write(&mut out, &r)?;
+        if let Job::One(m) = &job
+            && let Some(k) = id_key(m)
+        {
+            calls.lock().unwrap_or_else(|e| e.into_inner()).queued.insert(k);
+        }
+        if tx.send(job).is_err() {
+            break Ok(());
+        }
+    };
+    drop(tx);
+    let _ = worker.join();
+    res
+}
+
+/// Handles `notifications/cancelled` (true when `msg` is one).
+fn note_cancel(msg: &Value, calls: &Mutex<Calls>, cancel: &AtomicBool) -> bool {
+    if msg.get("method").and_then(Value::as_str) != Some("notifications/cancelled") || msg.get("id").is_some() {
+        return false;
+    }
+    let Some(id) = msg.pointer("/params/requestId") else { return true };
+    let k = id.to_string();
+    let mut c = calls.lock().unwrap_or_else(|e| e.into_inner());
+    if c.running.as_ref() == Some(&k) {
+        c.running_cancelled = true;
+        cancel.store(true, Ordering::Relaxed);
+        log(&format!("cancel {k}: stopping"));
+    } else if c.queued.remove(&k) {
+        log(&format!("cancel {k}: dropped before it ran"));
+    }
+    true
+}
+
+/// The worker: runs requests in order and writes their responses.
+fn work(mut session: Session, rx: mpsc::Receiver<Job>, out: &Mutex<impl Write>, calls: &Mutex<Calls>, cancel: &AtomicBool) {
+    let send = |v: &Value| {
+        let _ = write(&mut *out.lock().unwrap_or_else(|e| e.into_inner()), v);
+    };
+    for job in rx {
+        match job {
+            Job::Batch(batch) => {
+                let replies: Vec<Value> = batch.into_iter().filter_map(|m| handle(&mut session, m)).collect();
+                if !replies.is_empty() {
+                    send(&Value::Array(replies));
+                }
+            }
+            Job::One(msg) => {
+                let key = id_key(&msg);
+                if let Some(k) = &key {
+                    let mut c = calls.lock().unwrap_or_else(|e| e.into_inner());
+                    if !c.queued.remove(k) {
+                        continue; // cancelled while queued
+                    }
+                    c.running = Some(k.clone());
+                    c.running_cancelled = false;
+                    cancel.store(false, Ordering::Relaxed);
+                }
+                let reply = handle(&mut session, msg);
+                let dropped = {
+                    let mut c = calls.lock().unwrap_or_else(|e| e.into_inner());
+                    c.running = None;
+                    std::mem::take(&mut c.running_cancelled)
+                };
+                cancel.store(false, Ordering::Relaxed);
+                match reply {
+                    Some(r) if !dropped => send(&r),
+                    _ => {}
+                }
+            }
         }
     }
 }

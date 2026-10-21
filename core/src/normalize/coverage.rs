@@ -351,6 +351,12 @@ fn header_period(name: &str) -> Option<Period> {
     })
 }
 
+/// The period a column header names, as its label (`2025`, `2025-Q1`, `2025-03`, `2025-W05`,
+/// `2025-03-31`) and granularity (`year` … `day`): what [`super::header_period`] exposes.
+pub(super) fn header_period_label(name: &str) -> Option<(String, &'static str)> {
+    header_period(name).map(|p| (p.label(), p.gran.as_str()))
+}
+
 fn span(periods: &[Period]) -> Option<(Period, Period, Gran)> {
     let from = *periods.iter().min_by_key(|p| (p.start(), p.gran))?;
     let to = *periods
