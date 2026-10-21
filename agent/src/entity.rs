@@ -12,10 +12,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use hh_core::normalize::{ColRole, Dtype, Out, Table};
+use hh_core::normalize::{ColRole, Column, Dtype, Out, Table};
 
 use crate::catalog::sql_names;
-use crate::text::{ident, short, thousands};
+use crate::text::{ident, quote_ident, short, thousands};
 
 /// Separators between the ID and the name.
 const SEPS: [&str; 3] = [" - ", " – ", " — "];
@@ -177,6 +177,47 @@ pub fn derived(s: &str) -> (Option<String>, Option<String>) {
     }
 }
 
+/// One name per ID: the spelling most rows of the column use (the first seen on a tie), so
+/// `<col>_name` is the same on every row of an ID and grouping by it does not split one entity.
+pub fn canonical_names(c: &Column) -> HashMap<String, String> {
+    let mut counts: HashMap<&str, Vec<(&str, usize)>> = HashMap::new();
+    for s in c.values.iter().filter_map(text) {
+        let parts = match parse(s) {
+            Parsed::One { id, name, .. } => vec![(id, name)],
+            Parsed::Many { parts, .. } => parts,
+            _ => continue,
+        };
+        for (id, name) in parts {
+            let v = counts.entry(id).or_default();
+            if let Some(x) = v.iter_mut().find(|x| x.0 == name) {
+                x.1 += 1;
+            } else if v.len() < 1000 {
+                v.push((name, 1));
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .filter_map(|(id, v)| {
+            // max_by_key keeps the last maximum; reversed, the first seen wins a tie.
+            let best = v.iter().rev().max_by_key(|x| x.1)?.0;
+            Some((id.to_string(), best.to_string()))
+        })
+        .collect()
+}
+
+/// [`derived`] with the name replaced by the canonical one of its ID(s) ([`canonical_names`]).
+pub fn derived_canonical(s: &str, names: &HashMap<String, String>) -> (Option<String>, Option<String>) {
+    let (id, name) = derived(s);
+    let canon = id.as_deref().and_then(|ids| {
+        ids.split(" | ").map(|i| names.get(i).map(String::as_str)).collect::<Option<Vec<&str>>>().map(|v| v.join(" | "))
+    });
+    match canon {
+        Some(c) if name.is_some() => (id, Some(c)),
+        _ => (id, name),
+    }
+}
+
 fn text(v: &Out) -> Option<&str> {
     match v {
         Out::Text(s) if !s.trim().is_empty() => Some(s.as_str()),
@@ -277,10 +318,24 @@ pub fn detect(t: &Table) -> Vec<Entity> {
 
 /// One line per entity column, for the catalog and `describe_table` (indented by 4).
 pub fn lines(t: &Table) -> Vec<String> {
-    detect(t).iter().map(line).collect()
+    detect(t).iter().map(|e| line(e, &t.id())).collect()
 }
 
-pub fn line(e: &Entity) -> String {
+/// What to group entity column `e` by: `<col>_id`, or `coalesce(<col>_id, <col>_name)` when some
+/// values have no ID (they would all fall into one empty-ID group).
+pub fn group_key(e: &Entity) -> String {
+    match e.no_id {
+        0 => quote_ident(&e.id_col),
+        _ => format!("coalesce({}, {})", quote_ident(&e.id_col), quote_ident(&e.name_col)),
+    }
+}
+
+/// The ready query for grouping entity column `e` of table `id` by entity (B18).
+pub fn group_sql(e: &Entity, id: &str) -> String {
+    format!("SELECT {}, {}, count(*) FROM {id} GROUP BY {}", quote_ident(&e.id_col), quote_ident(&e.name_col), group_key(e))
+}
+
+pub fn line(e: &Entity, table: &str) -> String {
     let mut s = format!(
         "    {} = \"<id>{}<name>\" (e.g. \"{}\"): {} IDs",
         ident(&e.name),
@@ -290,14 +345,15 @@ pub fn line(e: &Entity) -> String {
     );
     match &e.most {
         Some((id, n)) => s.push_str(&format!(
-            ", {} with several spellings (e.g. {id}: {n} names{}) — group by {}, not by the text",
+            ", {} with several spellings (e.g. {id}: {n} names{}) — group by {}, not by the text: {}",
             thousands(e.several),
             if e.max_names > *n { format!("; up to {}", e.max_names) } else { String::new() },
-            ident(&e.id_col)
+            ident(&e.id_col),
+            group_sql(e, table)
         )),
         None => s.push_str(&format!(", one spelling each — group by {}", ident(&e.id_col))),
     }
-    s.push_str(&format!("; {} holds the name", ident(&e.name_col)));
+    s.push_str(&format!("; {} holds one name per ID (its most frequent spelling)", ident(&e.name_col)));
     let mut extra = Vec::new();
     if e.multi > 0 {
         let how = match e.multi_sep {

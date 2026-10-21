@@ -151,8 +151,11 @@ The dialect is SQLite: date parts come from `strftime` (`strftime('%Y-%m', "Sign
 **Entity columns.** A text column whose values are mostly `"<id> - <name>"` with a code-like ID
 (digits, or letters and digits: a tax number, a CPV or NUTS code), such as
 `"503933813 - IP - Infraestruturas de Portugal, S.A."`, gets two more columns in `T<n>` and
-`T<n>_all`, right after it: `<col>_id` (the code, as text) and `<col>_name` (the rest). Registers
-write one entity under several spellings with the same code, so group by `<col>_id`, not by the text.
+`T<n>_all`, right after it: `<col>_id` (the code, as text) and `<col>_name` (the name). Registers
+write one entity under several spellings with the same code, so group by `<col>_id`, not by the text;
+`<col>_name` is one name per ID (the spelling most rows use), so grouping by it does not split an
+entity either. A query result that lists one ID on several rows under different spellings (grouped
+by the text) ends with a `note:` naming the rows and the query grouped by the ID.
 A value that is only a code has an empty `<col>_name`; a value without a code (`"- - Name"`) has an
 empty `<col>_id`; a cell naming several entities (`"a | b"`, `"a; b"`, one per line, or run together
 as `"501… - A, Lda 502… - B, SA"`) is not split: its `<col>_id` lists every ID as `"id1 | id2"`. The
@@ -184,7 +187,7 @@ SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row
 ```text
 group,Richtsatz,2024,2025,_row_type,_src_row
 Anzahl Bezieher:innen,Alleinstehend,163230,162375,data,5
-,Gesamt,190423,189537,total,9
+Anzahl Bezieher:innen,Gesamt,190423,189537,total,9
 Durchschnittshöhe in Euro,Alleinstehend,386.9,403.19,data,11
 Durchschnittshöhe in Euro,Gesamt,413.44,430.56,data,15
 Richtsätze in Euro,Alleinstehend,1217.96,1273.99,data,17
@@ -206,7 +209,13 @@ SQL error: near "5": syntax error (at character 11) — SQLite has no TOP n; put
 
 A "no such column" whose name is the label of a total row (or a total word: Total, Gesamt, Summe,
 Totale, Ukupno, Subtotal, …) says where the total rows are; one that is a value of a text column
-says which column to filter. MySQL / Postgres / SQL Server functions and syntax SQLite lacks
+says which column to filter. Both also run that query and return its rows (at most 10, ~3,000
+characters) under `Those rows (the query above, run for you; pick the columns you need):`, so the
+data is there even when the model does not retry; the call is still an error.
+
+A total row takes the keys of the block it closes: its group (`"group"`) and empty text cells left
+of its label that every data row of the block shares (`col_B = 'Receipts HH'`), so
+`WHERE "group" = 'Anzahl Bezieher:innen' AND _row_type = 'total'` finds it. MySQL / Postgres / SQL Server functions and syntax SQLite lacks
 (`YEAR`, `MONTH`, `DAY`, `DATE_FORMAT`, `TO_CHAR`, `EXTRACT(… FROM …)`, `DATEDIFF`, `DATE_ADD`, `NOW`,
 `CONCAT`, `ISNULL`, `LEN`, `STRING_AGG`, `MEDIAN`/`PERCENTILE_CONT`, `STDDEV`, `TOP n`, `ILIKE`,
 `::type`, `FETCH FIRST`, `INTERVAL`, …) get the SQLite replacement.
@@ -231,7 +240,18 @@ Per table (when the whole catalog fits in ~12,000 characters):
   have several spellings, cells with several entities, values without an ID, and to group by
   `<col>_id`: `adjudicante = "<id> - <name>" (e.g. "600082440 - Direção-Geral de …"): 3,872 IDs, 808
   with several spellings (e.g. 508481287: 5 names; up to 52) — group by adjudicante_id, not by the
-  text; adjudicante_name holds the name · …`.
+  text: SELECT "adjudicante_id", "adjudicante_name", count(*) FROM T1 GROUP BY "adjudicante_id";
+  adjudicante_name holds one name per ID (its most frequent spelling) · …`. It comes right under
+  the columns line (when some values have no ID, the query groups by
+  `coalesce(<col>_id, <col>_name)`).
+- **Shares** (tables with ≥ 30 data rows and a summable amount column): a ready query for a share
+  of the total, ranked by the first entity column (or a text column with ≥ 10 values): `share of
+  the total (e.g. top 10 by "adjudicante_id"): SELECT 100.0 * SUM(v) / (SELECT SUM("precoContratual")
+  FROM T1) AS pct FROM (SELECT SUM("precoContratual") AS v FROM T1 GROUP BY "adjudicante_id" ORDER BY
+  v DESC LIMIT 10)`.
+- **Long forms**: when one table repeats another's values one row per key × category (checked on
+  up to 40 sampled rows), both get `T5 is the long form of T3: one row per Datum × Saisonbereinigung,
+  value in Indexwert (T3 has one column per Saisonbereinigung value)`.
 - **Total rows**: how to select them and where their label is, e.g.
   `total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (label in col_C: 'Total')`; without a
   label column, their `_src_row` and sign (`_src_row 51 positive, 65 negative`).

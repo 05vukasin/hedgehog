@@ -22,6 +22,27 @@ All notable changes to hedgehog are listed here. The format follows
   call runs; `notifications/cancelled` drops a queued call or stops a running query (SQLite
   interrupt) or the wait for a normalization. See [docs/mcp.md](docs/mcp.md#cancelling-a-call).
 
+- **Agent accuracy with small models (B15, B16, B18, B19)**, from the hedgehog-cli runs:
+  - A `no such column` that names a total-row label (`"Total"`, `"Gesamt"`) or a value of a text
+    column (`"SEA ROBIN"`) still explains where those rows are, and now also returns them: the
+    suggested query is run and up to 10 rows (~3,000 characters) follow under `Those rows (the
+    query above, run for you; pick the columns you need):`. The call stays an error.
+  - Long forms: when one table repeats another's values one row per key × category (checked on up
+    to 40 sampled rows), both get a catalog line, e.g. `T5 is the long form of T3: one row per Datum
+    × Saisonbereinigung, value in Indexwert (T3 has one column per Saisonbereinigung value)`
+    (de-truck-toll).
+  - Entity columns: `<col>_name` is now one name per ID (the spelling most rows use), so `GROUP BY
+    adjudicante_name` gives Infraestruturas de Portugal €737.7 M in one row like `GROUP BY
+    adjudicante_id` (was €507.2 M + €229.0 M). The entity line comes right under the columns line
+    and carries the ready query (`SELECT "adjudicante_id", "adjudicante_name", count(*) FROM T1
+    GROUP BY "adjudicante_id"`; `coalesce(<col>_id, <col>_name)` when values without an ID exist). A
+    result grouped by the raw text that lists one ID twice ends with `note: rows 1 and 3 are one
+    adjudicante (ID 503933813) under different spellings — group by adjudicante_id instead, e.g. …`.
+  - Shares: tables with ≥ 30 rows and a summable amount column get a ready query for a share of the
+    total (`share of the total (e.g. top 10 by "adjudicante_id"): SELECT 100.0 * SUM(v) / (SELECT
+    SUM("precoContratual") FROM T1) AS pct FROM (SELECT … GROUP BY … ORDER BY v DESC LIMIT 10)`); for
+    the suppliers of pt-contracts it gives 12.9 %.
+
 - **Catalog facts** (`open_file`): small tables in full by a cell budget (≤ 400 cells, ≤ 30 rows)
   from `T<n>_all` with a `_row_type` column, so total rows are visible (a 12 × 19 pension table is
   now inlined); per table with total rows, how to select them (`total rows: SELECT … FROM T1_all
@@ -192,6 +213,13 @@ All notable changes to hedgehog are listed here. The format follows
   "zur Inhaltsübersicht").
 
 ### Fixed
+
+- Total rows take the keys of the block they close (B17): the Austrian pension table's "Gesamt"
+  row is in group `Anzahl Bezieher:innen` (its sums reached up into the year header, which made it
+  look like a total over all groups, with an empty group), and an empty text cell left of a total
+  row's label gets the value every data row of its block shares (Henry Hub: `col_B = 'Receipts HH'`
+  / `'Deliveries HH'` on the two `Total` rows), so `WHERE key = '…' AND _row_type = 'total'` finds
+  them. Counted as `group_keys_filled_down`. Grand totals over several groups keep no group.
 
 - `open_file` on large registers: the catalog took ~48 s on a 176k-row file (a quadratic search
   for measure labels over text columns with ~100k distinct values, and the time coverage computed
