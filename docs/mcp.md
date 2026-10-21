@@ -28,7 +28,7 @@ hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-m
 | `--allow PATH` | none | One more file or folder outside the root (repeatable). |
 | `--query-timeout-ms N` | `2000` | Time limit of one SQL query. |
 | `--max-file-mb N` | `256` | Larger files are refused. |
-| `--max-cells N` | `20000000` | Workbooks with more non-empty cells are refused (memory grows with cells). |
+| `--max-cells N` | `20000000` | Workbooks with more non-empty cells are refused. Normalizing takes roughly 200 bytes per cell at peak (8.5 million cells: 1.8 GB), so lower it on small machines. |
 | `--max-seconds N` | `120` | Time limit for reading and normalizing one file. |
 
 Get the binary from a [GitHub release](https://github.com/05vukasin/hedgehog/releases)
