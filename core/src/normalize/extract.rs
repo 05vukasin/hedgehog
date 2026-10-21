@@ -1174,6 +1174,14 @@ pub(super) fn process_sheet(
         }
     }
 
+    // Rows of loose `Key:` cells (key/value metadata above a table), for the title choice.
+    let mut notes_keys: HashMap<u32, usize> = HashMap::new();
+    for x in &notes {
+        let t = x.text.trim();
+        if t.char_indices().take(40).any(|(i, c)| c == ':' && t[..i].chars().last().is_some_and(char::is_alphabetic)) {
+            *notes_keys.entry(x.row).or_default() += 1;
+        }
+    }
     // Titles / notes per table, then output names.
     let tables = &mut out.tables[first..];
     for t in tables.iter_mut() {
@@ -1182,12 +1190,26 @@ pub(super) fn process_sheet(
             .filter(|x| x.table == Some(t.n) && x.kind != "repeated_header" && !x.text.is_empty())
             .collect();
         if t.title.is_none() {
-            // Nearest loose title above the table.
-            t.title = mine
+            // Nearest loose title above the table; not a source line or key/value metadata
+            // ("Source: …", "Date of publication:", B46), and a "Table 1: …" line first.
+            let above: Vec<&&NoteItem> = mine.iter().filter(|x| x.kind == "title" && x.row < t.rect.top).collect();
+            let keyed = |row: u32| {
+                notes_keys.get(&row).is_some_and(|&n| n >= 2)
+            };
+            let plain: Vec<&&&NoteItem> =
+                above.iter().filter(|x| !crate::layout::is_note_label(&x.text) && !keyed(x.row)).collect();
+            let table_word = |s: &str| {
+                let w = s.split(|c: char| !c.is_alphabetic()).next().unwrap_or("").to_lowercase();
+                ["table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabulka", "tabell", "taulukko", "tabel"]
+                    .contains(&w.as_str())
+            };
+            let pick = plain
                 .iter()
-                .filter(|x| x.kind == "title" && x.row < t.rect.top)
+                .filter(|x| table_word(&x.text))
                 .max_by_key(|x| x.row)
+                .or_else(|| plain.iter().max_by_key(|x| x.row))
                 .map(|x| (x.text.clone(), (x.row, x.col)));
+            t.title = pick.or_else(|| above.iter().max_by_key(|x| x.row).map(|x| (x.text.clone(), (x.row, x.col))));
         }
         let title_cell = t.title.as_ref().map(|x| x.1);
         t.notes = mine

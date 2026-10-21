@@ -19,8 +19,8 @@ use crate::analysis::{Role, SheetLayout};
 use crate::grid::Grid;
 use crate::model::Sheet;
 
-pub(crate) use cells::{is_rule_text, is_unit_text};
-use cells::{is_aggregate_formula, is_note_label, is_total_label, text_of, Kind};
+pub(crate) use cells::{is_note_label, is_rule_text, is_unit_text};
+use cells::{is_aggregate_formula, is_total_label, text_of, Kind};
 use params::{LOOSE_AGGREGATES_AS_TOTAL, LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP};
 use tables::Out;
 
