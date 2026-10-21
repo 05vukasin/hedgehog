@@ -105,6 +105,8 @@ pub const MAX_PRE_HEADER_ROWS: usize = 3;
 pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
 /// A column-numbering row (`1 2 3 …`) directly under the header belongs to the header.
 pub const COLUMN_NUMBER_ROWS: bool = true;
+/// A unit row (`Mrd. EUR | % | 2020 = 100`) directly under the header belongs to the header.
+pub const UNIT_ROWS: bool = true;
 /// A header-like row inside a body starts a new table when it has text/years in at least this many
 /// (and this share of) the body's numeric columns (numeric in ≥ half the rows so far).
 pub const SPLIT_MIN_HITS: usize = 2;

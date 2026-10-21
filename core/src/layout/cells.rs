@@ -91,6 +91,49 @@ fn text_kind(s: &str) -> Kind {
     Kind::Text
 }
 
+/// A unit or scale label as written in a unit row under a header (B45): `Mrd. EUR`, `%`, `% 4)`,
+/// `2020 = 100`, `1 000 Personen`, `in 1000`, `Tsd. EUR`, `EUR`, `kg`, `Anzahl`. Short, and every
+/// word a unit, scale, currency, number, footnote mark or one of a few count words.
+pub(crate) fn is_unit_text(t: &str) -> bool {
+    use crate::values::number::{scale, unit};
+    let t = t.trim();
+    if t.is_empty() || t.chars().count() > 24 {
+        return false;
+    }
+    let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+    // Index base: "2020 = 100", "2015=100".
+    if let Some(i) = compact.find("=100")
+        && i == 4
+        && compact[..4].bytes().all(|b| b.is_ascii_digit())
+    {
+        return true;
+    }
+    const WORDS: [&str; 24] = [
+        "in", "je", "per", "pro", "personen", "persons", "anzahl", "number", "stunden", "hours", "jahre", "years",
+        "prozent", "percent", "punkte", "points", "einwohner", "inhabitants", "tonnes", "tonnen", "t", "ha", "km",
+        "euro",
+    ];
+    let mut any_unit = false;
+    for w in t.split(|c: char| c.is_whitespace() || c == '/') {
+        let w = w.trim_matches(|c: char| matches!(c, '(' | ')' | '[' | ']' | ','));
+        if w.is_empty() {
+            continue;
+        }
+        let lw = w.to_lowercase();
+        if w.contains('%') || w.contains('‰') || scale(w).is_some() || unit(w).is_some() || crate::values::currency::currency(w).is_some()
+        {
+            any_unit = true;
+        } else if WORDS.contains(&lw.as_str()) {
+            any_unit |= !matches!(lw.as_str(), "in" | "je" | "per" | "pro");
+        } else if w.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+            // numbers ("1 000"), footnote numbers
+        } else {
+            return false;
+        }
+    }
+    any_unit
+}
+
 /// A ruling line drawn with text: a run of at least 3 of one of `- = _ ~ * . # + – —` (or `|`
 /// alone). Only a whole row of such cells (or a `|` cell) is a ruling line ([`super::blocks`]).
 pub(crate) fn is_rule_text(t: &str) -> bool {

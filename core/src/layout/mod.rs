@@ -19,7 +19,7 @@ use crate::analysis::{Role, SheetLayout};
 use crate::grid::Grid;
 use crate::model::Sheet;
 
-pub(crate) use cells::is_rule_text;
+pub(crate) use cells::{is_rule_text, is_unit_text};
 use cells::{is_aggregate_formula, is_note_label, is_total_label, text_of, Kind};
 use params::{LOOSE_AGGREGATES_AS_TOTAL, LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP};
 use tables::Out;
@@ -160,6 +160,14 @@ pub fn column_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value
         n += 1;
     }
     n >= 3
+}
+
+/// A header of period numbers: a text label, then a column numbering (`Year | 1 | 2 | 3 | …`, the
+/// years of a project model, B46). Given the row's filled cells' values from left to right.
+pub fn labelled_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value>) -> bool {
+    let mut it = values.peekable();
+    matches!(it.next(), Some(crate::model::Value::Text(t)) if !t.trim().is_empty() && column_number(&crate::model::Value::Text(t.clone())).is_none())
+        && column_numbering(it)
 }
 
 /// Text near the top of a table → Title; marked or below a table → Note; the rest → Other.

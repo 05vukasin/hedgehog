@@ -88,6 +88,28 @@ fn is_trailing_sentence(sheet: &Sheet, r: &Row) -> bool {
     !is_total_label(t) && t.chars().count() >= NOTE_SENTENCE_LEN && t.split_whitespace().count() >= NOTE_SENTENCE_WORDS
 }
 
+/// Metadata written as key/value pairs on one row ("Date of publication: | 15 Sep 2026 | … |
+/// Date of next publication: | 20 Oct 2026", B46): at least two cells, and at least half of them
+/// a `Key:` label (a word, then a colon in the first 40 characters). Not a header.
+pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
+    let n = r.n();
+    if n < 2 {
+        return false;
+    }
+    let keys = r
+        .filled()
+        .filter(|e| e.kind == Kind::Text)
+        .filter(|e| {
+            let t = text(sheet, e).trim();
+            t.char_indices().take(40).any(|(i, c)| {
+                c == ':' && t[..i].chars().last().is_some_and(char::is_alphabetic)
+                    && t[i + 1..].chars().next().is_none_or(|c| !c.is_ascii_digit())
+            })
+        })
+        .count();
+    2 * keys >= n
+}
+
 /// Header row relative to the rows below it: more of its cells break the column's body type
 /// (text or a year over plain numbers) than repeat it (Pytheas-style signature votes).
 pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
@@ -212,6 +234,14 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
     let mut d = 0;
     while d < MAX_HEADER_ROWS && start + d < end {
         let r = &rows[start + d];
+        if is_key_value_row(sheet, r) {
+            // A lone label over key/value metadata is a title, not a header ("Profit Sharing
+            // Summary" over "Operation Day: | 12 May 2001").
+            if d == 1 && single_text(&rows[start]).is_some() {
+                d = 0;
+            }
+            break;
+        }
         if !is_header_row(r, &rows[start + d + 1..end]) || is_note_row(sheet, r) {
             break;
         }
@@ -231,16 +261,27 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         return ok as usize;
     }
     if d == 0 {
-        // Prior: nearly every table has a header. A wide all-text first row counts.
-        if HEADER_PRIOR && end - start >= 2 && is_wide_text_row(&rows[start], rect) {
+        // Prior: nearly every table has a header. A wide all-text first row counts, and so does
+        // a label over period numbers (`Year | 1 | 2 | …`).
+        let vals: Option<Vec<&Value>> =
+            rows[start].filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
+        let periods = vals.is_some_and(|v| super::labelled_numbering(v.into_iter()));
+        if periods && end - start >= 2 {
+            d = 1;
+        } else if HEADER_PRIOR && end - start >= 2 && is_wide_text_row(&rows[start], rect) {
             d = 1;
         } else {
             return 0;
         }
     }
-    // A column-numbering row right under the header ("1 2 3 4 …") is part of it.
-    if numbers && start + d + 1 < end && is_column_number_row(sheet, &rows[start + d]) {
-        d += 1;
+    // A column-numbering row right under the header ("1 2 3 4 …") is part of it, and so is a
+    // unit row ("Mrd. EUR | % | 2020 = 100", B45), in either order.
+    for _ in 0..2 {
+        if numbers && start + d + 1 < end && is_column_number_row(sheet, &rows[start + d]) {
+            d += 1;
+        } else if UNIT_ROWS && numbers && start + d + 1 < end && is_unit_row(sheet, &rows[start + d]) {
+            d += 1;
+        }
     }
     // Vertical merges in the header (e.g. "Region" over two header rows) push its bottom down.
     let mut last = rows[start + d - 1].row;
@@ -253,6 +294,11 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         d += 1;
     }
     d
+}
+
+/// A unit row under a header: at least two cells, all unit labels ([`super::cells::is_unit_text`]).
+pub(crate) fn is_unit_row(sheet: &Sheet, r: &Row) -> bool {
+    r.n() >= 2 && r.filled().all(|e| e.kind == Kind::Text && super::cells::is_unit_text(text(sheet, e)))
 }
 
 /// A column-numbering row ([`super::column_numbering`]).
@@ -405,7 +451,10 @@ fn segment(
         // Metadata rows (dates, labels) between titles and the header: skip up to a few sparse rows.
         if h == 0 && segs.is_empty() {
             let mut o = 0;
-            while o < MAX_PRE_HEADER_ROWS && start + o + 2 < e && rows[start + o].n() <= 2 {
+            while o < MAX_PRE_HEADER_ROWS
+                && start + o + 2 < e
+                && (rows[start + o].n() <= 2 || is_key_value_row(sheet, &rows[start + o]))
+            {
                 o += 1;
                 let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
                 if h2 > 0 {

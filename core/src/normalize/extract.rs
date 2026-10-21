@@ -337,6 +337,20 @@ fn build_table(
         }
     }
 
+    // A column-numbering header row ("1 2 3 …", so notes can say "Sp. 3–4") stays in
+    // `original_header` but does not name the columns (B45: not "… / 1").
+    let numbering_rows: Vec<bool> = (0..nh)
+        .map(|hr| {
+            let vals: Vec<&Value> = rows
+                .iter()
+                .filter(|(row, _)| *row == htop + hr as u32)
+                .flat_map(|(_, idxs)| idxs.iter().filter_map(|&i| cells[i].value.as_ref()))
+                .filter(|v| !display(v).is_empty())
+                .collect();
+            crate::layout::column_numbering(vals.into_iter())
+        })
+        .collect();
+
     // --- Body --------------------------------------------------------------------------------
     // Vertically merged body cells (e.g. a label over 3 rows): fill down in the label's column.
     let mut fill: HashMap<(u32, u32), &Value> = HashMap::new();
@@ -594,13 +608,17 @@ fn build_table(
     for k in 0..ncols {
         let col = r.left + k as u32;
         let mut parts: Vec<(String, (u32, u32))> = Vec::new();
-        for h in head.iter().flat_map(|row| &row[k]) {
+        let mut named: Vec<(String, (u32, u32))> = Vec::new();
+        for (hr, h) in head.iter().enumerate().filter_map(|(hr, row)| row[k].as_ref().map(|h| (hr, h))) {
             if parts.last().is_none_or(|p| p.0 != h.0) {
                 parts.push(h.clone());
             }
+            if !numbering_rows[hr] && named.last().is_none_or(|p| p.0 != h.0) {
+                named.push(h.clone());
+            }
         }
         let raw_name = parts.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(" / ");
-        let mut name = clean_name(grid, &parts);
+        let mut name = clean_name(grid, &named);
         if name != raw_name {
             tr.add(T::HeadersCleaned, 1);
         }
