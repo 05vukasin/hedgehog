@@ -66,6 +66,11 @@ $S 2500M fuzz.log fuzz/run.sh xlsx 600 /tmp/seeds/xlsx /tmp/fuzz-xlsx target/fuz
 target/fuzz/hh_fuzz run /tmp/fuzz-xlsx/crashes/<file>   # reproduce (prints a backtrace)
 ```
 
+`fuzz/sweep.py` runs `hedgehog normalize` over every spreadsheet file under a folder, one process
+per file (heap capped at 2.3 GB, 300 s timeout), and writes a resumable TSV of outcomes (`ok`,
+`error`, `limit`, `crash`, `timeout`):
+`$S 2500M sweep.log python3 -I fuzz/sweep.py target/release/hedgehog $HEDGEHOG_DATA /tmp/sweep.tsv`.
+
 The `fuzz` profile keeps overflow checks and debug assertions on, so silent wraparounds show up.
 Bugs found in calamine are fixed in `vendor/calamine` (each change marked `hedgehog:`); every fix
 gets a regression test in `core/tests/hostile_files.rs`, built from bytes in the test.
