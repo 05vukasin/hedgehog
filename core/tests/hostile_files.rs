@@ -382,3 +382,58 @@ fn garbage_and_empty_files_are_one_line_errors() {
         assert!(!e.to_string().is_empty() && !e.to_string().contains('\n'), "{name}: {e}");
     }
 }
+
+/// A minimal xlsx with `n` sheets, each a small table, written by hand (rust_xlsxwriter would
+/// itself open one temp file per sheet).
+fn many_sheets_xlsx(n: usize) -> Vec<u8> {
+    const MAIN: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    const REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const PKG: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
+    let mut ct = String::from(
+        "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
+         <Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>\
+         <Default Extension=\"xml\" ContentType=\"application/xml\"/>\
+         <Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>",
+    );
+    let (mut sheets, mut rels, mut parts) = (String::new(), String::new(), Vec::new());
+    for i in 1..=n {
+        ct.push_str(&format!(
+            "<Override PartName=\"/xl/worksheets/sheet{i}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+        ));
+        sheets.push_str(&format!("<sheet name=\"S{i}\" sheetId=\"{i}\" r:id=\"rId{i}\"/>"));
+        rels.push_str(&format!("<Relationship Id=\"rId{i}\" Type=\"{REL}/worksheet\" Target=\"worksheets/sheet{i}.xml\"/>"));
+        let text = |r: String, v: &str| format!("<c r=\"{r}\" t=\"inlineStr\"><is><t>{v}</t></is></c>");
+        let mut rows = format!("<row r=\"1\">{}{}</row>", text("A1".into(), "City"), text("B1".into(), "Amount"));
+        for (k, (city, v)) in [("North", 10), ("South", 20), ("East", 30)].iter().enumerate() {
+            let r = k + 2;
+            rows.push_str(&format!("<row r=\"{r}\">{}<c r=\"B{r}\"><v>{v}</v></c></row>", text(format!("A{r}"), city)));
+        }
+        parts.push((format!("xl/worksheets/sheet{i}.xml"), format!("<worksheet xmlns=\"{MAIN}\"><sheetData>{rows}</sheetData></worksheet>").into_bytes()));
+    }
+    ct.push_str("</Types>");
+    parts.push(("[Content_Types].xml".into(), ct.into_bytes()));
+    parts.push((
+        "_rels/.rels".into(),
+        format!("<Relationships xmlns=\"{PKG}\"><Relationship Id=\"rId1\" Type=\"{REL}/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>").into_bytes(),
+    ));
+    parts.push((
+        "xl/workbook.xml".into(),
+        format!("<workbook xmlns=\"{MAIN}\" xmlns:r=\"{REL}\"><sheets>{sheets}</sheets></workbook>").into_bytes(),
+    ));
+    parts.push(("xl/_rels/workbook.xml.rels".into(), format!("<Relationships xmlns=\"{PKG}\">{rels}</Relationships>").into_bytes()));
+    zip_of(&parts)
+}
+
+#[test]
+fn normalizing_many_tables_does_not_run_out_of_file_descriptors() {
+    // 1,500 tables: the xlsx writer keeps a temp file open per output sheet, and past the usual
+    // soft limit of 1024 open files it panicked ("Too many open files").
+    let src = tmp("many.xlsx");
+    std::fs::write(&src, many_sheets_xlsx(1500)).unwrap();
+    let out = tmp("many_out");
+    let r = hh_core::normalize_file(&src, &out, &Default::default());
+    std::fs::remove_file(&src).ok();
+    std::fs::remove_dir_all(&out).ok();
+    let r = r.unwrap();
+    assert!(r.tables >= 1500, "{}", r.tables);
+}

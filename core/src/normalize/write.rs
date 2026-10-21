@@ -134,6 +134,45 @@ fn opt_text(v: Option<String>) -> Out {
     v.filter(|s| !s.is_empty()).map_or(Out::Null, Out::Text)
 }
 
+/// rust_xlsxwriter (with `constant_memory`) opens a temp file for every worksheet and keeps it open
+/// until the workbook is saved; past the process's open-file limit it panicked ("Too many open
+/// files": 1,500 tables against Linux's usual soft limit of 1024, 250 against macOS's 256). The soft
+/// limit is raised towards the hard limit when needed, and a workbook that still does not fit is a
+/// clear error.
+#[allow(clippy::unnecessary_cast)] // rlim_t is u64 on most, not all, unix targets
+fn ensure_open_files(sheets: u64) -> Result<(), Error> {
+    // Files the process may already hold (stdio, the source, libraries) plus the output.
+    let needed = sheets + 64;
+    #[cfg(unix)]
+    {
+        let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        // SAFETY: getrlimit / setrlimit only read / write the struct passed.
+        if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
+            return Ok(());
+        }
+        let cur = lim.rlim_cur as u64;
+        if cur >= needed || lim.rlim_cur == libc::RLIM_INFINITY {
+            return Ok(());
+        }
+        let max = if lim.rlim_max == libc::RLIM_INFINITY { u64::MAX } else { lim.rlim_max as u64 };
+        let want = needed.saturating_mul(2).min(max);
+        if want > cur {
+            lim.rlim_cur = want as libc::rlim_t;
+            // SAFETY: as above.
+            unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &lim) };
+        }
+        if want < needed {
+            return Err(Error(format!(
+                "cannot write {} sheets: the xlsx writer keeps a file open per sheet and this process may open only {max} files (raise `ulimit -n`)",
+                sheets
+            )));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = needed;
+    Ok(())
+}
+
 fn table_id(n: Option<usize>) -> Out {
     n.map_or(Out::Null, |n| text(format!("T{n}")))
 }
@@ -145,6 +184,8 @@ pub(super) fn xlsx(
     manifest_name: &str,
     path: &Path,
 ) -> Result<(), Error> {
+    // One sheet per table plus README, Totals and Notes, each holding a temp file open until saved.
+    ensure_open_files(norm.tables.len() as u64 + 3)?;
     let mut wb = Workbook::new();
     // Low-memory sheets stream rows to temp files: put them next to the output, not in a /tmp that
     // may live in RAM.
