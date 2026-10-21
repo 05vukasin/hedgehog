@@ -143,10 +143,10 @@ For table *n*:
   choosing a column. Columns: the table's key columns (group, label, ID and dimension columns, up
   to 8), `measure` when the period columns repeat for several measures (`Umsatz / 2023`,
   `Kosten / 2023` → `measure` = `Umsatz` | `Kosten`), `period` (normalized: `2025`, `2025-Q1`,
-  `2025-03`, `2025-W05`, `2025-03-31`), `period_label` (the column name), `value`, `_row_type`,
-  `_src_row` and `_src_col` (the value's source cell is `<_src_col><_src_row>`). It has every row
-  of `T<n>_all` (total rows marked by `_row_type`, so filter `_row_type = 'data'` before summing);
-  empty cells are left out. It is a plain view (a `UNION ALL` over `T<n>_all`), so nothing is
+  `2025-03`, `2025-W05`, `2025-03-31`), `period_label` (the column name), `value`, `_src_row`
+  and `_src_col` (the value's source cell is `<_src_col><_src_row>`). Like `T<n>`, it has the data
+  rows only; `T<n>_long_all` also has the total rows, with `_row_type` (as `T<n>_all`). Empty
+  cells are left out. Both are plain views (a `UNION ALL` over `T<n>` / `T<n>_all`), so nothing is
   copied at load; a filter on `period` reads only that column (a 20,000 × 120 month table:
   `WHERE period = '2019-03'` grouped by region in ~15 ms; a full `GROUP BY period` over all 2.4 M
   values ~1.4 s).
@@ -184,14 +184,14 @@ T1  'AUSGLEICHSZULAGEN - alleinstehend/verheiratet' ← '2_2'!A1:R18 · 11 rows 
     "group" values: "Anzahl Bezieher:innen" | "Durchschnittshöhe in Euro" | "Richtsätze in Euro"
     Richtsatz values: "Alleinstehend" | "davon Männer" | "davon Frauen" | "Verheiratet ***" | "Gesamt"
     rows mix measures by "group" — filter before aggregating
-    T1_long: one row per ("group", Richtsatz, period) — 15 columns "2011".."2025" as rows: period '2011'..'2025', value; use for trends/filters by year · rows mix measures: filter "group" first · incl. total rows (_row_type)
+    T1_long: one row per ("group", Richtsatz, period) — 15 columns "2011".."2025" as rows: period '2011'..'2025', value; use for trends/filters by year · rows mix measures: filter "group" first · total rows only in T1_long_all (_row_type)
     do not sum: "2020/ 2025" (rate), "2024/ 2025" (rate), rows "group" = 'Durchschnittshöhe in Euro' (avg EUR) — use AVG, a weighted mean or the file's own total
     group column: "group" · totals: 0 ok, 0 mismatch, 30 unknown
 TOTALS 0 ok, 0 mismatch, 30 unknown (call totals for details)
 NOTES 7 cells (note 5, title 2); e.g. '2_2'!A1: "AUSGLEICHSZULAGEN - alleinstehend/verheiratet"
 WARNINGS none
 SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
-SQL long view T1_long: period columns as rows (period, period_label, value, _row_type, _src_row, _src_col; the value's cell is <_src_col><_src_row>)
+SQL long view T1_long (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)
 (normalized in 0.0 s)
 ```
 
@@ -264,7 +264,7 @@ Per table (when the whole catalog fits in ~12,000 characters):
   in Euro' (avg EUR)`.
 - **Long view**: `T1_long: one row per ("group", Richtsatz, period) — 15 columns "2011".."2025" as
   rows: period '2011'..'2025', value; use for trends/filters by year · rows mix measures: filter
-  "group" first · incl. total rows (_row_type)` (see [SQL tables](#sql-tables)); tables listed
+  "group" first · total rows only in T1_long_all (_row_type)` (see [SQL tables](#sql-tables)); tables listed
   briefly or as "same layout as" get ` · T4_long (by day)`, and the SQL line at the end lists the
   long views.
 - **Mixed measures**: `rows mix measures by "group" — filter before aggregating` when one label

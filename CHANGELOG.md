@@ -11,10 +11,10 @@ All notable changes to hedgehog are listed here. The format follows
 - **Long views of wide period tables** (`hedgehog mcp`, Node, hedgehog-cli; B20): a table with 4 or
   more numeric columns named by periods (`"2011".."2025"`, `Jan 2024`, `2024 Q1`, `Thu / 2002-01-31`)
   gets a SQL view `T<n>_long` with its key columns, `period` (normalized: `2025`, `2025-Q1`,
-  `2025-03`, `2025-03-31`), `period_label`, `value`, `_row_type`, `_src_row` and `_src_col`
-  (plus `measure` when the periods repeat for several measures), so a model filters
-  `WHERE period = '2025'` instead of picking a column. A plain view over `T<n>_all`: nothing is
-  copied at load. The catalog has one line per long view (`T1_long: one row per ("group",
+  `2025-03`, `2025-03-31`), `period_label`, `value`, `_src_row` and `_src_col` (plus `measure`
+  when the periods repeat for several measures), so a model filters `WHERE period = '2025'`
+  instead of picking a column. As with `T<n>` / `T<n>_all`, `T<n>_long` has the data rows and
+  `T<n>_long_all` also the total rows (`_row_type`). Plain views: nothing is copied at load. The catalog has one line per long view (`T1_long: one row per ("group",
   Richtsatz, period) — … use for trends/filters by year`, with the label to filter first when the
   rows mix measures); `describe_table T1_long` describes T1. `hh_core::normalize::header_period`
   exposes how the time coverage reads period headers. See [docs/mcp.md](docs/mcp.md#sql-tables).

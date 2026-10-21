@@ -931,7 +931,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     let longs: Vec<String> = norm.tables.iter().filter_map(|t| crate::views::table_view(t).map(|lv| lv.name)).collect();
     if !longs.is_empty() {
         tail.push(format!(
-            "SQL long {} {}: period columns as rows (period, period_label, value, _row_type, _src_row, _src_col; the value's cell is <_src_col><_src_row>)",
+            "SQL long {} {} (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)",
             if longs.len() == 1 { "view" } else { "views" },
             id_list(&longs, 8)
         ));
@@ -1012,7 +1012,8 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
 /// Finds a table by id (`T2`, `t2`, `2`, `T2_all`) or output sheet name.
 pub fn find_table<'a>(norm: &'a Normalized, id: &str) -> Result<&'a Table, String> {
     let raw = id.trim().trim_matches('"');
-    let key = raw.strip_suffix("_all").or_else(|| raw.strip_suffix("_long")).unwrap_or(raw); // B20: T<n>_long
+    let key = raw.strip_suffix("_all").unwrap_or(raw);
+    let key = key.strip_suffix("_long").unwrap_or(key); // B20: T<n>_long, T<n>_long_all
     let n = key.trim_start_matches(['T', 't']).parse::<usize>().ok();
     norm.tables
         .iter()

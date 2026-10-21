@@ -44,7 +44,7 @@ pub fn tool_specs() -> Value {
                 Views: T1, T2, … hold the data rows; T1_all, … also hold the total/subtotal rows with _row_type \
                 ('data'|'subtotal'|'total') — use those for overall figures, never add them to data rows. Every view has _src_row \
                 (row number in the source sheet) for citing cells. A table with one column per year/month/day also has \
-                T1_long (its period columns as rows: period, period_label, value): filter WHERE period = '2025'. Quote column names with double quotes: \
+                T1_long (its period columns as rows: period, period_label, value; T1_long_all with total rows): filter WHERE period = '2025'. Quote column names with double quotes: \
                 SELECT \"Revenue / Q1\" FROM T1. Dates are ISO text 'YYYY-MM-DD'; percentages are fractions (0.15 = 15%). \
                 This is SQLite, not MySQL/Postgres: month strftime('%m', d), year strftime('%Y', d), \
                 year-month strftime('%Y-%m', d), days between julianday(b) - julianday(a); LIMIT n, not TOP n. \

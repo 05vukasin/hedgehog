@@ -8,11 +8,11 @@
 //! period columns repeat for several measures (`Umsatz / 2023`, `Kosten / 2023`), `period`
 //! (normalized: `2025`, `2025-Q1`, `2025-03`, `2025-W05`, `2025-03-31`), `period_label` (the
 //! column's name), `value`, `_row_type`, `_src_row` and `_src_col` (the source column letter: the
-//! value's cell is `<_src_col><_src_row>`). Every row of `T<n>_all` is in it (total rows marked by
-//! `_row_type`); empty cells are left out.
+//! value's cell is `<_src_col><_src_row>`). As with `T<n>` / `T<n>_all`, `T<n>_long` has the data
+//! rows only and `T<n>_long_all` also the total rows, with `_row_type`; empty cells are left out.
 //!
-//! The view is a plain SQLite view (a `UNION ALL` of one `SELECT` per period column over
-//! `T<n>_all`): nothing is copied at load, and a filter on `period` skips the other branches
+//! The views are plain SQLite views (a `UNION ALL` of one `SELECT` per period column over `T<n>`
+//! or `T<n>_all`): nothing is copied at load, and a filter on `period` skips the other branches
 //! before they read a row.
 
 use hh_core::normalize::{header_period, ColRole, Dtype, Table};
@@ -52,10 +52,12 @@ pub struct PeriodCol {
 /// The long view of one table.
 #[derive(Debug, Clone)]
 pub struct LongView {
-    /// `T<n>_long`.
+    /// `T<n>_long` (data rows; source `T<n>`).
     pub name: String,
-    /// `T<n>_all`, the view's source.
-    pub source: String,
+    /// `T<n>_long_all` (with total rows and `_row_type`; source `T<n>_all`).
+    pub all_name: String,
+    /// `T<n>`.
+    pub table: String,
     /// Key columns (indexes in `Table::columns`).
     pub keys: Vec<usize>,
     pub periods: Vec<PeriodCol>,
@@ -186,7 +188,8 @@ pub fn long_view(t: &Table, types: &[Option<ColType>]) -> Option<LongView> {
     }
     Some(LongView {
         name: format!("{}_long", t.id()),
-        source: format!("{}_all", t.id()),
+        all_name: format!("{}_long_all", t.id()),
+        table: t.id(),
         keys,
         periods,
         granularity: best_gran,
@@ -237,8 +240,9 @@ fn sql_text(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
-/// `CREATE VIEW` statement of a long view.
-pub fn create_sql(t: &Table, lv: &LongView) -> String {
+/// `CREATE VIEW` statement of a long view: `T<n>_long` over `T<n>`, or with `all`
+/// `T<n>_long_all` over `T<n>_all` (with `_row_type`).
+pub fn create_sql(t: &Table, lv: &LongView, all: bool) -> String {
     let names = sql_names(t);
     let [measure, period, label, value, src_col, _] = own_names(t, lv);
     let keys: Vec<String> = lv.keys.iter().map(|&i| quote_ident(&names[i])).collect();
@@ -253,12 +257,16 @@ pub fn create_sql(t: &Table, lv: &LongView) -> String {
         sel.push(format!("{} AS {}", sql_text(&p.period), quote_ident(&period)));
         sel.push(format!("{} AS {}", sql_text(&names[p.col]), quote_ident(&label)));
         sel.push(format!("{col} AS {}", quote_ident(&value)));
-        sel.push("\"_row_type\"".into());
+        if all {
+            sel.push("\"_row_type\"".into());
+        }
         sel.push("\"_src_row\"".into());
         sel.push(format!("{} AS {}", sql_text(&c.source_col.map(letter).unwrap_or_default()), quote_ident(&src_col)));
-        branches.push(format!("SELECT {} FROM {} WHERE {col} IS NOT NULL", sel.join(", "), quote_ident(&lv.source)));
+        let source = if all { format!("{}_all", lv.table) } else { lv.table.clone() };
+        branches.push(format!("SELECT {} FROM {} WHERE {col} IS NOT NULL", sel.join(", "), quote_ident(&source)));
     }
-    format!("CREATE VIEW {} AS {}", quote_ident(&lv.name), branches.join(" UNION ALL "))
+    let name = if all { &lv.all_name } else { &lv.name };
+    format!("CREATE VIEW {} AS {}", quote_ident(name), branches.join(" UNION ALL "))
 }
 
 /// Creates the long views of all tables (called by [`crate::sql::Db::load`] inside its
@@ -268,7 +276,8 @@ pub fn create_all(tx: &Transaction<'_>, norm: &hh_core::normalize::Normalized) -
     let mut made = Vec::new();
     for t in &norm.tables {
         let Some(lv) = table_view(t) else { continue };
-        tx.execute_batch(&create_sql(t, &lv))?;
+        tx.execute_batch(&create_sql(t, &lv, false))?;
+        tx.execute_batch(&create_sql(t, &lv, true))?;
         made.push(t.n);
     }
     Ok(made)
@@ -342,7 +351,7 @@ pub fn catalog_line(t: &Table, lv: &LongView, mixed: Option<usize>, total_rows: 
         s.push_str(&format!(" · rows mix measures: filter {} first", ident(&names[m])));
     }
     if total_rows {
-        s.push_str(" · incl. total rows (_row_type)");
+        s.push_str(&format!(" · total rows only in {} (_row_type)", lv.all_name));
     }
     s
 }
@@ -432,13 +441,16 @@ mod tests {
             vec!["2024", "4", "E", "3"],
         ]);
         // Empty cells are left out; total rows are in, marked.
-        let n = db.query("SELECT count(*) FROM T1_long WHERE _row_type = 'data'", 5, DEFAULT_TIMEOUT).unwrap();
+        let n = db.query("SELECT count(*) FROM T1_long", 5, DEFAULT_TIMEOUT).unwrap();
         assert_eq!(n.rows[0][0], "7");
-        let tot = db.query("SELECT value FROM T1_long WHERE _row_type = 'total' AND period = '2024'", 5, DEFAULT_TIMEOUT).unwrap();
+        assert!(db.query("SELECT _row_type FROM T1_long", 5, DEFAULT_TIMEOUT).is_err(), "T1_long has data rows only");
+        let n = db.query("SELECT count(*) FROM T1_long_all WHERE _row_type = 'data'", 5, DEFAULT_TIMEOUT).unwrap();
+        assert_eq!(n.rows[0][0], "7");
+        let tot = db.query("SELECT value FROM T1_long_all WHERE _row_type = 'total' AND period = '2024'", 5, DEFAULT_TIMEOUT).unwrap();
         assert_eq!(tot.rows[0][0], "44");
         let line = catalog_line(t, &lv, None, true);
         assert!(line.contains("T1_long: one row per (Region, period)"), "{line}");
-        assert!(line.contains("period '2021'..'2024'") && line.contains("by year") && line.contains("total rows"), "{line}");
+        assert!(line.contains("period '2021'..'2024'") && line.contains("by year") && line.contains("total rows only in T1_long_all"), "{line}");
         // B21: types from the title (bare year headers), the change column, the label column.
         let tys = crate::types::classify(t, &sql_names(t), None, &[]);
         let ty = |i: usize| tys[i].clone().unwrap();
@@ -466,7 +478,7 @@ mod tests {
         assert_eq!(lv.periods.len(), 8);
         let db = Db::load(&norm).unwrap();
         let r = db.query("SELECT measure, count(*) FROM T1_long WHERE period = '2023' GROUP BY measure ORDER BY measure", 5, DEFAULT_TIMEOUT).unwrap();
-        assert_eq!(r.rows, vec![vec!["Cost", "3"], vec!["Sales", "3"]]);
+        assert_eq!(r.rows, vec![vec!["Cost", "2"], vec!["Sales", "2"]], "data rows only");
     }
 
     #[test]
