@@ -161,7 +161,11 @@ def check(c: dict, answer: str):
     if "num" in c:
         tol = c.get("tol", 0.005)
         want = c["num"]
-        return any(abs((abs(x) if c.get("abs") else x) - want) <= tol * abs(want) for x in numbers(answer))
+        text = answer
+        if c.get("near"):  # the number must follow one of these words within 200 characters (same entity)
+            low = answer.lower()
+            text = " ".join(answer[i:i + 200] for w in c["near"] for i in [m for m in range(len(low)) if low.startswith(w.lower(), m)])
+        return any(abs((abs(x) if c.get("abs") else x) - want) <= tol * abs(want) for x in numbers(text))
     if "pct_range" in c:
         lo, hi = c["pct_range"]
         return any(lo <= x <= hi for x in numbers(answer, pct_only=True))
