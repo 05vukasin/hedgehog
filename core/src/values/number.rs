@@ -711,7 +711,13 @@ fn dotted_date(s: &str) -> bool {
 impl DecimalVotes {
     /// Adds one value's evidence.
     pub fn add(&mut self, s: &str) {
-        let Some(p) = parse_number(s, NumberHint::default()) else {
+        self.add_parsed(s, parse_number(s, NumberHint::default()).as_ref());
+    }
+
+    /// [`DecimalVotes::add`] with `parse_number(s, NumberHint::default())` already done (`p`), so
+    /// a caller that needs that reading for something else parses once.
+    pub fn add_parsed(&mut self, s: &str, p: Option<&ParsedNumber>) {
+        let Some(p) = p else {
             if dotted_date(trim(s)) {
                 self.dotted_dates += 1;
             }

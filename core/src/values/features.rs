@@ -75,8 +75,9 @@ impl ColumnHints {
 
 /// Column evidence for word-like currency codes: a cell already read with a currency, or text
 /// mentioning one (`Amount (USD)`, `$`, `Currency`).
-fn currency_evidence(s: &str) -> bool {
-    parse_number(s, NumberHint::default()).is_some_and(|p| p.currency.is_some()) || mentions_currency(s)
+/// `p` is `parse_number(s, NumberHint::default())`, which the callers need anyway.
+fn currency_evidence_parsed(s: &str, p: Option<&super::number::ParsedNumber>) -> bool {
+    p.is_some_and(|p| p.currency.is_some()) || mentions_currency(s)
 }
 
 /// Infers decimal convention and day/month order from a column's text values.
@@ -90,9 +91,11 @@ pub fn infer_column_with<'a>(values: impl IntoIterator<Item = &'a str>, native: 
     let mut o = DateOrderVotes::default();
     let mut cur = false;
     for s in values {
-        d.add(s);
+        // One default reading serves the decimal vote and the currency evidence.
+        let p = parse_number(s, NumberHint::default());
+        d.add_parsed(s, p.as_ref());
         o.add(s);
-        cur = cur || currency_evidence(s);
+        cur = cur || currency_evidence_parsed(s, p.as_ref());
     }
     ColumnHints { decimal: d.decision_with(native), date_order: o.decision(), currency_context: cur }
 }
@@ -109,9 +112,11 @@ pub fn sheet_column_hints(grid: &Grid) -> HashMap<u32, ColumnHints> {
 
 /// Like [`sheet_column_hints`], but an explicit `locale` overrides inference for every column.
 pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u32, ColumnHints> {
-    let mut votes: HashMap<u32, (DecimalVotes, DateOrderVotes)> = HashMap::new();
-    let mut currency_cols: HashMap<u32, bool> = HashMap::new();
-    let mut natives: HashMap<u32, NativeNumbers> = HashMap::new();
+    // Per column: votes and currency evidence (integer counts and flags, so the order in which
+    // cells or columns are merged does not matter).
+    let mut votes: rustc_hash::FxHashMap<u32, (DecimalVotes, DateOrderVotes)> = Default::default();
+    let mut currency_cols: rustc_hash::FxHashMap<u32, bool> = Default::default();
+    let mut natives: rustc_hash::FxHashMap<u32, NativeNumbers> = Default::default();
     // Each text's votes and currency evidence depend only on the text: computed once per text.
     let mut memo: rustc_hash::FxHashMap<&str, (DecimalVotes, DateOrderVotes, bool)> = rustc_hash::FxHashMap::default();
     for c in &grid.sheet.cells {
@@ -124,11 +129,13 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
         if let Some(Value::Text(s)) = &c.value {
             let (d, o, cur_ev) = *memo.entry(s.as_str()).or_insert_with(|| {
                 let (mut d, mut o) = (DecimalVotes::default(), DateOrderVotes::default());
+                // One default reading serves the decimal vote and the currency evidence.
+                let p = parse_number(s, NumberHint::default());
                 if locale.is_none() {
-                    d.add(s);
+                    d.add_parsed(s, p.as_ref());
                     o.add(s);
                 }
-                (d, o, currency_evidence(s))
+                (d, o, currency_evidence_parsed(s, p.as_ref()))
             });
             let e = votes.entry(c.col).or_default();
             e.0.merge(&d);
