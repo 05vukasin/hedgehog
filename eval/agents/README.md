@@ -1,7 +1,15 @@
 # Agent comparisons
 
 The benchmarks in [docs/evaluation.md](../../docs/evaluation.md) measure whether hedgehog labels
-cells correctly. This folder measures what users care about: **does an agent with hedgehog's tools
+cells correctly. This folder measures what users care about.
+
+**The headline comparison is the weakest harness with the best tool against the best harness with
+its own tools:** hedgehog-cli (a simple chat loop on a small, cheap model whose only tools are
+hedgehog's) versus Claude Code (the strongest general agent harness on a frontier model, reading the
+file with its own Python). When hedgehog-cli matches Claude Code, the tool is doing the work. The
+third arm, Claude Code with hedgehog's plugin, is extra information, not the headline.
+
+The question: **does an agent with hedgehog's tools
 answer real questions about a real file correctly, quickly and cheaply, compared with a strong
 general agent that has no hedgehog?**
 
