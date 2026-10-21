@@ -328,8 +328,8 @@ All notable changes to hedgehog are listed here. The format follows
 - **Layout regressions of the merge above, statistics-database exports and long TSVs** (B53–B57;
   every structure-benchmark number now at or above both the release before the layout work and
   that work itself; DECO model table F1 at IoU ≥ 0.5 / 0.8 / 1.0 69.4 / 57.9 / 38.4 → 75.0 / 62.8 /
-  41.4, header rows exact 81.4 → 81.8 %, StatSheets 92.4 / 88.1 / 75.9 → 93.8 / 89.9 / 77.9 and
-  71.6 → 73.1 %; 13 of 19 files without a table in the 1,093-file sweep now have one):
+  41.4, header rows exact 81.4 → 82.1 %, StatSheets 92.4 / 88.1 / 75.9 → 93.8 / 89.9 / 78.4 and
+  71.6 → 73.5 %; 13 of 19 files without a table in the 1,093-file sweep now have one):
   - two row-aligned blocks with their own row labels are two tables side by side only when each
     has a header or a label and two value columns; a header-less two-column label/value block stays
     with its neighbour (gstorey `Totals_xx`: the `TOTAL $$` summary is a table again, not Notes);
