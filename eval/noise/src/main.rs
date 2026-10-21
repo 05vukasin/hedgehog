@@ -6,12 +6,15 @@
 //! Writes a markdown report (default `eval/noise/REPORT.md`).
 //!
 //! ```text
-//! noise_eval [--seeds 30] [--families a,b] [--intensities 0,0.25,0.5,0.75,1] [--threads 3]
+//! noise_eval [--seeds 30] [--seed-from 0] [--families a,b] [--intensities 0,0.25,0.5,0.75,1] [--threads 2]
+//!            [--batch-dir DIR]                         # write raw results (TSV) instead of a report
+//! noise_eval --report-from DIR [--out eval/noise/REPORT.md]   # report from all batches in DIR
 //!            [--out eval/noise/REPORT.md] [--work /tmp/claude-1000/w1noise] [--data $HEDGEHOG_DATA]
 //! noise_eval --repro <family> <intensity> <seed>     # one scenario: sheet, truth, both paths
 //! ```
 
 mod base;
+mod batch;
 mod check;
 mod families;
 mod render;
@@ -51,6 +54,9 @@ impl Outcome {
 
 struct Args {
     seeds: u64,
+    seed_from: u64,
+    batch_dir: Option<PathBuf>,
+    report_from: Option<PathBuf>,
     families: Vec<String>,
     intensities: Vec<f64>,
     threads: usize,
@@ -64,9 +70,12 @@ struct Args {
 fn parse_args() -> Args {
     let mut a = Args {
         seeds: 30,
+        seed_from: 0,
+        batch_dir: None,
+        report_from: None,
         families: families::FAMILIES.iter().map(|s| s.to_string()).collect(),
         intensities: vec![0.0, 0.25, 0.5, 0.75, 1.0],
-        threads: 3,
+        threads: 2,
         out: PathBuf::from("eval/noise/REPORT.md"),
         work: PathBuf::from("/tmp/claude-1000/w1noise"),
         data: std::env::var_os("HEDGEHOG_DATA").map(PathBuf::from),
@@ -79,6 +88,13 @@ fn parse_args() -> Args {
         let v = |k: usize| args.get(i + k).cloned().unwrap_or_else(|| panic!("{} needs a value", args[i]));
         match args[i].as_str() {
             "--seeds" => a.seeds = v(1).parse().expect("--seeds N"),
+            "--list" => {
+                println!("{}", families::FAMILIES.join(" "));
+                std::process::exit(0);
+            }
+            "--seed-from" => a.seed_from = v(1).parse().expect("--seed-from N"),
+            "--batch-dir" => a.batch_dir = Some(PathBuf::from(v(1))),
+            "--report-from" => a.report_from = Some(PathBuf::from(v(1))),
             "--families" => a.families = v(1).split(',').map(|s| s.to_string()).collect(),
             "--intensities" => a.intensities = v(1).split(',').map(|s| s.parse().expect("intensity")).collect(),
             "--threads" => a.threads = v(1).parse().expect("--threads N"),
@@ -235,6 +251,13 @@ fn main() {
         PANIC.with(|p| *p.borrow_mut() = Some(loc));
     }));
     let a = parse_args();
+    if let Some(dir) = &a.report_from {
+        let (results, ts, seeds, secs, real) = batch::load(dir);
+        let md = report::render(&results, &ts, seeds, secs, &real, &a.out);
+        std::fs::write(&a.out, md).unwrap();
+        eprintln!("wrote {} ({} scenarios from {})", a.out.display(), results.len(), dir.display());
+        return;
+    }
     let real = match &a.data {
         Some(d) => base::load_real(&d.join("clean")),
         None => Vec::new(),
@@ -250,7 +273,7 @@ fn main() {
     for f in &a.families {
         let fi = families::FAMILIES.iter().position(|x| x == f).unwrap();
         for ti in 0..a.intensities.len() {
-            for s in 0..a.seeds {
+            for s in a.seed_from..a.seed_from + a.seeds {
                 tasks.push((fi, ti, s));
             }
         }
@@ -291,6 +314,13 @@ fn main() {
     results.sort_by_key(|o| (o.family, o.ti, o.seed));
     let secs = t0.elapsed().as_secs_f64();
     let real_names: Vec<String> = ctx.real.iter().map(|r| r.file.clone()).collect();
+    if let Some(dir) = &a.batch_dir {
+        std::fs::create_dir_all(dir).unwrap();
+        let name = format!("{}_{}_{}.tsv", a.families.join("+"), a.intensities.iter().map(|t| format!("{t}")).collect::<Vec<_>>().join("+"), a.seed_from);
+        std::fs::write(dir.join(&name), batch::dump(&results, &a.intensities, secs, &real_names)).unwrap();
+        eprintln!("wrote {} ({} scenarios in {secs:.1} s)", dir.join(name).display(), results.len());
+        return;
+    }
     let md = report::render(&results, &a.intensities, a.seeds, secs, &real_names, &a.out);
     std::fs::write(&a.out, md).unwrap();
     eprintln!("wrote {} ({} scenarios in {secs:.0} s)", a.out.display(), results.len());

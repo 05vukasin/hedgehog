@@ -46,6 +46,7 @@ pub struct BaseTable {
     pub rows: Vec<Vec<V>>,
     /// Key column whose equal values are contiguous (groups of 2+ rows).
     pub group: Option<usize>,
+    #[allow(dead_code)]
     pub real: bool,
 }
 

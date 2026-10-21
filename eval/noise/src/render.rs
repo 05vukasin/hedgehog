@@ -51,6 +51,7 @@ pub enum TotKind {
 pub struct TotT {
     pub r: u32,
     pub c: u32,
+    #[allow(dead_code)]
     pub table: usize,
     pub kind: TotKind,
 }
