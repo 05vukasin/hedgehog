@@ -232,8 +232,30 @@ Per table (when the whole catalog fits in ~12,000 characters):
   `<col>_id`: `adjudicante = "<id> - <name>" (e.g. "600082440 - Direção-Geral de …"): 3,872 IDs, 808
   with several spellings (e.g. 508481287: 5 names; up to 52) — group by adjudicante_id, not by the
   text; adjudicante_name holds the name · …`.
-- **Small tables** (≤ 15 data rows, ≤ 12 columns): all data rows as CSV under the table, added in
-  table order while the catalog stays under its cap (the values lines are then left out).
+- **Total rows**: how to select them and where their label is, e.g.
+  `total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (label in col_C: 'Total')`; without a
+  label column, their `_src_row` and sign (`_src_row 51 positive, 65 negative`).
+- **Signs**: `signs: col_B 'Deliveries HH' rows are all negative (outflows?) — a net figure is the
+  SUM over all rows, not a difference` when a block of rows holds only negative numbers next to
+  positive ones (by a label column, else by `_src_row` ranges).
+- **Small tables** (≤ 400 cells as rows × columns of `T<n>_all` with `_row_type`, ≤ 30 rows):
+  every row as CSV under the table, total rows included and marked in a `_row_type` column (the
+  values lines are then left out).
+- **Amount columns** (tables with ≥ 30 data rows; not IDs, codes, years, period columns,
+  percentages, averages or indexes): `numbers:` with sum (money and count columns), fill rate, share
+  of zeros and range (when the columns line has no range); look-alike amount columns (both money, or
+  similar names) whose sums differ get one line, e.g. `precoContratual (sum 11.16 bn, 100 % filled)
+  vs PrecoTotalEfetivo (sum 4.28 bn, 100 % filled, 55 % zero) — different measures; pick
+  deliberately`.
+- **Quality** (tables with ≥ 20 data rows): `quality:` with duplicates in an ID column that is
+  otherwise unique (≤ 5 % repeats), empty date cells and the label that explains them
+  (`dataCelebracaoContrato empty in 26,722 rows (15 %): tipoprocedimento = 'Ajuste direto
+  simplificado' (all its 26,261 rows) … — counts by this date leave them out`) and negative
+  amounts (cells naming several entities are on the entity line).
+
+The table lines come first; the optional parts are added while the catalog stays under its cap:
+total-row and sign lines first, then small tables' rows, then amount and quality lines, each in
+table order. They are computed in one pass per column (about 0.2 s on a 176k-row register).
 
 When the full catalog is too long it lists every table on one line (`describe_table` gives the
 columns); with very many tables the last line says which were cut.

@@ -6,10 +6,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub use hh_core::normalize::TimeCoverage;
 use hh_core::normalize::{
-    iso, table_time_coverage, table_totals, workbook_time_coverage, ColRole, Column, Dtype, Normalized, Out, RowType,
+    iso, table_totals, time_coverages, workbook_time_coverage, ColRole, Column, Dtype, Normalized, Out, RowType,
     Table, TableTotals,
 };
 
+use crate::facts;
 use crate::text::{csv_row, cut, ident, letter, num, range_a1, sheet_ref, short, thousands, years_in, MAX_CHARS};
 
 /// Tables above this count are always listed one line each.
@@ -23,9 +24,6 @@ const LIST_COLS: usize = 40;
 const MAX_COL_ITEMS: usize = 60;
 /// Text columns with at most this many distinct values get all of them listed.
 const LABEL_VALUES: usize = 12;
-/// Tables with at most this many data rows and columns are inlined as CSV in the catalog.
-const INLINE_ROWS: usize = 15;
-const INLINE_COLS: usize = 12;
 /// Columns with details in `describe_table`.
 const DESCRIBE_COLS: usize = 60;
 /// Items listed by `totals`.
@@ -87,11 +85,11 @@ pub fn out_text(v: &Out, dtype: Dtype) -> String {
     }
 }
 
-fn is_date(d: Dtype) -> bool {
+pub(crate) fn is_date(d: Dtype) -> bool {
     matches!(d, Dtype::Date | Dtype::Datetime)
 }
 
-fn is_numeric(d: Dtype) -> bool {
+pub(crate) fn is_numeric(d: Dtype) -> bool {
     matches!(d, Dtype::Integer | Dtype::Number | Dtype::Percent | Dtype::Currency)
 }
 
@@ -156,7 +154,7 @@ pub struct RowInfo {
 }
 
 /// Indexes of a table's data rows (all rows when it has no row types).
-fn data_rows(t: &Table) -> Vec<usize> {
+pub(crate) fn data_rows(t: &Table) -> Vec<usize> {
     (0..t.rows()).filter(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data)).collect()
 }
 
@@ -225,11 +223,11 @@ fn kept_totals_text(rows: &[TotalRow]) -> String {
     format!("labelled {}; first @{}", l.join(", "), rows[0].row)
 }
 
-fn plural(n: usize, one: &str, many: &str) -> String {
+pub(crate) fn plural(n: usize, one: &str, many: &str) -> String {
     format!("{} {}", thousands(n), if n == 1 { one } else { many })
 }
 
-fn data_cols(t: &Table) -> impl Iterator<Item = (usize, &Column)> {
+pub(crate) fn data_cols(t: &Table) -> impl Iterator<Item = (usize, &Column)> {
     t.columns.iter().enumerate().filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group))
 }
 
@@ -274,7 +272,7 @@ fn values_text(vals: &[String]) -> String {
 // mixed measures
 
 /// What a label says it measures: currency, percent, count, average, index.
-fn measure_classes(label: &str) -> u8 {
+pub(crate) fn measure_classes(label: &str) -> u8 {
     let low = label.to_lowercase();
     let mut m = 0u8;
     if low.contains(['€', '$', '£']) {
@@ -302,37 +300,38 @@ fn median_abs(mut v: Vec<f64>) -> Option<f64> {
     if v.is_empty() {
         return None;
     }
-    v.sort_by(f64::total_cmp);
-    Some(v[v.len() / 2])
+    let mid = v.len() / 2;
+    Some(*v.select_nth_unstable_by(mid, f64::total_cmp).1)
 }
 
 /// The label column (group column first, then text columns) whose values distinguish different
 /// measures in one table (counts vs amounts vs percentages): by the units / words in the labels,
-/// or by numbers of very different size under each label.
+/// or by numbers of very different size under each label. Linear in the rows: a column with more
+/// than [`LABEL_VALUES`] labels is left at the first label too many.
 fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
     let mut cands: Vec<usize> = t.columns.iter().position(|c| c.role == ColRole::Group).into_iter().collect();
     cands.extend(t.columns.iter().enumerate().filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text).map(|(i, _)| i));
     let numeric: Vec<&Column> = data_cols(t).map(|(_, c)| c).filter(|c| is_numeric(c.dtype) && c.dtype != Dtype::Percent).collect();
-    for i in cands {
+    'cand: for i in cands {
         let c = &t.columns[i];
-        // Labels written once per block count for the rows below them.
-        let mut last: Option<&str> = None;
-        let labels: Vec<Option<&str>> = rows
-            .iter()
-            .map(|&r| {
-                if let Some(Out::Text(s)) = c.values.get(r) {
-                    last = Some(s.as_str());
-                }
-                last
-            })
-            .collect();
+        // Labels written once per block count for the rows below them: each row's label index.
         let mut distinct: Vec<&str> = Vec::new();
-        for l in labels.iter().flatten() {
-            if !distinct.contains(l) {
-                distinct.push(l);
+        let mut labels: Vec<Option<usize>> = Vec::with_capacity(rows.len());
+        let mut last: Option<usize> = None;
+        for &r in rows {
+            if let Some(Out::Text(s)) = c.values.get(r) {
+                last = Some(match distinct.iter().position(|d| *d == s.as_str()) {
+                    Some(k) => k,
+                    None if distinct.len() == LABEL_VALUES => continue 'cand,
+                    None => {
+                        distinct.push(s);
+                        distinct.len() - 1
+                    }
+                });
             }
+            labels.push(last);
         }
-        if !(2..=LABEL_VALUES).contains(&distinct.len()) {
+        if distinct.len() < 2 {
             continue;
         }
         let classes: HashSet<u8> = distinct.iter().map(|l| measure_classes(l)).filter(|m| *m != 0).collect();
@@ -346,15 +345,15 @@ fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
         }
         let (mut votes, mut cols) = (0, 0);
         for n in &numeric {
-            let mut by: HashMap<&str, Vec<f64>> = HashMap::new();
+            let mut by: Vec<Vec<f64>> = vec![Vec::new(); distinct.len()];
             for (k, &r) in rows.iter().enumerate() {
                 if let (Some(l), Some(Out::Num(x))) = (labels[k], n.values.get(r))
                     && *x != 0.0
                 {
-                    by.entry(l).or_default().push(x.abs());
+                    by[l].push(x.abs());
                 }
             }
-            let meds: Vec<f64> = by.into_values().filter_map(median_abs).collect();
+            let meds: Vec<f64> = by.into_iter().filter_map(median_abs).collect();
             if meds.len() < 2 {
                 continue;
             }
@@ -553,7 +552,7 @@ fn day_number(y: i64, m: i64, d: i64) -> i64 {
 /// The period a column name stands for, as (unit, index) so that consecutive periods differ by
 /// one, and the rest of the name (lowercased; a weekday counts as empty): a bare year (`2019`),
 /// a month (`2024-03`, `Revenue 2024-03`) or a day (`Thu / 2002-01-31`).
-fn name_period(name: &str) -> Option<(u8, i64, String)> {
+pub(crate) fn name_period(name: &str) -> Option<(u8, i64, String)> {
     let s = name.trim();
     if s.len() == 4 && s.bytes().all(|b| b.is_ascii_digit()) {
         let y: i64 = s.parse().ok()?;
@@ -663,28 +662,6 @@ fn columns_line(t: &Table, names: &[String], examples: bool) -> String {
     format!("    columns ({label}): {}", items.join(" "))
 }
 
-/// The data rows of a small table as CSV (all columns but `_src_row`), or None if it is not small.
-fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
-    let rows = data_rows(t);
-    let cols: Vec<usize> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(i, _)| i).collect();
-    if rows.is_empty() || rows.len() > INLINE_ROWS || cols.is_empty() || cols.len() > INLINE_COLS {
-        return None;
-    }
-    let mut out = vec![format!("    all {} (CSV):", plural(rows.len(), "row", "rows"))];
-    out.push(format!("    {}", csv_row(&cols.iter().map(|&i| short(&names[i], 60)).collect::<Vec<_>>())));
-    for r in rows {
-        let vals: Vec<String> = cols
-            .iter()
-            .map(|&i| {
-                let c = &t.columns[i];
-                short(&c.values.get(r).map(|v| out_text(v, c.dtype)).unwrap_or_default(), 60)
-            })
-            .collect();
-        out.push(format!("    {}", csv_row(&vals)));
-    }
-    Some(out)
-}
-
 fn table_head(t: &Table, info: &RowInfo, cov: Option<&TimeCoverage>, brief: bool) -> String {
     let mut s = format!("{:<3} ", t.id());
     if let Some((title, _)) = &t.title {
@@ -731,11 +708,36 @@ fn table_head(t: &Table, info: &RowInfo, cov: Option<&TimeCoverage>, brief: bool
     s
 }
 
-/// One table in the full catalog: its lines, and its rows as CSV when it is small (added only
-/// while the catalog stays within its budget).
+/// One table in the full catalog: its lines, then optional parts (in output order) added while the
+/// catalog stays within its budget, by tier: how to select total rows and sign conventions (0),
+/// then small tables' rows (1), then column facts (2), each tier in table order.
 struct Block {
     lines: Vec<String>,
-    inline: Vec<String>,
+    parts: Vec<(u8, Vec<String>)>,
+}
+
+impl Block {
+    /// The table's lines with its total-rows and signs lines, and its rows when it is small.
+    fn new(lines: Vec<String>, t: &Table, names: &[String], info: &RowInfo, inline: Option<Vec<String>>) -> Self {
+        let data = data_rows(t);
+        let mut parts: Vec<(u8, Vec<String>)> = Vec::new();
+        parts.extend(facts::total_rows_line(t, names, info).map(|l| (0, vec![l])));
+        parts.extend(facts::signs_line(t, names, &data).map(|l| (0, vec![l])));
+        parts.extend(inline.map(|rows| (1, rows)));
+        Block { lines, parts }
+    }
+
+    fn has_signs(&self) -> bool {
+        self.parts.iter().any(|(_, p)| p.iter().any(|l| l.starts_with("    signs:")))
+    }
+
+    /// Column facts, one part per line, before the inline rows.
+    fn add_facts(&mut self, lines: Vec<String>) {
+        let at = self.parts.iter().position(|(tier, _)| *tier == 1).unwrap_or(self.parts.len());
+        for (k, l) in lines.into_iter().enumerate() {
+            self.parts.insert(at + k, (2, vec![l]));
+        }
+    }
 }
 
 fn len_of(lines: &[String]) -> usize {
@@ -748,7 +750,7 @@ fn len_of(lines: &[String]) -> usize {
 pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     let budget = budget.min(MAX_CHARS);
     let file_name = display_name.rsplit(['/', '\\']).next().unwrap_or(display_name);
-    let covs: Vec<Option<TimeCoverage>> = norm.tables.iter().map(table_time_coverage).collect();
+    let (covs, wb_cov) = time_coverages(norm);
     let with_cov: Vec<(String, TimeCoverage)> =
         norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
     // Per-table periods only when there is more than one table (else the TIME line says it).
@@ -762,7 +764,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             plural(norm.cells.total, "cell", "cells"),
             plural(norm.tables.len(), "table", "tables"),
         ),
-        time_line(workbook_time_coverage(norm).as_ref(), &with_cov, &mentioned_years(norm, file_name)),
+        time_line(wb_cov.as_ref(), &with_cov, &mentioned_years(norm, file_name)),
     ];
     let empty: Vec<&str> = norm.sheets.iter().filter(|s| s.tables.is_empty() && s.cells > 0).map(|s| s.name.as_str()).collect();
     if !empty.is_empty() {
@@ -787,10 +789,10 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 data_cols(t).map(|(i, c)| (names[i].clone(), c.dtype.as_str())).collect();
             let shape: Vec<&'static str> = cols.iter().map(|c| c.1).collect();
             let mut line = table_head(t, info, table_cov(k), false);
-            let inline = inline_rows(t, &names).unwrap_or_default();
+            let inline = facts::inline_rows(t, &names);
             if let Some(first) = layouts.get(&cols) {
                 line.push_str(&format!(" · same columns as {first}"));
-                out.push(Block { lines: vec![line], inline });
+                out.push(Block::new(vec![line], t, &names, info, inline));
                 continue;
             }
             if cols.len() >= 3
@@ -806,15 +808,15 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                         line.push_str(&format!(" … +{} more (describe_table lists them)", items.len() - 12));
                     }
                 }
-                out.push(Block { lines: vec![line], inline });
+                out.push(Block::new(vec![line], t, &names, info, inline));
                 continue;
             }
             layouts.insert(cols.clone(), t.id());
             shapes.insert(shape, (t.id(), cols.iter().map(|c| c.0.clone()).collect()));
-            let mut lines = vec![line, columns_line(t, &names, inline.is_empty())];
+            let mut lines = vec![line, columns_line(t, &names, inline.is_none())];
             let data = data_rows(t);
             // The values to filter on; a small inlined table shows them in its rows.
-            if inline.is_empty() {
+            if inline.is_none() {
                 for (i, c) in data_cols(t) {
                     if let Some(vals) = label_values(c, &data) {
                         lines.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
@@ -822,7 +824,8 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 }
             }
             lines.extend(crate::entity::lines(t)); // B2: "<id> - <name>" columns and their <col>_id (entity.rs)
-            if let Some(i) = mixed_measures_by(t, &data) {
+            let mixed = mixed_measures_by(t, &data);
+            if let Some(i) = mixed {
                 lines.push(format!("    rows mix measures by {} — filter before aggregating", ident(&names[i])));
             }
             let mut extra = Vec::new();
@@ -839,7 +842,15 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             if !extra.is_empty() {
                 lines.push(format!("    {}", extra.join(" · ")));
             }
-            out.push(Block { lines, inline });
+            let small = inline.is_some();
+            let mut b = Block::new(lines, t, &names, info, inline);
+            if !small && mixed.is_none() {
+                let ranges_shown = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).count() <= DETAIL_COLS;
+                let mut f = facts::numbers_lines(t, &names, &data, ranges_shown);
+                f.extend(facts::quality_line(t, &names, &data, b.has_signs()));
+                b.add_facts(f);
+            }
+            out.push(b);
         }
         out
     };
@@ -915,15 +926,28 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         let blocks = full();
         let base: usize = fixed + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>();
         if base <= budget + 1 {
-            // Small tables' rows, in table order, while they fit.
+            // Optional parts while they fit: total rows and signs first, then small tables' rows,
+            // then column facts; each tier in table order.
             let mut room = budget + 1 - base;
+            let mut take: Vec<Vec<bool>> = blocks.iter().map(|b| vec![false; b.parts.len()]).collect();
+            for tier in 0..3 {
+                for (b, keep) in blocks.iter().zip(take.iter_mut()) {
+                    for ((t, part), k) in b.parts.iter().zip(keep.iter_mut()) {
+                        let need = len_of(part);
+                        if *t == tier && need <= room {
+                            room -= need;
+                            *k = true;
+                        }
+                    }
+                }
+            }
             let mut body = Vec::new();
-            for b in blocks {
+            for (b, keep) in blocks.into_iter().zip(take) {
                 body.extend(b.lines);
-                let need = len_of(&b.inline);
-                if !b.inline.is_empty() && need <= room {
-                    room -= need;
-                    body.extend(b.inline);
+                for ((_, part), k) in b.parts.into_iter().zip(keep) {
+                    if k {
+                        body.extend(part);
+                    }
                 }
             }
             return join(&body);
@@ -1253,9 +1277,18 @@ mod tests {
         assert!(c.contains("T1  'Table 1 title' ← 'Sheet 1'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T1_all) · time 2001–2003 (year)"), "{c}");
         assert!(c.contains("columns (4): Region[text] \"2001\"[number 0.25..0.25]"), "{c}");
         assert!(c.contains("T2  'Table 2 title' ← 'Sheet 2'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T2_all) · time 2001–2003 (year) · same columns as T1"), "{c}");
-        // Small tables: all data rows inline, so the values to filter on need no extra line.
-        assert!(c.contains("\n    all 4 rows (CSV):\n    Region,2001,2002,2003\n    r0,0.25,0.25,0.25\n    r1,0.25,1.25,2.25\n"), "{c}");
-        assert_eq!(c.matches("all 4 rows (CSV):").count(), 2, "{c}");
+        // Small tables: all rows inline (total rows marked), so the values to filter on need no
+        // extra line.
+        assert!(
+            c.contains(
+                "\n    all 5 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):\n    Region,2001,2002,2003,_row_type\n    r0,0.25,0.25,0.25,data\n    r1,0.25,1.25,2.25,data\n"
+            ),
+            "{c}"
+        );
+        assert!(c.contains("\n    Total,0.25,4.25,8.25,total\n"), "{c}");
+        assert_eq!(c.matches("all 5 rows (CSV").count(), 2, "{c}");
+        // How to select the total rows.
+        assert!(c.contains("\n    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (label in Region: 'Total')\n"), "{c}");
         assert!(!c.contains("values:"), "{c}");
         assert!(!c.contains("… cut:"));
     }
@@ -1267,19 +1300,25 @@ mod tests {
         // Room for one table's rows only: the first stays inline, the second is dropped.
         let c = catalog(&n, "x.xlsx", full.len() - 10);
         assert!(c.len() <= full.len() - 10, "{c}");
-        assert_eq!(c.matches("all 4 rows (CSV):").count(), 1, "{c}");
+        assert_eq!(c.matches("all 5 rows (CSV").count(), 1, "{c}");
         assert!(!c.contains("tables listed briefly"), "{c}");
-        // More than 12 columns or 15 rows: not inlined.
-        assert!(!catalog(&book(1, 12, true), "x.xlsx", MAX_CHARS).contains("(CSV):"));
-        let mut tall = book(1, 2, true);
-        let t = &mut tall.tables[0];
-        for c in &mut t.columns {
-            let v = c.values[0].clone();
-            c.values = vec![v; 16];
-        }
-        t.src_rows = (1..=16).collect();
-        t.row_types = vec![RowType::Data; 16];
-        assert!(!catalog(&tall, "x.xlsx", MAX_CHARS).contains("(CSV):"));
+        // Up to 400 cells (rows × columns with _row_type) inlined, whatever the width.
+        assert!(catalog(&book(1, 50, true), "x.xlsx", MAX_CHARS).contains("all 5 rows (CSV"));
+        // More than 400 cells or 30 rows: not inlined.
+        assert!(!catalog(&book(1, 80, true), "x.xlsx", MAX_CHARS).contains("(CSV"));
+        let tall = |n: usize| {
+            let mut b = book(1, 2, true);
+            let t = &mut b.tables[0];
+            for c in &mut t.columns {
+                let v = c.values[0].clone();
+                c.values = vec![v; n];
+            }
+            t.src_rows = (1..=n as u32).collect();
+            t.row_types = vec![RowType::Data; n];
+            b
+        };
+        assert!(catalog(&tall(30), "x.xlsx", MAX_CHARS).contains("all 30 rows (CSV):"));
+        assert!(!catalog(&tall(31), "x.xlsx", MAX_CHARS).contains("(CSV"));
     }
 
     #[test]
@@ -1345,7 +1384,7 @@ mod tests {
         assert!(c.contains("all 5 rows (CSV)"), "{c}");
         // Too wide to inline: the values are listed.
         let mut wide = n.clone();
-        for w in 4..14 {
+        for w in 4..84 {
             let mut x = wide.tables[0].columns[2].clone();
             x.name = format!("{}", 2011 + w);
             let at = wide.tables[0].columns.len() - 1;
@@ -1376,11 +1415,11 @@ mod tests {
         let t = &mut many.tables[0];
         for c in &mut t.columns {
             let v = c.values[0].clone();
-            c.values = vec![v; 20];
+            c.values = vec![v; 31];
         }
-        t.columns[0].values = (0..20).map(|k| Out::Text(format!("r{k}"))).collect();
-        t.src_rows = (1..=20).collect();
-        t.row_types = vec![RowType::Data; 20];
+        t.columns[0].values = (0..31).map(|k| Out::Text(format!("r{k}"))).collect();
+        t.src_rows = (1..=31).collect();
+        t.row_types = vec![RowType::Data; 31];
         let c = catalog(&many, "x.xlsx", MAX_CHARS);
         assert!(!c.contains("Region values"), "{c}");
         assert!(c.contains("Region[text e.g. \"r0\"]"), "{c}");

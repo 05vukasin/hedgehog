@@ -8,6 +8,16 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Catalog facts** (`open_file`): small tables in full by a cell budget (≤ 400 cells, ≤ 30 rows)
+  from `T<n>_all` with a `_row_type` column, so total rows are visible (a 12 × 19 pension table is
+  now inlined); per table with total rows, how to select them (`total rows: SELECT … FROM T1_all
+  WHERE _row_type = 'total' (label in col_C: 'Total')`); sign conventions (`signs: col_B
+  'Deliveries HH' rows are all negative …`); for registers, sums / fill / range of amount columns
+  with a line for look-alike money columns (`precoContratual (sum 11.16 bn …) vs PrecoTotalEfetivo
+  (sum 4.28 bn …) — different measures; pick deliberately`) and a `quality:` line (duplicate IDs,
+  empty date cells and the category they belong to, negative amounts). Added
+  within the catalog's cap, total-row and sign lines first. See [docs/mcp.md](docs/mcp.md#the-catalog).
+
 - **Claude Code plugin** (`integrations/claude-code`, marketplace in `.claude-plugin/marketplace.json`):
   `/plugin marketplace add 05vukasin/hedgehog` then `/plugin install hedgehog@hedgehog` registers
   `hedgehog mcp` for the project folder and adds a `spreadsheets` skill (open the file first, trust
@@ -159,6 +169,11 @@ All notable changes to hedgehog are listed here. The format follows
   "zur Inhaltsübersicht").
 
 ### Fixed
+
+- `open_file` on large registers: the catalog took ~48 s on a 176k-row file (a quadratic search
+  for measure labels over text columns with ~100k distinct values, and the time coverage computed
+  twice); now ~0.45 s. Text columns stop being checked for period labels as soon as a tenth of
+  their values fail (same result).
 
 - Tables on one sheet no longer overlap in the default (model) path (Finanzstatistik T2
   `A17:IB43` over T3 `A31:HO43`, from a vertical merge hanging below a table).

@@ -18,6 +18,7 @@ pub mod catalog;
 pub mod cells;
 pub mod dialect;
 pub mod entity;
+pub mod facts;
 pub mod files;
 pub mod sql;
 pub mod text;
