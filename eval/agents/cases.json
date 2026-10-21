@@ -1,0 +1,68 @@
+[
+  {
+    "id": "pt-contracts",
+    "title": "Portugal's 2020 procurement register (176k contracts, 4.5M cells)",
+    "file": "eu_pt_opendata/001_contratos2020.xlsx",
+    "prompt": "Which 5 public bodies spent the most on contracts in 2020, and how much each?\nWhich suppliers won the most contracts, and what share of the total value went to the top 10?\nCompare direct awards (Ajuste Direto) with public tenders (Concurso público): how many contracts and total value for each?\nHow many contracts were signed per month in 2020? Was there a jump when COVID started in March?",
+    "checks": [
+      {"id": "top-body", "desc": "top body: Infraestruturas de Portugal, €737.7 M (6 spellings merged by tax ID)", "num": 737.7e6, "tol": 0.01},
+      {"id": "second-body", "desc": "Metro do Porto €352.4 M", "num": 352.4e6, "tol": 0.01},
+      {"id": "variants", "desc": "does not list the same body twice under different spellings", "judge": true},
+      {"id": "price-column", "desc": "uses the contract price (precoContratual), total €11.16 bn", "judge": true},
+      {"id": "by-count", "desc": "ranks suppliers by number of contracts (Medtronic ~1,140–1,152, Generis ~1,130–1,231)", "judge": true},
+      {"id": "top10-share", "desc": "gives the top-10 suppliers' share of total value (≈ 9–13 %)", "pct_range": [8, 14]},
+      {"id": "ad-rg-count", "desc": "Ajuste Direto Regime Geral: 78,349 contracts (±0.2 %)", "num": 78349, "tol": 0.002},
+      {"id": "ad-rg-value", "desc": "Ajuste Direto Regime Geral: €2.41 bn", "num": 2.41e9, "tol": 0.03},
+      {"id": "cp-count", "desc": "Concurso público: 17,408 contracts", "num": 17408, "tol": 0.001},
+      {"id": "cp-value", "desc": "Concurso público: €5.48 bn", "num": 5.48e9, "tol": 0.02},
+      {"id": "jan", "desc": "January: 16,154 contracts (±0.2 %)", "num": 16154, "tol": 0.002},
+      {"id": "apr", "desc": "April: 10,682 contracts (±0.2 %)", "num": 10682, "tol": 0.002},
+      {"id": "covid", "desc": "no overall jump in March (fall in April–May); COVID purchases rose", "judge": true}
+    ],
+    "backlog": ["B1", "B2", "B3", "B4", "B5", "B9"]
+  },
+  {
+    "id": "at-pension",
+    "title": "Austrian pension equalization supplement (small table, mixed measures, total row)",
+    "file": "eu_at_opendata/003_pen_02_02.xlsx",
+    "prompt": "How many people received the equalization supplement (Ausgleichszulage) in total in 2024 and in 2025? What was the average monthly amount for single and for married recipients in 2025?",
+    "checks": [
+      {"id": "total-2024", "desc": "total recipients 2024: 190,423 (the 'Gesamt' row)", "num": 190423, "tol": 0.0001},
+      {"id": "total-2025", "desc": "total recipients 2025: 189,537", "num": 189537, "tol": 0.0001},
+      {"id": "avg-single", "desc": "average 2025, single: €403.19", "num": 403.19, "tol": 0.0005},
+      {"id": "avg-married", "desc": "average 2025, married: €594.20", "num": 594.2, "tol": 0.0005}
+    ],
+    "backlog": ["B6", "B7"]
+  },
+  {
+    "id": "enron-henry-hub",
+    "title": "Enron Henry Hub gas flows (7 tables, daily grids, labels only in the first table)",
+    "file": "enron/andrea_ring__3__HHmonthlyavg.xlsx",
+    "prompt": "This is a Henry Hub natural gas flow report. Which 3 pipelines had the highest month-to-date average receipts in February 2002, and how much each? What were total receipts and total deliveries, and what is the net flow? On which day in January 2002 were total receipts highest, and how much?",
+    "checks": [
+      {"id": "sea-robin", "desc": "SEA ROBIN 123,367", "num": 123367, "tol": 0.0001},
+      {"id": "ngpl", "desc": "NGPL 105,538", "num": 105538, "tol": 0.0001},
+      {"id": "mainline", "desc": "MAINLINE 100,733", "num": 100733, "tol": 0.0001},
+      {"id": "receipts", "desc": "total receipts 424,772", "num": 424772, "tol": 0.0001},
+      {"id": "deliveries", "desc": "total deliveries 214,246 (shown as −214,246)", "num": 214246, "tol": 0.0001, "abs": true},
+      {"id": "net", "desc": "net flow +210,526", "num": 210526, "tol": 0.0001, "abs": true},
+      {"id": "jan-max", "desc": "highest January receipts: 606,356", "num": 606356, "tol": 0.0001},
+      {"id": "jan-day", "desc": "on 23 January 2002", "text_any": ["2002-01-23", "January 23", "Jan 23", "23 January", "23 Jan", "1/23", "23.01", "Wed / 2002-01-23"]}
+    ],
+    "backlog": ["B8"]
+  },
+  {
+    "id": "de-truck-toll",
+    "title": "German truck-toll mileage index (daily series 2008–2026, 9 sheets, statistical report)",
+    "file": "eu_de_destatis/statistischer-bericht-lkw-maut-fahrleistungsindex-5421901.xlsx",
+    "prompt": "Using the daily truck-toll mileage index for Germany: what was the highest unadjusted daily value in 2023, and on which date? What was the average calendar- and seasonally-adjusted (KSB) index in 2023 and in 2024, and did it go up or down?",
+    "checks": [
+      {"id": "max-2023", "desc": "highest unadjusted 2023 value: 153.0", "num": 153.0, "tol": 0.0001},
+      {"id": "max-date", "desc": "on 31 May 2023", "text_any": ["2023-05-31", "31 May", "May 31", "31.05.2023", "31/05/2023", "5/31/2023"]},
+      {"id": "ksb-2023", "desc": "KSB average 2023: 95.61", "num": 95.61, "tol": 0.0006},
+      {"id": "ksb-2024", "desc": "KSB average 2024: 94.92", "num": 94.92, "tol": 0.0006},
+      {"id": "direction", "desc": "says it went down", "judge": true}
+    ],
+    "backlog": []
+  }
+]

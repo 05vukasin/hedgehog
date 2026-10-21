@@ -1,0 +1,19 @@
+{
+ "20261021T000000Z-pt-contracts-hedgehog-manual": {
+  "variants": false,
+  "price-column": false,
+  "by-count": false,
+  "covid": false,
+  "note": "numbers from SQL exact; small-model judgement errors: merged nothing by tax ID, used PrecoTotalEfetivo, ranked suppliers by value, called a +6% month a jump; top-10 share not computed; 1 SQL error (MONTH())"
+ },
+ "20261021T000000Z-pt-contracts-claude-manual": {
+  "variants": true,
+  "price-column": true,
+  "by-count": true,
+  "covid": true,
+  "note": "grouped by tax ID, found duplicates/multi-winner/missing dates; tokens and cost not captured in this manual run"
+ },
+ "20261021T120000Z-at-pension-hedgehog-adhoc": {
+  "note": "reported 163,230 (single recipients) as the total; the 'Gesamt' total row (190,423) is only in T1_all and not in the inline table; 12 turns / 11 tool calls / 50k tokens for one number"
+ }
+}

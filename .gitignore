@@ -28,3 +28,4 @@ __pycache__/
 /node/artifacts/
 /node/dist/
 /node/target*
+/eval/agents/runs/

@@ -113,6 +113,10 @@ about the traps:
 | `MONTH()` error | SQL errors name the dialect and the replacement (`strftime('%m', col)`) |
 | Small-model judgement | try a stronger default model for multi-part questions; rerun this case after the fixes above |
 
+This case is now tracked with three others in [eval/agents](../eval/agents/RESULTS.md): every
+change is rerun on the same prompts for hedgehog and Claude Code, and the fixes above are items
+B1–B11 in [the backlog](../eval/agents/BACKLOG.md).
+
 Run it yourself:
 
 ```console
