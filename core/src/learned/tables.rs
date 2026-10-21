@@ -351,7 +351,10 @@ fn extend_down(grid: &Grid, tables: &mut [DetectedTable], roles: &[Role]) {
 
 /// Step 2: header depth from the model's row roles.
 fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Steps, roles: &mut [Role]) {
-    let numbering = |row: u32| numbering_row(grid, t.rect, row);
+    let numbering = |row: u32| numbering_row(grid, t.rect, row) || unit_row(grid, t.rect, row);
+    // A label over period numbers (`Year | 1 | 2 | …`) keeps its header place, but a row of that
+    // shape under a header is data (`Item 0 | 1 | 2 | 3`).
+    let keeps = |row: u32| numbering(row) || labelled_numbering_row(grid, t.rect, row);
     let body = t.header_top + t.header_rows;
     // Index of the first row at or below header_top.
     let first = rows.partition_point(|r| r.row < t.header_top);
@@ -374,7 +377,7 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
         // stays: a piece the rules cut off is handled by `merge_continuations`).
         let start = rows.partition_point(|r| r.row < t.header_top);
         let mut end = rows.partition_point(|r| r.row < body);
-        while end > start + 1 && rows[end - 1].share(Role::Data) >= SHRINK_AGREE && !numbering(rows[end - 1].row) {
+        while end > start + 1 && rows[end - 1].share(Role::Data) >= SHRINK_AGREE && !keeps(rows[end - 1].row) {
             end -= 1;
         }
         if end < rows.partition_point(|r| r.row < body) {
@@ -382,11 +385,14 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
             t.header_rows = new_body - t.header_top;
         }
     }
-    // A column-numbering row right under the header is part of it, whatever the model says.
-    let body = t.header_top + t.header_rows;
-    let k = rows.partition_point(|r| r.row < body);
-    if t.header_rows > 0 && k + 1 < rows.len() && rows[k].row == body && numbering(body) {
-        t.header_rows += 1;
+    // A column-numbering row or a unit row right under the header is part of it, whatever the
+    // model says (both, in either order).
+    for _ in 0..2 {
+        let body = t.header_top + t.header_rows;
+        let k = rows.partition_point(|r| r.row < body);
+        if t.header_rows > 0 && k + 1 < rows.len() && rows[k].row == body && numbering(body) {
+            t.header_rows += 1;
+        }
     }
     let body = t.header_top + t.header_rows;
     for r in rows.iter().filter(|r| r.row >= t.header_top && r.row < body) {
@@ -401,6 +407,23 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
     }
 }
 
+/// The filled cells of `row` inside `rect` are units (`Mrd. EUR | % | 2020 = 100`, B45).
+fn unit_row(grid: &Grid, rect: Rect, row: u32) -> bool {
+    let cells = &grid.sheet.cells;
+    let mut n = 0;
+    for &i in grid.row_cells(row) {
+        let c = &cells[i as usize];
+        if c.col < rect.left || c.col > rect.right || is_blank(&c.value) {
+            continue;
+        }
+        match &c.value {
+            Some(Value::Text(t)) if crate::layout::is_unit_text(t) => n += 1,
+            _ => return false,
+        }
+    }
+    n >= 2
+}
+
 /// The filled cells of `row` inside `rect` number the columns ([`crate::layout::column_numbering`]).
 fn numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
     let cells = &grid.sheet.cells;
@@ -409,6 +432,16 @@ fn numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
     });
     let vals: Vec<&Value> = vals.filter_map(|c| c.value.as_ref()).collect();
     vals.len() >= 3 && crate::layout::column_numbering(vals.into_iter())
+}
+
+/// [`numbering_row`] after a text label (`Year | 1 | 2 | …`).
+fn labelled_numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
+    let cells = &grid.sheet.cells;
+    let vals = grid.row_cells(row).iter().map(|&i| &cells[i as usize]).filter(|c| {
+        c.col >= rect.left && c.col <= rect.right && !is_blank(&c.value)
+    });
+    let vals: Vec<&Value> = vals.filter_map(|c| c.value.as_ref()).collect();
+    vals.len() >= 4 && crate::layout::labelled_numbering(vals.into_iter())
 }
 
 /// Step 3: split at a run of model header rows inside the body.

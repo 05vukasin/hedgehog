@@ -585,6 +585,7 @@ pub fn analyze_with(grid: &Grid, model: &RowModel, steps: RefineSteps) -> SheetL
             lay.roles[i as usize] = if crate::eval::export::role_id(r) as usize != main { r } else { role };
         }
     }
+    // Ruling lines drawn with text (`-----`, `=====`, a `|` column) are never table data (B38).
     tables::refine(grid, &mut lay, &raw, &rules, steps);
     crate::normalize::trace("M:tables", t0);
     // The model's features count every total word (as in training); a row whose only one is

@@ -162,8 +162,15 @@ fn year_part(s: &str) -> Option<i32> {
             .flatten()
             .filter(|y| (YEAR_MIN..=YEAR_MAX).contains(y))
     };
-    let short =
-        |t: &str| t.chars().count() <= 6 && t.chars().all(|c| c.is_alphabetic() || c == '.');
+    // An index named after its base year ("VPI 2000", "HICP 2015", "Index 2010") is not a
+    // period (B46).
+    const INDEX: [&str; 14] =
+        ["vpi", "hvpi", "cpi", "hicp", "rpi", "ppi", "khpi", "index", "indeks", "indice", "basis", "base", "idx", "lhki"];
+    let short = |t: &str| {
+        t.chars().count() <= 6
+            && t.chars().all(|c| c.is_alphabetic() || c == '.')
+            && !INDEX.contains(&t.trim_end_matches('.').to_lowercase().as_str())
+    };
     match toks.as_slice() {
         [y] => year(y),
         [w, y] if short(w) => year(y),

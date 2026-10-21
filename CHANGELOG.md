@@ -294,6 +294,37 @@ All notable changes to hedgehog are listed here. The format follows
   xlsx writer keeps a temp file open per output sheet. The open-file limit is raised when needed
   (a clear error if the hard limit is too low). CSV files are checked against the cell limit while
   they are read, so a huge CSV is refused before it fills memory.
+- **Layout and headers on noisy and statistical sheets** (B33, B35, B38, B39, B43–B46; noise
+  curves at t = 1, rules / model, before → after: `footnotes` 73 / 100 → 100 / 100, `wide_periods`
+  68 → 100 at every intensity, `separators` 37 → 100, `notes` 17 / 32 → 100 / 100, `mixed_types`
+  78 / 80 → 85 / 90, `multirow_header` 32 / 38 → 33 / 43, `side_by_side` 28 → 33 (t = 0.25:
+  62 → 87), `combo` 8 → 27; all families 55 / 61 → 67 / 70; no family lower; structure
+  benchmarks: table F1 up on every corpus, e.g. DECO model IoU≥0.8 56.0 → 57.8, StatSheets
+  86.9 → 88.1):
+  - numbers with footnote marks or flags (`28472.72*`, `1737³`, `6077.61 (p)`, `20560.32e`) count
+    as numbers and censored / suppressed cells (`<5`, `confidential`, `[c]`) as blanks when the
+    rules look for headers, so such rows no longer start a new table; whole numbers that fall in
+    1900–2100 but jump (`Riverbend 2 | 1948 | 2043 | 338`) are measures, not a header of years;
+  - a header row of three or more text periods (`2010-01`, `01/2010`, `2010-01-31`) is a header; so is a label
+    over period numbers (`Year | 1 | 2 | … | 20`, Enron Newco);
+  - ruling lines drawn with text (`-----`, `=====`, `_____`, `~~~~~`, `*****`, a `|` column) are
+    neither data nor a table break: they go to `Notes` as `other`, and a total under one verifies;
+  - parent labels centred over their columns without a merge name every child column;
+  - a header-less column right of a table with a remark on a row or two (`check!`) is notes; a
+    sentence alone on the last row and source lines in more languages (`Quelle:`, `Remarque :`,
+    `Fuente:`, `Uwaga:`, …) are notes;
+  - two row-aligned tables that each have their own row labels stay apart across 1–2 blank columns;
+    numbers on a few rows across one spacer column inside a taller table's rows join it (MDEA's
+    S:T profit columns on May 10–14 were 0-row header tables; every number is now in a table);
+  - a unit row under the header (`Mrd. EUR | % | 2020 = 100 | 1 000 Personen`) joins the column
+    names, and a column-numbering row no longer names them (Destatis: `In jeweiligen Preisen /
+    Ursprungswerte / Mrd. EUR`, was `… / 1`);
+  - key/value metadata rows above a table (`Date of publication: | …`) are never its header (ONS
+    Table 1: the header is rows 5–8 again), and a table's loose title skips source lines and such
+    metadata and prefers a `Table 1: …` line;
+  - a row the model calls a group header that fills the label columns like the records around it
+    (a WDI country without values) is a record: no invented `group` column;
+  - an index named after its base year (`VPI 2000`, `HICP 2015`) is not a period for time coverage.
 
 - Total words in names and descriptions (B32, B41): in a register (200+ rows) a description or
   name of more than three words that is its row's first text with more text right of it ("Total

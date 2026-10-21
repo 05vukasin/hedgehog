@@ -170,3 +170,36 @@ fn statistical_markers_csv() {
     assert!(small.split("\"name\"").next().unwrap().contains("\"dtype\":\"integer\""), "{m}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// Layout noise from B38 / B45: a unit row under the header joins the column names, ruling
+/// lines (`=====`) are not data, a comment beside one row is a note, and the total under a
+/// ruling line still verifies.
+#[test]
+fn units_rules_and_comments_csv() {
+    let dir = tmp_dir("rules");
+    let src = dir.join("rules.csv");
+    let data = "Production by plant,,,\n\
+                Plant,Output,Share,\n\
+                ,Mrd. EUR,%,\n\
+                =====,=====,=====,\n\
+                Alder,10,40,\n\
+                Birch,8,32,check!\n\
+                Cedar,7,28,\n\
+                Dune,5,20,\n\
+                =====,=====,=====,\n\
+                Total,30,120,\n";
+    std::fs::write(&src, data).unwrap();
+    let out = normalize_file(&src, &dir, &Options::default()).unwrap();
+    let wb = open(&out.xlsx_path).unwrap();
+    let t = &wb.sheets[1];
+    assert_eq!(row_vals(t, 0)[..3], [text("Plant"), text("Output / Mrd. EUR"), text("Share / %")]);
+    assert_eq!(row_vals(t, 2)[..3], [text("Birch"), num(8.0), num(32.0)]);
+    assert_eq!(row_vals(t, 4)[..3], [text("Dune"), num(5.0), num(20.0)]);
+    assert!(get(t, 5, 0).is_none(), "only the four plants are data");
+    let compact: String = out.manifest_json.split_whitespace().collect();
+    assert!(compact.contains("\"ok\":2"), "both totals verify: {}", out.manifest_json);
+    let notes = sheet(&wb, "Notes");
+    assert!(notes.cells.iter().any(|c| c.value == text("check!")), "the comment is a note");
+    assert!(!t.cells.iter().any(|c| c.value == text("check!")), "and not table data");
+    std::fs::remove_dir_all(&dir).ok();
+}
