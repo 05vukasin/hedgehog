@@ -258,6 +258,27 @@ All notable changes to hedgehog are listed here. The format follows
   written bottom-right first get their corners ordered; duplicate column names were made unique in
   quadratic time (a merged header over 16,000 columns took 22 s).
 
+- **Numbers next to a column's other numbers** (B40): a CSV column of percentages with up to three
+  decimals read `40.805` as 40805 (the UK gender pay gap file: 35 cells, the 500–999 band averaged
+  42.06 % instead of 12.06 %). An ambiguous `x.xxx` / `x,xxx` is now decided by the column's
+  numbers stored as numbers (typed cells; plain CSV fields like `12.3`) when its text values do not
+  decide: among whole numbers it groups thousands (`4.405` next to `3178` is 4405), among fractions
+  it takes the reading that matches their size. Integers with leading zeros (IDs) no longer support
+  the thousands reading, and dates written `31.12.2024` count as decimal-comma evidence for the
+  sheet. All 30 agent-eval cases' references still reproduce; the UK case's five `ref_py` answers
+  are now also what `ref_sql` gives.
+- **Footnote marks, `:` and censored values in numeric columns** (B34): numbers with statistical
+  flag letters (`7 p`, `12.3 e`, `5 bep`, `20560.32e`) and the existing marks (`123¹`, `12 (r)`,
+  `45*`) are read as numbers, and the mark is kept: the manifest column's new `footnote_marks`
+  lists each mark with its count and cells, and tables count `footnote_marks_stripped`. `:` and
+  `: c` (Eurostat), `k.A.`, `n.v.`, `b.d.`, `s.d.`, `n.c.`, `keine Angabe`, `brak danych`, ...
+  are missing values, and in table columns also `(X)`, `[x]`, `(NA)`, `[z]`. Censored (`<5`,
+  `> 1000`, `(Z)`), suppressed (`c`, `[c]`, `(D)`, `confidential`) and `see note` cells stay text
+  but no longer turn a numeric column into text, nor do up to three distinct words among ≥ 75 %
+  numbers (`approx.`); they are listed in the table's `warnings`. Noise robustness (model path,
+  t = 1): `footnotes` 2 → 100 %, `locale` 43 → 100 %, `mixed_types` 5 → 80 %, `combo` 3 → 8 %,
+  all families 50 → 61 % (no family lower at any intensity); structure benchmarks unchanged except
+  the synthetic corpus (full F1 93.03 → 93.09); golden check identical.
 - Total rows take the keys of the block they close (B17): the Austrian pension table's "Gesamt"
   row is in group `Anzahl Bezieher:innen` (its sums reached up into the year header, which made it
   look like a total over all groups, with an empty group), and an empty text cell left of a total

@@ -111,7 +111,7 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
 
 - **Data rows only.** Header, title, note, blank and repeated-header rows are removed. Total and
   subtotal rows are removed too, unless `keep_totals` is set.
-- **Missing values are empty cells.** This covers missing tokens (`-`, `n/a`, `..`, `x`, `null`, ...),
+- **Missing values are empty cells.** This covers missing tokens (`-`, `n/a`, `..`, `:`, `x`, `null`, ...),
   Excel errors (`#N/A`, `#REF!`, ...) and formulas without a cached value.
 - **Group-header rows** (a label alone on its row, followed by data rows) become a **leading column**.
   If every label has the form `Prefix: value` with the same prefix, the column is named after the
@@ -142,6 +142,11 @@ Rules:
 
 - A column gets a numeric, date or bool dtype when at least 90% of its non-missing values read that
   way, either as stored values or as text parsed with the column's locale.
+- Censored, suppressed and see-note cells (`<5`, `c`, `[c]`, `confidential`, `see note`) stay text
+  but do not count against a numeric column, and a few distinct words among many numbers
+  (`approx.`) do not either; see [locales](locales.md#footnote-marks-censored-and-suppressed-values).
+- Footnote marks on numbers (`123¹`, `12 (r)`, `7 p`, `20560.32e`) are removed from the value and
+  kept in the column's `footnote_marks`.
 - Text numbers with leading zeros (`00123`) keep the column as `text`, because they are IDs.
 - A value that does not fit the column's dtype is **kept as text**, and the table's `warnings` list
   its source cell. Nothing is turned into null silently.
@@ -341,6 +346,7 @@ Column fields:
 | `original_header` | The header cells joined into `name`, top to bottom, with their addresses. |
 | `unit`, `currency` | Unit or ISO currency code carried by more than half of the numeric values (the most common one), or `null`. Mixed currencies are also listed in `warnings`. |
 | `locale` | `decimal` (`"."`, `","` or `null`), `date_order` (`"dmy"`, `"mdy"` or `null`), and `ambiguous`: how many values were read with a guess. `null` means no evidence. |
+| `footnote_marks` | `null`, or one entry per footnote mark removed from the column's numbers: `{"mark": "¹", "count": 3, "cells": ["B5", "B9", "B12"]}` (source cells, at most 100 listed; `count` is complete). Marks are `*`, `†`, superscript digits, `(r)`-style parentheses and statistical flag letters (`p`, `e`, `bep`). |
 | `nulls`, `distinct` | Missing values and distinct non-missing values. |
 | `min`, `max`, `example` | For numbers and dates (dates as ISO strings); `example` is the first non-missing value. |
 
@@ -390,6 +396,7 @@ Every key below is present in every table's `transformations`, with a count (oft
 | `currency_stripped`, `unit_stripped` | Values whose currency symbol/code or unit was removed |
 | `scale_applied` | A scale word multiplied in (`1,5 mil.` becomes 1500000) |
 | `accounting_negatives` | `(500)` or `500-` read as -500 |
+| `footnote_marks_stripped` | Numbers read from text with a footnote mark removed (`123¹`, `12 (r)`, `7 p`); marks per column in `footnote_marks` |
 | `dates_from_text` | Dates parsed from text |
 | `dates_from_serial_numbers` | A plain number in a date column read as an Excel serial date |
 | `bools_from_text` | Booleans parsed from text |

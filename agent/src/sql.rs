@@ -455,6 +455,7 @@ pub(crate) mod tests {
             decimal: None,
             date_order: None,
             ambiguous: 0,
+            footnote_marks: Vec::new(),
             values,
         }
     }

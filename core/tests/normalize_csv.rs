@@ -131,3 +131,42 @@ fn windows_1252_tsv() {
     assert_eq!(row_vals(t, 2), [text("Crème brûlée"), num(4.2), num(0.075), num(3.0)]);
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// Statistical-office conventions in one CSV: percentages with up to three decimals next to plain
+/// decimals (`40.805` is 40.805, B40), integers with an EU thousands dot next to typed integers
+/// (`4.405` is 4405), footnote marks on numbers, `:` for "not available", and censored /
+/// suppressed cells that stay text without turning a short numeric column into text (B34).
+#[test]
+fn statistical_markers_csv() {
+    let dir = tmp_dir("stat");
+    let src = dir.join("stat.csv");
+    let data = "Name,Gap,Staff,Revised,Small\n\
+                A,12.3,3178,123¹,12\n\
+                B,40.805,4.405,45 p,<5\n\
+                C,8.4,2411,20560.32e,15\n\
+                D,-3.25,512,12 (r),c\n\
+                E,20.1,1.250,7,:\n\
+                F,15.125,980,8,9\n";
+    std::fs::write(&src, data).unwrap();
+    let out = normalize_file(&src, &dir, &Options::default()).unwrap();
+    let wb = open(&out.xlsx_path).unwrap();
+    let t = &wb.sheets[1];
+    assert_eq!(row_vals(t, 2), [text("B"), num(40.805), num(4405.0), num(45.0), text("<5"), num(3.0)]);
+    assert_eq!(row_vals(t, 3)[..5], [text("C"), num(8.4), num(2411.0), num(20560.32), num(15.0)]);
+    assert_eq!(row_vals(t, 4)[3..5], [num(12.0), text("c")]);
+    assert_eq!(row_vals(t, 5)[1..5], [num(20.1), num(1250.0), num(7.0), None]);
+    let m = &out.manifest_json;
+    let compact: String = m.split_whitespace().collect();
+    for needle in [
+        "\"footnote_marks_stripped\":4",
+        "{\"mark\":\"¹\",\"count\":1,\"cells\":[\"D2\"]}",
+        "{\"mark\":\"e\",\"count\":1,\"cells\":[\"D4\"]}",
+        "\"missing_to_null\":1",
+        "censored,suppressedorsee-notevalue(s)keptastext:E3'<5',E5'c'",
+    ] {
+        assert!(compact.contains(needle), "manifest lacks {needle}\n{m}");
+    }
+    let small = compact.split("\"name\":\"Small\"").nth(1).unwrap();
+    assert!(small.split("\"name\"").next().unwrap().contains("\"dtype\":\"integer\""), "{m}");
+    std::fs::remove_dir_all(&dir).ok();
+}

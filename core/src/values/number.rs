@@ -23,6 +23,7 @@
 //! `1,200,000` ⇒ dot).
 
 use super::currency::{currency_match, decimal_convention, eq_fold};
+use super::missing::FLAG_LETTERS;
 use super::text::{is_space, trim};
 
 pub use super::currency::currency;
@@ -107,8 +108,10 @@ pub struct ParsedNumber {
     pub exponent: bool,
     /// Integer written with leading zeros (`00123`) — likely an ID, not a quantity.
     pub leading_zero: bool,
-    /// A footnote marker was stripped (`*`, `†`, `¹`, `(a)`).
+    /// A footnote marker was stripped (`*`, `†`, `¹`, `(a)`, `(r)`, ` p`, `e`).
     pub footnote: bool,
+    /// Byte range of the stripped footnote marker(s) in the trimmed input; see [`ParsedNumber::footnote_mark`].
+    pub mark: Option<(u8, u8)>,
 }
 
 impl ParsedNumber {
@@ -116,6 +119,12 @@ impl ParsedNumber {
     pub fn normalized(&self) -> f64 {
         let v = self.value * self.scale;
         if self.percent { v / 100.0 } else { v }
+    }
+
+    /// The footnote marker(s) as written (`"¹"`, `"(r)"`, `"e"`), given the text that was parsed.
+    pub fn footnote_mark<'a>(&self, s: &'a str) -> Option<&'a str> {
+        let (a, b) = self.mark?;
+        trim(s).get(a as usize..b as usize).map(trim)
     }
 
     /// True when the text was more than optional sign + digits (anything had to be stripped or
@@ -155,6 +164,7 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         exponent: false,
         leading_zero: false,
         footnote: false,
+        mark: None,
     };
     let mut open_paren = false;
     let mut plus = false;
@@ -296,8 +306,17 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
 
     // ---- suffix: ')', trailing minus, %, currency, unit, scale, footnotes ------------------
     let mut closed = false;
+    let total = s.len();
+    let note_mark = |p: &mut ParsedNumber, start: usize, end: usize| {
+        p.footnote = true;
+        let (a, b) = (start.min(255) as u8, end.min(255) as u8);
+        p.mark = Some(p.mark.map_or((a, b), |(a0, _)| (a0, b)));
+    };
     for _ in 0..8 {
+        let before = rest.len();
         rest = rest.trim_start_matches(is_space);
+        let spaced = rest.len() != before;
+        let at = total - rest.len();
         let Some(c) = rest.chars().next() else { break };
         match c {
             ')' if open_paren && !closed => {
@@ -312,8 +331,8 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 p.percent = true;
                 rest = &rest[1..];
             }
-            '*' | '†' | '‡' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' => {
-                p.footnote = true;
+            '*' | '†' | '‡' | '⁰' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' => {
+                note_mark(&mut p, at, at + c.len_utf8());
                 rest = &rest[c.len_utf8()..];
             }
             '(' => {
@@ -323,7 +342,7 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 if inner.is_empty() || inner.chars().count() > 2 || !inner.chars().all(|c| c.is_alphanumeric()) {
                     return None;
                 }
-                p.footnote = true;
+                note_mark(&mut p, at, at + close + 1);
                 rest = &rest[close + 1..];
             }
             c if c.is_ascii_digit() => return None,
@@ -336,7 +355,19 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 if word.is_empty() {
                     return None;
                 }
-                classify_suffix(word, &mut p, hint.currency_context)?;
+                if classify_suffix(word, &mut p, hint.currency_context).is_none() {
+                    // Statistical flag letters: `7 p`, `12.3 e`, `5 bep` (Eurostat writes several
+                    // in alphabetical order, so `pen` or `bed` are words, not flags), or one letter
+                    // glued to the digits `20560.32e` (estimated / provisional / revised).
+                    let w = word.as_bytes();
+                    let flag = w.iter().all(|b| FLAG_LETTERS.contains(b))
+                        && w.windows(2).all(|p| p[0] < p[1])
+                        && if spaced { w.len() <= 3 } else { matches!(word, "e" | "p" | "r") };
+                    if !flag {
+                        return None;
+                    }
+                    note_mark(&mut p, at, at + end);
+                }
                 rest = &rest[end..];
             }
         }
@@ -616,21 +647,93 @@ pub struct DecimalVotes {
     /// `x,xxx` values that could be either.
     pub ambiguous_comma: u32,
     /// Plain integers (`500`) — no evidence, but support a thousands reading of ambiguous values.
+    /// Integers with leading zeros (`00123`, IDs) are not counted.
     pub plain: u32,
+    /// Sum of log10 of the ambiguous values read with a decimal separator (`1.200` → 1.2), in
+    /// thousandths: their size, compared with the column's other numbers.
+    pub ambiguous_log_milli: i64,
+    /// Day-first dates written with dots (`31.12.2024`, `1.2.2024.`): continental-European
+    /// evidence for a decimal comma, used only when no number decides.
+    pub dotted_dates: u32,
+}
+
+/// Numbers in the same column that were not text (cells typed as numbers; in a CSV, fields that
+/// were plain `12.3` / `500`). They cannot vote on the separator, but their shape tells how an
+/// ambiguous `x.xxx` next to them reads: among whole numbers it groups thousands (`4.405` next to
+/// `3178` is 4405), among fractions of the same size it is a decimal point (`40.805` next to
+/// `12.3` is 40.805).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct NativeNumbers {
+    pub count: u32,
+    /// Values with a fractional part.
+    pub fractional: u32,
+    /// Sum of log10(|x|) over the non-zero values, in thousandths, and their number.
+    pub log_milli: i64,
+    pub log_n: u32,
+}
+
+impl NativeNumbers {
+    pub fn add(&mut self, x: f64) {
+        if !x.is_finite() {
+            return;
+        }
+        self.count += 1;
+        self.fractional += u32::from(x.fract() != 0.0);
+        if x != 0.0 {
+            self.log_milli += (x.abs().log10() * 1000.0).round() as i64;
+            self.log_n += 1;
+        }
+    }
+
+    pub fn merge(&mut self, o: &NativeNumbers) {
+        self.count += o.count;
+        self.fractional += o.fractional;
+        self.log_milli += o.log_milli;
+        self.log_n += o.log_n;
+    }
+}
+
+/// `31.12.2024`, `1.2.24`, `31.12.2024.`: day, month and year separated by dots.
+fn dotted_date(s: &str) -> bool {
+    let t = s.strip_suffix('.').unwrap_or(s);
+    let mut parts = t.split('.');
+    let (Some(d), Some(m), Some(y), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    let digits = |p: &str, lo: usize, hi: usize| (lo..=hi).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit());
+    if !(digits(d, 1, 2) && digits(m, 1, 2) && (y.len() == 2 || y.len() == 4) && digits(y, 2, 4)) {
+        return false;
+    }
+    let (d, m): (u32, u32) = (d.parse().unwrap_or(0), m.parse().unwrap_or(0));
+    (1..=31).contains(&d) && (1..=12).contains(&m)
 }
 
 impl DecimalVotes {
     /// Adds one value's evidence.
     pub fn add(&mut self, s: &str) {
-        let Some(p) = parse_number(s, NumberHint::default()) else { return };
+        let Some(p) = parse_number(s, NumberHint::default()) else {
+            if dotted_date(trim(s)) {
+                self.dotted_dates += 1;
+            }
+            return;
+        };
         if p.ambiguous {
-            if p.decimal_sep == Some('.') { self.ambiguous_dot += 1 } else { self.ambiguous_comma += 1 }
+            let small = if p.decimal_sep == Some('.') {
+                self.ambiguous_dot += 1;
+                p.value
+            } else {
+                self.ambiguous_comma += 1;
+                p.value / 1000.0
+            };
+            if small != 0.0 {
+                self.ambiguous_log_milli += (small.abs().log10() * 1000.0).round() as i64;
+            }
             return;
         }
         match (p.decimal_sep, p.thousands_sep) {
             (Some('.'), _) | (None, Some(',')) => self.dot += 1,
             (Some(','), _) | (None, Some('.')) => self.comma += 1,
-            (None, _) if !p.exponent => self.plain += 1,
+            (None, _) if !p.exponent && !p.leading_zero => self.plain += 1,
             _ => {}
         }
     }
@@ -641,16 +744,47 @@ impl DecimalVotes {
         self.ambiguous_dot += o.ambiguous_dot;
         self.ambiguous_comma += o.ambiguous_comma;
         self.plain += o.plain;
+        self.ambiguous_log_milli += o.ambiguous_log_milli;
+        self.dotted_dates += o.dotted_dates;
     }
 
     /// Majority convention; ties and no evidence → `None`. With no decisive values, ambiguous
-    /// `x.xxx` values next to plain integers (`500`, `1.200`, `12.500`) are read as thousands.
+    /// `x.xxx` values next to plain integers (`500`, `1.200`, `12.500`) are read as thousands,
+    /// and day-first dates with dots (`31.12.2024`) mean a decimal comma.
     pub fn decision(&self) -> Option<DecimalSep> {
+        self.decision_with(&NativeNumbers::default())
+    }
+
+    /// [`DecimalVotes::decision`] that also weighs the column's non-text numbers (see
+    /// [`NativeNumbers`]) when its text values alone do not decide.
+    pub fn decision_with(&self, native: &NativeNumbers) -> Option<DecimalSep> {
         if self.dot > self.comma {
             return Some(DecimalSep::Dot);
         }
         if self.comma > self.dot {
             return Some(DecimalSep::Comma);
+        }
+        // Only ambiguous values of one kind: does their separator group thousands?
+        let amb = self.ambiguous_dot + self.ambiguous_comma;
+        let one_kind = amb > 0 && (self.ambiguous_dot == 0 || self.ambiguous_comma == 0);
+        let convention = |thousands: bool| {
+            let dot_sep = self.ambiguous_dot > 0;
+            Some(if dot_sep == thousands { DecimalSep::Comma } else { DecimalSep::Dot })
+        };
+        if one_kind && native.count >= 2 && native.log_n > 0 {
+            let m_amb = self.ambiguous_log_milli as f64 / f64::from(amb) / 1000.0;
+            let m_nat = native.log_milli as f64 / f64::from(native.log_n) / 1000.0;
+            let (d_dec, d_th) = ((m_amb - m_nat).abs(), (m_amb + 3.0 - m_nat).abs());
+            if native.fractional == 0 {
+                // Among whole numbers: thousands, unless the sizes clearly say otherwise.
+                return convention(d_th <= d_dec + 2.0);
+            }
+            if d_dec + 0.5 < d_th {
+                return convention(false);
+            }
+            if d_th + 0.5 < d_dec {
+                return convention(true);
+            }
         }
         if self.dot == 0 && self.plain > 0 {
             if self.ambiguous_dot > 0 && self.ambiguous_comma == 0 {
@@ -659,6 +793,9 @@ impl DecimalVotes {
             if self.ambiguous_comma > 0 && self.ambiguous_dot == 0 {
                 return Some(DecimalSep::Dot);
             }
+        }
+        if self.dot == 0 && self.dotted_dates > 0 {
+            return Some(DecimalSep::Comma);
         }
         None
     }
@@ -906,14 +1043,75 @@ mod tests {
     }
 
     #[test]
+    fn statistical_footnote_marks() {
+        let cases = [
+            ("123¹", 123.0, "¹"),
+            ("45*", 45.0, "*"),
+            ("12 (r)", 12.0, "(r)"),
+            ("6077.61 (p)", 6077.61, "(p)"),
+            ("7 p", 7.0, "p"),
+            ("20560.32e", 20560.32, "e"),
+            ("84e", 84.0, "e"),
+            ("1e", 1.0, "e"),
+            ("12.3 bep", 12.3, "bep"),
+            ("1 234*", 1234.0, "*"),
+            ("1737³", 1737.0, "³"),
+            ("28472.72*", 28472.72, "*"),
+            ("12¹²", 12.0, "¹²"),
+        ];
+        for (s, v, m) in cases {
+            let p = auto(s).unwrap_or_else(|| panic!("{s:?}"));
+            assert_eq!(p.normalized(), v, "{s:?}");
+            assert!(p.footnote, "{s:?}");
+            assert_eq!(p.footnote_mark(s), Some(m), "{s:?}");
+        }
+        // Not marks: exponents, units, other letters, letters glued that are not e / p / r.
+        let p = auto("1e5").unwrap();
+        assert_eq!((p.value, p.footnote, p.footnote_mark("1e5")), (100000.0, false, None));
+        assert_eq!(auto("5 s").unwrap().unit, Some("s"));
+        assert!(!auto("5 s").unwrap().footnote);
+        for s in ["12b", "12 x", "12 pq", "12 bepr", "e", "12 e5", "100 pen", "3 bed", "5 pp"] {
+            assert_eq!(auto(s), None, "{s:?}");
+        }
+    }
+
+    #[test]
     fn not_numbers() {
         for s in [
             "", " ", "-", "abc", "1a", "a1", "2024-03-12", "12/03/2024", "10:30", "+381 11 123 4567", "1-2", "Q3 2024",
-            "1.2.3.4", "ABC-123", "e5", "1e", "N/A", "5 - 6", "(a)", "12 abc", "x", "$", "%", "1,2,3",
+            "1.2.3.4", "ABC-123", "e5", "1e+", "N/A", "5 - 6", "(a)", "12 abc", "x", "$", "%", "1,2,3",
         ] {
             assert_eq!(auto(s), None, "{s:?}");
         }
         assert_eq!(val(&"9".repeat(200)), None);
+    }
+
+    #[test]
+    fn native_numbers_decide_ambiguous_values() {
+        let votes = |xs: &[&str]| {
+            let mut v = DecimalVotes::default();
+            xs.iter().for_each(|s| v.add(s));
+            v
+        };
+        let natives = |xs: &[f64]| {
+            let mut n = NativeNumbers::default();
+            xs.iter().for_each(|x| n.add(*x));
+            n
+        };
+        // Percentages with up to 3 decimals (CSV: 12.3 is a number, 40.805 stays text).
+        let v = votes(&["40.805", "12.125"]);
+        assert_eq!(v.decision(), None);
+        assert_eq!(v.decision_with(&natives(&[12.3, 8.4, 0.5, -3.25, 20.1])), Some(DecimalSep::Dot));
+        // EU thousands next to typed integers.
+        assert_eq!(votes(&["4.405"]).decision_with(&natives(&[3178.0, 2411.0, 512.0])), Some(DecimalSep::Comma));
+        assert_eq!(votes(&["1,200"]).decision_with(&natives(&[3178.0, 2411.0])), Some(DecimalSep::Dot));
+        // Small whole numbers next to x.xxx: sizes say decimal.
+        assert_eq!(votes(&["1.500"]).decision_with(&natives(&[1.0, 2.0, 3.0])), Some(DecimalSep::Dot));
+        // Fractions of the thousands size: thousands.
+        assert_eq!(votes(&["4.405"]).decision_with(&natives(&[3178.5, 2411.25])), Some(DecimalSep::Comma));
+        // One native number is not enough; unambiguous text still wins.
+        assert_eq!(votes(&["4.405"]).decision_with(&natives(&[3178.0])), None);
+        assert_eq!(votes(&["4.405", "1,5"]).decision_with(&natives(&[3178.0, 1.0])), Some(DecimalSep::Comma));
     }
 
     #[test]
@@ -925,6 +1123,11 @@ mod tests {
         assert_eq!(infer_decimal(["1.200", "2.500"]), None);
         assert_eq!(infer_decimal(["abc", "500"]), None);
         assert_eq!(infer_decimal(["1.200.000", "1.500"]), Some(DecimalSep::Comma));
+        // Integers with leading zeros (IDs) do not support a thousands reading.
+        assert_eq!(infer_decimal(["01234567", "1.200"]), None);
+        // Day-first dates with dots mean a decimal comma when no number decides.
+        assert_eq!(infer_decimal(["31.12.2024", "1.200"]), Some(DecimalSep::Comma));
+        assert_eq!(infer_decimal(["31.12.2024", "1.5"]), Some(DecimalSep::Dot));
         let mut a = DecimalVotes::default();
         a.add("3,14");
         let mut b = DecimalVotes::default();

@@ -15,7 +15,7 @@ use crate::analysis::{DetectedTable, Role, SheetLayout};
 use crate::grid::Grid;
 use crate::model::{Rect, Sheet, Value, a1};
 use crate::totals::{self, CheckReason, Direction, KeywordLevel, TotalCandidate, TotalCheck, TotalLevel, TotalOrigin};
-use crate::values::{ColumnHints, infer_column, norm_key, sheet_column_hints_with};
+use crate::values::{ColumnHints, NativeNumbers, infer_column_with, norm_key, sheet_column_hints_with};
 
 const OWN_NONE: u8 = 0;
 const OWN_TABLE: u8 = 1;
@@ -595,8 +595,8 @@ fn build_table(
         }
         let label = if name.is_empty() { format!("col_{}", col_letter(col)) } else { name.clone() };
         let first = opts.locale.map(|l| l.hints()).unwrap_or_default();
-        let mut refine = |sample: &[&str], ambiguous: bool| -> ColumnHints {
-            let inferred = infer_column(sample.iter().copied());
+        let mut refine = |sample: &[&str], ambiguous: bool, native: &NativeNumbers| -> ColumnHints {
+            let inferred = infer_column_with(sample.iter().copied(), native);
             if let Some(l) = opts.locale {
                 return ColumnHints { currency_context: inferred.currency_context, ..l.hints() };
             }
@@ -637,6 +637,7 @@ fn build_table(
             decimal: typed.decimal,
             date_order: typed.date_order,
             ambiguous: typed.ambiguous,
+            footnote_marks: typed.footnote_marks,
             values: typed.values,
         });
     }
@@ -667,6 +668,7 @@ fn build_table(
             decimal: None,
             date_order: None,
             ambiguous: 0,
+            footnote_marks: Vec::new(),
             values,
         });
     }
@@ -689,6 +691,7 @@ fn build_table(
         decimal: None,
         date_order: None,
         ambiguous: 0,
+        footnote_marks: Vec::new(),
         values,
     };
     columns.push(plain(

@@ -4,21 +4,31 @@
 //! (native values or text parsed with the column's locale hints). Values that do not fit are kept
 //! as text and listed in a warning — nothing is silently nulled. Integer-like text with leading
 //! zeros (`00123`) keeps the column as text (IDs).
+//!
+//! Text that statistical tables put in numeric columns on purpose — censored values (`<5`,
+//! `> 1000`), suppression marks (`c`, `[c]`, `confidential`) and `see note` — stays text but does
+//! not count against the numeric share, as long as the numbers outnumber it. Numbers with footnote
+//! marks (`123¹`, `12 (r)`, `7 p`, `20560.32e`) are read as numbers; the marks are kept per column
+//! (`Column::footnote_marks`, the manifest's `footnote_marks`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::{Dtype, Out, Transforms, T};
 use crate::model::{a1, Value};
 use crate::values::date::is_plausible_serial;
 use crate::values::{
-    missing_token, parse_bool, parse_date, parse_number, serial_to_ymd, ColumnHints, DateOrder, DecimalSep, MissingKind,
-    NegativeStyle, ParsedDate, ParsedNumber,
+    numeric_annotation, parse_bool, table_missing_token, parse_date, parse_number, serial_to_ymd, ColumnHints, DateOrder,
+    DecimalSep, MissingKind, NativeNumbers, NegativeStyle, ParsedDate, ParsedNumber,
 };
 use crate::values::text::clean;
 
 /// Excel's cell text limit.
 pub(super) const MAX_TEXT: usize = 32_767;
 const TYPE_SHARE: f64 = 0.9;
+/// A numeric column may hold up to this share of a few distinct words (`approx.`, `pending`).
+const WORDS_NUM_SHARE: f64 = 0.75;
+/// Distinct words allowed by [`WORDS_NUM_SHARE`].
+const MAX_DISTINCT_WORDS: usize = 3;
 const MAX_LISTED: usize = 10;
 /// Text values used to infer a column's decimal separator / day-month order.
 const INFER_SAMPLE: usize = 2000;
@@ -40,6 +50,8 @@ pub(super) struct Typed {
     pub date_order: Option<DateOrder>,
     pub ambiguous: usize,
     pub values: Vec<Out>,
+    /// Footnote marks stripped from numbers: mark → source cells (0-based row, col).
+    pub footnote_marks: Vec<(String, Vec<(u32, u32)>)>,
     pub warnings: Vec<String>,
 }
 
@@ -102,27 +114,29 @@ struct Cand {
     num: Option<ParsedNumber>,
     date: Option<ParsedDate>,
     boolean: Option<bool>,
+    /// Censored / suppressed / see-note text: not a number, but no evidence against one.
+    annotation: bool,
 }
 
 /// Types one column. `rows[i]` is the source row of `slots[i]`, `col` the source column (both
 /// 0-based, for warnings). `first` are the hints for the typing pass (explicit locale or none);
 /// `refine` is asked for the final hints of a numeric / date column, given a sample of its text
-/// values and whether any value was ambiguous under `first` — so locale inference only runs on
-/// columns where it can change something.
+/// values, whether any value was ambiguous under `first` and the column's numbers stored as
+/// numbers — so locale inference only runs on columns where it can change something.
 pub(super) fn type_column(
     name: &str,
     col: u32,
     slots: &[Slot],
     rows: &[u32],
     first: ColumnHints,
-    refine: &mut dyn FnMut(&[&str], bool) -> ColumnHints,
+    refine: &mut dyn FnMut(&[&str], bool, &NativeNumbers) -> ColumnHints,
     tr: &mut Transforms,
 ) -> Typed {
     // Pass 0: missing values (cheap) and the number of real values.
     let missing: Vec<Option<bool>> = slots
         .iter()
         .map(|s| match s {
-            Slot::Val(Value::Text(t)) => missing_token(t).map(|k| k == MissingKind::Error),
+            Slot::Val(Value::Text(t)) => table_missing_token(t).map(|k| k == MissingKind::Error),
             Slot::Val(Value::Error(_)) => Some(true),
             _ => None,
         })
@@ -130,11 +144,17 @@ pub(super) fn type_column(
     let n = slots.iter().zip(&missing).filter(|(s, m)| matches!(s, Slot::Val(_)) && m.is_none()).count();
     // A kind is out once its misses exceed what the 90 % rule allows.
     let allowed = n - (TYPE_SHARE * n as f64).ceil() as usize;
+    let allowed_num = n - (WORDS_NUM_SHARE * n as f64).ceil() as usize;
 
     // Pass 1: parse text with `first`, giving up on a kind as soon as it cannot win.
     let nh = first.number_hint();
     let (mut num_ok, mut lead0, mut date_ok, mut bool_ok) = (0usize, 0usize, 0usize, 0usize);
     let (mut num_miss, mut date_miss, mut bool_miss) = (0usize, 0usize, 0usize);
+    let mut annotations = 0usize;
+    // Text misses of the numeric reading while they are all short words without digits.
+    let mut words: Vec<&str> = Vec::new();
+    let mut words_only = true;
+    let mut native = NativeNumbers::default();
     let mut ambiguous_seen = false;
     let mut cands: Vec<Cand> = vec![Cand::default(); slots.len()];
     for (i, s) in slots.iter().enumerate() {
@@ -143,13 +163,17 @@ pub(super) fn type_column(
             continue;
         }
         let (mut is_num, mut is_date, mut is_bool) = (false, false, false);
+        let mut annotation = false;
         match v {
-            Value::Number(_) => is_num = true,
+            Value::Number(x) => {
+                is_num = true;
+                native.add(*x);
+            }
             Value::DateTime(_) => is_date = true,
             Value::Bool(_) => is_bool = true,
             Value::Text(t) => {
                 let c = &mut cands[i];
-                if num_miss <= allowed && lead0 == 0 {
+                if num_miss <= allowed_num && lead0 == 0 {
                     c.num = parse_number(t, nh);
                     if let Some(p) = &c.num {
                         if p.leading_zero {
@@ -171,14 +195,42 @@ pub(super) fn type_column(
                     c.boolean = parse_bool(t);
                     is_bool = c.boolean.is_some();
                 }
+                if !is_num && c.num.is_none() && lead0 == 0 && num_miss <= allowed_num {
+                    c.annotation = numeric_annotation(t).is_some();
+                    annotation = c.annotation;
+                    if !annotation && words_only {
+                        let w = t.trim();
+                        if w.chars().count() > 24 || w.chars().any(|ch| ch.is_ascii_digit()) {
+                            words_only = false;
+                        } else if !words.contains(&w) {
+                            words.push(w);
+                            words_only = words.len() <= MAX_DISTINCT_WORDS;
+                        }
+                    }
+                }
             }
             Value::Error(_) => {}
         }
-        if is_num { num_ok += 1 } else { num_miss += 1 }
+        if is_num {
+            num_ok += 1
+        } else if annotation {
+            annotations += 1
+        } else {
+            num_miss += 1;
+            words_only &= matches!(v, Value::Text(_));
+        }
         if is_date { date_ok += 1 } else { date_miss += 1 }
         if is_bool { bool_ok += 1 } else { bool_miss += 1 }
     }
     let share = |k: usize| n > 0 && k as f64 >= TYPE_SHARE * n as f64;
+    // Censored / suppressed cells neither count for nor against a numeric column (when there are
+    // more numbers than them, or nothing else).
+    // A few distinct words among many numbers (one `approx.` in a short column) keep it numeric too.
+    let num_share = num_ok > 0 && (num_ok > annotations || num_miss == 0) && {
+        let hard = (n - annotations) as f64;
+        let words_ok = words_only && num_ok >= 3 * num_miss && num_ok as f64 >= WORDS_NUM_SHARE * hard;
+        num_ok as f64 >= TYPE_SHARE * hard || words_ok
+    };
     #[derive(PartialEq)]
     enum Kind {
         Empty,
@@ -193,7 +245,7 @@ pub(super) fn type_column(
         Kind::Bool
     } else if share(date_ok) && date_ok >= num_ok {
         Kind::Date
-    } else if share(num_ok) && lead0 == 0 {
+    } else if num_share && lead0 == 0 {
         Kind::Num
     } else {
         Kind::Text
@@ -212,7 +264,7 @@ pub(super) fn type_column(
             .take(INFER_SAMPLE)
             .collect();
         if !sample.is_empty() {
-            hints = refine(&sample, ambiguous_seen);
+            hints = refine(&sample, ambiguous_seen, &native);
             let reparse = ambiguous_seen || hints.currency_context != first.currency_context;
             if reparse && hints != first {
                 let nh = hints.number_hint();
@@ -252,6 +304,8 @@ pub(super) fn type_column(
     let mut warnings = Vec::new();
     let mut ambiguous = 0usize;
     let mut unparsed: Vec<String> = Vec::new();
+    let mut annotated: Vec<String> = Vec::new();
+    let mut marks: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
     let mut has_time = false;
     let mut all_int = true;
     let mut values = Vec::with_capacity(slots.len());
@@ -269,16 +323,25 @@ pub(super) fn type_column(
                     values.push(Out::Null);
                     continue;
                 }
+                let annotation = c.1.annotation && kind == Kind::Num;
                 let mut fallback = |tr: &mut Transforms| {
-                    unparsed.push(a1(rows[i], col));
+                    if annotation {
+                        annotated.push(format!("{} '{}'", a1(rows[i], col), display(v)));
+                    } else {
+                        unparsed.push(a1(rows[i], col));
+                    }
                     tr.add(T::UnparsedKeptAsText, 1);
                     Out::Text(fit(display(v), tr))
                 };
                 match (&kind, v) {
                     (Kind::Num, Value::Number(x)) => Out::Num(*x),
-                    (Kind::Num, Value::Text(_)) => match &c.1.num {
+                    (Kind::Num, Value::Text(t)) => match &c.1.num {
                         Some(p) if !p.leading_zero => {
                             tr.add(T::NumbersFromText, 1);
+                            if let Some(m) = p.footnote_mark(t) {
+                                tr.add(T::FootnoteMarksStripped, 1);
+                                marks.entry(m.to_string()).or_default().push((rows[i], col));
+                            }
                             tr.add(T::PercentFromText, p.percent as usize);
                             tr.add(T::CurrencyStripped, p.currency.is_some() as usize);
                             tr.add(T::UnitStripped, p.unit.is_some() as usize);
@@ -367,10 +430,29 @@ pub(super) fn type_column(
             list(&unparsed)
         ));
     }
+    if !annotated.is_empty() {
+        warnings.push(format!(
+            "column '{name}' ({}): {} censored, suppressed or see-note value(s) kept as text: {}",
+            dtype.as_str(),
+            annotated.len(),
+            list(&annotated)
+        ));
+    }
     if ambiguous > 0 {
         warnings.push(format!(
             "column '{name}': {ambiguous} value(s) read with a guessed decimal separator or day/month order (pass a locale to override)"
         ));
     }
-    Typed { dtype, unit, currency, decimal: hints.decimal, date_order: hints.date_order, ambiguous, values, warnings }
+    let footnote_marks = marks.into_iter().collect();
+    Typed {
+        dtype,
+        unit,
+        currency,
+        decimal: hints.decimal,
+        date_order: hints.date_order,
+        ambiguous,
+        values,
+        footnote_marks,
+        warnings,
+    }
 }

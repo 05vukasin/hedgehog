@@ -23,9 +23,11 @@ pub mod text;
 pub use currency::{currency_match, is_iso_code, mentions_currency, CurrencyMatch};
 pub use date::{infer_date_order, parse_date, parse_time, serial_to_ymd, ymd_to_serial, DateOrder, DatePrecision, ParsedDate};
 pub use features::{
-    cell_features, compute, compute_with, infer_column, sheet_column_hints, sheet_column_hints_with, ColumnHints, FEATURES,
+    cell_features, compute, compute_with, infer_column, infer_column_with, sheet_column_hints, sheet_column_hints_with, ColumnHints, FEATURES,
 };
 pub use locale::Locale;
-pub use missing::{is_excel_error, missing_token, parse_bool, MissingKind};
-pub use number::{currency, infer_decimal, parse_number, DecimalSep, NegativeStyle, NumberHint, ParsedNumber};
+pub use missing::{
+    is_excel_error, missing_token, numeric_annotation, parse_bool, table_missing_token, MissingKind, NumericAnnotation,
+};
+pub use number::{currency, infer_decimal, parse_number, DecimalSep, NativeNumbers, NegativeStyle, NumberHint, ParsedNumber};
 pub use text::{clean, cyrillic_to_latin, fingerprint, norm_key};

@@ -1,0 +1,26 @@
+# Robustness harness: independent noise families + metamorphic invariants for `normalize`.
+# Its own workspace (not a member of the hedgehog workspace), so it can unwind panics and does not
+# touch the main Cargo.lock. Run: see REPORT.md.
+[package]
+name = "hh_noise_eval"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "noise_eval"
+path = "src/main.rs"
+
+[dependencies]
+hh_core = { path = "../../core" }
+rust_xlsxwriter = { version = "0.99.1", features = ["constant_memory", "zmij"] }
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = false
+codegen-units = 16
+panic = "unwind"
+debug = false
