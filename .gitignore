@@ -29,3 +29,4 @@ __pycache__/
 /node/dist/
 /node/target*
 /eval/agents/runs/
+!eval/agents/results.jsonl
