@@ -614,7 +614,8 @@ impl<RS: Read + Seek> Xls<RS> {
             .map(|(_, n)| n.clone())
             .collect::<Vec<_>>();
         for (pos, name) in sheet_names {
-            let sh = &stream[pos..];
+            // hedgehog: a sheet offset past the stream panicked; such a sheet reads as empty
+            let sh = stream.get(pos..).unwrap_or_default();
             let records = RecordIter { stream: sh };
             let mut cells = Vec::new();
             let mut formulas = Vec::new();
@@ -754,7 +755,8 @@ enum Biff {
 /// BOF [MS-XLS] 2.4.21
 fn parse_bof(r: &mut Record<'_>) -> Result<Bof, XlsError> {
     let mut dt = 0;
-    let biff_version = read_u16(&r.data[..2]);
+    // hedgehog: an empty BOF record panicked (read_u16 now reads missing bytes as zero)
+    let biff_version = read_u16(r.data);
 
     if r.data.len() >= 4 {
         dt = read_u16(&r.data[2..]);
@@ -785,6 +787,14 @@ fn parse_sheet_metadata(
     encoding: &XlsEncoding,
     biff: Biff,
 ) -> Result<(usize, Sheet), XlsError> {
+    // hedgehog: fields were read without checking the record's length
+    if r.data.len() < 6 {
+        return Err(XlsError::Len {
+            typ: "BoundSheet8",
+            expected: 6,
+            found: r.data.len(),
+        });
+    }
     let pos = read_u32(r.data) as usize;
     let visible = match r.data[4] & 0b0011_1111 {
         0x00 => SheetVisible::Visible,
@@ -820,8 +830,23 @@ fn parse_lbl(
     encoding: &XlsEncoding,
     biff: Biff,
 ) -> Result<(String, (Option<usize>, String)), XlsError> {
+    // hedgehog: fields were read without checking the record's length
+    if r.data.len() < 14 {
+        return Err(XlsError::Len {
+            typ: "Lbl",
+            expected: 14,
+            found: r.data.len(),
+        });
+    }
     let cch = r.data[3] as usize;
     let cce = read_u16(&r.data[4..]) as usize;
+    if cce > r.data.len() - 14 {
+        return Err(XlsError::Len {
+            typ: "Lbl",
+            expected: 14 + cce,
+            found: r.data.len(),
+        });
+    }
     let mut name = String::with_capacity(cch);
     match biff {
         Biff::Biff2 | Biff::Biff3 | Biff::Biff4 | Biff::Biff5 => {
@@ -935,7 +960,11 @@ fn parse_merge_cells(r: &[u8], merge_cells: &mut Vec<Dimensions>) -> Result<(), 
     let count = read_u16(r);
 
     for i in 0..count {
-        let offset: usize = (2 + i * 8).into();
+        let offset: usize = 2 + i as usize * 8;
+        // hedgehog: a count larger than the record panicked; read the entries that are there
+        if r.len() < offset + 8 {
+            break;
+        }
 
         let rf = read_u16(&r[offset..]);
         let rl = read_u16(&r[offset + 2..]);
@@ -969,10 +998,12 @@ fn parse_mul_rk(
     let col_first = read_u16(&r[2..]);
     let col_last = read_u16(&r[r.len() - 2..]);
 
-    if r.len() != 6 + 6 * (col_last - col_first + 1) as usize {
+    // hedgehog: col_last < col_first overflowed
+    let expected = 6 + 6 * (col_last as usize + 1).saturating_sub(col_first as usize);
+    if col_last < col_first || r.len() != expected {
         return Err(XlsError::Len {
             typ: "rk",
-            expected: 6 + 6 * (col_last - col_first + 1) as usize,
+            expected,
             found: r.len(),
         });
     }
@@ -1237,13 +1268,13 @@ fn read_rich_extended_string(
     // if flag fRichSt exists, read cRun and forward.
     if flags & 0x8 != 0 {
         c_run = read_u16(r.data) as usize;
-        r.data = &r.data[2..];
+        r.data = r.data.get(2..).unwrap_or_default(); // hedgehog: a short record panicked
     }
 
     // if flag fExtSt exists, read cbExtRst and forward.
     if flags & 0x4 != 0 {
         cb_ext_rst = read_i32(r.data) as usize;
-        r.data = &r.data[4..];
+        r.data = r.data.get(4..).unwrap_or_default(); // hedgehog: a short record panicked
     }
 
     // read rgb data block for the string we want
@@ -1267,11 +1298,15 @@ fn read_dbcs(
     let mut s = String::with_capacity(len);
     while len > 0 {
         let (l, at) = encoding.decode_to(r.data, len, &mut s, Some(high_byte));
-        r.data = &r.data[at..];
-        len -= l;
+        r.data = r.data.get(at..).unwrap_or_default();
+        len = len.saturating_sub(l);
         if len > 0 {
             if r.continue_record() {
-                high_byte = r.data[0] & 0x1 != 0;
+                // hedgehog: an empty CONTINUE record panicked
+                let Some(&flags) = r.data.first() else {
+                    return Err(XlsError::EoStream("dbcs"));
+                };
+                high_byte = flags & 0x1 != 0;
                 r.data = &r.data[1..];
             } else {
                 return Err(XlsError::EoStream("dbcs"));
@@ -1542,7 +1577,7 @@ fn parse_formula(
                 if colu & 1 != 0 {
                     formula.push('$');
                 }
-                write!(&mut formula, "{}", rowu + 1).unwrap();
+                write!(&mut formula, "{}", rowu as u32 + 1).unwrap(); // hedgehog: u16 overflow
                 rgce = &rgce[6..];
             }
             0x3b | 0x5b | 0x7b => {
@@ -1827,7 +1862,7 @@ fn parse_formula(
                     formula.push_str(&format!("{row}"));
                     rgce = &rgce[3..];
                 } else {
-                    let row = read_u16(rgce) + 1;
+                    let row = read_u16(rgce) as u32 + 1; // hedgehog: u16 overflow
                     let col = read_u16(&[rgce[2], rgce[3] & 0x3F]);
                     if rgce[3] & 0x80 != 0x80 {
                         formula.push('$');

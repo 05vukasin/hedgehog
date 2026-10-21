@@ -26,46 +26,58 @@ macro_rules! from_err {
 
 /// Converts a &[u8] into an iterator of `u32`s
 pub fn to_u32(s: &[u8]) -> impl ExactSizeIterator<Item = u32> + '_ {
-    assert_eq!(s.len() % 4, 0);
+    // hedgehog: a sector cut short by the end of the file may leave a partial value; it is
+    // ignored (the assertion here aborted the read with a panic).
     s.as_chunks::<4>()
         .0
         .iter()
         .map(|data| u32::from_le_bytes([data[0], data[1], data[2], data[3]]))
 }
 
+// hedgehog: the fixed-size readers take the bytes that are there and treat missing ones as zero.
+// Many record parsers read fields of a record without checking its length first; a short
+// (truncated or hostile) record panicked here.
+#[inline]
+fn le_bytes<const N: usize>(s: &[u8]) -> [u8; N] {
+    let mut b = [0u8; N];
+    let n = s.len().min(N);
+    b[..n].copy_from_slice(&s[..n]);
+    b
+}
+
 #[inline]
 pub fn read_u32(s: &[u8]) -> u32 {
-    u32::from_le_bytes(s[..4].try_into().unwrap())
+    u32::from_le_bytes(le_bytes(s))
 }
 
 #[inline]
 pub fn read_i32(s: &[u8]) -> i32 {
-    i32::from_le_bytes(s[..4].try_into().unwrap())
+    i32::from_le_bytes(le_bytes(s))
 }
 
 #[inline]
 pub fn read_u16(s: &[u8]) -> u16 {
-    u16::from_le_bytes(s[..2].try_into().unwrap())
+    u16::from_le_bytes(le_bytes(s))
 }
 
 #[inline]
 pub fn read_i16(s: &[u8]) -> i16 {
-    i16::from_le_bytes(s[..2].try_into().unwrap())
+    i16::from_le_bytes(le_bytes(s))
 }
 
 #[inline]
 pub fn read_u64(s: &[u8]) -> u64 {
-    u64::from_le_bytes(s[..8].try_into().unwrap())
+    u64::from_le_bytes(le_bytes(s))
 }
 
 #[inline]
 pub fn read_usize(s: &[u8]) -> usize {
-    read_u32(s).try_into().unwrap()
+    read_u32(s) as usize
 }
 
 #[inline]
 pub fn read_f64(s: &[u8]) -> f64 {
-    f64::from_le_bytes(s[..8].try_into().unwrap())
+    f64::from_le_bytes(le_bytes(s))
 }
 
 /// Convert a 0-based column index to an Excel column name (0 -> "A", 26 -> "AA").
