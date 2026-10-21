@@ -33,7 +33,7 @@ pub const BUILD_ID: &str = env!("HH_BUILD_ID");
 /// Layout version of an entry.
 const FORMAT: u64 = 1;
 const DEFAULT_MAX_MB: u64 = 2048;
-const NORM_MAGIC: &[u8; 8] = b"HHNORM01";
+const NORM_MAGIC: &[u8; 8] = b"HHNORM02";
 /// Display names whose catalog an entry keeps.
 const MAX_CATALOGS: usize = 8;
 /// Lines kept in `hashes.tsv`.
@@ -440,6 +440,10 @@ pub fn write_norm(n: &Normalized, path: &Path) -> io::Result<()> {
             w.opt(&c.decimal, |w, d| w.u8(*d as u8))?;
             w.opt(&c.date_order, |w, d| w.u8(*d as u8))?;
             w.usize(c.ambiguous)?;
+            w.vec(&c.footnote_marks, |w, (m, cells)| {
+                w.str(m)?;
+                w.vec(cells, |w, p| w.pos(p))
+            })?;
             w.vec(&c.values, |w, v| match v {
                 Out::Null => w.u8(0),
                 Out::Num(x) => {
@@ -661,6 +665,7 @@ pub fn read_norm(path: &Path) -> io::Result<Normalized> {
                 decimal: r.opt(|r| pick(&DECIMALS, r.u8()?, "decimal"))?,
                 date_order: r.opt(|r| pick(&DATE_ORDERS, r.u8()?, "date order"))?,
                 ambiguous: r.usize()?,
+                footnote_marks: r.vec(16, |r| Ok((r.str()?, r.vec(8, |r| r.pos())?)))?,
                 values: r.vec(1, |r| {
                     Ok(match r.u8()? {
                         0 => Out::Null,
