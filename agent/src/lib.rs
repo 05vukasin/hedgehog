@@ -14,6 +14,7 @@
 //! This crate is separate from `hh_core` so the core stays free of SQLite (a C library) and of
 //! session state; `hh_core` keeps the analysis, this crate the agent-facing views of it.
 
+pub mod cache;
 pub mod catalog;
 pub mod cells;
 pub mod dialect;
@@ -26,6 +27,8 @@ pub mod tools;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant, SystemTime};
 
 use hh_core::model::Workbook;
@@ -72,11 +75,19 @@ pub struct Options {
     pub max_file_bytes: u64,
     /// Normalized files kept in memory; the least recently used is dropped beyond this.
     pub max_open_files: usize,
+    /// Disk cache of normalized files ([`cache`]); default from the environment
+    /// (`HEDGEHOG_CACHE`, `HEDGEHOG_CACHE_DIR`, `HEDGEHOG_CACHE_MAX_MB`), None = off.
+    pub cache: Option<cache::Cache>,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { query_timeout: sql::DEFAULT_TIMEOUT, max_file_bytes: 256 << 20, max_open_files: 8 }
+        Options {
+            query_timeout: sql::DEFAULT_TIMEOUT,
+            max_file_bytes: 256 << 20,
+            max_open_files: 8,
+            cache: cache::Cache::from_env(),
+        }
     }
 }
 
@@ -86,10 +97,81 @@ pub const QUERY_MAX_LIMIT: usize = 200;
 /// Workbooks up to this many cells stay in memory after `open_file` for `cells`.
 const KEEP_BOOK_CELLS: usize = 1_000_000;
 
+/// Normalize options of a session; part of the disk cache key.
+const NORMALIZE_TAG: &str = "keep_totals";
+
+fn normalize_options() -> hh_core::NormalizeOptions {
+    hh_core::NormalizeOptions { keep_totals: true, ..Default::default() }
+}
+
+/// A value computed on another thread: waited for when first needed.
+enum Pending<V> {
+    Ready(V),
+    Running(mpsc::Receiver<Result<V, String>>),
+    Failed(String),
+}
+
+impl<V: Send + 'static> Pending<V> {
+    fn spawn(f: impl FnOnce() -> Result<V, String> + Send + 'static) -> Pending<V> {
+        let (tx, rx) = mpsc::channel();
+        match std::thread::Builder::new().name("hedgehog-load".into()).spawn(move || {
+            let _ = tx.send(f());
+        }) {
+            Ok(_) => Pending::Running(rx),
+            Err(e) => Pending::Failed(format!("cannot start a thread: {e}")),
+        }
+    }
+
+    /// Waits until the value is there; gives up with "cancelled" once `cancel` is set (the work
+    /// goes on and is picked up by the next wait).
+    fn wait(&mut self, cancel: &AtomicBool) -> Result<&mut V, ToolError> {
+        if let Pending::Running(rx) = self {
+            let got = loop {
+                match rx.recv_timeout(Duration::from_millis(20)) {
+                    Ok(r) => break r,
+                    Err(mpsc::RecvTimeoutError::Timeout) if cancel.load(Ordering::Relaxed) => return Err(cancelled()),
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break Err("internal error while loading the file".into()),
+                }
+            };
+            *self = match got {
+                Ok(v) => Pending::Ready(v),
+                Err(e) => Pending::Failed(e),
+            };
+        }
+        match self {
+            Pending::Ready(v) => Ok(v),
+            Pending::Failed(e) => Err(ToolError(e.clone())),
+            Pending::Running(_) => Err(cancelled()),
+        }
+    }
+}
+
+fn cancelled() -> ToolError {
+    ToolError("cancelled".into())
+}
+
+/// The normalized form of a file and, when it came from the disk cache, what its database still
+/// needs ([`sql::plan`]).
+struct Norm {
+    norm: Arc<Normalized>,
+    plan: Option<sql::Plan>,
+}
+
 struct Opened {
     path: PathBuf,
-    norm: Normalized,
-    db: sql::Db,
+    /// Ready right after normalizing; decoded on another thread when it came from the cache.
+    norm: Pending<Norm>,
+    /// Built on another thread after the catalog is out (into the disk cache when it is on);
+    /// opened in place when it came from the cache.
+    db: Pending<(sql::Db, Option<cache::Entry>)>,
+    /// Both of the above, once they are there.
+    loaded: Option<Loaded>,
+    /// The file's disk cache entry (once written).
+    entry: Option<cache::Entry>,
+    /// Catalog text per display name (before the timing line).
+    catalogs: HashMap<String, String>,
+    from_disk: bool,
     seconds: f64,
     last_used: u64,
 }
@@ -104,6 +186,10 @@ pub struct Session {
     /// The last workbook read for `cells` (path, size, mtime).
     book: Option<(PathBuf, u64, Option<SystemTime>, Workbook)>,
     clock: u64,
+    /// Set (from any thread) to stop the running tool call: a query is interrupted, waiting for
+    /// a normalization ends with "cancelled" (the normalization finishes in the background and
+    /// goes to the disk cache).
+    cancel: Arc<AtomicBool>,
 }
 
 impl Session {
@@ -118,7 +204,21 @@ impl Session {
         for a in allow {
             bounds.allow(a)?;
         }
-        Ok(Session { bounds, opts, files: HashMap::new(), hashes: HashMap::new(), book: None, clock: 0 })
+        Ok(Session {
+            bounds,
+            opts,
+            files: HashMap::new(),
+            hashes: HashMap::new(),
+            book: None,
+            clock: 0,
+            cancel: Arc::default(),
+        })
+    }
+
+    /// The flag that cancels the running tool call when set (from another thread). The caller
+    /// clears it before the next call.
+    pub fn cancel_flag(&self) -> Arc<AtomicBool> {
+        self.cancel.clone()
     }
 
     pub fn bounds(&self) -> &Bounds {
@@ -172,40 +272,210 @@ impl Session {
         }
         let mtime = meta.modified().ok();
         self.clock += 1;
+        let t0 = Instant::now();
+        let cache = self.opts.cache.clone();
         let sha = match self.hashes.get(&path) {
             Some((len, m, sha)) if *len == meta.len() && *m == mtime => sha.clone(),
             _ => {
-                let bytes = std::fs::read(&path).map_err(|e| ToolError(format!("{}: {e}", self.bounds.display(&path))))?;
-                let sha = sha256::hex(&bytes);
+                let known = cache.as_ref().and_then(|c| c.known_hash(&path, meta.len(), mtime));
+                let sha = match known {
+                    Some(sha) => sha,
+                    None => {
+                        let bytes = std::fs::read(&path).map_err(|e| ToolError(format!("{}: {e}", self.bounds.display(&path))))?;
+                        let sha = sha256::hex(&bytes);
+                        if let Some(c) = &cache {
+                            c.remember_hash(&path, meta.len(), mtime, &sha);
+                        }
+                        sha
+                    }
+                };
                 self.hashes.insert(path.clone(), (meta.len(), mtime, sha.clone()));
                 sha
             }
         };
+        cache::trace("hash", t0);
         if let Some(o) = self.files.get_mut(&sha) {
             o.last_used = self.clock;
             o.path = path;
             return Ok((sha, true));
         }
-        let t0 = Instant::now();
-        let wb = hh_core::open(&path).map_err(|e| ToolError(format!("{}: cannot read: {e}", self.bounds.display(&path))))?;
-        let opts = hh_core::NormalizeOptions { keep_totals: true, ..Default::default() };
-        let norm = hh_core::normalize_workbook(&wb, &opts);
+        let key = cache::Cache::key(&sha, NORMALIZE_TAG);
+        // A file seen before: its catalog, database and (decoded on another thread) normalized form
+        // come from the disk cache.
+        if let Some(c) = &cache
+            && let Some(entry) = c.get(&key)
+        {
+            match sql::Db::open_file(&entry.db_path()) {
+                Ok(db) => {
+                    let norm_path = entry.norm_path();
+                    let norm = Pending::spawn(move || {
+                        let t = Instant::now();
+                        let norm = cache::read_norm(&norm_path).map_err(|e| format!("disk cache: {e}"))?;
+                        cache::trace("cache: norm read", t);
+                        let plan = sql::plan(&norm);
+                        cache::trace("cache: norm decoded", t);
+                        Ok(Norm { norm: Arc::new(norm), plan: Some(plan) })
+                    });
+                    let seconds = entry.seconds();
+                    cache::trace("cache: entry opened", t0);
+                    self.insert(sha.clone(), Opened {
+                        path,
+                        norm,
+                        db: Pending::Ready((db, None)),
+                        loaded: None,
+                        entry: Some(entry),
+                        catalogs: HashMap::new(),
+                        from_disk: true,
+                        seconds,
+                        last_used: self.clock,
+                    });
+                    return Ok((sha, true));
+                }
+                Err(_) => {
+                    let _ = std::fs::remove_dir_all(&entry.dir);
+                }
+            }
+        }
+        let display = self.bounds.display(&path);
+        // Normalized on another thread, so a cancel ends the wait; a cancelled normalization still
+        // goes to the disk cache when it ends.
+        let mut work = {
+            let (path, cache, key) = (path.clone(), cache.clone(), key.clone());
+            Pending::spawn(move || {
+                let wb = hh_core::open(&path).map_err(|e| format!("{display}: cannot read: {e}"))?;
+                let norm = hh_core::normalize_workbook(&wb, &normalize_options());
+                Ok((wb, norm, t0.elapsed().as_secs_f64(), cache, key))
+            })
+        };
+        let waited = work.wait(&self.cancel).map(|_| ());
+        let (wb, norm, seconds, _, _) = match waited {
+            Ok(()) => match work {
+                Pending::Ready(v) => v,
+                _ => return Err(cancelled()),
+            },
+            Err(e) => {
+                if let Pending::Running(rx) = work {
+                    // Nobody waits any more: cache the result when it comes.
+                    std::thread::spawn(move || {
+                        if let Ok(Ok((_, norm, seconds, Some(c), key))) = rx.recv() {
+                            let _ = c.put(&key, &norm, seconds, "", None);
+                        }
+                    });
+                }
+                return Err(e);
+            }
+        };
+        cache::trace("normalized", t0);
         // Keep a small workbook for `cells`; large ones are read again when needed.
         let cells: usize = wb.sheets.iter().map(|s| s.cells.len()).sum();
         self.book = (cells <= KEEP_BOOK_CELLS).then(|| (path.clone(), meta.len(), mtime, wb));
-        let db = sql::Db::load(&norm).map_err(|e| ToolError(format!("{}: loading into SQL failed: {e}", self.bounds.display(&path))))?;
-        let seconds = t0.elapsed().as_secs_f64();
+        let norm = Arc::new(norm);
+        // The catalog first; the SQL database is built on another thread meanwhile.
+        let name = self.bounds.display(&path);
+        let text = catalog_text(&norm, &name, &sql::skipped_columns(&norm));
+        cache::trace("catalog", t0);
+        let db = {
+            let (norm, text, name, shown) = (norm.clone(), text.clone(), name.clone(), self.bounds.display(&path));
+            Pending::spawn(move || {
+                let t = Instant::now();
+                if let Some(c) = cache {
+                    match c.put(&key, &norm, seconds, &name, Some(&text)) {
+                        Ok((entry, (skipped, entities))) => match sql::Db::open_file(&entry.db_path()) {
+                            Ok(mut db) => {
+                                db.skipped_columns = skipped;
+                                db.entities = entities;
+                                cache::trace("sql (cache file)", t);
+                                return Ok((db, Some(entry)));
+                            }
+                            Err(e) => eprintln!("[hedgehog] disk cache: {e}"),
+                        },
+                        Err(e) => eprintln!("[hedgehog] disk cache: {e}"),
+                    }
+                }
+                let db = sql::Db::load(&norm).map_err(|e| format!("{shown}: loading into SQL failed: {e}"))?;
+                cache::trace("sql (memory)", t);
+                Ok((db, None))
+            })
+        };
+        let mut catalogs = HashMap::new();
+        catalogs.insert(name, text);
+        self.insert(sha.clone(), Opened {
+            path,
+            norm: Pending::Ready(Norm { norm, plan: None }),
+            db,
+            loaded: None,
+            entry: None,
+            catalogs,
+            from_disk: false,
+            seconds,
+            last_used: self.clock,
+        });
+        Ok((sha, false))
+    }
+
+    fn insert(&mut self, sha: String, o: Opened) {
         while self.files.len() >= self.opts.max_open_files.max(1) {
             let Some(old) = self.files.iter().min_by_key(|(_, o)| o.last_used).map(|(k, _)| k.clone()) else { break };
             self.files.remove(&old);
         }
-        self.files.insert(sha.clone(), Opened { path, norm, db, seconds, last_used: self.clock });
-        Ok((sha, false))
+        self.files.insert(sha, o);
     }
 
-    fn opened(&mut self, raw: &str) -> Result<&Opened, ToolError> {
+    /// Waits until the normalized form and the database of an opened file are there.
+    fn ready(&mut self, sha: &str) -> Result<(), ToolError> {
+        let cancel = self.cancel.clone();
+        let Some(o) = self.files.get_mut(sha) else { return Err(ToolError("internal error: file not open".into())) };
+        if o.loaded.is_some() {
+            return Ok(());
+        }
+        o.norm.wait(&cancel)?;
+        o.db.wait(&cancel)?;
+        let gone = "internal error: file loaded twice";
+        let (Pending::Ready(n), Pending::Ready((mut db, entry))) = (std::mem::replace(&mut o.norm, Pending::Failed(gone.into())), std::mem::replace(&mut o.db, Pending::Failed(gone.into())))
+        else {
+            return Err(ToolError("internal error: file not loaded".into()));
+        };
+        db.set_cancel(cancel);
+        if let Some((skipped, entities)) = n.plan {
+            db.skipped_columns = skipped;
+            db.entities = entities;
+        }
+        if entry.is_some() {
+            o.entry = entry;
+        }
+        o.loaded = Some(Loaded { norm: n.norm, db });
+        Ok(())
+    }
+
+    /// Loads the file and waits for its database only.
+    fn database(&mut self, raw: &str) -> Result<&sql::Db, ToolError> {
         let (sha, _) = self.load(raw)?;
-        Ok(&self.files[&sha])
+        let cancel = self.cancel.clone();
+        let o = self.files.get_mut(&sha).ok_or_else(|| ToolError("internal error: file not open".into()))?;
+        if let Some(l) = &o.loaded {
+            return Ok(&l.db);
+        }
+        let (db, _) = o.db.wait(&cancel)?;
+        db.set_cancel(cancel);
+        Ok(db)
+    }
+
+    /// Loads the file and waits for its normalized form and database. A damaged disk cache entry
+    /// is dropped and the file normalized again.
+    fn opened(&mut self, raw: &str) -> Result<&Loaded, ToolError> {
+        let (mut sha, _) = self.load(raw)?;
+        if let Err(e) = self.ready(&sha) {
+            let from_disk = self.files.get(&sha).is_some_and(|o| o.from_disk);
+            if !from_disk || e == cancelled() {
+                return Err(e);
+            }
+            if let Some(dir) = self.files.remove(&sha).and_then(|o| o.entry).map(|e| e.dir) {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            sha = self.load(raw)?.0;
+            self.ready(&sha)?;
+        }
+        self.files[&sha].loaded.as_ref().ok_or_else(|| ToolError("internal error: file not loaded".into()))
     }
 
     // -- tools ------------------------------------------------------------------------------------
@@ -215,10 +485,22 @@ impl Session {
         let (sha, cached) = self.load(path)?;
         let o = &self.files[&sha];
         let name = self.bounds.display(&o.path);
-        let mut text = catalog::catalog(&o.norm, &name, MAX_CHARS - 300);
-        for (t, n) in &o.db.skipped_columns {
-            text.push_str(&format!("\nNOTE {t}: {n} columns beyond SQLite's 2000-column limit are not queryable"));
-        }
+        let stored = o.catalogs.get(&name).cloned().or_else(|| o.entry.as_ref().and_then(|e| e.catalog(&name)));
+        let mut text = match stored {
+            Some(t) => t,
+            None => {
+                // A name this file has no catalog for yet (opened under another path).
+                let o = self.opened(path)?;
+                let t = catalog_text(&o.norm, &name, &o.db.skipped_columns);
+                let o = self.files.get_mut(&sha).expect("file is open");
+                if let (Some(c), Some(e)) = (&self.opts.cache, o.entry.as_mut()) {
+                    c.add_catalog(e, &name, &t);
+                }
+                t
+            }
+        };
+        let o = self.files.get_mut(&sha).expect("file is open");
+        o.catalogs.entry(name).or_insert_with(|| text.clone());
         if !text.contains("\n… cut:") {
             if cached {
                 text.push_str("\n(cached)");
@@ -242,11 +524,22 @@ impl Session {
     pub fn query(&mut self, path: &str, sql: &str, limit: Option<usize>) -> ToolResult {
         let timeout = self.opts.query_timeout;
         let limit = limit.unwrap_or(QUERY_DEFAULT_LIMIT).clamp(1, QUERY_MAX_LIMIT);
-        let o = self.opened(path)?;
-        let used = tables_in_sql(&o.norm, sql);
-        let res = match o.db.query(sql, limit, timeout) {
+        // A file from the disk cache answers before its normalized form is decoded: the notes
+        // below need that form only after an error, for an empty result or with `_src_row`.
+        let first = self.database(path)?.query(sql, limit, timeout);
+        let need_norm = first.as_ref().map_or(true, |r| r.total == 0 || r.header.iter().any(|h| h == "_src_row"));
+        let empty = Normalized::default();
+        let (norm, db) = if need_norm {
+            let o = self.opened(path)?;
+            (&*o.norm, &o.db)
+        } else {
+            (&empty, self.database(path)?)
+        };
+        let used = tables_in_sql(norm, sql);
+        let res = match first {
             Ok(r) => r,
-            Err(e) => return Err(ToolError(sql_error_hint(&o.norm, &o.db, &used, sql, &e))),
+            Err(e) if e == sql::CANCELLED => return Err(cancelled()),
+            Err(e) => return Err(ToolError(sql_error_hint(norm, db, &used, sql, &e))),
         };
         let mut lines = vec![csv_row(&res.header)];
         let mut shown = 0;
@@ -264,7 +557,7 @@ impl Session {
         }
         if res.total == 0 {
             for t in &used {
-                let info = catalog::row_info(&o.norm, t);
+                let info = catalog::row_info(norm, t);
                 if !info.total_rows.is_empty() && !sql_mentions(sql, &format!("{}_all", t.id())) {
                     lines.push(format!(
                         "note: {} has no total rows; {} total row(s) ({}) are in {}_all",
@@ -276,7 +569,7 @@ impl Session {
                 }
             }
         }
-        if let Some(hint) = cite_hint(&o.db, &used, &res.header) {
+        if let Some(hint) = cite_hint(db, &used, &res.header) {
             lines.push(hint);
         }
         let n = text::thousands(res.total);
@@ -328,6 +621,21 @@ impl Session {
     pub fn normalized(&mut self, path: &str) -> Result<&Normalized, ToolError> {
         Ok(&self.opened(path)?.norm)
     }
+}
+
+/// An opened file whose normalized form and database are ready.
+struct Loaded {
+    norm: Arc<Normalized>,
+    db: sql::Db,
+}
+
+/// The catalog of `open_file` without the timing line.
+fn catalog_text(norm: &Normalized, name: &str, skipped: &[(String, usize)]) -> String {
+    let mut text = catalog::catalog(norm, name, MAX_CHARS - 300);
+    for (t, n) in skipped {
+        text.push_str(&format!("\nNOTE {t}: {n} columns beyond SQLite's 2000-column limit are not queryable"));
+    }
+    text
 }
 
 fn sql_mentions(sql: &str, name: &str) -> bool {
