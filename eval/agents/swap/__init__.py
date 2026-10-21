@@ -27,26 +27,15 @@ def case_files(case: dict) -> list[str]:
     return list(case.get("files") or [case["file"]])
 
 
-def case_root(case: dict, root: Path) -> Path:
-    """`root` (default $HEDGEHOG_DATA/irregular), or the case's own `root` (absolute, or relative to it or its parent)."""
-    if not case.get("root"):
-        return root
-    p = Path(case["root"])
-    return p if p.is_absolute() else next((c for c in (root / p, root.parent / p) if c.exists()), root / p)
-
-
-def case_prompt(case: dict) -> str:
+def run_arm(arm: str, case: dict, prompt: str, root: Path, out: Path, run_id: str, key: str, model: str,
+            hedgehog_exe: str, md_tokens: int) -> dict:
+    """One run of a swap arm on a case; `prompt` is the same text every arm gets, `root` the case's folder."""
     files = case_files(case)
-    return (f"File: {files[0]}" if len(files) == 1 else "Files: " + ", ".join(files)) + f"\n\n{case['prompt']}"
-
-
-def run_arm(arm: str, case: dict, root: Path, out: Path, run_id: str, key: str, model: str, hedgehog_exe: str, md_tokens: int) -> dict:
-    root, files = case_root(case, root), case_files(case)
     work = out / "work" / run_id
     work.mkdir(parents=True, exist_ok=True)
     trace = (out / "runs" / f"{run_id}.jsonl").open("a")
     log = lambda ev: trace.write(json.dumps(ev, ensure_ascii=False) + "\n")
-    user, ts, extra = case_prompt(case), None, {}
+    user, ts, extra = prompt, None, {}
     try:
         if arm == "swap-hedgehog":
             ts = tools.hedgehog(hedgehog_exe, root, work)

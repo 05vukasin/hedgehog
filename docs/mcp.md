@@ -151,8 +151,11 @@ The dialect is SQLite: date parts come from `strftime` (`strftime('%Y-%m', "Sign
 **Entity columns.** A text column whose values are mostly `"<id> - <name>"` with a code-like ID
 (digits, or letters and digits: a tax number, a CPV or NUTS code), such as
 `"503933813 - IP - Infraestruturas de Portugal, S.A."`, gets two more columns in `T<n>` and
-`T<n>_all`, right after it: `<col>_id` (the code, as text) and `<col>_name` (the rest). Registers
-write one entity under several spellings with the same code, so group by `<col>_id`, not by the text.
+`T<n>_all`, right after it: `<col>_id` (the code, as text) and `<col>_name` (the name). Registers
+write one entity under several spellings with the same code, so group by `<col>_id`, not by the text;
+`<col>_name` is one name per ID (the spelling most rows use), so grouping by it does not split an
+entity either. A query result that lists one ID on several rows under different spellings (grouped
+by the text) ends with a `note:` naming the rows and the query grouped by the ID.
 A value that is only a code has an empty `<col>_name`; a value without a code (`"- - Name"`) has an
 empty `<col>_id`; a cell naming several entities (`"a | b"`, `"a; b"`, one per line, or run together
 as `"501… - A, Lda 502… - B, SA"`) is not split: its `<col>_id` lists every ID as `"id1 | id2"`. The
@@ -184,7 +187,7 @@ SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row
 ```text
 group,Richtsatz,2024,2025,_row_type,_src_row
 Anzahl Bezieher:innen,Alleinstehend,163230,162375,data,5
-,Gesamt,190423,189537,total,9
+Anzahl Bezieher:innen,Gesamt,190423,189537,total,9
 Durchschnittshöhe in Euro,Alleinstehend,386.9,403.19,data,11
 Durchschnittshöhe in Euro,Gesamt,413.44,430.56,data,15
 Richtsätze in Euro,Alleinstehend,1217.96,1273.99,data,17
@@ -206,7 +209,13 @@ SQL error: near "5": syntax error (at character 11) — SQLite has no TOP n; put
 
 A "no such column" whose name is the label of a total row (or a total word: Total, Gesamt, Summe,
 Totale, Ukupno, Subtotal, …) says where the total rows are; one that is a value of a text column
-says which column to filter. MySQL / Postgres / SQL Server functions and syntax SQLite lacks
+says which column to filter. Both also run that query and return its rows (at most 10, ~3,000
+characters) under `Those rows (the query above, run for you; pick the columns you need):`, so the
+data is there even when the model does not retry; the call is still an error.
+
+A total row takes the keys of the block it closes: its group (`"group"`) and empty text cells left
+of its label that every data row of the block shares (`col_B = 'Receipts HH'`), so
+`WHERE "group" = 'Anzahl Bezieher:innen' AND _row_type = 'total'` finds it. MySQL / Postgres / SQL Server functions and syntax SQLite lacks
 (`YEAR`, `MONTH`, `DAY`, `DATE_FORMAT`, `TO_CHAR`, `EXTRACT(… FROM …)`, `DATEDIFF`, `DATE_ADD`, `NOW`,
 `CONCAT`, `ISNULL`, `LEN`, `STRING_AGG`, `MEDIAN`/`PERCENTILE_CONT`, `STDDEV`, `TOP n`, `ILIKE`,
 `::type`, `FETCH FIRST`, `INTERVAL`, …) get the SQLite replacement.
@@ -231,7 +240,18 @@ Per table (when the whole catalog fits in ~12,000 characters):
   have several spellings, cells with several entities, values without an ID, and to group by
   `<col>_id`: `adjudicante = "<id> - <name>" (e.g. "600082440 - Direção-Geral de …"): 3,872 IDs, 808
   with several spellings (e.g. 508481287: 5 names; up to 52) — group by adjudicante_id, not by the
-  text; adjudicante_name holds the name · …`.
+  text: SELECT "adjudicante_id", "adjudicante_name", count(*) FROM T1 GROUP BY "adjudicante_id";
+  adjudicante_name holds one name per ID (its most frequent spelling) · …`. It comes right under
+  the columns line (when some values have no ID, the query groups by
+  `coalesce(<col>_id, <col>_name)`).
+- **Shares** (tables with ≥ 30 data rows and a summable amount column): a ready query for a share
+  of the total, ranked by the first entity column (or a text column with ≥ 10 values): `share of
+  the total (e.g. top 10 by "adjudicante_id"): SELECT 100.0 * SUM(v) / (SELECT SUM("precoContratual")
+  FROM T1) AS pct FROM (SELECT SUM("precoContratual") AS v FROM T1 GROUP BY "adjudicante_id" ORDER BY
+  v DESC LIMIT 10)`.
+- **Long forms**: when one table repeats another's values one row per key × category (checked on
+  up to 40 sampled rows), both get `T5 is the long form of T3: one row per Datum × Saisonbereinigung,
+  value in Indexwert (T3 has one column per Saisonbereinigung value)`.
 - **Total rows**: how to select them and where their label is, e.g.
   `total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (label in col_C: 'Total')`; without a
   label column, their `_src_row` and sign (`_src_row 51 positive, 65 negative`).
@@ -282,7 +302,8 @@ The server only reads; it never writes, deletes or executes anything.
   must lie inside the root or be an allowed path (`--allow`, `_meta.hedgehog.allow`; an allowed file
   does not open its folder). `list_files` follows no symlinked folders and skips hidden entries. Only
   spreadsheet extensions are opened; files above `--max-file-mb` are refused.
-- **SQL**: each file has its own in-memory database; after loading, the connection is locked down:
+- **SQL**: each file has its own database (in memory, or the disk cache's file opened read-only);
+  after loading, the connection is locked down:
   - an authorizer allows only `SELECT`, reads, recursive CTEs, functions (minus `load_extension` and
     similar) and the read-only pragmas `table_info`/`table_xinfo`/`table_list`; everything else —
     `INSERT`/`UPDATE`/`DELETE`, `CREATE`/`DROP`/`ALTER`, `ATTACH`/`DETACH`, other `PRAGMA`s,
@@ -298,9 +319,47 @@ These limits are covered by tests (`agent/src/sql.rs`, `agent/src/files.rs`, `cl
 
 ## Memory and speed
 
-Opening a file costs what `hedgehog normalize` costs (without writing the output files), plus the
-SQLite copy of the tables. The largest file in the test corpus (`eu_ch_bfs/036_36752511_master.xlsx`,
-7.2 MB, 1.5 million cells, 5 tables) opens in about 20 s with a peak of ~790 MB (`normalize` alone:
-~820 MB peak); a second `open_file` of the same content takes milliseconds. Small files open in
-10–300 ms. At most 8 files stay in memory; the least recently used is dropped. Run
-`hedgehog mcp` with stderr visible to see per-call time and memory.
+The first open of a file costs what `hedgehog normalize` costs (without writing the output files).
+The catalog comes back as soon as the file is normalized; the SQL tables are built on another thread
+meanwhile, and the first `query` waits for them if it comes sooner. After that the file is in the
+[disk cache](#disk-cache): any later session, in any process, gets the catalog in about 2 ms and
+query answers in milliseconds.
+
+| File (new process each time, best of 3) | First open: catalog / first query | Reopen from the cache: catalog / first query | Peak memory first / reopen |
+|---|---|---|---|
+| `eu_pt_opendata/001_contratos2020.xlsx` (40 MB, 4.5M cells) | 15.0 s / 16.5 s | 2.3 ms / 19 ms | 1.2 GB / 0.54 GB |
+| `eu_ch_bfs/036_36752511_master.xlsx` (7 MB, 1.5M cells) | 12.2 s / 12.8 s | 2.5 ms / 3.2 ms | 0.89 GB / 0.36 GB |
+| `enron/andrea_ring__3__HHmonthlyavg.xlsx` | 29 ms / 31 ms | 2.3 ms / 2.5 ms | 13 MB / 6 MB |
+| `eu_at_opendata/003_pen_02_02.xlsx` | 12 ms / 13 ms | 2.3 ms / 2.6 ms | 11 MB / 6 MB |
+
+Times are from spawning `hedgehog mcp` to the response. A reopened file's normalized form (which
+`describe_table`, `totals` and SQL error hints need) is read on another thread right after
+`open_file` (about 1 s for the 4.5M-cell file). At most 8 files stay in memory per session; the
+least recently used is dropped. Run `hedgehog mcp` with stderr visible to see per-call time and
+memory.
+
+## Disk cache
+
+Normalized files are kept on disk so a new session does not normalize them again. An entry holds a
+file's SQLite database (opened read-only in place), its normalized form and its catalog; it is keyed
+by the file's sha256, the hedgehog build (a hash of the sources and the row model, so an upgrade
+never reads an older build's results) and the normalize options. A file whose path, size and
+modification time are unchanged is not even hashed again (`hashes.tsv`).
+
+| | |
+|---|---|
+| Location | `$HEDGEHOG_CACHE_DIR`, else `$XDG_CACHE_HOME/hedgehog` or `~/.cache/hedgehog` (Linux), `~/Library/Caches/hedgehog` (macOS), `%LOCALAPPDATA%\hedgehog\cache` (Windows) |
+| Off | `HEDGEHOG_CACHE=0` |
+| Size cap | 2 GB (`HEDGEHOG_CACHE_MAX_MB`); the least recently used entries are removed first. A 4.5M-cell file takes ~360 MB. |
+| Safety | entries are written to a temporary folder and renamed into place, so readers never see half an entry; an entry that fails a check (size, header, a database that does not open) is removed and the file normalized again |
+| Privacy | the cache holds your data (cell values, file paths): folders are created `0700`, files `0600` (Unix). Nothing leaves the machine. Delete the folder to clear it. |
+
+The Node `HedgehogSession` uses the same cache.
+
+## Cancelling a call
+
+`hedgehog mcp` runs tool calls on a worker thread, one at a time in arrival order, and keeps reading
+input: `ping` and `tools/list` are answered at once, and `notifications/cancelled` with a
+`requestId` drops a queued call or stops the running one. A running query is interrupted; a running
+normalization is left to finish in the background (it is written to the disk cache, so asking again
+is fast) while the call ends. A cancelled call gets no response.

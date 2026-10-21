@@ -1,29 +1,36 @@
-//! Read-only SQL over a normalized workbook: one in-memory SQLite database per file.
+//! Read-only SQL over a normalized workbook: one SQLite database per file (in memory, or the disk
+//! cache's file opened read-only).
 //!
 //! Layout: table `T<n>_all` holds every row of table n (data, subtotal and total rows, with
 //! `_row_type` and `_src_row`), view `T<n>` the data rows without `_row_type`. Values are typed:
 //! integers INTEGER, numbers / currency / percent (as a fraction) REAL, dates ISO TEXT
 //! (`YYYY-MM-DD`, or `YYYY-MM-DD hh:mm:ss`), booleans 0/1. An entity column (`"<id> - <name>"`,
-//! [`crate::entity`]) is followed by `<col>_id` and `<col>_name`, split at load.
+//! [`crate::entity`]) is followed by `<col>_id` and `<col>_name`, split at load; `<col>_name` is one
+//! name per ID (its most frequent spelling).
 //!
 //! After loading, the connection is locked down: an authorizer allows only SELECT, reads, a few
 //! read-only pragmas and functions (no ATTACH, no writes, no schema changes, no transactions),
 //! `query_only` is on, double-quoted strings are identifiers only, value sizes are limited, every
 //! query runs under a time limit and the SQLite heap under a hard limit.
 
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use hh_core::normalize::{iso, ColRole, Dtype, Normalized, Out};
+use hh_core::normalize::{iso, ColRole, Dtype, Normalized, Out, Table};
 use rusqlite::config::DbConfig;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use rusqlite::limits::Limit;
 use rusqlite::types::{Value, ValueRef};
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 use crate::catalog::sql_names;
 use crate::entity::{self, Entity};
 use crate::text::{num, quote_ident, short};
 
+/// The error of a query stopped by [`Db::set_cancel`]'s flag.
+pub const CANCELLED: &str = "query cancelled";
 /// Default per-query time limit.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2);
 /// Rows counted past the displayed ones before the count is given as "more than".
@@ -46,6 +53,8 @@ pub struct Db {
     pub skipped_columns: Vec<(String, usize)>,
     /// (table number, its entity columns): each adds `<col>_id` and `<col>_name` to the views.
     pub entities: Vec<(usize, Vec<Entity>)>,
+    /// Set from another thread to stop the running query.
+    cancel: Arc<AtomicBool>,
 }
 
 /// One SQL column of a table: a normalized column, or the ID / name part of entity column k.
@@ -94,107 +103,181 @@ impl Db {
     pub fn load(norm: &Normalized) -> rusqlite::Result<Db> {
         set_heap_limit(0);
         let conn = Connection::open_in_memory()?;
-        conn.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=MEMORY;")?;
-        let mut skipped_columns = Vec::new();
-        let mut entities = Vec::new();
-        let tx = conn.unchecked_transaction()?;
-        for t in &norm.tables {
-            let names = sql_names(t);
-            // Columns to load: all special ones, data/group columns up to SQLite's limit.
-            let mut keep: Vec<usize> = Vec::new();
-            let mut skipped = 0;
-            for (i, c) in t.columns.iter().enumerate() {
-                let special = matches!(c.role, ColRole::SrcRow | ColRole::RowType);
-                if special || keep.len() < MAX_SQL_COLUMNS {
-                    keep.push(i);
-                } else {
-                    skipped += 1;
-                }
-            }
-            if skipped > 0 {
-                skipped_columns.push((t.id(), skipped));
-            }
-            let id = t.id();
-            let all = format!("{id}_all");
-            let has_type = t.columns.iter().any(|c| c.role == ColRole::RowType);
-            // Entity columns get their ID and name parts right after them.
-            let ents: Vec<Entity> = entity::detect(t).into_iter().filter(|e| keep.contains(&e.col)).collect();
-            let mut slots: Vec<Slot> = Vec::with_capacity(keep.len() + 2 * ents.len());
-            for &i in &keep {
-                slots.push(Slot::Col(i));
-                if let Some(k) = ents.iter().position(|e| e.col == i) {
-                    slots.push(Slot::Id(k));
-                    slots.push(Slot::Name(k));
-                }
-            }
-            let slot_name = |s: &Slot| match *s {
-                Slot::Col(i) => names[i].clone(),
-                Slot::Id(k) => ents[k].id_col.clone(),
-                Slot::Name(k) => ents[k].name_col.clone(),
-            };
-            let defs: Vec<String> = slots
-                .iter()
-                .map(|s| {
-                    let ty = if let Slot::Col(i) = *s { sql_type(t.columns[i].dtype) } else { "TEXT" };
-                    format!("{} {ty}", quote_ident(&slot_name(s)))
-                })
-                .collect();
-            let base = if has_type { all.clone() } else { id.clone() };
-            tx.execute_batch(&format!("CREATE TABLE {} ({})", quote_ident(&base), defs.join(", ")))?;
-            {
-                let marks = vec!["?"; slots.len()].join(",");
-                let mut ins = tx.prepare(&format!("INSERT INTO {} VALUES ({marks})", quote_ident(&base)))?;
-                let mut row: Vec<Value> = Vec::with_capacity(slots.len());
-                let mut parts: Vec<(Option<String>, Option<String>)> = vec![(None, None); ents.len()];
-                for r in 0..t.rows() {
-                    row.clear();
-                    for (k, e) in ents.iter().enumerate() {
-                        parts[k] = match t.columns[e.col].values.get(r) {
-                            Some(Out::Text(s)) => entity::derived(s),
-                            _ => (None, None),
-                        };
-                    }
-                    for s in &slots {
-                        row.push(match *s {
-                            Slot::Col(i) => {
-                                let c = &t.columns[i];
-                                c.values.get(r).map_or(Value::Null, |v| sql_value(v, c.dtype))
-                            }
-                            Slot::Id(k) => parts[k].0.take().map_or(Value::Null, Value::Text),
-                            Slot::Name(k) => parts[k].1.take().map_or(Value::Null, Value::Text),
-                        });
-                    }
-                    ins.execute(rusqlite::params_from_iter(row.iter()))?;
-                }
-            }
-            if has_type {
-                let cols: Vec<String> = slots
-                    .iter()
-                    .filter(|s| !matches!(s, Slot::Col(i) if t.columns[*i].role == ColRole::RowType))
-                    .map(|s| quote_ident(&slot_name(s)))
-                    .collect();
-                tx.execute_batch(&format!(
-                    "CREATE VIEW {} AS SELECT {} FROM {} WHERE \"_row_type\" = 'data'",
-                    quote_ident(&id),
-                    cols.join(", "),
-                    quote_ident(&all)
-                ))?;
-            } else {
-                tx.execute_batch(&format!(
-                    "CREATE VIEW {} AS SELECT *, 'data' AS \"_row_type\" FROM {}",
-                    quote_ident(&all),
-                    quote_ident(&id)
-                ))?;
-            }
-            if !ents.is_empty() {
-                entities.push((t.n, ents));
-            }
-        }
-        tx.commit()?;
+        let (skipped_columns, entities) = fill(&conn, norm)?;
         lock_down(&conn)?;
         set_heap_limit(memory_used() + HEAP_HEADROOM);
-        Ok(Db { conn, skipped_columns, entities })
+        Ok(Db { conn, skipped_columns, entities, cancel: Arc::default() })
     }
+
+    /// Writes every table of `norm` into a new database file (the disk cache's copy); returns
+    /// what [`plan`] returns.
+    pub fn write_file(norm: &Normalized, path: &Path) -> rusqlite::Result<Plan> {
+        let conn = Connection::open(path)?;
+        let plan = fill(&conn, norm)?;
+        conn.close().map_err(|(_, e)| e)?;
+        Ok(plan)
+    }
+
+    /// Opens a database file [`Db::write_file`] wrote, read-only and locked down. Its skipped and
+    /// entity columns come from [`plan`] once the normalized file is at hand.
+    pub fn open_file(path: &Path) -> rusqlite::Result<Db> {
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let conn = Connection::open_with_flags(path, flags)?;
+        // Pages come from the OS file cache (memory-mapped) instead of SQLite's heap.
+        conn.execute_batch("PRAGMA mmap_size = 4294967296;")?;
+        // Fails on a file that is not a database.
+        conn.query_row("SELECT count(*) FROM sqlite_schema", [], |_| Ok(()))?;
+        lock_down(&conn)?;
+        Ok(Db { conn, skipped_columns: Vec::new(), entities: Vec::new(), cancel: Arc::default() })
+    }
+
+    /// A flag that, once set, stops the running query (the caller resets it).
+    pub fn set_cancel(&mut self, flag: Arc<AtomicBool>) {
+        self.cancel = flag;
+    }
+}
+
+/// Columns of `t` that are loaded (all special ones, data/group columns up to SQLite's limit),
+/// how many are left out, and the entity columns among the loaded ones.
+fn table_plan(t: &Table) -> (Vec<usize>, usize, Vec<Entity>) {
+    let (keep, skipped) = kept_columns(t);
+    // Entity columns get their ID and name parts right after them.
+    let ents: Vec<Entity> = entity::detect(t).into_iter().filter(|e| keep.contains(&e.col)).collect();
+    (keep, skipped, ents)
+}
+
+fn kept_columns(t: &Table) -> (Vec<usize>, usize) {
+    let mut keep: Vec<usize> = Vec::new();
+    let mut skipped = 0;
+    for (i, c) in t.columns.iter().enumerate() {
+        let special = matches!(c.role, ColRole::SrcRow | ColRole::RowType);
+        if special || keep.len() < MAX_SQL_COLUMNS {
+            keep.push(i);
+        } else {
+            skipped += 1;
+        }
+    }
+    (keep, skipped)
+}
+
+/// Columns left out per table (table id, count) because SQLite allows at most 2000.
+pub fn skipped_columns(norm: &Normalized) -> Vec<(String, usize)> {
+    norm.tables.iter().map(|t| (t.id(), kept_columns(t).1)).filter(|x| x.1 > 0).collect()
+}
+
+/// Skipped columns (table id, count) and entity columns (table number, entities) of a file.
+pub type Plan = (Vec<(String, usize)>, Vec<(usize, Vec<Entity>)>);
+
+/// What [`Db::load`] reports for `norm`, without loading it.
+pub fn plan(norm: &Normalized) -> Plan {
+    let mut skipped_columns = Vec::new();
+    let mut entities = Vec::new();
+    for t in &norm.tables {
+        let (_, skipped, ents) = table_plan(t);
+        if skipped > 0 {
+            skipped_columns.push((t.id(), skipped));
+        }
+        if !ents.is_empty() {
+            entities.push((t.n, ents));
+        }
+    }
+    (skipped_columns, entities)
+}
+
+/// Creates and fills the tables and views of `norm` in `conn` (one transaction, rows streamed
+/// through a prepared insert).
+fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
+    conn.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=MEMORY;")?;
+    let mut skipped_columns = Vec::new();
+    let mut entities = Vec::new();
+    let tx = conn.unchecked_transaction()?;
+    for t in &norm.tables {
+        let names = sql_names(t);
+        let (keep, skipped, ents) = table_plan(t);
+        if skipped > 0 {
+            skipped_columns.push((t.id(), skipped));
+        }
+        let id = t.id();
+        let all = format!("{id}_all");
+        let has_type = t.columns.iter().any(|c| c.role == ColRole::RowType);
+        let mut slots: Vec<Slot> = Vec::with_capacity(keep.len() + 2 * ents.len());
+        for &i in &keep {
+            slots.push(Slot::Col(i));
+            if let Some(k) = ents.iter().position(|e| e.col == i) {
+                slots.push(Slot::Id(k));
+                slots.push(Slot::Name(k));
+            }
+        }
+        let slot_name = |s: &Slot| match *s {
+            Slot::Col(i) => names[i].clone(),
+            Slot::Id(k) => ents[k].id_col.clone(),
+            Slot::Name(k) => ents[k].name_col.clone(),
+        };
+        let defs: Vec<String> = slots
+            .iter()
+            .map(|s| {
+                let ty = if let Slot::Col(i) = *s { sql_type(t.columns[i].dtype) } else { "TEXT" };
+                format!("{} {ty}", quote_ident(&slot_name(s)))
+            })
+            .collect();
+        let base = if has_type { all.clone() } else { id.clone() };
+        tx.execute_batch(&format!("CREATE TABLE {} ({})", quote_ident(&base), defs.join(", ")))?;
+        {
+            let marks = vec!["?"; slots.len()].join(",");
+            let mut ins = tx.prepare(&format!("INSERT INTO {} VALUES ({marks})", quote_ident(&base)))?;
+            let mut row: Vec<Value> = Vec::with_capacity(slots.len());
+            let mut parts: Vec<(Option<String>, Option<String>)> = vec![(None, None); ents.len()];
+            // B18: one name per ID in `<col>_name`, so grouping by the name does not split an entity.
+            let canon: Vec<_> = ents.iter().map(|e| entity::canonical_names(&t.columns[e.col])).collect();
+            for r in 0..t.rows() {
+                row.clear();
+                for (k, e) in ents.iter().enumerate() {
+                    parts[k] = match t.columns[e.col].values.get(r) {
+                        Some(Out::Text(s)) => entity::derived_canonical(s, &canon[k]),
+                        _ => (None, None),
+                    };
+                }
+                for s in &slots {
+                    row.push(match *s {
+                        Slot::Col(i) => {
+                            let c = &t.columns[i];
+                            c.values.get(r).map_or(Value::Null, |v| sql_value(v, c.dtype))
+                        }
+                        Slot::Id(k) => parts[k].0.take().map_or(Value::Null, Value::Text),
+                        Slot::Name(k) => parts[k].1.take().map_or(Value::Null, Value::Text),
+                    });
+                }
+                ins.execute(rusqlite::params_from_iter(row.iter()))?;
+            }
+        }
+        if has_type {
+            let cols: Vec<String> = slots
+                .iter()
+                .filter(|s| !matches!(s, Slot::Col(i) if t.columns[*i].role == ColRole::RowType))
+                .map(|s| quote_ident(&slot_name(s)))
+                .collect();
+            tx.execute_batch(&format!(
+                "CREATE VIEW {} AS SELECT {} FROM {} WHERE \"_row_type\" = 'data'",
+                quote_ident(&id),
+                cols.join(", "),
+                quote_ident(&all)
+            ))?;
+        } else {
+            tx.execute_batch(&format!(
+                "CREATE VIEW {} AS SELECT *, 'data' AS \"_row_type\" FROM {}",
+                quote_ident(&all),
+                quote_ident(&id)
+            ))?;
+        }
+        if !ents.is_empty() {
+            entities.push((t.n, ents));
+        }
+    }
+    tx.commit()?;
+    Ok((skipped_columns, entities))
+}
+
+impl Db {
 
     /// Runs one read-only statement; returns up to `limit` rows (cells cut to 80 characters) and
     /// the number of rows the query produced.
@@ -212,8 +295,9 @@ impl Db {
         }
         let t0 = Instant::now();
         let deadline = t0 + timeout;
+        let cancel = self.cancel.clone();
         self.conn
-            .progress_handler(1000, Some(move || Instant::now() > deadline))
+            .progress_handler(1000, Some(move || cancel.load(Ordering::Relaxed) || Instant::now() > deadline))
             .map_err(|e| e.to_string())?;
         let mut stmt = self.conn.prepare(q).map_err(|e| match e {
             rusqlite::Error::MultipleStatement => "only one statement per query".to_string(),
@@ -245,6 +329,7 @@ impl Db {
                     }
                 }
                 Ok(None) => break,
+                Err(e) if is_interrupt(&e) && self.cancel.load(Ordering::Relaxed) => return Err(CANCELLED.into()),
                 Err(e) if is_interrupt(&e) && !rows_out.is_empty() => {
                     complete = false;
                     break;
@@ -352,7 +437,7 @@ fn set_heap_limit(bytes: i64) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use hh_core::normalize::{Column, Normalized, RowType, Table, Transforms};
     use hh_core::Rect;

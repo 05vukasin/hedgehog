@@ -161,29 +161,54 @@ def excelmcp(workdir: Path) -> Mcp:
 
 
 class Pandas:
-    """One tool, python(code): model-written code in the sandbox (2 GB, 60 s, no network, only the file)."""
+    """One tool, python(code): model-written code in a stateful Python process in the sandbox
+    (2 GB, 60 s per call, no network, only the file), like a notebook or a code interpreter."""
+
+    LIMIT = 60
 
     def __init__(self, workdir: Path):
         self.workdir = workdir
         self.specs = [{"type": "function", "function": {
             "name": "python",
-            "description": "Run Python 3.12 code in the working folder and return what it prints (stdout and stderr, "
-                           "max 8000 characters). pandas, numpy, openpyxl, python-calamine and xlrd are installed. Each call "
-                           "is a fresh process (60 s, 2 GB); files you write in the working folder persist between calls.",
+            "description": "Run Python 3.12 code in a persistent session (like a notebook cell) in the working folder. "
+                           "Variables and imports persist between calls; the value of a final expression is shown, as is "
+                           "everything printed (max 8000 characters). pandas, numpy, openpyxl, python-calamine and xlrd are "
+                           "installed. Limits: 60 s per call, 2 GB memory, no network.",
             "parameters": {"type": "object", "properties": {"code": {"type": "string", "description": "Python source"}},
                            "required": ["code"]}}}]
+        self.start()
+
+    def start(self) -> None:
+        cmd = sandbox(self.workdir, python_ro(PANDAS_PY) + [HERE], mem="2147483648") + [
+            str(PANDAS_PY), "-I", str(HERE / "py_kernel.py"), str(self.LIMIT)]
+        self.p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        self.q: queue.Queue = queue.Queue()
+        threading.Thread(target=lambda: [self.q.put(l) for l in self.p.stdout] + [self.q.put(None)], daemon=True).start()
 
     def call(self, name: str, args: dict) -> tuple[str, bool]:
         if name != "python" or "code" not in args:
             return "error: the only tool is python(code)", True
-        cmd = sandbox(self.workdir, python_ro(PANDAS_PY), mem="2147483648", secs=60) + [str(PANDAS_PY), "-I", "-"]
-        p = subprocess.run(cmd, input=args["code"], capture_output=True, text=True)
-        out = p.stdout + (("\n" if p.stdout else "") + p.stderr if p.stderr else "")
-        if p.returncode in (-9, 137):
-            out += "\n[killed: time (60 s) or memory (2 GB) limit]"
-        elif p.returncode and not out.strip():
-            out = f"[exit code {p.returncode}]"
-        return clip(out, PANDAS_MAX_OUT) or "(no output)", p.returncode != 0
+        try:
+            self.p.stdin.write(json.dumps({"code": args["code"]}) + "\n")
+            self.p.stdin.flush()
+            while True:  # the reply is the next JSON line with "out" (model code may print to the real stdout)
+                line = self.q.get(timeout=self.LIMIT + 15)
+                if line is None:
+                    raise EOFError
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(r, dict) and "out" in r:
+                    return clip(r["out"], PANDAS_MAX_OUT) or "(no output)", r["error"]
+        except (queue.Empty, EOFError, BrokenPipeError):
+            self.close()
+            self.start()
+            return "[the Python process was killed (time or memory limit) and restarted; variables are lost]", True
+
+    def close(self) -> None:
+        self.p.kill()
+        self.p.wait()
 
 
 def markdown(root: Path, rel: str, model: str, budget: int, cache: Path) -> tuple[str, dict]:

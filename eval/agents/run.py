@@ -16,7 +16,9 @@ Arms (same prompt text for all):
 Each run appends one record to results.jsonl (metrics, answer, automatic checks) and writes the
 answer to answers/<case>.<arm>.md; RESULTS.md shows the latest run per case and arm. Checks in
 cases.json: `num` (a number in the answer within `tol`, relative), `pct_range` (a percentage in
-[lo, hi]), `text_any` (any of the strings), `judge` (graded by a person with --grade).
+[lo, hi]; with `abs`, of the absolute value), `text_any` (any of the strings), `judge` (graded by a person
+with --grade). A case may name several files (`files`; the prompt then starts `Files: a, b`) and a `root`
+folder under $HEDGEHOG_DATA other than irregular/ (e.g. "clean"); check_cases.py validates cases.json.
 Run the whole script under scripts/run_capped.sh: Claude's pandas on a 4.5M-cell sheet is heavy.
 """
 
@@ -74,7 +76,8 @@ def first_json(text: str):
     raise ValueError("no JSON in output:\n" + text[-2000:])
 
 
-def command(arm: str, prompt: str, args) -> tuple[list[str], dict]:
+def command(arm: str, prompt: str, args, root: Path | None = None) -> tuple[list[str], dict]:
+    root = root or args.root
     env = dict(os.environ)
     if arm == "hedgehog":
         env.update({k: v for k, v in dotenv().items() if k.endswith("_API_KEY")})
@@ -90,7 +93,7 @@ def command(arm: str, prompt: str, args) -> tuple[list[str], dict]:
         # user's other MCP servers out (it also drops the plugin's own server, hence the explicit config).
         server = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]["hedgehog"]
         server = {**server, "command": args.hedgehog,
-                  "args": [str(args.root) if a == "${CLAUDE_PROJECT_DIR}" else a for a in server["args"]]}
+                  "args": [str(root) if a == "${CLAUDE_PROJECT_DIR}" else a for a in server["args"]]}
         cfg = OUT / "runs" / "mcp.json"
         cfg.parent.mkdir(exist_ok=True)
         cfg.write_text(json.dumps({"mcpServers": {"hedgehog": server}}))
@@ -176,7 +179,7 @@ def check(c: dict, answer: str):
         return any(abs((abs(x) if c.get("abs") else x) - want) <= tol * abs(want) for x in numbers(text))
     if "pct_range" in c:
         lo, hi = c["pct_range"]
-        return any(lo <= x <= hi for x in numbers(answer, pct_only=True))
+        return any(lo <= (abs(x) if c.get("abs") else x) <= hi for x in numbers(answer, pct_only=True))
     if "text_any" in c:
         a = answer.lower()
         return any(t.lower() in a for t in c["text_any"])
@@ -233,7 +236,7 @@ def report(cases: list[dict]) -> None:
             T.append(f"| {case['id']} | {arm} | {rs[-1]['date'][:10]} | {rs[-1]['model'] or '–'} | {len(rs)} | {secs} | {toks} | {cost} | {tc} | {sc} |")
         if not rows:
             continue
-        detail += ["", f"## {case['id']}: {case['title']}", "", "File: " + ", ".join(f"`{f}`" for f in swap.case_files(case)), "", "> " + case["prompt"].replace("\n", "\n> "), "",
+        detail += ["", f"## {case['id']}: {case['title']}", "", ("Files: " if len(case.get("files") or []) > 1 else "File: ") + ", ".join(f"`{f}`" for f in case.get("files") or [case["file"]]) + (f" (under `{case['root']}/`)" if case.get("root") else ""), "", "> " + case["prompt"].replace("\n", "\n> "), "",
                    "| Check | " + " | ".join(a for a, _ in rows) + " |", "|---|" + "---|" * len(rows)]
         for c in case["checks"]:
             cells = []
@@ -350,9 +353,22 @@ def done_before(case: dict) -> bool:
         return False
     for line in RESULTS.read_text().splitlines():
         r = json.loads(line)
-        if r["case"] == case["id"] and r["arm"] == "claude" and r["file"] == ", ".join(swap.case_files(case)) and r["prompt"] == case["prompt"]:
+        if r["case"] == case["id"] and r["arm"] == "claude" and r["file"] == case["file"] and r["prompt"] == case["prompt"]:
             return True
     return False
+
+
+def case_prompt(case: dict) -> str:
+    """What every agent gets: the file path(s) relative to the case root, then the questions."""
+    files = case.get("files") or [case["file"]]
+    head = f"File: {files[0]}" if len(files) == 1 else "Files: " + ", ".join(files)
+    return f"{head}\n\n{case['prompt']}"
+
+
+def case_root(case: dict, args) -> Path:
+    """The folder the agent runs in: --root (default $HEDGEHOG_DATA/irregular), or the case's own `root`
+    (a folder under $HEDGEHOG_DATA, e.g. "clean")."""
+    return args.root.parent / case["root"] if case.get("root") else args.root
 
 
 # ---------- main ----------
@@ -403,11 +419,12 @@ def main() -> None:
     (OUT / "runs").mkdir(exist_ok=True)
     batch = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     for case in (c for c in cases if not want or c["id"] in want):
-        prompt = swap.case_prompt(case)
+        prompt = case_prompt(case)
+        root = case_root(case, args)
         for arm in [a for a in args.arms.split(",") for _ in range(args.repeat)]:
             if arm == "claude" and not args.rerun_claude and done_before(case):
                 print(f"{case['id']}: claude answer already recorded for this file and prompt; reusing it (--rerun-claude to run again)")
-                continue
+                continue  # (not break: the arms after claude still run)
             t0 = time.time()
             if arm.startswith("swap-"):  # same minimal loop and model, only the tools differ (swap/)
                 key = os.environ.get("OPENAI_API_KEY") or dotenv().get("OPENAI_API_KEY")
@@ -415,13 +432,13 @@ def main() -> None:
                     raise SystemExit("swap arms need OPENAI_API_KEY (environment or hedgehog/.env)")
                 run = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{case['id']}-{arm}"
                 try:
-                    m = swap.run_arm(arm, case, args.root, OUT, run, key, args.swap_model, args.hedgehog, args.swap_md_tokens)
+                    m = swap.run_arm(arm, case, prompt, root, OUT, run, key, args.swap_model, args.hedgehog, args.swap_md_tokens)
                 except Exception as e:  # e.g. the markdown conversion failed; the trace is in runs/
                     print(f"{run}: failed ({e.__class__.__name__}: {e})")
                     continue
             else:
-                cmd, env = command(arm, prompt, args)
-                p = subprocess.run(cmd, cwd=swap.case_root(case, args.root), env=env, capture_output=True, text=True, timeout=args.timeout)
+                cmd, env = command(arm, prompt, args, root)
+                p = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=args.timeout)
                 stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
                 run = f"{stamp}-{case['id']}-{arm}"
                 (OUT / "runs" / f"{run}.out").write_text(p.stdout + "\n--- stderr ---\n" + p.stderr[-20000:])
@@ -432,7 +449,7 @@ def main() -> None:
                     continue
             m["wall_seconds"] = round(time.time() - t0, 1)
             rec = {"run": run, "batch": batch, "date": datetime.now(timezone.utc).isoformat(timespec="seconds"), "case": case["id"], "arm": arm,
-                   "file": ", ".join(swap.case_files(case)), "prompt": case["prompt"], **m,
+                   "file": case["file"], "prompt": case["prompt"], **m,
                    "checks": {c["id"]: check(c, m["answer"]) for c in case["checks"] if not c.get("judge")}}
             with RESULTS.open("a") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")

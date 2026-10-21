@@ -14,7 +14,8 @@
           "Infraestruturas de Portugal",
           "Infraestruturas",
           "503933813"
-        ]
+        ],
+        "ref_sql": "SELECT SUM(precoContratual) FROM T1 WHERE adjudicante_id = '503933813'"
       },
       {
         "id": "second-body",
@@ -24,7 +25,8 @@
         "near": [
           "Metro do Porto",
           "503278602"
-        ]
+        ],
+        "ref_sql": "SELECT SUM(precoContratual) FROM T1 WHERE adjudicante_id = '503278602'"
       },
       {
         "id": "variants",
@@ -47,43 +49,50 @@
         "pct_range": [
           8,
           14
-        ]
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(v) / (SELECT SUM(precoContratual) FROM T1) FROM (SELECT SUM(precoContratual) v FROM T1 GROUP BY COALESCE(adjudicatarios_id, adjudicatarios_name) ORDER BY v DESC LIMIT 10)"
       },
       {
         "id": "ad-rg-count",
         "desc": "Ajuste Direto Regime Geral: 78,349 contracts (±0.2 %)",
         "num": 78349,
-        "tol": 0.002
+        "tol": 0.002,
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE tipoprocedimento = 'Ajuste Direto Regime Geral'"
       },
       {
         "id": "ad-rg-value",
         "desc": "Ajuste Direto Regime Geral: €2.41 bn",
         "num": 2410000000.0,
-        "tol": 0.03
+        "tol": 0.03,
+        "ref_sql": "SELECT SUM(precoContratual) FROM T1 WHERE tipoprocedimento = 'Ajuste Direto Regime Geral'"
       },
       {
         "id": "cp-count",
         "desc": "Concurso público: 17,408 contracts",
         "num": 17408,
-        "tol": 0.001
+        "tol": 0.001,
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE tipoprocedimento = 'Concurso público'"
       },
       {
         "id": "cp-value",
         "desc": "Concurso público: €5.48 bn",
         "num": 5480000000.0,
-        "tol": 0.02
+        "tol": 0.02,
+        "ref_sql": "SELECT SUM(precoContratual) FROM T1 WHERE tipoprocedimento = 'Concurso público'"
       },
       {
         "id": "jan",
         "desc": "January: 16,154 contracts (±0.2 %)",
         "num": 16154,
-        "tol": 0.002
+        "tol": 0.002,
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE strftime('%m', dataCelebracaoContrato) = '01'"
       },
       {
         "id": "apr",
         "desc": "April: 10,682 contracts (±0.2 %)",
         "num": 10682,
-        "tol": 0.002
+        "tol": 0.002,
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE strftime('%m', dataCelebracaoContrato) = '04'"
       },
       {
         "id": "covid",
@@ -98,7 +107,9 @@
       "B4",
       "B5",
       "B9"
-    ]
+    ],
+    "domain": "register: procurement",
+    "size": "4.5M cells"
   },
   {
     "id": "at-pension",
@@ -110,31 +121,37 @@
         "id": "total-2024",
         "desc": "total recipients 2024: 190,423 (the 'Gesamt' row)",
         "num": 190423,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT \"2024\" FROM T1_all WHERE Richtsatz = 'Gesamt' AND _row_type = 'total'"
       },
       {
         "id": "total-2025",
         "desc": "total recipients 2025: 189,537",
         "num": 189537,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT \"2025\" FROM T1_all WHERE Richtsatz = 'Gesamt' AND _row_type = 'total'"
       },
       {
         "id": "avg-single",
         "desc": "average 2025, single: €403.19",
         "num": 403.19,
-        "tol": 0.0005
+        "tol": 0.0005,
+        "ref_sql": "SELECT \"2025\" FROM T1_all WHERE \"group\" = 'Durchschnittshöhe in Euro' AND Richtsatz = 'Alleinstehend'"
       },
       {
         "id": "avg-married",
         "desc": "average 2025, married: €594.20",
         "num": 594.2,
-        "tol": 0.0005
+        "tol": 0.0005,
+        "ref_sql": "SELECT \"2025\" FROM T1_all WHERE \"group\" = 'Durchschnittshöhe in Euro' AND Richtsatz = 'Verheiratet ***'"
       }
     ],
     "backlog": [
       "B6",
       "B7"
-    ]
+    ],
+    "domain": "public statistics: social",
+    "size": "244 cells"
   },
   {
     "id": "enron-henry-hub",
@@ -146,45 +163,52 @@
         "id": "sea-robin",
         "desc": "SEA ROBIN 123,367",
         "num": 123367,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT \"MTD Avg / 2002-02-05\" FROM T1 WHERE col_B = 'Receipts HH' AND col_C = 'SEA ROBIN'"
       },
       {
         "id": "ngpl",
         "desc": "NGPL 105,538",
         "num": 105538,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT \"MTD Avg / 2002-02-05\" FROM T1 WHERE col_B = 'Receipts HH' AND col_C = 'NGPL'"
       },
       {
         "id": "mainline",
         "desc": "MAINLINE 100,733",
         "num": 100733,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT \"MTD Avg / 2002-02-05\" FROM T1 WHERE col_B = 'Receipts HH' AND col_C = 'MAINLINE'"
       },
       {
         "id": "receipts",
         "desc": "total receipts 424,772",
         "num": 424772,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT SUM(\"MTD Avg / 2002-02-05\") FROM T1 WHERE col_B = 'Receipts HH'"
       },
       {
         "id": "deliveries",
         "desc": "total deliveries 214,246 (shown as −214,246)",
         "num": 214246,
         "tol": 0.0001,
-        "abs": true
+        "abs": true,
+        "ref_sql": "SELECT SUM(\"MTD Avg / 2002-02-05\") FROM T1 WHERE col_B = 'Deliveries HH'"
       },
       {
         "id": "net",
         "desc": "net flow +210,526",
         "num": 210526,
         "tol": 0.0001,
-        "abs": true
+        "abs": true,
+        "ref_sql": "SELECT SUM(\"MTD Avg / 2002-02-05\") FROM T1"
       },
       {
         "id": "jan-max",
         "desc": "highest January receipts: 606,356",
         "num": 606356,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT \"Wed / 2002-01-23\" FROM T3_all WHERE _src_row = 51"
       },
       {
         "id": "jan-day",
@@ -203,7 +227,9 @@
     ],
     "backlog": [
       "B8"
-    ]
+    ],
+    "domain": "energy: gas flows",
+    "size": "5k cells, 7 tables"
   },
   {
     "id": "de-truck-toll",
@@ -215,7 +241,8 @@
         "id": "max-2023",
         "desc": "highest unadjusted 2023 value: 153.0",
         "num": 153.0,
-        "tol": 0.0001
+        "tol": 0.0001,
+        "ref_sql": "SELECT MAX(unbereinigt) FROM T3 WHERE Datum LIKE '2023%'"
       },
       {
         "id": "max-date",
@@ -233,18 +260,1813 @@
         "id": "ksb-2023",
         "desc": "KSB average 2023: 95.61",
         "num": 95.61,
-        "tol": 0.0006
+        "tol": 0.0006,
+        "ref_sql": "SELECT AVG(\"Kalender- und saisonbereinigt (KSB)\") FROM T3 WHERE Datum LIKE '2023%'"
       },
       {
         "id": "ksb-2024",
         "desc": "KSB average 2024: 94.92",
         "num": 94.92,
-        "tol": 0.0006
+        "tol": 0.0006,
+        "ref_sql": "SELECT AVG(\"Kalender- und saisonbereinigt (KSB)\") FROM T3 WHERE Datum LIKE '2024%'"
       },
       {
         "id": "direction",
         "desc": "says it went down",
         "judge": true
+      }
+    ],
+    "backlog": [],
+    "domain": "public statistics: transport",
+    "size": "144k cells, 9 sheets"
+  },
+  {
+    "id": "enron-om-2plants",
+    "title": "Two Enron peaker plants' draft 2001 O&M budgets (multi-file; monthly columns, subtotals and totals)",
+    "domain": "finance: budget",
+    "size": "2 × ~640 cells",
+    "file": "enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx",
+    "files": [
+      "enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx",
+      "enron/benjamin_rogers__1117__Wheatland 01 O&M Budget.xlsx"
+    ],
+    "prompt": "These are the draft 2001 operations & maintenance budgets of two Enron power plants, Gleason and Wheatland.\nWhat is each plant's total 2001 budget (all expenses, including owner's expenses and taxes), and what is the total for both plants together?\nWhich plant budgets more for variable O&M, and how much?\nIn which month is Gleason's total expense budget highest, and how much is it?",
+    "checks": [
+      {
+        "id": "gleason-total",
+        "desc": "Gleason total expenses 2001: $2,869,475.84",
+        "num": 2869475.84,
+        "tol": 0.001,
+        "near": [
+          "Gleason"
+        ],
+        "ref_sql": [
+          {
+            "file": "enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx",
+            "sql": "SELECT Total FROM T1_all WHERE col_A = 'Total Expenses'"
+          }
+        ]
+      },
+      {
+        "id": "wheatland-total",
+        "desc": "Wheatland total expenses 2001: $4,452,830",
+        "num": 4452830,
+        "tol": 0.001,
+        "near": [
+          "Wheatland"
+        ],
+        "ref_sql": [
+          {
+            "file": "enron/benjamin_rogers__1117__Wheatland 01 O&M Budget.xlsx",
+            "sql": "SELECT Total FROM T1_all WHERE col_A = 'Total Expenses'"
+          }
+        ]
+      },
+      {
+        "id": "both",
+        "desc": "both plants: $7,322,305.84",
+        "num": 7322305.84,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx",
+            "sql": "SELECT SUM(Total) FROM T1"
+          },
+          {
+            "file": "enron/benjamin_rogers__1117__Wheatland 01 O&M Budget.xlsx",
+            "sql": "SELECT SUM(Total) FROM T1"
+          }
+        ]
+      },
+      {
+        "id": "wheatland-variable",
+        "desc": "Wheatland variable O&M $2,200,688 (Gleason $901,100)",
+        "num": 2200688,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "enron/benjamin_rogers__1117__Wheatland 01 O&M Budget.xlsx",
+            "sql": "SELECT Total FROM T1_all WHERE col_A = 'Subtotal Variable O&M'"
+          }
+        ]
+      },
+      {
+        "id": "gleason-peak",
+        "desc": "Gleason's highest month: May 2001, $260,734.24",
+        "num": 260734.24,
+        "tol": 0.001,
+        "near": [
+          "May"
+        ],
+        "ref_sql": [
+          {
+            "file": "enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx",
+            "sql": "SELECT \"2001-05-01\" FROM T1_all WHERE col_A = 'Total Expenses'"
+          }
+        ]
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "enron-newco-cashflow",
+    "title": "Enron 'Newco' development cash-flow summary (values in $000s, wide year columns, label-less second sheet)",
+    "domain": "finance: cash flow",
+    "size": "~870 cells, 3 sheets",
+    "file": "enron/benjamin_rogers__1058__newco development cash flow.xlsx",
+    "prompt": "This is a development financial summary for 'Newco', a power development company.\nWhat is the total net income of all projects in 2005 and in 2020, in dollars?\nWhat is the total aftertax cash in 2010, in dollars?\nFor the generic 500 MW combined-cycle unit, what are the NPV at 14% (in dollars) and the IRR?",
+    "checks": [
+      {
+        "id": "ni-2005",
+        "desc": "net income 2005: $259.96 M (259,957.9 in $000s)",
+        "num": 259957886.2,
+        "tol": 0.002,
+        "ref_sql": "SELECT \"2005\" * 1000 FROM T1_all WHERE \"group\" = 'Net Income' AND col_B = 'Total'"
+      },
+      {
+        "id": "ni-2020",
+        "desc": "net income 2020: $1.024 bn",
+        "num": 1024037236.6,
+        "tol": 0.003,
+        "ref_sql": "SELECT SUM(\"2020\") * 1000 FROM T1 WHERE \"group\" = 'Net Income'"
+      },
+      {
+        "id": "atc-2010",
+        "desc": "aftertax cash 2010: $362.13 M",
+        "num": 362129577.9,
+        "tol": 0.002,
+        "ref_sql": "SELECT SUM(\"2010\") * 1000 FROM T1 WHERE \"group\" = 'Aftertax Cash'"
+      },
+      {
+        "id": "npv",
+        "desc": "NPV @ 14%: $4.25 M (4,254.7 in $000s)",
+        "num": 4254691.3,
+        "tol": 0.01,
+        "ref_sql": "SELECT col_C * 1000 FROM T2_all WHERE col_B = 'NPV @ 14%'"
+      },
+      {
+        "id": "irr",
+        "desc": "IRR 14.5 %",
+        "pct_range": [
+          14.4,
+          14.6
+        ],
+        "ref_sql": "SELECT col_C * 100 FROM T2_all WHERE col_B = 'IRR'"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "enron-deals-pl",
+    "title": "Enron gas desk deal log (18 deals; trader name variants; catalog wrongly calls the 'Sumas' rows totals)",
+    "domain": "finance: trading P&L",
+    "size": "~230 cells",
+    "file": "enron/barry_tycholiz__889__June 1 P&L.xlsx",
+    "prompt": "This is a log of gas deals done since April 1, 2001.\nWhat is the total origination across all deals?\nWhich trader generated the most origination, and how much?\nHow much origination came from physical deals and how much from financial deals?\nWhich delivery location brought the most origination, and how much?",
+    "checks": [
+      {
+        "id": "total",
+        "desc": "total origination $135,666.48 (all 18 rows, including the 'Sumas' ones)",
+        "num": 135666.48,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(\"Total Orig\") FROM T1_all"
+      },
+      {
+        "id": "mckay",
+        "desc": "McKay $78,653.38 ('Mc Kay' + 'McKay' merged)",
+        "num": 78653.38,
+        "tol": 0.001,
+        "near": [
+          "McKay",
+          "Mc Kay"
+        ],
+        "ref_sql": "SELECT SUM(\"Total Orig\") FROM T1_all WHERE REPLACE(Trader, ' ', '') = 'McKay'"
+      },
+      {
+        "id": "phys",
+        "desc": "physical $66,089.60",
+        "num": 66089.6,
+        "tol": 0.001,
+        "near": [
+          "phys"
+        ],
+        "ref_sql": "SELECT SUM(\"Total Orig\") FROM T1_all WHERE \"Phys/Fin\" = 'Phys'"
+      },
+      {
+        "id": "fin",
+        "desc": "financial $69,576.88",
+        "num": 69576.88,
+        "tol": 0.001,
+        "near": [
+          "fin"
+        ],
+        "ref_sql": "SELECT SUM(\"Total Orig\") FROM T1_all WHERE \"Phys/Fin\" = 'Fin'"
+      },
+      {
+        "id": "sumas",
+        "desc": "Sumas $77,603.38",
+        "num": 77603.38,
+        "tol": 0.001,
+        "near": [
+          "Sumas"
+        ],
+        "ref_sql": "SELECT SUM(\"Total Orig\") FROM T1_all WHERE Location = 'Sumas'"
+      },
+      {
+        "id": "variants",
+        "desc": "treats 'Mc Kay' and 'McKay' as one trader",
+        "judge": true
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "enron-mdea-pl",
+    "title": "Enron/MDEA profit-sharing report (14 daily sheets, stacked day-ahead and real-time blocks; layout shifts from May 10, catalog loses the May 12–14 profit columns)",
+    "domain": "energy: trading P&L",
+    "size": "12k cells, 14 sheets, 32 tables",
+    "file": "enron/craig_dean__4381__MDEA P&L Report.xlsx",
+    "prompt": "This is the MDEA profit-sharing report for May 1–14, 2001, one sheet per day.\nFor the day-ahead transactions only: what is EPMI's total net profit and MDEA's total net savings over the 14 days?\nOn which day were MDEA's day-ahead savings largest, and how much were they?",
+    "checks": [
+      {
+        "id": "epmi",
+        "desc": "EPMI day-ahead profit: $44,058.18 (sum of S32 on the 14 sheets)",
+        "num": 44058.18,
+        "tol": 0.002,
+        "ref_cells": [
+          "May1!S32",
+          "May2!S32",
+          "May3!S32",
+          "May4!S32",
+          "May5!S32",
+          "May6!S32",
+          "May7!S32",
+          "May8!S32",
+          "May9!S32",
+          "May10!S32",
+          "May11!S32",
+          "May12!S32",
+          "May13!S32",
+          "May14!S32"
+        ]
+      },
+      {
+        "id": "mdea",
+        "desc": "MDEA day-ahead savings: $127,882.48 (sum of T32)",
+        "num": 127882.48,
+        "tol": 0.002,
+        "ref_cells": [
+          "May1!T32",
+          "May2!T32",
+          "May3!T32",
+          "May4!T32",
+          "May5!T32",
+          "May6!T32",
+          "May7!T32",
+          "May8!T32",
+          "May9!T32",
+          "May10!T32",
+          "May11!T32",
+          "May12!T32",
+          "May13!T32",
+          "May14!T32"
+        ]
+      },
+      {
+        "id": "best-day",
+        "desc": "May 5, 2001",
+        "text_any": [
+          "May 5",
+          "5 May",
+          "2001-05-05",
+          "May5",
+          "5/5/2001",
+          "05/05/2001",
+          "5.5.2001"
+        ]
+      },
+      {
+        "id": "best-value",
+        "desc": "MDEA savings on May 5: $15,056.52",
+        "num": 15056.52,
+        "tol": 0.001,
+        "ref_cells": [
+          "May5!T32"
+        ]
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "enron-storage-inventory",
+    "title": "NewPower gas storage inventory valuation (two stacked blocks with subtotals, month-end columns, price rows below)",
+    "domain": "ops: inventory",
+    "size": "~290 cells",
+    "file": "enron/barry_tycholiz__846__NPC Inventory Valuation.xlsx",
+    "prompt": "This is NewPower's gas storage inventory valuation by month-end (pipeline storage and LDC/virtual storage).\nAt which month-end is total storage inventory highest, and how much is it?\nAt the end of October 2001, how much is held in Columbia Gas (COH) pipeline storage in total, and how much in LDC storage?\nWhat is the end-of-October inventory worth at the current NYMEX price and at the winter NYMEX price?",
+    "checks": [
+      {
+        "id": "peak",
+        "desc": "peak total volumes 12,427,743",
+        "num": 12427743,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"Inventory as of: / 2001-10-31\" FROM T2_all WHERE \"LDC / Virtual Storage / Description\" = 'Total Volumes'"
+      },
+      {
+        "id": "peak-month",
+        "desc": "end of October 2001",
+        "text_any": [
+          "October 31",
+          "Oct 31",
+          "31 Oct",
+          "2001-10-31",
+          "10/31",
+          "end of October",
+          "October 2001",
+          "Oct 2001",
+          "Oct-01",
+          "October-end"
+        ]
+      },
+      {
+        "id": "coh",
+        "desc": "COH pipeline storage end of October: 8,285,615 (COH + COH (AES))",
+        "num": 8285615,
+        "tol": 0.001,
+        "near": [
+          "COH",
+          "Columbia"
+        ],
+        "ref_sql": "SELECT SUM(\"Inventory as of: / 2001-10-31\") FROM T1 WHERE \"Pipeline Storage / LDC\" LIKE 'COH%'"
+      },
+      {
+        "id": "ldc",
+        "desc": "LDC storage end of October: 2,340,524",
+        "num": 2340524,
+        "tol": 0.001,
+        "near": [
+          "LDC"
+        ],
+        "ref_sql": "SELECT SUM(\"Inventory as of: / 2001-10-31\") FROM T2"
+      },
+      {
+        "id": "value-current",
+        "desc": "value at current NYMEX ($3.42): $42,502,881",
+        "num": 42502881.06,
+        "tol": 0.001,
+        "ref_cells": [
+          "Sheet1!G32"
+        ]
+      },
+      {
+        "id": "value-winter",
+        "desc": "value at winter NYMEX ($3.745): $46,541,528",
+        "num": 46541527.99,
+        "tol": 0.001,
+        "ref_cells": [
+          "Sheet1!G36"
+        ]
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "at-salzburg-budget",
+    "title": "State of Salzburg 2019 operating budget (3,206 budget lines, expenses and revenues in one amount column)",
+    "domain": "finance: public budget",
+    "size": "67k cells",
+    "file": "eu_at_opendata/013_budget-Operating-statement-szg-position-2019.xls",
+    "prompt": "This is the 2019 operating budget (Ergebnishaushalt) of the Austrian state of Salzburg.\nWhat are total planned expenses and total planned revenues, and does the budget show a surplus or a deficit (how much)?\nWhich function area (Haushaltsgruppe) has the largest expenses, how much, and what share of all expenses is that?\nHow much is planned for personnel expenses?",
+    "checks": [
+      {
+        "id": "expenses",
+        "desc": "expenses €2,641.70 M",
+        "num": 2641698400,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(LVA_2019) FROM T1_all WHERE Aufwand_Ertrag='Aufwand'"
+      },
+      {
+        "id": "revenues",
+        "desc": "revenues €2,771.27 M",
+        "num": 2771271200,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(LVA_2019) FROM T1_all WHERE Aufwand_Ertrag = 'Ertrag'"
+      },
+      {
+        "id": "surplus",
+        "desc": "surplus €129.57 M",
+        "num": 129572800,
+        "tol": 0.005,
+        "ref_sql": "SELECT SUM(CASE WHEN Aufwand_Ertrag = 'Ertrag' THEN LVA_2019 ELSE -LVA_2019 END) FROM T1_all"
+      },
+      {
+        "id": "surplus-word",
+        "desc": "calls it a surplus",
+        "text_any": [
+          "surplus",
+          "Überschuss"
+        ]
+      },
+      {
+        "id": "health",
+        "desc": "Gesundheit (health) €775.41 M",
+        "num": 775411700,
+        "tol": 0.001,
+        "near": [
+          "Gesundheit",
+          "health"
+        ],
+        "ref_sql": "SELECT SUM(LVA_2019) FROM T1_all WHERE Aufwand_Ertrag='Aufwand' AND Haushaltsgruppe_Bezeichnung = 'Gesundheit'"
+      },
+      {
+        "id": "health-share",
+        "desc": "health ≈ 29.4 % of expenses",
+        "pct_range": [
+          29.2,
+          29.5
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN Haushaltsgruppe_Bezeichnung = 'Gesundheit' THEN LVA_2019 END) / SUM(LVA_2019) FROM T1_all WHERE Aufwand_Ertrag='Aufwand'"
+      },
+      {
+        "id": "personnel",
+        "desc": "personnel expenses €894.67 M",
+        "num": 894671900,
+        "tol": 0.001,
+        "near": [
+          "Personal",
+          "personnel",
+          "staff"
+        ],
+        "ref_sql": "SELECT SUM(LVA_2019) FROM T1_all WHERE Aufwand_Ertrag='Aufwand' AND MVAG_EH_3Steller_Bezeichnung = 'Personalaufwand'"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "rs-pancevo-budget",
+    "title": "Pančevo 2020 budget: revenues file + expenditures file (multi-file, Cyrillic headers, several funding sources)",
+    "domain": "finance: public budget",
+    "size": "506 + 17k cells",
+    "root": "clean",
+    "file": "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
+    "files": [
+      "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
+      "data_gov_rs/pancevo_budzet_2020_rashodi.xlsx"
+    ],
+    "prompt": "These two files are the 2020 budget of the city of Pančevo (Serbia): planned revenues and receipts, and planned expenditures.\nWhat are total planned revenues and receipts, and total planned expenditures from all sources? Is the budget balanced?\nHow much of the revenue side comes from taxes, and what share of total revenues and receipts is that?\nHow much of the revenue side is unallocated surplus carried over from earlier years?\nWhich function gets the most money (all sources), and how much?",
+    "checks": [
+      {
+        "id": "revenues",
+        "desc": "revenues and receipts RSD 5,804,251,672",
+        "num": 5804251672,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
+            "sql": "SELECT SUM(\"Средства_из_буџета\") + SUM(\"Средства_из_cопствених_извора\") + SUM(\"Средства_из_осталих_извора\") FROM T1_all"
+          }
+        ]
+      },
+      {
+        "id": "expenditures",
+        "desc": "expenditures all sources RSD 5,804,251,672 (budget 4.81 bn + other 0.99 bn)",
+        "num": 5804251672,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "data_gov_rs/pancevo_budzet_2020_rashodi.xlsx",
+            "sql": "SELECT SUM(\"Укупна_јавна_средства\") FROM T1_all"
+          }
+        ]
+      },
+      {
+        "id": "balanced",
+        "desc": "says revenues and expenditures are equal (balanced), using all sources",
+        "judge": true
+      },
+      {
+        "id": "taxes",
+        "desc": "taxes RSD 3,888,600,000",
+        "num": 3888600000,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
+            "sql": "SELECT SUM(\"Средства_из_буџета\") FROM T1_all WHERE \"Назив_категорије\" = 'Порези'"
+          }
+        ]
+      },
+      {
+        "id": "tax-share",
+        "desc": "taxes ≈ 67.0 % of revenues",
+        "pct_range": [
+          66.8,
+          67.2
+        ],
+        "ref_sql": [
+          {
+            "file": "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
+            "sql": "SELECT 100.0 * SUM(CASE WHEN \"Назив_категорије\" = 'Порези' THEN \"Средства_из_буџета\" END) / SUM(\"Средства_из_буџета\") FROM T1_all"
+          }
+        ]
+      },
+      {
+        "id": "surplus",
+        "desc": "carried-over surplus RSD 946,971,409",
+        "num": 946971409,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
+            "sql": "SELECT SUM(\"Средства_из_буџета\") FROM T1_all WHERE \"Назив_категорије\" = 'Утврђивање резултата пословања'"
+          }
+        ]
+      },
+      {
+        "id": "road",
+        "desc": "road transport (Друмски саобраћај) RSD 1,071,519,412",
+        "num": 1071519412,
+        "tol": 0.001,
+        "near": [
+          "Друмски",
+          "road",
+          "Road"
+        ],
+        "ref_sql": [
+          {
+            "file": "data_gov_rs/pancevo_budzet_2020_rashodi.xlsx",
+            "sql": "SELECT SUM(\"Укупна_јавна_средства\") FROM T1_all WHERE \"Назив_функције\" = 'Друмски саобраћај'"
+          }
+        ]
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "us-superstore",
+    "title": "Superstore orders 2021–2024 (10k order lines, US formats, Returns on a second sheet)",
+    "domain": "sales",
+    "size": "216k cells, 3 sheets",
+    "root": "clean",
+    "file": "superstore/sample_superstore.xls",
+    "prompt": "These are Superstore order lines for 2021–2024, with a separate Returns sheet.\nWhat were total sales, and which region sold the most (how much)?\nBy what percentage did sales grow from 2023 to 2024?\nWhich sub-category lost the most money, and how much?\nWhat share of orders was returned, and how much in sales did those returned orders represent?",
+    "checks": [
+      {
+        "id": "total",
+        "desc": "total sales $2,326,534.36",
+        "num": 2326534.36,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(Sales) FROM T1"
+      },
+      {
+        "id": "west",
+        "desc": "West $739,813.61",
+        "num": 739813.61,
+        "tol": 0.001,
+        "near": [
+          "West"
+        ],
+        "ref_sql": "SELECT SUM(Sales) FROM T1 WHERE Region = 'West'"
+      },
+      {
+        "id": "growth",
+        "desc": "2024 vs 2023: +21.4 %",
+        "pct_range": [
+          21.3,
+          21.6
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN strftime('%Y', \"Order Date\") = '2024' THEN Sales END) / SUM(CASE WHEN strftime('%Y', \"Order Date\") = '2023' THEN Sales END) - 100 FROM T1"
+      },
+      {
+        "id": "tables",
+        "desc": "Tables lost $17,753.21",
+        "num": 17753.21,
+        "tol": 0.001,
+        "near": [
+          "Tables"
+        ],
+        "abs": true,
+        "ref_sql": "SELECT SUM(Profit) FROM T1 WHERE \"Sub-Category\" = 'Tables'"
+      },
+      {
+        "id": "return-share",
+        "desc": "296 of 5,111 orders returned = 5.8 %",
+        "pct_range": [
+          5.7,
+          5.9
+        ],
+        "ref_sql": "SELECT 100.0 * (SELECT COUNT(DISTINCT \"Order ID\") FROM T3) / COUNT(DISTINCT \"Order ID\") FROM T1"
+      },
+      {
+        "id": "returned-sales",
+        "desc": "sales of returned orders $180,504.28",
+        "num": 180504.28,
+        "tol": 0.002,
+        "ref_sql": "SELECT SUM(Sales) FROM T1 WHERE \"Order ID\" IN (SELECT \"Order ID\" FROM T3)"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "ms-financial-sample",
+    "title": "Microsoft financial sample (700 sales rows; 2013 covers only Sep–Dec)",
+    "domain": "sales",
+    "size": "11k cells",
+    "root": "clean",
+    "file": "microsoft/financial_sample.xlsx",
+    "prompt": "This is a sales and profit table by segment, country, product and month.\nWhich country was the most profitable, and what was its profit?\nWhich customer segment loses money overall, and how much?\nWhat was the overall profit margin (profit as a share of net sales)?\nWhich product sold the most units, and how many?\nDid profit grow from 2013 to 2014?",
+    "checks": [
+      {
+        "id": "france",
+        "desc": "France $3,781,020.78",
+        "num": 3781020.78,
+        "tol": 0.001,
+        "near": [
+          "France"
+        ],
+        "ref_sql": "SELECT SUM(Profit) FROM T1 WHERE Country = 'France'"
+      },
+      {
+        "id": "enterprise",
+        "desc": "Enterprise −$614,545.63",
+        "num": 614545.63,
+        "tol": 0.001,
+        "near": [
+          "Enterprise"
+        ],
+        "abs": true,
+        "ref_sql": "SELECT SUM(Profit) FROM T1 WHERE Segment = 'Enterprise'"
+      },
+      {
+        "id": "margin",
+        "desc": "margin 14.2 %",
+        "pct_range": [
+          14.1,
+          14.4
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(Profit) / SUM(Sales) FROM T1"
+      },
+      {
+        "id": "paseo",
+        "desc": "Paseo 338,239.5 units",
+        "num": 338239.5,
+        "tol": 0.001,
+        "near": [
+          "Paseo"
+        ],
+        "ref_sql": "SELECT SUM(\"Units Sold\") FROM T1 WHERE Product = 'Paseo'"
+      },
+      {
+        "id": "partial-year",
+        "desc": "notes that 2013 covers only September–December, so the yearly totals are not comparable (same months: $3.88 M → $5.44 M)",
+        "judge": true
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "nw-orders",
+    "title": "Northwind orders + order lines (multi-file CSV; revenue needs a join across the two files)",
+    "domain": "sales/ops",
+    "size": "11.6k + 10.8k cells",
+    "root": "clean",
+    "file": "northwind/orders.csv",
+    "files": [
+      "northwind/orders.csv",
+      "northwind/order_details.csv"
+    ],
+    "prompt": "These are Northwind's orders and order lines (unit price, quantity, discount).\nHow many orders were placed in 1997, and what was their net revenue (unit price × quantity, less discount)?\nWhich employee (employee ID) brought in the most 1997 revenue, and how much?\nHow many orders were shipped after their required date?",
+    "checks": [
+      {
+        "id": "orders-1997",
+        "desc": "408 orders",
+        "num": 408,
+        "tol": 0,
+        "ref_sql": [
+          {
+            "file": "northwind/orders.csv",
+            "sql": "SELECT COUNT(*) FROM T1 WHERE orderDate LIKE '1997%'"
+          }
+        ]
+      },
+      {
+        "id": "revenue-1997",
+        "desc": "net revenue $617,085.20 (orderID 10400–10807 = the 1997 orders)",
+        "num": 617085.2,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "northwind/order_details.csv",
+            "sql": "SELECT SUM(unitPrice * quantity * (1 - discount)) FROM T1 WHERE orderID BETWEEN 10400 AND 10807"
+          }
+        ]
+      },
+      {
+        "id": "employee-4",
+        "desc": "employee 4: $128,809.79",
+        "num": 128809.79,
+        "tol": 0.001,
+        "near": [
+          "employee",
+          "ID 4"
+        ],
+        "ref_sql": [
+          {
+            "file": "northwind/order_details.csv",
+            "sql": "SELECT ROUND(SUM(unitPrice*quantity*(1-discount)),2) v FROM T1 WHERE orderID IN (10403,10417,10418,10419,10426,10427,10430,10431,10440,10447,10448,10451,10454,10459,10464,10466,10470,10485,10493,10494,10499,10504,10509,10511,10518,10522,10526,10535,10544,10551,10554,10564,10574,10578,10580,10584,10590,10600,10606,10608,10613,10617,10621,10622,10624,10628,10629,10634,10636,10640,10641,10645,10647,10652,10658,10670,10674,10685,10688,10692,10698,10702,10707,10716,10725,10726,10728,10740,10741,10749,10755,10760,10766,10767,10774,10783,10784,10801,10802,10803,10807)"
+          }
+        ]
+      },
+      {
+        "id": "late",
+        "desc": "37 orders shipped late",
+        "num": 37,
+        "tol": 0,
+        "ref_sql": [
+          {
+            "file": "northwind/orders.csv",
+            "sql": "SELECT COUNT(*) FROM T1 WHERE shippedDate > requiredDate"
+          }
+        ]
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "us-chicago-salaries",
+    "title": "City of Chicago employees and salaries (32k rows; hourly staff have no annual salary)",
+    "domain": "HR: payroll",
+    "size": "199k cells",
+    "root": "clean",
+    "file": "chicago_open_data/employee_salaries.csv",
+    "prompt": "This is the list of City of Chicago employees with their salaries.\nWhich department has the most employees, and how many?\nHow many employees are paid hourly and how many are salaried?\nWhat is the average annual salary of a Police Officer (job title)?\nWho is the highest-paid employee, and what is the salary?\nWhat is the total annual salary bill, and what does that figure leave out?",
+    "checks": [
+      {
+        "id": "police-dept",
+        "desc": "Chicago Police Department 12,221",
+        "num": 12221,
+        "tol": 0,
+        "near": [
+          "Police"
+        ],
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE department = 'CHICAGO POLICE DEPARTMENT'"
+      },
+      {
+        "id": "hourly",
+        "desc": "7,129 hourly",
+        "num": 7129,
+        "tol": 0,
+        "near": [
+          "hourly"
+        ],
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE salary_or_hourly = 'HOURLY'"
+      },
+      {
+        "id": "salaried",
+        "desc": "24,893 salaried",
+        "num": 24893,
+        "tol": 0,
+        "near": [
+          "salar"
+        ],
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE salary_or_hourly = 'SALARY'"
+      },
+      {
+        "id": "po-avg",
+        "desc": "Police Officer average $110,466.50",
+        "num": 110466.5,
+        "tol": 0.001,
+        "ref_sql": "SELECT AVG(annual_salary) FROM T1 WHERE job_titles = 'POLICE OFFICER'"
+      },
+      {
+        "id": "top-name",
+        "desc": "Michael J. McMurray (Commissioner of Aviation)",
+        "text_any": [
+          "MC MURRAY",
+          "McMurray",
+          "Mc Murray"
+        ]
+      },
+      {
+        "id": "top-salary",
+        "desc": "$360,504",
+        "num": 360504,
+        "tol": 0,
+        "ref_sql": "SELECT MAX(annual_salary) FROM T1"
+      },
+      {
+        "id": "salary-bill",
+        "desc": "total $2.89 bn covers salaried staff only; hourly workers (7,129) have only an hourly rate",
+        "judge": true
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "us-nyc-payroll",
+    "title": "NYC citywide payroll extract, FY2014–2025 (100k person-year rows, 2 agencies; NYPD question not answerable)",
+    "domain": "HR: payroll",
+    "size": "1.6M cells",
+    "root": "clean",
+    "file": "nyc_open_data/citywide_payroll_100k.csv",
+    "prompt": "This is an extract of New York City's citywide payroll (one row per employee and fiscal year).\nFor the Administration for Children's Services: how much overtime was paid in fiscal year 2025, and in which fiscal year was overtime highest (how much)?\nWhat was the average base salary of a Child Protective Specialist in FY2015 and in FY2025, and by what percentage did it rise?\nHow much overtime did the NYPD pay in FY2025?",
+    "checks": [
+      {
+        "id": "ot-2025",
+        "desc": "ACS overtime FY2025 $52.45 M",
+        "num": 52445049.66,
+        "tol": 0.002,
+        "ref_sql": "SELECT SUM(total_ot_paid) FROM T1 WHERE agency_name = 'ADMIN FOR CHILDREN''S SVCS' AND fiscal_year = 2025"
+      },
+      {
+        "id": "ot-peak",
+        "desc": "highest: FY2019, $61.34 M",
+        "num": 61342038.11,
+        "tol": 0.002,
+        "near": [
+          "2019"
+        ],
+        "ref_sql": "SELECT SUM(total_ot_paid) FROM T1 WHERE agency_name = 'ADMIN FOR CHILDREN''S SVCS' AND fiscal_year = 2019"
+      },
+      {
+        "id": "cps-2015",
+        "desc": "CPS FY2015 $50,800.58",
+        "num": 50800.58,
+        "tol": 0.002,
+        "ref_sql": "SELECT AVG(base_salary) FROM T1 WHERE title_description = 'CHILD PROTECTIVE SPECIALIST' AND pay_basis = 'per Annum' AND fiscal_year = 2015"
+      },
+      {
+        "id": "cps-2025",
+        "desc": "CPS FY2025 $66,449.96",
+        "num": 66449.96,
+        "tol": 0.002,
+        "ref_sql": "SELECT AVG(base_salary) FROM T1 WHERE title_description = 'CHILD PROTECTIVE SPECIALIST' AND pay_basis = 'per Annum' AND fiscal_year = 2025"
+      },
+      {
+        "id": "cps-rise",
+        "desc": "+30.8 %",
+        "pct_range": [
+          30.6,
+          31.0
+        ],
+        "ref_sql": "SELECT 100.0 * AVG(CASE WHEN fiscal_year = 2025 THEN base_salary END) / AVG(CASE WHEN fiscal_year = 2015 THEN base_salary END) - 100 FROM T1 WHERE title_description = 'CHILD PROTECTIVE SPECIALIST' AND pay_basis = 'per Annum'"
+      },
+      {
+        "id": "nypd",
+        "desc": "says the file has no NYPD rows (only ACS and the Office of Administrative Trials and Hearings), so it cannot answer",
+        "judge": true
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "uk-gender-pay-gap",
+    "title": "UK gender pay gap reports 2024/25 (11k employers; catalog flags 3 'TOTAL …' company names as totals and reads 25 values like 40.805 as 40805)",
+    "domain": "HR: pay",
+    "size": "290k cells",
+    "root": "clean",
+    "file": "uk_gov/gender_pay_gap_2024_25.csv",
+    "prompt": "These are the UK gender pay gap reports for 2024/25, one row per employer.\nHow many employers reported?\nAcross employers, what is the median of the median hourly pay gap?\nWhat share of employers report a median hourly gap in favour of men?\nBy employer size band, what is the average median hourly gap, and which band has the highest?\nHow many reports were submitted after the deadline?",
+    "checks": [
+      {
+        "id": "employers",
+        "desc": "11,314 employers (none of them is a total row)",
+        "num": 11314,
+        "tol": 0,
+        "ref_py": "len(rows)"
+      },
+      {
+        "id": "median",
+        "desc": "median of medians 8.4 %",
+        "num": 8.4,
+        "tol": 0.001,
+        "near": [
+          "median"
+        ],
+        "ref_py": "statistics.median(float(r['DiffMedianHourlyPercent']) for r in rows)"
+      },
+      {
+        "id": "men-share",
+        "desc": "8,770 of 11,314 = 77.5 %",
+        "pct_range": [
+          77.4,
+          77.6
+        ],
+        "ref_py": "100 * sum(float(r['DiffMedianHourlyPercent']) > 0 for r in rows) / len(rows)"
+      },
+      {
+        "id": "band-500",
+        "desc": "highest band: 500 to 999, average 12.06 % (hedgehog's misread values give 42.06)",
+        "num": 12.06,
+        "tol": 0.005,
+        "near": [
+          "500"
+        ],
+        "ref_py": "statistics.mean(float(r['DiffMedianHourlyPercent']) for r in rows if r['EmployerSize'] == '500 to 999')"
+      },
+      {
+        "id": "late",
+        "desc": "764 late reports",
+        "num": 764,
+        "tol": 0,
+        "ref_py": "sum(r['SubmittedAfterTheDeadline'] == 'True' for r in rows)"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "pt-social-report",
+    "title": "Portuguese municipality's 2016 social report (one sheet, 26 stacked tables, M/F/T rows, merged headers)",
+    "domain": "HR: workforce",
+    "size": "3.4k cells, 26 tables",
+    "file": "eu_pt_opendata/012_balanco-social-2016.xls",
+    "prompt": "This is a Portuguese municipality's 2016 'Balanço Social' (annual HR report).\nHow many workers were there at 31 December 2016, and how many of them were women (what share)?\nWhich job group (cargo/carreira) is the largest, and how many workers does it have?\nWhat were total personnel costs in 2016, and what share of that was base pay?\nHow many service providers (prestadores de serviços) were there?",
+    "checks": [
+      {
+        "id": "workers",
+        "desc": "7,478 workers",
+        "num": 7478,
+        "tol": 0,
+        "ref_cells": [
+          "'Balanço Social 2016'!L10"
+        ]
+      },
+      {
+        "id": "women",
+        "desc": "3,245 women",
+        "num": 3245,
+        "tol": 0,
+        "ref_cells": [
+          "'Balanço Social 2016'!L9"
+        ]
+      },
+      {
+        "id": "women-share",
+        "desc": "43.4 %",
+        "pct_range": [
+          43.3,
+          43.5
+        ],
+        "ref_cells": [
+          "'Balanço Social 2016'!L9"
+        ],
+        "ref_scale": 0.013372559507889811
+      },
+      {
+        "id": "tecnico",
+        "desc": "Técnico Superior 2,148 (just above Assistente Operacional 2,138)",
+        "num": 2148,
+        "tol": 0,
+        "near": [
+          "Técnico Superior",
+          "Tecnico Superior",
+          "senior techn"
+        ],
+        "ref_cells": [
+          "'Balanço Social 2016'!E10"
+        ]
+      },
+      {
+        "id": "costs",
+        "desc": "personnel costs €216,259,993.16",
+        "num": 216259993.16,
+        "tol": 0.001,
+        "ref_cells": [
+          "'Balanço Social 2016'!C465"
+        ]
+      },
+      {
+        "id": "base-share",
+        "desc": "base pay 62.6 %",
+        "pct_range": [
+          62.5,
+          62.7
+        ],
+        "ref_cells": [
+          "'Balanço Social 2016'!C460"
+        ],
+        "ref_scale": 4.6240637733681504e-07
+      },
+      {
+        "id": "providers",
+        "desc": "560 service providers",
+        "num": 560,
+        "tol": 0,
+        "ref_cells": [
+          "'Balanço Social 2016'!C35"
+        ]
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "at-cpi",
+    "title": "Austrian consumer price index since 1990 (monthly rows interleaved with 'Ø' annual-average rows; 2026 incomplete)",
+    "domain": "public statistics",
+    "size": "3.6k cells",
+    "file": "eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods",
+    "prompt": "This is Austria's consumer price index (VPI).\nWhat was the annual inflation rate in 2022 and in 2023?\nWhich month had the highest year-on-year inflation, and what was it?\nBy how much did the index (base 2020 = 100) rise from the 2020 annual average to the 2025 annual average?\nWhat was the annual inflation rate for 2026?",
+    "checks": [
+      {
+        "id": "y2022",
+        "desc": "2022: 8.6 % (the official annual average, not the 8.53 mean of monthly rates)",
+        "num": 8.6,
+        "tol": 0.001,
+        "near": [
+          "2022"
+        ],
+        "ref_sql": "SELECT \"% zu Vorjahr\" FROM T1_all WHERE \"Jahr / Monat\" = 'Ø 22'"
+      },
+      {
+        "id": "y2023",
+        "desc": "2023: 7.8 %",
+        "num": 7.8,
+        "tol": 0.001,
+        "near": [
+          "2023"
+        ],
+        "ref_sql": "SELECT \"% zu Vorjahr\" FROM T1_all WHERE \"Jahr / Monat\" = 'Ø 23'"
+      },
+      {
+        "id": "peak",
+        "desc": "peak 11.2 %",
+        "num": 11.2,
+        "tol": 0.001,
+        "ref_sql": "SELECT MAX(\"% zu Vorjahr\") FROM T1_all WHERE \"Jahr / Monat\" NOT LIKE 'Ø%'"
+      },
+      {
+        "id": "peak-month",
+        "desc": "January 2023",
+        "text_any": [
+          "January 2023",
+          "Jan 2023",
+          "2023-01",
+          "Jänner 2023",
+          "Januar 2023",
+          "01/2023",
+          "1/2023"
+        ]
+      },
+      {
+        "id": "rise",
+        "desc": "+28.2 % (100 → 128.2)",
+        "pct_range": [
+          28.1,
+          28.3
+        ],
+        "ref_sql": "SELECT \"VPI 2020\" - 100 FROM T1_all WHERE \"Jahr / Monat\" = 'Ø 25'"
+      },
+      {
+        "id": "y2026",
+        "desc": "says there is no annual 2026 figure yet (monthly data only to September 2026); may quote the latest month (3.6 %) or the year-to-date average",
+        "judge": true
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "wb-gdp-wide",
+    "title": "World Bank GDP per capita, 1960–2025 wide years (countries mixed with aggregates; catalog invents a 'group' column and calls Somalia a total)",
+    "domain": "public statistics",
+    "size": "16k cells, 66 year columns",
+    "root": "clean",
+    "file": "world_bank/wdi_gdp_per_capita_wide_years.csv",
+    "prompt": "This is the World Bank's GDP per capita (current US$) for countries and regional/income aggregates, 1960–2025.\nWhich country (not an aggregate) had the highest GDP per capita in 2024, and how much?\nWhat was Serbia's GDP per capita in 2010 and in 2024, and by what percentage did it grow?\nWhat was Poland's GDP per capita in 2024 as a percentage of the European Union average?\nWhat was Somalia's GDP per capita in 2024?",
+    "checks": [
+      {
+        "id": "monaco",
+        "desc": "Monaco $288,001.57",
+        "num": 288001.57,
+        "tol": 0.001,
+        "near": [
+          "Monaco"
+        ],
+        "ref_sql": "SELECT \"2024\" FROM T1_all WHERE \"Country Code\" = 'MCO'"
+      },
+      {
+        "id": "srb-2010",
+        "desc": "Serbia 2010 $5,970.93",
+        "num": 5970.93,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"2010\" FROM T1_all WHERE \"Country Code\" = 'SRB'"
+      },
+      {
+        "id": "srb-2024",
+        "desc": "Serbia 2024 $13,677.78",
+        "num": 13677.78,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"2024\" FROM T1_all WHERE \"Country Code\" = 'SRB'"
+      },
+      {
+        "id": "srb-growth",
+        "desc": "+129.1 %",
+        "pct_range": [
+          128.9,
+          129.3
+        ],
+        "ref_sql": "SELECT 100.0 * \"2024\" / \"2010\" - 100 FROM T1_all WHERE \"Country Code\" = 'SRB'"
+      },
+      {
+        "id": "pol-eu",
+        "desc": "Poland = 58.0 % of the EU",
+        "pct_range": [
+          57.8,
+          58.1
+        ],
+        "ref_sql": "SELECT 100.0 * (SELECT \"2024\" FROM T1_all WHERE \"Country Code\" = 'POL') / \"2024\" FROM T1_all WHERE \"Country Code\" = 'EUU'"
+      },
+      {
+        "id": "somalia",
+        "desc": "Somalia $629.54",
+        "num": 629.54,
+        "tol": 0.001,
+        "near": [
+          "Somalia"
+        ],
+        "ref_sql": "SELECT \"2024\" FROM T1_all WHERE \"Country Code\" = 'SOM'"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "eu-electricity-prices",
+    "title": "Eurostat household electricity prices (SDMX long format, codes for band/tax/currency, half-years 2019–2026)",
+    "domain": "energy / public statistics",
+    "size": "332k cells",
+    "root": "clean",
+    "file": "eurostat/nrg_pc_204_electricity_prices_households.csv",
+    "prompt": "This is Eurostat's household electricity price dataset.\nFor households consuming 2,500–4,999 kWh a year, prices including all taxes, in EUR per kWh:\nwhich country had the highest price in the latest half-year, and what was it?\nWhat was Germany's price then, and how much did it change compared with the second half of 2022 (in %)?\nWhat was the EU average in the second half of 2025?",
+    "checks": [
+      {
+        "id": "ireland",
+        "desc": "Ireland 0.3871 EUR/kWh (2026-S1)",
+        "num": 0.3871,
+        "tol": 0.001,
+        "near": [
+          "Ireland",
+          "IE"
+        ],
+        "ref_sql": "SELECT OBS_VALUE FROM T1 WHERE geo = 'IE' AND TIME_PERIOD = '2026-S1' AND nrg_cons = 'KWH2500-4999' AND tax = 'I_TAX' AND currency = 'EUR'"
+      },
+      {
+        "id": "germany",
+        "desc": "Germany 0.3618 EUR/kWh",
+        "num": 0.3618,
+        "tol": 0.001,
+        "near": [
+          "German",
+          "DE"
+        ],
+        "ref_sql": "SELECT OBS_VALUE FROM T1 WHERE geo = 'DE' AND TIME_PERIOD = '2026-S1' AND nrg_cons = 'KWH2500-4999' AND tax = 'I_TAX' AND currency = 'EUR'"
+      },
+      {
+        "id": "de-change",
+        "desc": "+7.8 % vs 2022-S2 (0.3357)",
+        "pct_range": [
+          7.6,
+          7.9
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN TIME_PERIOD = '2026-S1' THEN OBS_VALUE END) / SUM(CASE WHEN TIME_PERIOD = '2022-S2' THEN OBS_VALUE END) - 100 FROM T1 WHERE geo = 'DE' AND nrg_cons = 'KWH2500-4999' AND tax = 'I_TAX' AND currency = 'EUR'"
+      },
+      {
+        "id": "eu-2025s2",
+        "desc": "EU27 2025-S2: 0.2896 EUR/kWh",
+        "num": 0.2896,
+        "tol": 0.001,
+        "near": [
+          "EU"
+        ],
+        "ref_sql": "SELECT OBS_VALUE FROM T1 WHERE geo = 'EU27_2020' AND TIME_PERIOD = '2025-S2' AND nrg_cons = 'KWH2500-4999' AND tax = 'I_TAX' AND currency = 'EUR'"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "de-gdp",
+    "title": "Destatis national accounts, first results (56 sheets, 154 tables: each sheet stacks levels, % changes and index; units in a dropped header row)",
+    "domain": "public statistics",
+    "size": "63k cells, 56 sheets",
+    "file": "eu_de_destatis/inlandsprodukt-erste-ergebnisse-xlsx-2180110.xlsx",
+    "prompt": "These are Germany's national accounts, first results (Destatis).\nWhat was nominal GDP in 2025, in euros, and the price-adjusted (real) GDP growth rate versus 2024?\nWhat was the general government deficit in 2025, in euros and as a percentage of GDP?\nHow many people lived in Germany in 2025, and what was the unemployment rate?",
+    "checks": [
+      {
+        "id": "gdp",
+        "desc": "€4,470.48 bn",
+        "num": 4470480000000,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"In jeweiligen Preisen / Ursprungswerte / 1\" * 1e9 FROM T1 WHERE Jahr = 2025"
+      },
+      {
+        "id": "real-growth",
+        "desc": "real growth +0.2 % (calendar-adjusted +0.3 %)",
+        "pct_range": [
+          0.19,
+          0.34
+        ],
+        "ref_sql": "SELECT \"Preisbereinigt, verkettet / Ursprungswerte / 6\" FROM T1 WHERE Jahr = 2025"
+      },
+      {
+        "id": "deficit",
+        "desc": "deficit €107.42 bn",
+        "num": 107420000000,
+        "tol": 0.002,
+        "abs": true,
+        "ref_sql": "SELECT \"Finanzierungs-saldo / 11\" * 1e9 FROM T27 WHERE Jahr = 2025"
+      },
+      {
+        "id": "deficit-pct",
+        "desc": "2.4 % of GDP",
+        "pct_range": [
+          2.35,
+          2.45
+        ],
+        "abs": true,
+        "ref_sql": "SELECT -col_M FROM T29 WHERE col_A = 2025"
+      },
+      {
+        "id": "population",
+        "desc": "83.53 million (83,531 thousand)",
+        "num": 83531000,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"Bevölkerung (Einwohner) / 1\" * 1000 FROM T30 WHERE Jahr = 2025"
+      },
+      {
+        "id": "unemployment",
+        "desc": "unemployment rate 3.5 %",
+        "pct_range": [
+          3.45,
+          3.5
+        ],
+        "ref_sql": "SELECT \"Erwerbslose in % der Erwerbspersonen (Erwerbslosenquote) / 8\" FROM T30 WHERE Jahr = 2025"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "uk-ons-labour",
+    "title": "ONS labour market summary (27 sheets, notes-heavy; headline rates defined in footnotes; catalog uses 'Date of publication' as a column name)",
+    "domain": "public statistics",
+    "size": "191k cells, 27 sheets",
+    "file": "uk_ons/a01_labour_market_summary_sep2026.xls",
+    "prompt": "This is the ONS labour market summary (September 2026 release).\nFor the latest period in Table 1: what are the headline employment rate and the headline unemployment rate?\nHow many people were in employment and how many were unemployed?\nCompared with the previous non-overlapping three-month period, did the unemployment rate rise or fall?",
+    "checks": [
+      {
+        "id": "period",
+        "desc": "latest period May–Jul 2026",
+        "text_any": [
+          "May-Jul 2026",
+          "May–Jul 2026",
+          "May to July 2026",
+          "May-July 2026",
+          "May–July 2026",
+          "May - Jul 2026"
+        ]
+      },
+      {
+        "id": "employment-rate",
+        "desc": "headline employment rate (16–64) 75.1 %",
+        "pct_range": [
+          75.0,
+          75.2
+        ],
+        "ref_cells": [
+          "'1'!Q674"
+        ]
+      },
+      {
+        "id": "unemployment-rate",
+        "desc": "headline unemployment rate (16+) 4.9 %",
+        "pct_range": [
+          4.85,
+          4.95
+        ],
+        "ref_cells": [
+          "'1'!I674"
+        ]
+      },
+      {
+        "id": "employed",
+        "desc": "34.48 million in employment (16+)",
+        "num": 34477788,
+        "tol": 0.002,
+        "ref_cells": [
+          "'1'!D674"
+        ]
+      },
+      {
+        "id": "unemployed",
+        "desc": "1.78 million unemployed",
+        "num": 1778259,
+        "tol": 0.003,
+        "ref_cells": [
+          "'1'!E674"
+        ]
+      },
+      {
+        "id": "compare",
+        "desc": "compares with Feb–Apr 2026 (4.89 %): about unchanged / up 0.02 points",
+        "judge": true
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "fr-insee-pop",
+    "title": "INSEE population by département, sex and age (49 yearly sheets; Ensemble/Hommes/Femmes blocks side by side; catalog takes the Somme département for a total row)",
+    "domain": "public statistics",
+    "size": "100k cells, 50 sheets",
+    "file": "eu_fr_insee/002_estim-pop-dep-sexe-gca-1975-2023.xls",
+    "prompt": "These are INSEE population estimates by département, sex and age group, one sheet per year.\nWhat was the population of metropolitan France, and of France including the overseas departments, in 2023?\nHow did the population of Paris change between 1990 and 2023 (number and %)?\nWhat was the population of the Somme département in 2023?\nWhat share of metropolitan France's 2023 population was aged 75 or over?",
+    "checks": [
+      {
+        "id": "metro",
+        "desc": "metropolitan France 65,834,837",
+        "num": 65834837,
+        "tol": 0.001,
+        "near": [
+          "métropolitaine",
+          "metropolitan"
+        ],
+        "ref_sql": "SELECT \"Ensemble / Total\" FROM T1_all WHERE \"Départements\" = 'France métropolitaine'"
+      },
+      {
+        "id": "france",
+        "desc": "with DOM 68,042,591",
+        "num": 68042591,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"Ensemble / Total\" FROM T1_all WHERE \"Départements\" = 'France métropolitaine et DOM'"
+      },
+      {
+        "id": "paris-2023",
+        "desc": "Paris 2023: 2,102,650",
+        "num": 2102650,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"Ensemble / Total\" FROM T1_all WHERE \"Départements\" = '75'"
+      },
+      {
+        "id": "paris-1990",
+        "desc": "Paris 1990: 2,150,147",
+        "num": 2150147,
+        "tol": 0.001,
+        "ref_sql": "SELECT \"Ensemble / Total\" FROM T34_all WHERE \"Départements\" = '75'"
+      },
+      {
+        "id": "paris-change",
+        "desc": "−47,497 = −2.2 %",
+        "pct_range": [
+          2.1,
+          2.3
+        ],
+        "abs": true,
+        "ref_sql": "SELECT 100.0 * (SELECT \"Ensemble / Total\" FROM T1_all WHERE \"Départements\" = '75') / \"Ensemble / Total\" - 100 FROM T34_all WHERE \"Départements\" = '75'"
+      },
+      {
+        "id": "somme",
+        "desc": "Somme 564,067",
+        "num": 564067,
+        "tol": 0.001,
+        "near": [
+          "Somme"
+        ],
+        "ref_sql": "SELECT \"Ensemble / Total\" FROM T1_all WHERE \"Départements\" = '80'"
+      },
+      {
+        "id": "75plus",
+        "desc": "75+ = 10.2 %",
+        "pct_range": [
+          10.1,
+          10.3
+        ],
+        "ref_sql": "SELECT 100.0 * \"Ensemble / 75 ans et plus\" / \"Ensemble / Total\" FROM T1_all WHERE \"Départements\" = 'France métropolitaine'"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "at-tourism-2months",
+    "title": "Austrian tourism by country of origin, July and August 2026 (multi-file; 10 sheets per file; Germany total above its 7 regions)",
+    "domain": "public statistics",
+    "size": "2 × 6k cells",
+    "file": "eu_at_statistik_austria/012_TourismusJuli2026HerkunftEndg.ods",
+    "files": [
+      "eu_at_statistik_austria/012_TourismusJuli2026HerkunftEndg.ods",
+      "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods"
+    ],
+    "prompt": "These two files are Statistik Austria's tourism figures by guests' country of origin for July 2026 and August 2026 (Austria and each federal state).\nHow many overnight stays were there in Austria in July and in August, and in both months together?\nHow many overnight stays in August came from German guests?\nWhich federal state had the most overnight stays in August, and how many?\nIn which month did guests stay longer on average?",
+    "checks": [
+      {
+        "id": "july",
+        "desc": "July 19,564,196",
+        "num": 19564196,
+        "tol": 0.001,
+        "near": [
+          "July",
+          "Juli"
+        ],
+        "ref_sql": [
+          {
+            "file": "eu_at_statistik_austria/012_TourismusJuli2026HerkunftEndg.ods",
+            "sql": "SELECT \"Nächtigungen / Absolut\" FROM T1_all WHERE _row_type = 'total'"
+          }
+        ]
+      },
+      {
+        "id": "august",
+        "desc": "August 21,442,710",
+        "num": 21442710,
+        "tol": 0.001,
+        "near": [
+          "August"
+        ],
+        "ref_sql": [
+          {
+            "file": "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods",
+            "sql": "SELECT \"Nächtigungen / Absolut\" FROM T1_all WHERE _row_type = 'total'"
+          }
+        ]
+      },
+      {
+        "id": "both",
+        "desc": "both months 41,006,906",
+        "num": 41006906,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "eu_at_statistik_austria/012_TourismusJuli2026HerkunftEndg.ods",
+            "sql": "SELECT \"Nächtigungen / Absolut\" FROM T1_all WHERE _row_type = 'total'"
+          },
+          {
+            "file": "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods",
+            "sql": "SELECT \"Nächtigungen / Absolut\" FROM T1_all WHERE _row_type = 'total'"
+          }
+        ]
+      },
+      {
+        "id": "germany",
+        "desc": "German guests in August 8,530,796 (the 'Deutschland gesamt' row, not one region)",
+        "num": 8530796,
+        "tol": 0.001,
+        "ref_sql": [
+          {
+            "file": "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods",
+            "sql": "SELECT \"Nächtigungen / Absolut\" FROM T1_all WHERE \"Herkunftsland oder -region\" = 'Deutschland gesamt'"
+          }
+        ]
+      },
+      {
+        "id": "tirol",
+        "desc": "Tirol 6,473,672",
+        "num": 6473672,
+        "tol": 0.001,
+        "near": [
+          "Tirol",
+          "Tyrol"
+        ],
+        "ref_sql": [
+          {
+            "file": "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods",
+            "sql": "SELECT \"Nächtigungen / Absolut\" FROM T8_all WHERE _row_type = 'total'"
+          }
+        ]
+      },
+      {
+        "id": "stay",
+        "desc": "August: 3.4 nights (July 3.3)",
+        "num": 3.415,
+        "tol": 0.005,
+        "near": [
+          "August"
+        ],
+        "ref_sql": [
+          {
+            "file": "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods",
+            "sql": "SELECT \"Aufenthaltsdauer in Nächten\" FROM T1_all WHERE _row_type = 'total'"
+          }
+        ]
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "rs-geodetic-licenses",
+    "title": "Serbian register of geodetic licences (3.6k people, Cyrillic, empty employer cells)",
+    "domain": "register: licences",
+    "size": "26k cells",
+    "root": "clean",
+    "file": "data_gov_rs/rgz_registar_geodetskih_licenci.ods",
+    "prompt": "This is the Serbian register of geodetic professionals and their licences.\nHow many people are in the register, and how many hold a first-order licence, a second-order licence, or no licence?\nWhat share of registered people hold any licence?\nWhich company employs the most registered people, and how many?\nHow many registered people have no employer listed?",
+    "checks": [
+      {
+        "id": "people",
+        "desc": "3,605 people",
+        "num": 3605,
+        "tol": 0,
+        "ref_sql": "SELECT COUNT(*) FROM T1_all"
+      },
+      {
+        "id": "first",
+        "desc": "first-order 875",
+        "num": 875,
+        "tol": 0,
+        "near": [
+          "first",
+          "првог",
+          "prvog"
+        ],
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE \"Лиценца\" = 'Лиценца првог реда'"
+      },
+      {
+        "id": "second",
+        "desc": "second-order 655",
+        "num": 655,
+        "tol": 0,
+        "near": [
+          "second",
+          "другог",
+          "drugog"
+        ],
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE \"Лиценца\" = 'Лиценца другог реда'"
+      },
+      {
+        "id": "none",
+        "desc": "no licence 2,075",
+        "num": 2075,
+        "tol": 0,
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE \"Лиценца\" = 'Без лиценце'"
+      },
+      {
+        "id": "share",
+        "desc": "42.4 % licensed",
+        "pct_range": [
+          42.3,
+          42.6
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(\"Лиценца\" <> 'Без лиценце') / COUNT(*) FROM T1"
+      },
+      {
+        "id": "premer",
+        "desc": "PREMER SAVKOVIĆ DOO Lazarevac: 46",
+        "num": 46,
+        "tol": 0,
+        "near": [
+          "PREMER",
+          "Savković",
+          "SAVKOVIĆ",
+          "Savkovic"
+        ],
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE \"Запослен у ГО\" LIKE '%PREMER SAVKOVI%'"
+      },
+      {
+        "id": "no-employer",
+        "desc": "1,261 without an employer",
+        "num": 1261,
+        "tol": 0,
+        "ref_sql": "SELECT COUNT(*) FROM T1 WHERE \"Запослен у ГО\" IS NULL OR \"Запослен у ГО\" = ''"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "uk-beis-spending",
+    "title": "UK BEIS payments over £25k, March 2018 (4.3k transactions, DD/MM/YYYY dates, refunds as negatives)",
+    "domain": "register: spending",
+    "size": "45k cells",
+    "root": "clean",
+    "file": "uk_gov/beis_spending_over_25k_2018_03.csv",
+    "prompt": "This is the UK Department for Business, Energy and Industrial Strategy's list of payments over £25,000 for March 2018.\nWhat is the total paid, and how many payment lines are negative (credits)?\nWhich supplier received the most, and what share of the total is that?\nHow much went to the research councils in total?\nOn which day was the most paid, and how much?",
+    "checks": [
+      {
+        "id": "total",
+        "desc": "£1,930,341,058.77",
+        "num": 1930341058.77,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(Amount) FROM T1_all"
+      },
+      {
+        "id": "negative",
+        "desc": "49 negative lines",
+        "num": 49,
+        "tol": 0,
+        "near": [
+          "negative",
+          "credit",
+          "refund"
+        ],
+        "ref_sql": "SELECT COUNT(*) FROM T1_all WHERE Amount < 0"
+      },
+      {
+        "id": "post-office",
+        "desc": "Post Office Ltd £699.82 M",
+        "num": 699822453.07,
+        "tol": 0.001,
+        "near": [
+          "Post Office",
+          "POST OFFICE"
+        ],
+        "ref_sql": "SELECT SUM(Amount) FROM T1_all WHERE Supplier = 'POST OFFICE LTD'"
+      },
+      {
+        "id": "po-share",
+        "desc": "36.3 % of the total",
+        "pct_range": [
+          36.1,
+          36.4
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN Supplier = 'POST OFFICE LTD' THEN Amount END) / SUM(Amount) FROM T1_all"
+      },
+      {
+        "id": "research-councils",
+        "desc": "research councils £342.57 M (6 councils)",
+        "num": 342566107.25,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(Amount) FROM T1_all WHERE UPPER(Supplier) LIKE '%RESEARCH COUNCIL%'"
+      },
+      {
+        "id": "top-day",
+        "desc": "7 March 2018",
+        "text_any": [
+          "7 March",
+          "March 7",
+          "2018-03-07",
+          "07/03/2018",
+          "07.03.2018",
+          "7th March",
+          "March 7th"
+        ]
+      },
+      {
+        "id": "top-day-amount",
+        "desc": "£401.11 M on 7 March",
+        "num": 401106078.2,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(Amount) FROM T1_all WHERE \"Date of Payment\" = '2018-03-07'"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "de-berlin-grants",
+    "title": "Berlin grants database 2021–2025 (55k grants, ';' CSV, recipient spelling variants with an ID; catalog takes 'Zusammen …'/'SUMA …' recipients for totals)",
+    "domain": "register: grants",
+    "size": "553k cells",
+    "root": "clean",
+    "file": "govdata_de/berlin_zuwendungsdatenbank.csv",
+    "prompt": "This is the State of Berlin's grants database (Zuwendungsdatenbank), 2021–2025.\nHow much was granted in 2024 in total, in how many grants?\nWhat share of the 2024 money was institutional funding (as opposed to project funding)?\nWhich recipient received the most in 2024 (count all spellings of the same recipient together), and how much?\nWhich year had the highest total, and how much?",
+    "checks": [
+      {
+        "id": "total-2024",
+        "desc": "€2,644,310,862",
+        "num": 2644310862,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(betrag) FROM T1_all WHERE jahr = 2024"
+      },
+      {
+        "id": "count-2024",
+        "desc": "9,810 grants",
+        "num": 9810,
+        "tol": 0,
+        "ref_sql": "SELECT COUNT(*) FROM T1_all WHERE jahr = 2024"
+      },
+      {
+        "id": "institutional",
+        "desc": "22.9 % institutional (both spellings of 'institutionelle Förderung')",
+        "pct_range": [
+          22.85,
+          22.97
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN LOWER(art) LIKE 'institutionelle%' THEN betrag END) / SUM(betrag) FROM T1_all WHERE jahr = 2024"
+      },
+      {
+        "id": "fvb",
+        "desc": "Forschungsverbund Berlin €113.08 M (5 spellings, one empfaengerid)",
+        "num": 113083872,
+        "tol": 0.001,
+        "near": [
+          "Forschungsverbund",
+          "FVB"
+        ],
+        "ref_sql": "SELECT SUM(betrag) FROM T1_all WHERE jahr = 2024 AND empfaengerid = 'vr_012174'"
+      },
+      {
+        "id": "top-year",
+        "desc": "2025: €3.695 bn",
+        "num": 3695037363,
+        "tol": 0.001,
+        "near": [
+          "2025"
+        ],
+        "ref_sql": "SELECT SUM(betrag) FROM T1_all WHERE jahr = 2025"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "pt-tax-benefits",
+    "title": "Portugal's 2023 tax-benefit beneficiaries (8 sheets, one per tax; IRC sheet 63k × 87 = 5.5M-cell range; long legal column names)",
+    "domain": "register: public finance",
+    "size": "1.2M cells (5.5M-cell IRC range), 9 sheets",
+    "file": "eu_pt_opendata/008_BF_1_2023_beneficiarios_por_tipo_de_imposto_e_beneficio.xlsx",
+    "prompt": "This is the Portuguese tax authority's list of beneficiaries of tax benefits in 2023, one sheet per tax.\nHow many entities received corporate income tax (IRC) benefits?\nWhat was the total VAT refunded (restituição do IVA), and which entity received the largest VAT refund (how much)?\nWhat share of the VAT refunds went to the armed and security forces category?\nHow many fire-brigade associations received a VAT refund?",
+    "checks": [
+      {
+        "id": "irc",
+        "desc": "63,209 IRC beneficiaries",
+        "num": 63209,
+        "tol": 0,
+        "ref_sql": "SELECT COUNT(*) FROM T3"
+      },
+      {
+        "id": "vat-total",
+        "desc": "VAT refunds €123,994,570.29",
+        "num": 123994570.29,
+        "tol": 0.001,
+        "ref_sql": "SELECT SUM(\"TOTAL DE RESTITUIÇÃO\") FROM T7"
+      },
+      {
+        "id": "air-force",
+        "desc": "Estado Maior Força Aérea €37,534,892.43",
+        "num": 37534892.43,
+        "tol": 0.001,
+        "near": [
+          "FORCA AEREA",
+          "Força Aérea",
+          "Air Force"
+        ],
+        "ref_sql": "SELECT MAX(\"TOTAL DE RESTITUIÇÃO\") FROM T7"
+      },
+      {
+        "id": "armed-share",
+        "desc": "armed and security forces 43.3 %",
+        "pct_range": [
+          43.1,
+          43.4
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(\"RESTITUIÇÃO DO IMPOSTO / Forças Armadas e de Segurança - DL n.º 84/2017, de 21/07\") / SUM(\"TOTAL DE RESTITUIÇÃO\") FROM T7"
+      },
+      {
+        "id": "bombeiros",
+        "desc": "414 fire-brigade associations",
+        "num": 414,
+        "tol": 0,
+        "ref_sql": "SELECT COUNT(*) FROM T7 WHERE \"RESTITUIÇÃO DO IMPOSTO / Associações e Corpos Bombeiros - DL n.º 84/2017, de 21/07\" > 0"
+      }
+    ],
+    "backlog": []
+  },
+  {
+    "id": "owid-energy",
+    "title": "Our World in Data energy dataset (23k country-years × 130 columns; countries mixed with regional aggregates)",
+    "domain": "energy",
+    "size": "1.0M filled cells (3.0M-cell range)",
+    "root": "clean",
+    "file": "owid/owid_energy_data.csv",
+    "prompt": "This is Our World in Data's energy dataset (countries and regional aggregates, by year).\nWhat share of Germany's electricity came from renewables in 2015 and in 2024?\nWhich country generated the most solar electricity in 2024, how many TWh, and what share of world solar generation is that?\nBy what percentage did world wind generation grow from 2015 to 2024?",
+    "checks": [
+      {
+        "id": "de-2015",
+        "desc": "Germany 2015: 29.4 %",
+        "pct_range": [
+          29.3,
+          29.6
+        ],
+        "ref_sql": "SELECT renewables_share_elec FROM T1 WHERE country = 'Germany' AND year = 2015"
+      },
+      {
+        "id": "de-2024",
+        "desc": "Germany 2024: 58.6 %",
+        "pct_range": [
+          58.5,
+          58.8
+        ],
+        "ref_sql": "SELECT renewables_share_elec FROM T1 WHERE country = 'Germany' AND year = 2024"
+      },
+      {
+        "id": "china",
+        "desc": "China 839.04 TWh",
+        "num": 839.04,
+        "tol": 0.001,
+        "near": [
+          "China"
+        ],
+        "ref_sql": "SELECT solar_electricity FROM T1 WHERE country = 'China' AND year = 2024"
+      },
+      {
+        "id": "china-share",
+        "desc": "39.2 % of world solar (2,142.65 TWh)",
+        "pct_range": [
+          39.0,
+          39.3
+        ],
+        "ref_sql": "SELECT 100.0 * (SELECT solar_electricity FROM T1 WHERE country = 'China' AND year = 2024) / solar_electricity FROM T1 WHERE country = 'World' AND year = 2024"
+      },
+      {
+        "id": "wind-growth",
+        "desc": "world wind +202 % (829.6 → 2,509.5 TWh)",
+        "pct_range": [
+          202.0,
+          203.0
+        ],
+        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN year = 2024 THEN wind_electricity END) / SUM(CASE WHEN year = 2015 THEN wind_electricity END) - 100 FROM T1 WHERE country = 'World'"
       }
     ],
     "backlog": []
