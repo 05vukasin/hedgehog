@@ -28,7 +28,7 @@ use std::time::{Duration, Instant, SystemTime};
 use hh_core::model::Workbook;
 use hh_core::normalize::{sha256, ColRole, Normalized, Table};
 
-pub use catalog::{time_coverage, TimeCoverage};
+pub use catalog::{mentioned_years, time_coverage, TimeCoverage};
 pub use files::Bounds;
 pub use tools::{tool_specs, TOOL_NAMES};
 

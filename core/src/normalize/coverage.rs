@@ -104,6 +104,17 @@ impl Coverage {
             j
         }
     }
+
+    pub(super) fn public(&self) -> super::TimeCoverage {
+        super::TimeCoverage {
+            from: self.from.label(),
+            to: self.to.label(),
+            granularity: self.gran.as_str(),
+            source: self.source,
+            columns: self.columns.clone(),
+            tables: self.tables.clone(),
+        }
+    }
 }
 
 const YEAR_MIN: i32 = 1900;

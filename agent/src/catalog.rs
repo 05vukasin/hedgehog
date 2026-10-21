@@ -1,16 +1,31 @@
 //! Compact, LLM-readable text views of a [`Normalized`] workbook: the catalog (`open_file`),
-//! `describe_table`, the totals check and a time-coverage estimate. Pure functions, no I/O.
+//! `describe_table` and the totals check. Pure functions, no I/O. Time coverage and per-table
+//! totals come from hh_core, the same functions the manifest is written from.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use hh_core::normalize::{iso, ColRole, Column, Dtype, Normalized, Out, RowType, Table};
+pub use hh_core::normalize::TimeCoverage;
+use hh_core::normalize::{
+    iso, table_time_coverage, table_totals, workbook_time_coverage, ColRole, Column, Dtype, Normalized, Out, RowType,
+    Table, TableTotals,
+};
 
 use crate::text::{csv_row, cut, ident, letter, num, range_a1, sheet_ref, short, thousands, years_in, MAX_CHARS};
 
 /// Tables above this count are always listed one line each.
 const BRIEF_TABLES_OVER: usize = 40;
-/// Columns listed per table in the full catalog.
-const CATALOG_COLS: usize = 14;
+/// Up to this many columns a table's columns are listed with ranges / examples.
+const DETAIL_COLS: usize = 14;
+/// Up to this many columns every column is listed by name (compactly, `name[dtype unit]`); wider
+/// tables group runs of same-type columns.
+const LIST_COLS: usize = 40;
+/// Items of one columns line at most (wide tables after grouping).
+const MAX_COL_ITEMS: usize = 60;
+/// Text columns with at most this many distinct values get all of them listed.
+const LABEL_VALUES: usize = 12;
+/// Tables with at most this many data rows and columns are inlined as CSV in the catalog.
+const INLINE_ROWS: usize = 15;
+const INLINE_COLS: usize = 12;
 /// Columns with details in `describe_table`.
 const DESCRIBE_COLS: usize = 60;
 /// Items listed by `totals`.
@@ -118,7 +133,7 @@ pub fn sql_names(t: &Table) -> Vec<String> {
         .collect()
 }
 
-/// A total / subtotal row kept in `T<n>_all`.
+/// A total / subtotal row.
 #[derive(Debug, Clone)]
 pub struct TotalRow {
     pub label: String,
@@ -127,14 +142,27 @@ pub struct TotalRow {
     pub kind: RowType,
 }
 
-/// Row counts of a table split by row type, and its total rows.
+/// Row counts of a table split by row type, its total rows and its totals check.
 #[derive(Debug, Clone, Default)]
 pub struct RowInfo {
     pub data: usize,
+    /// Total rows taken out of the data: only in `T<n>_all`.
     pub total_rows: Vec<TotalRow>,
+    /// Rows the totals check found to be totals that stay in the data (`T<n>`), such as
+    /// "Insgesamt" rows of a long table: the manifest's `totals.rows` with `kept_in_data`.
+    pub kept_totals: Vec<TotalRow>,
+    /// The table's totals as in the manifest (`tables[].totals`).
+    pub totals: TableTotals,
+}
+
+/// Indexes of a table's data rows (all rows when it has no row types).
+fn data_rows(t: &Table) -> Vec<usize> {
+    (0..t.rows()).filter(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data)).collect()
 }
 
 pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
+    let totals = table_totals(t, &norm.totals);
+    let label_at = |row1: u32| totals.rows.iter().find(|r| r.row == row1).and_then(|r| r.label.clone());
     let mut info = RowInfo::default();
     for (i, rt) in t.row_types.iter().enumerate() {
         if *rt == RowType::Data {
@@ -142,12 +170,7 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
             continue;
         }
         let src = t.src_rows.get(i).copied().unwrap_or(0);
-        let from_totals = norm
-            .totals
-            .iter()
-            .find(|x| x.table == Some(t.n) && x.row == src && x.label.is_some())
-            .and_then(|x| x.label.clone());
-        let label = from_totals.or_else(|| {
+        let label = label_at(src + 1).or_else(|| {
             t.columns.iter().filter(|c| matches!(c.role, ColRole::Data | ColRole::Group)).find_map(|c| match c.values.get(i) {
                 Some(Out::Text(s)) if !s.trim().is_empty() => Some(s.clone()),
                 _ => None,
@@ -159,18 +182,47 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
     if t.row_types.is_empty() {
         info.data = t.rows();
     }
+    let in_data: HashSet<u32> = data_rows(t).into_iter().filter_map(|r| t.src_rows.get(r).map(|s| s + 1)).collect();
+    info.kept_totals = totals
+        .rows
+        .iter()
+        .filter(|r| in_data.contains(&r.row))
+        .map(|r| TotalRow {
+            label: r.label.clone().unwrap_or_else(|| "(no label)".into()),
+            row: r.row,
+            kind: if r.level == "subtotal" { RowType::Subtotal } else { RowType::Total },
+        })
+        .collect();
+    info.totals = totals;
     info
 }
 
-fn total_rows_text(info: &RowInfo, n: usize) -> String {
-    let shown: Vec<String> =
-        info.total_rows.iter().take(n).map(|r| format!("'{}'@{}", short(&r.label, 32), r.row)).collect();
-    let more = info.total_rows.len().saturating_sub(n);
+fn total_rows_text(rows: &[TotalRow], n: usize) -> String {
+    let shown: Vec<String> = rows.iter().take(n).map(|r| format!("'{}'@{}", short(&r.label, 32), r.row)).collect();
+    let more = rows.len().saturating_sub(n);
     let mut s = shown.join(", ");
     if more > 0 {
         s.push_str(&format!(" +{more} more"));
     }
     s
+}
+
+/// Total rows that stay in the data: up to 3 listed, else their distinct labels and first row.
+fn kept_totals_text(rows: &[TotalRow]) -> String {
+    if rows.len() <= 3 {
+        return total_rows_text(rows, 3);
+    }
+    let mut labels: Vec<&str> = Vec::new();
+    for r in rows {
+        if !labels.contains(&r.label.as_str()) {
+            labels.push(&r.label);
+        }
+    }
+    let mut l: Vec<String> = labels.iter().take(3).map(|s| format!("'{}'", short(s, 32))).collect();
+    if labels.len() > 3 {
+        l.push(format!("+{} more labels", labels.len() - 3));
+    }
+    format!("labelled {}; first @{}", l.join(", "), rows[0].row)
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -193,33 +245,163 @@ fn status_counts<'a>(items: impl Iterator<Item = &'a hh_core::normalize::TotalIt
     (ok, bad, unk)
 }
 
+/// All distinct values (first-appearance order) of a text column over the data rows, when there
+/// are at most [`LABEL_VALUES`] of them: the values to filter on.
+pub fn label_values(c: &Column, rows: &[usize]) -> Option<Vec<String>> {
+    if c.dtype != Dtype::Text || !matches!(c.role, ColRole::Data | ColRole::Group) {
+        return None;
+    }
+    let mut vals: Vec<&str> = Vec::new();
+    for &r in rows {
+        if let Some(Out::Text(s)) = c.values.get(r)
+            && !vals.contains(&s.as_str())
+        {
+            if vals.len() == LABEL_VALUES {
+                return None;
+            }
+            vals.push(s);
+        }
+    }
+    (!vals.is_empty()).then(|| vals.into_iter().map(String::from).collect())
+}
+
+fn values_text(vals: &[String]) -> String {
+    let s = vals.iter().map(|v| format!("\"{}\"", short(v, 60))).collect::<Vec<_>>().join(" | ");
+    short(&s, 700)
+}
+
+// ------------------------------------------------------------------------------------------------
+// mixed measures
+
+/// What a label says it measures: currency, percent, count, average, index.
+fn measure_classes(label: &str) -> u8 {
+    let low = label.to_lowercase();
+    let mut m = 0u8;
+    if low.contains(['€', '$', '£']) {
+        m |= 1;
+    }
+    if low.contains('%') {
+        m |= 2;
+    }
+    for w in low.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()) {
+        m |= match w {
+            "eur" | "euro" | "euros" | "usd" | "chf" | "gbp" | "dollar" | "dollars" | "rsd" | "din" | "dinar" | "dinara" => 1,
+            "prozent" | "percent" | "pct" | "anteil" | "share" | "rate" | "quote" | "procenat" | "pourcentage" => 2,
+            "anzahl" | "number" | "count" | "zahl" | "personen" | "persons" | "people" | "cases" | "broj" | "nombre" => 4,
+            "average" | "mean" | "avg" | "median" | "mittelwert" | "ø" | "prosek" | "moyenne" => 8,
+            "index" | "messzahl" | "indeks" => 16,
+            _ if w.starts_with("durchschnitt") => 8,
+            _ if w.starts_with("anzahl") => 4,
+            _ => 0,
+        };
+    }
+    m
+}
+
+fn median_abs(mut v: Vec<f64>) -> Option<f64> {
+    if v.is_empty() {
+        return None;
+    }
+    v.sort_by(f64::total_cmp);
+    Some(v[v.len() / 2])
+}
+
+/// The label column (group column first, then text columns) whose values distinguish different
+/// measures in one table (counts vs amounts vs percentages): by the units / words in the labels,
+/// or by numbers of very different size under each label.
+fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
+    let mut cands: Vec<usize> = t.columns.iter().position(|c| c.role == ColRole::Group).into_iter().collect();
+    cands.extend(t.columns.iter().enumerate().filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text).map(|(i, _)| i));
+    let numeric: Vec<&Column> = data_cols(t).map(|(_, c)| c).filter(|c| is_numeric(c.dtype) && c.dtype != Dtype::Percent).collect();
+    for i in cands {
+        let c = &t.columns[i];
+        // Labels written once per block count for the rows below them.
+        let mut last: Option<&str> = None;
+        let labels: Vec<Option<&str>> = rows
+            .iter()
+            .map(|&r| {
+                if let Some(Out::Text(s)) = c.values.get(r) {
+                    last = Some(s.as_str());
+                }
+                last
+            })
+            .collect();
+        let mut distinct: Vec<&str> = Vec::new();
+        for l in labels.iter().flatten() {
+            if !distinct.contains(l) {
+                distinct.push(l);
+            }
+        }
+        if !(2..=LABEL_VALUES).contains(&distinct.len()) {
+            continue;
+        }
+        let classes: HashSet<u8> = distinct.iter().map(|l| measure_classes(l)).filter(|m| *m != 0).collect();
+        if classes.len() >= 2 {
+            return Some(i);
+        }
+        // By size only for blocks of rows per label (a label per row, such as countries of very
+        // different size, is one measure).
+        if distinct.len() >= labels.iter().flatten().count() {
+            continue;
+        }
+        let (mut votes, mut cols) = (0, 0);
+        for n in &numeric {
+            let mut by: HashMap<&str, Vec<f64>> = HashMap::new();
+            for (k, &r) in rows.iter().enumerate() {
+                if let (Some(l), Some(Out::Num(x))) = (labels[k], n.values.get(r))
+                    && *x != 0.0
+                {
+                    by.entry(l).or_default().push(x.abs());
+                }
+            }
+            let meds: Vec<f64> = by.into_values().filter_map(median_abs).collect();
+            if meds.len() < 2 {
+                continue;
+            }
+            let (lo, hi) = meds.iter().fold((f64::MAX, 0.0f64), |(lo, hi), m| (lo.min(*m), hi.max(*m)));
+            cols += 1;
+            if hi >= 100.0 * lo {
+                votes += 1;
+            }
+        }
+        if cols > 0 && votes * 3 >= cols * 2 {
+            return Some(i);
+        }
+    }
+    None
+}
+
 // ------------------------------------------------------------------------------------------------
 // time coverage
 
-/// Which years a workbook covers, from its data and its texts. Derived here until the manifest
-/// carries a `time_coverage` block; then this can read it from there.
-#[derive(Debug, Clone, PartialEq)]
-pub struct TimeCoverage {
-    pub from: i32,
-    pub to: i32,
-    /// year / quarter / month / day as the dates and period columns show them (several when
-    /// tables differ, e.g. a monthly and an annual table), coarsest first.
-    pub granularities: Vec<&'static str>,
-    /// Short human-readable sources, strongest first.
-    pub evidence: Vec<String>,
-    /// True when only titles, notes, sheet or file names mention the years.
-    pub weak: bool,
+/// Time coverage of the workbook as the manifest has it (`time_coverage`).
+pub fn time_coverage(norm: &Normalized) -> Option<TimeCoverage> {
+    workbook_time_coverage(norm)
 }
 
-const PERIOD_WORDS: &[&str] = &[
-    "year", "jahr", "annee", "année", "ano", "año", "anno", "godina", "rok", "jaar", "år", "periode", "period",
-    "zeitraum", "quarter", "quartal", "month", "monat", "mois", "mes", "mese", "date", "datum", "fecha", "data",
-    "berichtsjahr", "berichtszeitraum", "fy",
-];
-
-fn period_name(name: &str) -> bool {
-    let low = name.to_lowercase();
-    low.split(|c: char| !c.is_alphanumeric()).any(|w| PERIOD_WORDS.contains(&w))
+/// Years mentioned in titles, notes, sheet names and the file name: a weaker hint than the data.
+pub fn mentioned_years(norm: &Normalized, file_name: &str) -> Vec<i32> {
+    let mut weak: Vec<i32> = Vec::new();
+    for t in &norm.tables {
+        if let Some((title, _)) = &t.title {
+            weak.extend(years_in(title));
+        }
+        for (n, _) in &t.notes {
+            weak.extend(years_in(n));
+        }
+    }
+    for n in &norm.notes {
+        if n.kind == "title" || n.kind == "note" {
+            weak.extend(years_in(&n.text));
+        }
+    }
+    for s in &norm.sheets {
+        weak.extend(years_in(&s.name));
+    }
+    weak.extend(years_in(file_name));
+    weak.sort_unstable();
+    weak.dedup();
+    weak
 }
 
 fn span(years: &[i32]) -> String {
@@ -239,161 +421,73 @@ fn span(years: &[i32]) -> String {
     }
 }
 
-/// Granularity of a set of Excel serial dates.
-fn date_granularity(values: &[f64]) -> Option<&'static str> {
-    let ymd: Vec<(i32, u32, u32)> = values
-        .iter()
-        .filter_map(|v| {
-            let s = iso(*v);
-            let y = s.get(0..4)?.parse().ok()?;
-            let m = s.get(5..7)?.parse().ok()?;
-            let d = s.get(8..10)?.parse().ok()?;
-            Some((y, m, d))
-        })
-        .collect();
-    if ymd.len() < 2 {
-        return None;
+fn period_range(tc: &TimeCoverage) -> String {
+    if tc.from == tc.to { tc.from.clone() } else { format!("{}–{}", tc.from, tc.to) }
+}
+
+fn label_year(label: &str) -> Option<i32> {
+    label.get(0..4)?.parse().ok()
+}
+
+fn id_list(ids: &[String], n: usize) -> String {
+    let mut s = ids.iter().take(n).cloned().collect::<Vec<_>>().join(", ");
+    if ids.len() > n {
+        s.push_str(&format!(" +{} more", ids.len() - n));
     }
-    let days: HashSet<u32> = ymd.iter().map(|x| x.2).collect();
-    let months: HashSet<u32> = ymd.iter().map(|x| x.1).collect();
-    let month_end = |&(y, m, d): &(i32, u32, u32)| {
-        let last = match m {
-            2 if (y % 4 == 0 && y % 100 != 0) || y % 400 == 0 => 29,
-            2 => 28,
-            4 | 6 | 9 | 11 => 30,
-            _ => 31,
-        };
-        d == last
+    s
+}
+
+/// The TIME line: the manifest's time coverage (period, granularity, which columns or headers it
+/// comes from); years only mentioned in titles, notes, sheet or file names as a secondary note.
+fn time_line(wb: Option<&TimeCoverage>, tables: &[(String, TimeCoverage)], weak: &[i32]) -> String {
+    let Some(wb) = wb else {
+        if weak.is_empty() {
+            return "TIME no dates or periods found".into();
+        }
+        return format!("TIME {} (only mentioned in titles/notes/sheet or file names; no date or period columns)", span(weak));
     };
-    let per_month = days.len() == 1 || ymd.iter().all(month_end);
-    if per_month && months.len() == 1 {
-        Some("year")
-    } else if per_month && months.iter().all(|m| [1, 4, 7, 10].contains(m) || [3, 6, 9, 12].contains(m)) && months.len() <= 4 {
-        Some("quarter")
-    } else if per_month {
-        Some("month")
+    const ORDER: [&str; 5] = ["year", "quarter", "month", "week", "day"];
+    let mut by_gran: Vec<(&str, Vec<String>)> = Vec::new();
+    for g in ORDER {
+        let ids: Vec<String> = tables.iter().filter(|(_, c)| c.granularity == g).map(|(id, _)| id.clone()).collect();
+        if !ids.is_empty() {
+            by_gran.push((g, ids));
+        }
+    }
+    let gran = if by_gran.len() > 1 {
+        format!(
+            "mixed: {} — check what one row is before summing",
+            by_gran.iter().map(|(g, ids)| format!("{g} ({})", id_list(ids, 3))).collect::<Vec<_>>().join(", ")
+        )
     } else {
-        Some("day")
-    }
-}
-
-pub fn time_coverage(norm: &Normalized, file_name: &str) -> Option<TimeCoverage> {
-    let mut strong: Vec<i32> = Vec::new();
-    let mut evidence: Vec<String> = Vec::new();
-    let mut gran: Vec<&'static str> = Vec::new();
-    let mut header_years: Vec<i32> = Vec::new();
-    for t in &norm.tables {
-        for (c, name) in t.columns.iter().zip(sql_names(t)) {
-            if !matches!(c.role, ColRole::Data | ColRole::Group) {
-                continue;
-            }
-            header_years.extend(years_in(&c.name));
-            if is_date(c.dtype) {
-                let vals: Vec<f64> = c
-                    .values
-                    .iter()
-                    .filter_map(|v| match v {
-                        Out::Date(x) | Out::Num(x) => Some(*x),
-                        _ => None,
-                    })
-                    .collect();
-                if vals.is_empty() {
-                    continue;
-                }
-                let st = col_stats(c);
-                let (lo, hi) = (st.min.unwrap_or(0.0), st.max.unwrap_or(0.0));
-                let ys: Vec<i32> = [lo, hi].iter().filter_map(|v| iso(*v).get(0..4)?.parse().ok()).collect();
-                strong.extend(&ys);
-                let g = date_granularity(&vals);
-                gran.extend(g);
-                evidence.push(format!(
-                    "{}.{} {}..{} ({} distinct{})",
-                    t.id(),
-                    ident(&name),
-                    bound(lo, Dtype::Date),
-                    bound(hi, Dtype::Date),
-                    st.distinct,
-                    g.map(|g| format!(", {g}ly").replace("dayly", "daily")).unwrap_or_default()
-                ));
-            } else if c.dtype == Dtype::Integer && period_name(&c.name) {
-                let st = col_stats(c);
-                if let (Some(lo), Some(hi)) = (st.min, st.max)
-                    && (1900.0..=2100.0).contains(&lo)
-                    && (1900.0..=2100.0).contains(&hi)
-                {
-                    strong.extend([lo as i32, hi as i32]);
-                    gran.push("year");
-                    evidence.push(format!("{}.{} {}..{} ({} distinct)", t.id(), ident(&name), num(lo), num(hi), st.distinct));
-                }
-            } else if c.dtype == Dtype::Text && period_name(&c.name) {
-                let ys: Vec<i32> =
-                    c.values.iter().take(5000).filter_map(|v| if let Out::Text(s) = v { Some(years_in(s)) } else { None }).flatten().collect();
-                if !ys.is_empty() {
-                    strong.extend(&ys);
-                    evidence.push(format!("{}.{} values {}", t.id(), ident(&name), span(&ys)));
-                }
-            }
-        }
-    }
-    if !header_years.is_empty() {
-        strong.extend(&header_years);
-        // Years as column headers: one column per year, unless the dates say otherwise.
-        if gran.is_empty() {
-            gran.push("year");
-        }
-        evidence.push(format!("column headers {}", span(&header_years)));
-    }
-    let mut weak: Vec<i32> = Vec::new();
-    for t in &norm.tables {
-        if let Some((title, _)) = &t.title {
-            weak.extend(years_in(title));
-        }
-        for (n, _) in &t.notes {
-            weak.extend(years_in(n));
-        }
-    }
-    for n in &norm.notes {
-        if n.kind == "title" || n.kind == "note" {
-            weak.extend(years_in(&n.text));
-        }
-    }
-    for s in &norm.sheets {
-        weak.extend(years_in(&s.name));
-    }
-    weak.extend(years_in(file_name));
-    if !weak.is_empty() {
-        evidence.push(format!("titles/notes/sheet or file names {}", span(&weak)));
-    }
-    let (years, is_weak) = if strong.is_empty() { (&weak, true) } else { (&strong, false) };
-    let from = *years.iter().min()?;
-    let to = *years.iter().max()?;
-    let order = ["year", "quarter", "month", "day"];
-    let granularities: Vec<&'static str> =
-        if is_weak { Vec::new() } else { order.into_iter().filter(|g| gran.contains(g)).collect() };
-    Some(TimeCoverage { from, to, granularities, evidence, weak: is_weak })
-}
-
-fn time_line(tc: Option<&TimeCoverage>) -> String {
-    let Some(tc) = tc else { return "TIME no dates or years found".into() };
-    let range = if tc.from == tc.to { tc.from.to_string() } else { format!("{}–{}", tc.from, tc.to) };
-    let mut ev: Vec<String> = tc.evidence.iter().take(4).map(|e| short(e, 110)).collect();
-    if tc.evidence.len() > 4 {
-        ev.push(format!("+{} more", tc.evidence.len() - 4));
-    }
-    let g = match tc.granularities.as_slice() {
-        [] => String::new(),
-        [one] => format!("{one}; "),
-        many => format!("mixed: {} — check what one row is before summing; ", many.join(", ")),
+        wb.granularity.to_string()
     };
-    let weak = if tc.weak { "only mentioned in " } else { "" };
-    format!("TIME {range} ({g}{weak}{})", ev.join("; "))
+    let mut from = Vec::new();
+    let cols: Vec<String> = tables
+        .iter()
+        .filter(|(_, c)| c.source == "column")
+        .flat_map(|(id, c)| c.columns.iter().map(move |n| format!("{id}.{}", ident(&short(n, 30)))))
+        .collect();
+    if !cols.is_empty() {
+        from.push(format!("from columns {}", id_list(&cols, 4)));
+    }
+    let hdr: Vec<String> = tables.iter().filter(|(_, c)| c.source == "header").map(|(id, _)| id.clone()).collect();
+    if !hdr.is_empty() {
+        from.push(format!("from column headers in {}", id_list(&hdr, 6)));
+    }
+    let (lo, hi) = (label_year(&wb.from).unwrap_or(i32::MIN), label_year(&wb.to).unwrap_or(i32::MAX));
+    let outside: Vec<i32> = weak.iter().copied().filter(|y| *y < lo || *y > hi).collect();
+    let mut s = format!("TIME {} ({}{}{})", period_range(wb), gran, if by_gran.len() > 1 { "; " } else { ", " }, from.join("; "));
+    if !outside.is_empty() {
+        s.insert_str(s.len() - 1, &format!("; titles/notes/sheet or file names also mention {}", span(&outside)));
+    }
+    s
 }
 
 // ------------------------------------------------------------------------------------------------
 // catalog
 
-fn col_brief(c: &Column, name: &str, rows: usize) -> String {
-    let st = col_stats(c);
+fn kind_text(c: &Column) -> String {
     let mut kind = c.dtype.as_str().to_string();
     if let Some(u) = c.currency.as_ref().or(c.unit.as_ref()) {
         kind.push(' ');
@@ -402,9 +496,16 @@ fn col_brief(c: &Column, name: &str, rows: usize) -> String {
     if c.role == ColRole::Group {
         kind.push_str(" group");
     }
+    kind
+}
+
+/// One column with its range (numbers, dates) or an example (text, unless its values are listed).
+fn col_detail(c: &Column, name: &str, rows: usize, example: bool) -> String {
     if c.dtype == Dtype::Empty {
         return format!("{}[empty]", ident(name));
     }
+    let st = col_stats(c);
+    let mut kind = kind_text(c);
     if let (Some(lo), Some(hi)) = (st.min, st.max)
         && (is_numeric(c.dtype) || is_date(c.dtype))
     {
@@ -412,7 +513,7 @@ fn col_brief(c: &Column, name: &str, rows: usize) -> String {
         if is_date(c.dtype) {
             kind.push_str(&format!(", {} distinct", st.distinct));
         }
-    } else if let Some(ex) = &st.example {
+    } else if let Some(ex) = st.example.as_ref().filter(|_| example) {
         kind.push_str(&format!(" e.g. \"{}\"", short(ex, 24)));
     }
     if c.dtype == Dtype::Text && rows > 3 && st.nulls * 2 > rows {
@@ -421,7 +522,121 @@ fn col_brief(c: &Column, name: &str, rows: usize) -> String {
     format!("{}[{kind}]", ident(name))
 }
 
-fn columns_line(t: &Table, names: &[String]) -> String {
+/// One column as `name[dtype unit]` (dates with their range).
+fn col_compact(c: &Column, name: &str) -> String {
+    let mut kind = kind_text(c);
+    if is_date(c.dtype) {
+        let st = col_stats(c);
+        if let (Some(lo), Some(hi)) = (st.min, st.max) {
+            kind.push_str(&format!(" {}..{}", bound(lo, c.dtype), bound(hi, c.dtype)));
+        }
+    }
+    format!("{}[{kind}]", ident(name))
+}
+
+const WEEKDAYS: &[&str] = &[
+    "mon", "tue", "wed", "thu", "fri", "sat", "sun", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+    "sunday", "mo", "di", "mi", "do", "fr", "sa", "so", "montag", "dienstag", "mittwoch", "donnerstag", "freitag",
+    "samstag", "sonntag",
+];
+
+/// Days since 1970-01-01 of a proleptic Gregorian date.
+fn day_number(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * ((m + 9) % 12) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The period a column name stands for, as (unit, index) so that consecutive periods differ by
+/// one, and the rest of the name (lowercased; a weekday counts as empty): a bare year (`2019`),
+/// a month (`2024-03`, `Revenue 2024-03`) or a day (`Thu / 2002-01-31`).
+fn name_period(name: &str) -> Option<(u8, i64, String)> {
+    let s = name.trim();
+    if s.len() == 4 && s.bytes().all(|b| b.is_ascii_digit()) {
+        let y: i64 = s.parse().ok()?;
+        return (1900..=2100).contains(&y).then(|| (0, y, String::new()));
+    }
+    let b = s.as_bytes();
+    for i in 0..b.len().saturating_sub(6) {
+        let digits = |r: std::ops::Range<usize>| r.clone().all(|k| b.get(k).is_some_and(u8::is_ascii_digit));
+        if (i > 0 && b[i - 1].is_ascii_digit()) || !digits(i..i + 4) || b[i + 4] != b'-' || !digits(i + 5..i + 7) {
+            continue;
+        }
+        let y: i64 = s[i..i + 4].parse().ok()?;
+        let m: i64 = s[i + 5..i + 7].parse().ok()?;
+        if !(1900..=2100).contains(&y) || !(1..=12).contains(&m) {
+            return None;
+        }
+        let (unit, idx, end) = if b.get(i + 7) == Some(&b'-') && digits(i + 8..i + 10) {
+            let d: i64 = s[i + 8..i + 10].parse().ok()?;
+            (2, day_number(y, m, d), i + 10)
+        } else {
+            (1, y * 12 + m, i + 7)
+        };
+        if b.get(end).is_some_and(u8::is_ascii_digit) {
+            return None;
+        }
+        let rest = format!("{}{}", &s[..i], &s[end..]).to_lowercase();
+        let rest = rest.trim_matches(|c: char| c.is_whitespace() || "/-,:".contains(c)).to_string();
+        let rest = if WEEKDAYS.contains(&rest.trim_end_matches('.')) { String::new() } else { rest };
+        return Some((unit, idx, rest));
+    }
+    None
+}
+
+/// Columns compactly: runs of 4+ columns of one type named by consecutive periods (years, months
+/// or days) as `"2011".."2025"[15 × number EUR]` (nothing hidden); with `runs`, also any run of
+/// 3+ same-type columns.
+fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool) -> Vec<String> {
+    let same = |a: &Column, b: &Column| a.dtype == b.dtype && a.role == b.role && a.unit == b.unit && a.currency == b.currency;
+    let run_text = |k: usize, j: usize| {
+        format!("{}..{}[{} × {}]", ident(&names[cols[k].0]), ident(&names[cols[j - 1].0]), j - k, kind_text(cols[k].1))
+    };
+    let periods: Vec<Option<(u8, i64, String)>> = cols.iter().map(|(i, _)| name_period(&names[*i])).collect();
+    // Index of period column j if it continues the run started at k with direction `step`.
+    let follows = |k: usize, j: usize, step: i64| -> bool {
+        match (&periods[k], &periods[j]) {
+            (Some((u0, i0, r0)), Some((u, i, r))) => u == u0 && r == r0 && *i == i0 + step * (j - k) as i64,
+            _ => false,
+        }
+    };
+    let n = cols.len();
+    let mut out = Vec::new();
+    let mut k = 0;
+    while k < n {
+        if periods[k].is_some() {
+            let step = if k + 1 < n && follows(k, k + 1, -1) { -1 } else { 1 };
+            let mut j = k + 1;
+            while j < n && same(cols[k].1, cols[j].1) && follows(k, j, step) {
+                j += 1;
+            }
+            if j - k >= 4 {
+                out.push(run_text(k, j));
+                k = j;
+                continue;
+            }
+        }
+        if runs {
+            let mut j = k + 1;
+            while j < n && same(cols[k].1, cols[j].1) {
+                j += 1;
+            }
+            if j - k >= 3 {
+                out.push(run_text(k, j));
+                k = j;
+                continue;
+            }
+        }
+        out.push(col_compact(cols[k].1, &names[cols[k].0]));
+        k += 1;
+    }
+    out
+}
+
+fn columns_line(t: &Table, names: &[String], examples: bool) -> String {
     let all = data_cols(t).count();
     // Empty columns (spacers in the source) take room and say nothing.
     let cols: Vec<(usize, &Column)> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).collect();
@@ -432,19 +647,45 @@ fn columns_line(t: &Table, names: &[String]) -> String {
     if n == 0 {
         return format!("    columns ({label})");
     }
-    let shown: Vec<String> = if n <= CATALOG_COLS {
-        cols.iter().map(|(i, c)| col_brief(c, &names[*i], rows)).collect()
+    let data = data_rows(t);
+    let mut items: Vec<String> = if n <= DETAIL_COLS {
+        cols.iter()
+            .map(|(i, c)| col_detail(c, &names[*i], rows, examples && label_values(c, &data).is_none()))
+            .collect()
     } else {
-        let head = CATALOG_COLS - 3;
-        let mut v: Vec<String> = cols[..head].iter().map(|(i, c)| col_brief(c, &names[*i], rows)).collect();
-        v.push(format!("… {} more …", n - head - 2));
-        v.extend(cols[n - 2..].iter().map(|(i, c)| col_brief(c, &names[*i], rows)));
-        v
+        compact_items(&cols, names, n > LIST_COLS)
     };
-    format!("    columns ({label}): {}", shown.join(" "))
+    if items.len() > MAX_COL_ITEMS {
+        let more = items.len() - MAX_COL_ITEMS;
+        items.truncate(MAX_COL_ITEMS);
+        items.push(format!("… +{more} more (describe_table lists them)"));
+    }
+    format!("    columns ({label}): {}", items.join(" "))
 }
 
-fn table_head(norm: &Normalized, t: &Table, info: &RowInfo, brief: bool) -> String {
+/// The data rows of a small table as CSV (all columns but `_src_row`), or None if it is not small.
+fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
+    let rows = data_rows(t);
+    let cols: Vec<usize> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(i, _)| i).collect();
+    if rows.is_empty() || rows.len() > INLINE_ROWS || cols.is_empty() || cols.len() > INLINE_COLS {
+        return None;
+    }
+    let mut out = vec![format!("    all {} (CSV):", plural(rows.len(), "row", "rows"))];
+    out.push(format!("    {}", csv_row(&cols.iter().map(|&i| short(&names[i], 60)).collect::<Vec<_>>())));
+    for r in rows {
+        let vals: Vec<String> = cols
+            .iter()
+            .map(|&i| {
+                let c = &t.columns[i];
+                short(&c.values.get(r).map(|v| out_text(v, c.dtype)).unwrap_or_default(), 60)
+            })
+            .collect();
+        out.push(format!("    {}", csv_row(&vals)));
+    }
+    Some(out)
+}
+
+fn table_head(t: &Table, info: &RowInfo, cov: Option<&TimeCoverage>, brief: bool) -> String {
     let mut s = format!("{:<3} ", t.id());
     if let Some((title, _)) = &t.title {
         s.push_str(&format!("'{}' ", short(title, if brief { 60 } else { 100 })));
@@ -456,23 +697,62 @@ fn table_head(norm: &Normalized, t: &Table, info: &RowInfo, brief: bool) -> Stri
             " (+{} {}: {} — only in {}_all)",
             k,
             if k == 1 { "total row" } else { "total rows" },
-            total_rows_text(info, if brief { 1 } else { 3 }),
+            total_rows_text(&info.total_rows, if brief { 1 } else { 3 }),
             t.id()
         ));
+    }
+    if !info.kept_totals.is_empty() {
+        let k = info.kept_totals.len();
+        if brief {
+            s.push_str(&format!(
+                " · {} inside {} (e.g. '{}'@{})",
+                plural(k, "total row", "total rows"),
+                t.id(),
+                short(&info.kept_totals[0].label, 24),
+                info.kept_totals[0].row
+            ));
+        } else {
+            s.push_str(&format!(
+                " · {} {} in {} ({}) — exclude {} before summing",
+                plural(k, "total row", "total rows"),
+                if k == 1 { "stays" } else { "stay" },
+                t.id(),
+                kept_totals_text(&info.kept_totals),
+                if k == 1 { "it" } else { "them" }
+            ));
+        }
+    }
+    if let Some(c) = cov {
+        s.push_str(&format!(" · time {} ({})", period_range(c), c.granularity));
     }
     if t.confidence < 0.6 {
         s.push_str(&format!(" · low detection confidence {:.2}", t.confidence));
     }
-    let _ = norm;
     s
 }
 
+/// One table in the full catalog: its lines, and its rows as CSV when it is small (added only
+/// while the catalog stays within its budget).
+struct Block {
+    lines: Vec<String>,
+    inline: Vec<String>,
+}
+
+fn len_of(lines: &[String]) -> usize {
+    lines.iter().map(|l| l.len() + 1).sum()
+}
+
 /// The `open_file` catalog: one header line, the time coverage, the tables (full or one line each)
-/// with columns, group column and totals check, notes and warnings; at most `budget` characters,
-/// cut with an explicit `… cut:` line.
+/// with columns, label values, group column and totals check, small tables' rows, notes and
+/// warnings; at most `budget` characters, cut with an explicit `… cut:` line.
 pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     let budget = budget.min(MAX_CHARS);
-    let tc = time_coverage(norm, display_name.rsplit(['/', '\\']).next().unwrap_or(display_name));
+    let file_name = display_name.rsplit(['/', '\\']).next().unwrap_or(display_name);
+    let covs: Vec<Option<TimeCoverage>> = norm.tables.iter().map(table_time_coverage).collect();
+    let with_cov: Vec<(String, TimeCoverage)> =
+        norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
+    // Per-table periods only when there is more than one table (else the TIME line says it).
+    let table_cov = |k: usize| covs[k].as_ref().filter(|_| norm.tables.len() > 1);
     let roles = if hh_core::learned::embedded().is_some() { "model" } else { "rules" };
     let pct = (100 * norm.cells.in_tables).checked_div(norm.cells.total).unwrap_or(0);
     let mut head = vec![
@@ -482,7 +762,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             plural(norm.cells.total, "cell", "cells"),
             plural(norm.tables.len(), "table", "tables"),
         ),
-        time_line(tc.as_ref()),
+        time_line(workbook_time_coverage(norm).as_ref(), &with_cov, &mentioned_years(norm, file_name)),
     ];
     let empty: Vec<&str> = norm.sheets.iter().filter(|s| s.tables.is_empty() && s.cells > 0).map(|s| s.name.as_str()).collect();
     if !empty.is_empty() {
@@ -497,63 +777,77 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     }
 
     let infos: Vec<RowInfo> = norm.tables.iter().map(|t| row_info(norm, t)).collect();
-    let full = || -> Vec<String> {
+    let full = || -> Vec<Block> {
         let mut out = Vec::new();
         let mut layouts: HashMap<Vec<(String, &'static str)>, String> = HashMap::new();
         let mut shapes: HashMap<Vec<&'static str>, (String, Vec<String>)> = HashMap::new();
-        for (t, info) in norm.tables.iter().zip(&infos) {
+        for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
             let names = sql_names(t);
             let cols: Vec<(String, &'static str)> =
                 data_cols(t).map(|(i, c)| (names[i].clone(), c.dtype.as_str())).collect();
             let shape: Vec<&'static str> = cols.iter().map(|c| c.1).collect();
-            let mut line = table_head(norm, t, info, false);
+            let mut line = table_head(t, info, table_cov(k), false);
+            let inline = inline_rows(t, &names).unwrap_or_default();
             if let Some(first) = layouts.get(&cols) {
                 line.push_str(&format!(" · same columns as {first}"));
-                out.push(line);
+                out.push(Block { lines: vec![line], inline });
                 continue;
             }
             if cols.len() >= 3
                 && let Some((first, first_names)) = shapes.get(&shape)
             {
-                let diff: Vec<String> =
-                    cols.iter().filter(|c| !first_names.contains(&c.0)).map(|c| ident(&short(&c.0, 24))).collect();
+                // The headers that differ, period runs collapsed.
+                let diff: Vec<(usize, &Column)> = data_cols(t).filter(|(i, _)| !first_names.contains(&names[*i])).collect();
+                let items = compact_items(&diff, &names, false);
                 line.push_str(&format!(" · same layout as {first}"));
-                if !diff.is_empty() {
-                    line.push_str(&format!("; headers here: {}", diff.iter().take(6).cloned().collect::<Vec<_>>().join(" ")));
-                    if diff.len() > 6 {
-                        line.push_str(" …");
+                if !items.is_empty() {
+                    line.push_str(&format!("; headers here: {}", items.iter().take(12).cloned().collect::<Vec<_>>().join(" ")));
+                    if items.len() > 12 {
+                        line.push_str(&format!(" … +{} more (describe_table lists them)", items.len() - 12));
                     }
                 }
-                out.push(line);
+                out.push(Block { lines: vec![line], inline });
                 continue;
             }
             layouts.insert(cols.clone(), t.id());
             shapes.insert(shape, (t.id(), cols.iter().map(|c| c.0.clone()).collect()));
-            out.push(line);
-            out.push(columns_line(t, &names));
+            let mut lines = vec![line, columns_line(t, &names, inline.is_empty())];
+            let data = data_rows(t);
+            // The values to filter on; a small inlined table shows them in its rows.
+            if inline.is_empty() {
+                for (i, c) in data_cols(t) {
+                    if let Some(vals) = label_values(c, &data) {
+                        lines.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
+                    }
+                }
+            }
+            if let Some(i) = mixed_measures_by(t, &data) {
+                lines.push(format!("    rows mix measures by {} — filter before aggregating", ident(&names[i])));
+            }
             let mut extra = Vec::new();
             if let Some(g) = t.columns.iter().position(|c| c.role == ColRole::Group) {
                 extra.push(format!("group column: {}", ident(&names[g])));
             }
-            let (ok, bad, unk) = status_counts(norm.totals.iter().filter(|x| x.table == Some(t.n)));
-            if ok + bad + unk > 0 {
-                extra.push(format!("totals: {ok} ok, {bad} mismatch, {unk} unknown"));
+            let tt = &info.totals;
+            if tt.count > 0 {
+                extra.push(format!("totals: {} ok, {} mismatch, {} unknown", tt.ok, tt.mismatch, tt.unknown));
             }
             if !t.warnings.is_empty() {
                 extra.push(format!("warnings: {} (e.g. {})", t.warnings.len(), short(&t.warnings[0], 90)));
             }
             if !extra.is_empty() {
-                out.push(format!("    {}", extra.join(" · ")));
+                lines.push(format!("    {}", extra.join(" · ")));
             }
+            out.push(Block { lines, inline });
         }
         out
     };
     let brief = || -> Vec<String> {
         let mut out = vec!["(tables listed briefly; call describe_table for columns)".to_string()];
-        for (t, info) in norm.tables.iter().zip(&infos) {
+        for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
             let names = sql_names(t);
             let cols: Vec<String> = data_cols(t).map(|(i, _)| ident(&short(&names[i], 24))).collect();
-            let mut line = table_head(norm, t, info, true);
+            let mut line = table_head(t, info, table_cov(k), true);
             line.push_str(&format!(" · {} cols: {}", cols.len(), cols.iter().take(4).cloned().collect::<Vec<_>>().join(" ")));
             if cols.len() > 4 {
                 line.push_str(" …");
@@ -615,10 +909,23 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         all.extend(tail.iter().cloned());
         all.join("\n")
     };
+    let fixed = len_of(&head) + len_of(&tail);
     if norm.tables.len() <= BRIEF_TABLES_OVER {
-        let text = join(&full());
-        if text.len() <= budget {
-            return text;
+        let blocks = full();
+        let base: usize = fixed + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>();
+        if base <= budget + 1 {
+            // Small tables' rows, in table order, while they fit.
+            let mut room = budget + 1 - base;
+            let mut body = Vec::new();
+            for b in blocks {
+                body.extend(b.lines);
+                let need = len_of(&b.inline);
+                if !b.inline.is_empty() && need <= room {
+                    room -= need;
+                    body.extend(b.inline);
+                }
+            }
+            return join(&body);
         }
     }
     let body = brief();
@@ -627,7 +934,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         return text;
     }
     // Still too long: keep as many table lines as fit, then say what was cut.
-    let fixed: usize = head.iter().chain(&tail).map(|l| l.len() + 1).sum::<usize>() + 200;
+    let fixed = fixed + 200;
     let mut kept = Vec::new();
     let mut used = fixed;
     for l in &body {
@@ -723,7 +1030,18 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
             if more > 0 { format!(" +{more} more") } else { String::new() }
         ));
     }
-    lines.push("columns (name | dtype | unit | nulls | distinct | min..max or example | source column ← header cells):".into());
+    if !info.kept_totals.is_empty() {
+        lines.push(format!(
+            "total rows that stay in {} (exclude before summing): {}",
+            t.id(),
+            total_rows_text(&info.kept_totals, 12)
+        ));
+    }
+    if let Some(i) = mixed_measures_by(t, &data_rows(t)) {
+        lines.push(format!("rows mix measures by {} — filter before aggregating", ident(&names[i])));
+    }
+    lines.push("columns (name | dtype | unit | nulls | distinct | min..max, example or all values | source column ← header cells):".into());
+    let data = data_rows(t);
     let cols: Vec<(usize, &Column)> = data_cols(t).collect();
     for (k, (i, c)) in cols.iter().enumerate() {
         if k == DESCRIBE_COLS {
@@ -737,7 +1055,10 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
             (Some(lo), Some(hi)) if is_numeric(c.dtype) || is_date(c.dtype) => {
                 format!("{}..{}", bound(lo, c.dtype), bound(hi, c.dtype))
             }
-            _ => st.example.as_ref().map(|e| format!("e.g. \"{}\"", short(e, 40))).unwrap_or_default(),
+            _ => match label_values(c, &data) {
+                Some(vals) if vals.len() > 1 => values_text(&vals),
+                _ => st.example.as_ref().map(|e| format!("e.g. \"{}\"", short(e, 40))).unwrap_or_default(),
+            },
         };
         let src = match c.source_col {
             Some(col) => {
@@ -927,17 +1248,217 @@ mod tests {
     fn small_catalog_is_full() {
         let c = catalog(&book(2, 3, true), "x.xlsx", MAX_CHARS);
         assert!(c.starts_with("FILE x.xlsx · 2 sheets · "), "{c}");
-        assert!(c.contains("TIME 2001–2003 (year; column headers 2001–2003)"), "{c}");
-        assert!(c.contains("T1  'Table 1 title' ← 'Sheet 1'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T1_all)"), "{c}");
-        assert!(c.contains("columns (4): Region[text e.g. \"r0\"] \"2001\"[number 0.25..0.25]"), "{c}");
-        assert!(c.contains("T2  'Table 2 title' ← 'Sheet 2'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T2_all) · same columns as T1"), "{c}");
+        assert!(c.contains("TIME 2001–2003 (year, from column headers in T1, T2)"), "{c}");
+        assert!(c.contains("T1  'Table 1 title' ← 'Sheet 1'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T1_all) · time 2001–2003 (year)"), "{c}");
+        assert!(c.contains("columns (4): Region[text] \"2001\"[number 0.25..0.25]"), "{c}");
+        assert!(c.contains("T2  'Table 2 title' ← 'Sheet 2'!A1:D6 · 4 rows (+1 total row: 'Total'@6 — only in T2_all) · time 2001–2003 (year) · same columns as T1"), "{c}");
+        // Small tables: all data rows inline, so the values to filter on need no extra line.
+        assert!(c.contains("\n    all 4 rows (CSV):\n    Region,2001,2002,2003\n    r0,0.25,0.25,0.25\n    r1,0.25,1.25,2.25\n"), "{c}");
+        assert_eq!(c.matches("all 4 rows (CSV):").count(), 2, "{c}");
+        assert!(!c.contains("values:"), "{c}");
         assert!(!c.contains("… cut:"));
     }
 
     #[test]
+    fn inline_rows_only_within_budget() {
+        let n = book(2, 3, true);
+        let full = catalog(&n, "x.xlsx", MAX_CHARS);
+        // Room for one table's rows only: the first stays inline, the second is dropped.
+        let c = catalog(&n, "x.xlsx", full.len() - 10);
+        assert!(c.len() <= full.len() - 10, "{c}");
+        assert_eq!(c.matches("all 4 rows (CSV):").count(), 1, "{c}");
+        assert!(!c.contains("tables listed briefly"), "{c}");
+        // More than 12 columns or 15 rows: not inlined.
+        assert!(!catalog(&book(1, 12, true), "x.xlsx", MAX_CHARS).contains("(CSV):"));
+        let mut tall = book(1, 2, true);
+        let t = &mut tall.tables[0];
+        for c in &mut t.columns {
+            let v = c.values[0].clone();
+            c.values = vec![v; 16];
+        }
+        t.src_rows = (1..=16).collect();
+        t.row_types = vec![RowType::Data; 16];
+        assert!(!catalog(&tall, "x.xlsx", MAX_CHARS).contains("(CSV):"));
+    }
+
+    #[test]
+    fn every_column_listed_up_to_40() {
+        // 1 + 31 columns with distinct names: all listed by name, no "more".
+        let c = catalog(&book(1, 30, false), "x.xlsx", MAX_CHARS);
+        for w in 0..31 {
+            assert!(c.contains(&format!("\"Measure 1-{w} long header text\"[number]")), "{w}: {c}");
+        }
+        assert!(!c.contains("more"), "{c}");
+        // Year columns: one run, nothing hidden.
+        let c = catalog(&book(1, 15, true), "x.xlsx", MAX_CHARS);
+        assert!(c.contains("columns (16): Region[text] \"2001\"..\"2015\"[15 × number]"), "{c}");
+        // Wider than 40: runs of same-type columns.
+        let c = catalog(&book(1, 60, false), "x.xlsx", MAX_CHARS);
+        assert!(
+            c.contains("columns (62): Region[text] \"Measure 1-0 long header text\"..\"Measure 1-60 long header text\"[61 × number]"),
+            "{c}"
+        );
+    }
+
+    #[test]
+    fn period_names() {
+        assert_eq!(name_period("2019"), Some((0, 2019, String::new())));
+        assert_eq!(name_period("Thu / 2002-01-31").map(|p| p.2), Some(String::new()));
+        assert_eq!(name_period("Thu / 2002-01-31").unwrap().1 - name_period("Wed / 2002-01-30").unwrap().1, 1);
+        assert_eq!(name_period("Thu / 2002-03-01").unwrap().1 - name_period("Wed / 2002-02-28").unwrap().1, 1);
+        assert_eq!(name_period("Sales 2024-03"), Some((1, 2024 * 12 + 3, "sales".into())));
+        assert_eq!(name_period("MTD Avg / 2002-02-05").unwrap().2, "mtd avg");
+        assert_eq!(name_period("12345"), None);
+        assert_eq!(name_period("2020/ 2025"), None);
+    }
+
+    /// One table like the Austrian pension file: a group column with three measures (counts,
+    /// euro amounts, rates) and a status column, years as columns.
+    fn stacked() -> Normalized {
+        let mut n = book(1, 4, true);
+        let t = &mut n.tables[0];
+        let groups =
+            ["Anzahl Bezieher:innen", "Anzahl Bezieher:innen", "Durchschnittshöhe in Euro", "Durchschnittshöhe in Euro", "Richtsätze in Euro"];
+        let status = ["Alleinstehend", "Verheiratet", "Alleinstehend", "Verheiratet", "Alleinstehend"];
+        let size = [196_489.0, 38_182.0, 264.3, 372.97, 793.4];
+        let mut cols = vec![
+            col("group", ColRole::Group, Dtype::Text, groups.iter().map(|s| Out::Text(s.to_string())).collect()),
+            col("Status", ColRole::Data, Dtype::Text, status.iter().map(|s| Out::Text(s.to_string())).collect()),
+        ];
+        for w in 0..4 {
+            let vals = size.iter().map(|v| Out::Num(v * (1.0 + w as f64 / 50.0))).collect();
+            cols.push(col(&format!("{}", 2011 + w), ColRole::Data, Dtype::Number, vals));
+        }
+        cols.push(t.columns.last().unwrap().clone());
+        t.columns = cols;
+        t.row_types = vec![RowType::Data; 5];
+        n
+    }
+
+    #[test]
+    fn label_values_and_mixed_measures() {
+        let n = stacked();
+        let c = catalog(&n, "x.xlsx", MAX_CHARS);
+        // 5 rows × 6 columns: inlined, the measures are visible in the rows.
+        assert!(c.contains("rows mix measures by \"group\" — filter before aggregating"), "{c}");
+        assert!(c.contains("all 5 rows (CSV)"), "{c}");
+        // Too wide to inline: the values are listed.
+        let mut wide = n.clone();
+        for w in 4..14 {
+            let mut x = wide.tables[0].columns[2].clone();
+            x.name = format!("{}", 2011 + w);
+            let at = wide.tables[0].columns.len() - 1;
+            wide.tables[0].columns.insert(at, x);
+        }
+        let c = catalog(&wide, "x.xlsx", MAX_CHARS);
+        assert!(!c.contains("(CSV)"), "{c}");
+        assert!(
+            c.contains("\n    \"group\" values: \"Anzahl Bezieher:innen\" | \"Durchschnittshöhe in Euro\" | \"Richtsätze in Euro\"\n"),
+            "{c}"
+        );
+        assert!(c.contains("\n    Status values: \"Alleinstehend\" | \"Verheiratet\"\n"), "{c}");
+        assert!(c.contains("rows mix measures by \"group\""), "{c}");
+        let d = describe_table(&wide, &wide.tables[0]);
+        assert!(d.contains("rows mix measures by \"group\""), "{d}");
+        assert!(d.contains("| \"Alleinstehend\" | \"Verheiratet\" |"), "{d}");
+        // By size alone (labels without units): still found.
+        let mut plain = n.clone();
+        for (k, v) in plain.tables[0].columns[0].values.iter_mut().enumerate() {
+            *v = Out::Text(["A", "A", "B", "B", "C"][k].into());
+        }
+        assert!(catalog(&plain, "x.xlsx", MAX_CHARS).contains("rows mix measures by \"group\""));
+        // Regions of similar size: one measure.
+        let c = catalog(&book(1, 3, true), "x.xlsx", MAX_CHARS);
+        assert!(!c.contains("mix measures"), "{c}");
+        // More than 12 distinct values: not listed.
+        let mut many = book(1, 13, true);
+        let t = &mut many.tables[0];
+        for c in &mut t.columns {
+            let v = c.values[0].clone();
+            c.values = vec![v; 20];
+        }
+        t.columns[0].values = (0..20).map(|k| Out::Text(format!("r{k}"))).collect();
+        t.src_rows = (1..=20).collect();
+        t.row_types = vec![RowType::Data; 20];
+        let c = catalog(&many, "x.xlsx", MAX_CHARS);
+        assert!(!c.contains("Region values"), "{c}");
+        assert!(c.contains("Region[text e.g. \"r0\"]"), "{c}");
+    }
+
+    #[test]
+    fn time_from_the_manifest() {
+        // Monthly dates in a column: the manifest's coverage, and the same as hh_core's.
+        let mut n = book(1, 1, false);
+        let t = &mut n.tables[0];
+        // 2024-01-01 .. 2024-05-01
+        let months: Vec<Out> = [0.0, 31.0, 60.0, 91.0, 121.0].iter().map(|d| Out::Date(45292.0 + d)).collect();
+        t.columns.insert(0, col("Datum", ColRole::Data, Dtype::Date, months));
+        t.row_types = vec![RowType::Data; 5];
+        let wb = time_coverage(&n).unwrap();
+        assert_eq!((wb.from.as_str(), wb.to.as_str(), wb.granularity), ("2024-01", "2024-05", "month"));
+        let c = catalog(&n, "report_2019.xlsx", MAX_CHARS);
+        assert!(
+            c.contains("TIME 2024-01–2024-05 (month, from columns T1.Datum; titles/notes/sheet or file names also mention 2019)"),
+            "{c}"
+        );
+        // No dates in the data: only the weak hint.
+        let mut n = book(1, 1, false);
+        n.tables[0].title = Some(("Sales report 2023".into(), (0, 0)));
+        let c = catalog(&n, "x.xlsx", MAX_CHARS);
+        assert!(c.contains("TIME 2023 (only mentioned in titles/notes/sheet or file names; no date or period columns)"), "{c}");
+        let mut n = book(1, 1, false);
+        n.tables[0].title = None;
+        assert!(catalog(&n, "x.xlsx", MAX_CHARS).contains("TIME no dates or periods found"));
+    }
+
+    fn total_item(table: usize, row: u32, label: &str) -> hh_core::normalize::TotalItem {
+        hh_core::normalize::TotalItem {
+            table: Some(table),
+            sheet: "Sheet 1".into(),
+            row,
+            col: 1,
+            count: 1,
+            row_end: row,
+            label: Some(label.into()),
+            label_cell: Some((row, 0)),
+            level: "total",
+            direction: "vertical",
+            origin: "typed",
+            value: Some(1.0),
+            recomputed: None,
+            status: "unknown",
+            reason: "not_verified".into(),
+            sources: vec![],
+            formula: None,
+            kept_in_data: true,
+        }
+    }
+
+    #[test]
+    fn totals_from_the_manifest() {
+        let mut n = book(1, 3, true);
+        // Source row 3 (0-based 2) is a data row: a total the check found that stays in T1;
+        // source row 6 is the removed total row.
+        n.totals = vec![total_item(1, 2, "Insgesamt"), total_item(1, 5, "Gesamt")];
+        let info = row_info(&n, &n.tables[0]);
+        assert_eq!(info.totals, hh_core::normalize::table_totals(&n.tables[0], &n.totals));
+        assert_eq!(info.totals.unknown, 2);
+        assert_eq!(info.kept_totals.iter().map(|r| (r.label.as_str(), r.row)).collect::<Vec<_>>(), [("Insgesamt", 3)]);
+        assert_eq!(info.total_rows.iter().map(|r| (r.label.as_str(), r.row)).collect::<Vec<_>>(), [("Gesamt", 6)]);
+        let c = catalog(&n, "x.xlsx", MAX_CHARS);
+        assert!(
+            c.contains("(+1 total row: 'Gesamt'@6 — only in T1_all) · 1 total row stays in T1 ('Insgesamt'@3) — exclude it before summing"),
+            "{c}"
+        );
+        assert!(c.contains("totals: 0 ok, 0 mismatch, 2 unknown"), "{c}");
+        let d = describe_table(&n, &n.tables[0]);
+        assert!(d.contains("total rows that stay in T1 (exclude before summing): 'Insgesamt'@3"), "{d}");
+    }
+
+    #[test]
     fn long_catalogs_go_brief_then_cut() {
-        // 30 wide tables: too long in full, fits briefly.
-        let c = catalog(&book(30, 40, false), "x.xlsx", MAX_CHARS);
+        // 40 wide tables: too long in full, fits briefly.
+        let c = catalog(&book(40, 20, false), "x.xlsx", MAX_CHARS);
         assert!(c.len() <= MAX_CHARS);
         assert!(c.contains("(tables listed briefly; call describe_table for columns)"), "{c}");
         assert!(c.contains("T30 "), "{c}");
@@ -970,15 +1491,5 @@ mod tests {
         let mut n = book(1, 1, true);
         n.tables[0].columns[1].name = "region".into();
         assert_eq!(sql_names(&n.tables[0]), ["Region", "region (2)", "_src_row"]);
-    }
-
-    #[test]
-    fn granularity() {
-        let months: Vec<f64> = (0..12).map(|m| 44927.0 + m as f64 * 31.0).collect(); // ~2023 monthly, not day 1
-        assert_eq!(date_granularity(&months), Some("day"));
-        let firsts = [44927.0, 44958.0, 44986.0]; // 2023-01-01, 02-01, 03-01
-        assert_eq!(date_granularity(&firsts), Some("month"));
-        let jan = [44927.0, 45292.0]; // 2023-01-01, 2024-01-01
-        assert_eq!(date_granularity(&jan), Some("year"));
     }
 }
