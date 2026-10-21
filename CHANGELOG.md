@@ -23,9 +23,9 @@ All notable changes to hedgehog are listed here. The format follows
   header words in eight languages, currency / unit, the table title and value statistics:
   `"2025"[number EUR · amount]`, `Indexwert[number · index — don't sum]`; a `do not sum:` line per
   table with average / rate / index columns (or rows, when a label column mixes measures). Columns
-  the file adds up itself are never flagged. Catalog size on the four agent-eval files: 5,833 →
-  6,104 (pt-contracts), 3,375 → 3,978 (at-pension), 9,749 → 11,071 (enron-henry-hub), 4,506 →
-  5,034 characters (de-truck-toll). See [docs/mcp.md](docs/mcp.md#the-catalog).
+  the file adds up itself are never flagged. Catalog size on the four agent-eval files (with B15–B19):
+  6,517 → 6,788 (pt-contracts), 3,396 → 4,068 (at-pension), 9,982 → 11,415 (enron-henry-hub, all
+  rows of T1/T2 still inline), 4,782 → 5,310 characters (de-truck-toll). See [docs/mcp.md](docs/mcp.md#the-catalog).
 - **Agent accuracy with small models (B15, B16, B18, B19)**, from the hedgehog-cli runs:
   - A `no such column` that names a total-row label (`"Total"`, `"Gesamt"`) or a value of a text
     column (`"SEA ROBIN"`) still explains where those rows are, and now also returns them: the
