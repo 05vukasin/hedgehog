@@ -101,35 +101,6 @@ pub(crate) fn separate_tables(tables: &mut [crate::analysis::DetectedTable]) {
     tables.sort_by_key(|t| (t.rect.top, t.rect.left));
 }
 
-/// Cells of ruling lines drawn with text (B38): every cell of a row whose filled cells are all
-/// runs of `-`, `=`, `_`, … ([`cells::is_rule_text`]), and every `|` cell. The model path sets
-/// them to Other after its own roles (the rules never make them table data).
-pub(crate) fn rule_cells(grid: &Grid) -> Vec<usize> {
-    let cells = &grid.sheet.cells;
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < cells.len() {
-        let row = cells[i].row;
-        let j = i + cells[i..].iter().take_while(|c| c.row == row).count();
-        let texts: Vec<(usize, &str)> = (i..j)
-            .filter_map(|k| match &cells[k].value {
-                Some(crate::model::Value::Text(t)) if t.trim().is_empty() => None,
-                Some(crate::model::Value::Text(t)) => Some((k, t.as_str())),
-                Some(_) => Some((k, "\u{1}")),
-                None => None,
-            })
-            .collect();
-        let all = !texts.is_empty() && texts.iter().all(|(_, t)| cells::is_rule_text(t));
-        for (k, t) in texts {
-            if all || matches!(t.trim(), "|" | "||" | "¦") {
-                out.push(k);
-            }
-        }
-        i = j;
-    }
-    out
-}
-
 /// Column number of a cell: a whole number `n`, alone or as `(n)`, `[n]`, `n)` or `n.`.
 fn column_number(v: &crate::model::Value) -> Option<i64> {
     use crate::model::Value;

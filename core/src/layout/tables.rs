@@ -524,7 +524,7 @@ fn set(out: &mut Out, r: &Row, role: Role) {
 
 /// Like [`set`], for entries starting at or left of `max_col` only.
 fn set_upto(out: &mut Out, r: &Row, role: Role, max_col: u32) {
-    for e in r.entries.iter().filter(|e| e.left <= max_col && e.kind != Kind::Rule) {
+    for e in r.entries.iter().filter(|e| e.left <= max_col) {
         if let Some(i) = e.cell {
             out.roles[i] = role;
         }
@@ -678,14 +678,14 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     let mut prev_role = if seg.header > 0 { Role::Header } else { Role::Data };
     for k in body_start..seg.end {
         let r = &rows[k];
-        // A ruling line under a header (or a repeated header) underlines it: header; elsewhere
-        // it keeps the default role (Other).
+        // A ruling line under a header (or a repeated header) underlines it: header; inside the
+        // body it is part of the table (data, as annotated corpora label it). Normalize leaves
+        // it out of the data either way.
         if r.n() == 0 && r.entries.iter().any(|e| e.kind == Kind::Rule) {
-            if prev_role == Role::Header {
-                for e in r.entries.iter().filter(|e| e.kind == Kind::Rule && e.left <= rect.right) {
-                    if let Some(i) = e.cell {
-                        out.roles[i] = Role::Header;
-                    }
+            let role = if prev_role == Role::Header { Role::Header } else { Role::Data };
+            for e in r.entries.iter().filter(|e| e.kind == Kind::Rule && e.left <= rect.right) {
+                if let Some(i) = e.cell {
+                    out.roles[i] = role;
                 }
             }
             continue;

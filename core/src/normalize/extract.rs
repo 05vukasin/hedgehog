@@ -343,8 +343,8 @@ fn build_table(
         }
         let same_parent = |a: usize, b: usize| hr == 0 || head[hr - 1][a] == head[hr - 1][b];
         let mut fill: Vec<(usize, usize)> = Vec::new();
-        for hc in 0..ncols {
-            if head[hr][hc].is_some() || !labelled_below(hc) || !measure(hc) {
+        for (hc, cell) in head[hr].iter().enumerate() {
+            if cell.is_some() || !labelled_below(hc) || !measure(hc) {
                 continue;
             }
             let near = labels.iter().copied().filter(|&l| same_parent(l, hc)).min_by_key(|&l| (l.abs_diff(hc), l > hc));

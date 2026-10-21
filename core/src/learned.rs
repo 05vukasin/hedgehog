@@ -586,24 +586,6 @@ pub fn analyze_with(grid: &Grid, model: &RowModel, steps: RefineSteps) -> SheetL
         }
     }
     // Ruling lines drawn with text (`-----`, `=====`, a `|` column) are never table data (B38).
-    // A ruling line right under a header row underlines it (header); elsewhere it is other.
-    let cells = &grid.sheet.cells;
-    for i in crate::layout::rule_cells(grid) {
-        let row = cells[i].row;
-        let above = cells[..i].iter().rev().map(|c| c.row).find(|&r| r < row);
-        let header_above = above.is_some_and(|r| {
-            let idx = grid.row_cells(r);
-            let h = idx.iter().filter(|&&j| lay.roles[j as usize] == Role::Header).count();
-            r + 1 == row && 2 * h > idx.len()
-        });
-        let whole = grid.row_cells(row).iter().all(|&j| match &cells[j as usize].value {
-            Some(crate::model::Value::Text(t)) => t.trim().is_empty() || crate::layout::is_rule_text(t),
-            None => true,
-            _ => false,
-        });
-        let header_above = header_above && whole;
-        lay.roles[i] = if header_above { Role::Header } else { Role::Other };
-    }
     tables::refine(grid, &mut lay, &raw, &rules, steps);
     crate::normalize::trace("M:tables", t0);
     // The model's features count every total word (as in training); a row whose only one is
