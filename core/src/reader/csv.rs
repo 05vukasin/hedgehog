@@ -39,14 +39,16 @@ enum Encoding {
     Windows1252,
 }
 
-pub(super) fn open(path: &Path) -> Result<Workbook, Error> {
+/// `max_cells`: reading stops with a limit error past this many cells (checked while reading,
+/// so a huge file is refused before it fills memory).
+pub(super) fn open(path: &Path, max_cells: u64) -> Result<Workbook, Error> {
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     let tsv = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tsv"));
     let mut head = Vec::new();
     File::open(path).map_err(err)?.take(HEAD as u64).read_to_end(&mut head).map_err(err)?;
     let cells = if utf16_bom(&head).is_some() {
         // Rare (Excel's "Unicode text"); decoded in memory as a whole.
-        read_bytes(&std::fs::read(path).map_err(err)?, tsv)?
+        read_bytes(&std::fs::read(path).map_err(err)?, tsv, max_cells)?
     } else {
         let bom = if head.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
         let open = || -> io::Result<BufReader<File>> {
@@ -55,21 +57,21 @@ pub(super) fn open(path: &Path) -> Result<Workbook, Error> {
             r.consume(skip);
             Ok(r)
         };
-        read_cells(open, &head[bom..], tsv)?
+        read_cells(open, &head[bom..], tsv, max_cells)?
     };
     Ok(Workbook { sheets: vec![Sheet { name, cells, merges: Vec::new(), formats: Vec::new() }] })
 }
 
 /// [`open`] on bytes in memory, without the sheet around the cells.
-fn read_bytes(bytes: &[u8], tsv: bool) -> Result<Vec<Cell>, Error> {
+fn read_bytes(bytes: &[u8], tsv: bool, max_cells: u64) -> Result<Vec<Cell>, Error> {
     if let Some(le) = utf16_bom(bytes) {
         let unit = |c: &[u8]| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) };
         let units = bytes[2..].chunks_exact(2).map(unit);
         let text: String = char::decode_utf16(units).map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER)).collect();
-        return read_cells(|| Ok(Cursor::new(text.as_bytes())), &text.as_bytes()[..text.len().min(HEAD)], tsv);
+        return read_cells(|| Ok(Cursor::new(text.as_bytes())), &text.as_bytes()[..text.len().min(HEAD)], tsv, max_cells);
     }
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    read_cells(|| Ok(Cursor::new(bytes)), &bytes[..bytes.len().min(HEAD)], tsv)
+    read_cells(|| Ok(Cursor::new(bytes)), &bytes[..bytes.len().min(HEAD)], tsv, max_cells)
 }
 
 /// `Some(little endian)` for a UTF-16 byte order mark.
@@ -83,19 +85,19 @@ fn utf16_bom(b: &[u8]) -> Option<bool> {
 
 /// Cells of the whole input. `open` gives a fresh reader positioned after any BOM (called twice
 /// when the input turns out not to be UTF-8); `head` is its first bytes.
-fn read_cells<R: BufRead>(mut open: impl FnMut() -> io::Result<R>, head: &[u8], tsv: bool) -> Result<Vec<Cell>, Error> {
+fn read_cells<R: BufRead>(mut open: impl FnMut() -> io::Result<R>, head: &[u8], tsv: bool, max_cells: u64) -> Result<Vec<Cell>, Error> {
     if head.contains(&0) {
         return Err(Error("not a spreadsheet or delimited text file (binary content)".into()));
     }
     let delim = if tsv { b'\t' } else { sniff_delimiter(head) };
-    match collect(open().map_err(err)?, delim, Encoding::Utf8)? {
+    match collect(open().map_err(err)?, delim, Encoding::Utf8, max_cells)? {
         Some(cells) => Ok(cells),
-        None => Ok(collect(open().map_err(err)?, delim, Encoding::Windows1252)?.unwrap_or_default()),
+        None => Ok(collect(open().map_err(err)?, delim, Encoding::Windows1252, max_cells)?.unwrap_or_default()),
     }
 }
 
 /// `None` when reading as UTF-8 and a field is not valid UTF-8.
-fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding) -> Result<Option<Vec<Cell>>, Error> {
+fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding, max_cells: u64) -> Result<Option<Vec<Cell>>, Error> {
     let mut parser = Parser::new(r, delim);
     let mut rec = Record::default();
     let mut cells = Vec::new();
@@ -112,6 +114,9 @@ fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding) -> Result<Option<Vec<Cell
             if let Some(value) = typed(text) {
                 cells.push(Cell { row, col: col as u32, value: Some(value), formula: None });
             }
+        }
+        if cells.len() as u64 > max_cells {
+            return Err(super::limits::too_many_cells(max_cells));
         }
         row = row.saturating_add(1);
     }
@@ -333,7 +338,7 @@ mod tests {
     use super::*;
 
     fn read(text: &[u8]) -> Vec<Cell> {
-        read_bytes(text, false).unwrap()
+        read_bytes(text, false, u64::MAX).unwrap()
     }
 
     fn rows(cells: &[Cell]) -> Vec<Vec<Option<Value>>> {
@@ -372,7 +377,7 @@ mod tests {
 
     #[test]
     fn tsv_extension_means_tab() {
-        let cells = read_bytes(b"a;b\tc\n", true).unwrap();
+        let cells = read_bytes(b"a;b\tc\n", true, u64::MAX).unwrap();
         assert_eq!(rows(&cells), [[t("a;b"), t("c")]]);
     }
 
@@ -422,7 +427,7 @@ mod tests {
         let le = "a\tb\n1\t€\n".encode_utf16().flat_map(u16::to_le_bytes);
         let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain(le).collect();
         assert_eq!(rows(&read(&utf16)), [[t("a"), t("b")], [n(1.0), t("€")]]);
-        assert!(read_bytes(b"PK\x03\x04\x00\x00binary", false).is_err());
+        assert!(read_bytes(b"PK\x03\x04\x00\x00binary", false, u64::MAX).is_err());
     }
 
     #[test]

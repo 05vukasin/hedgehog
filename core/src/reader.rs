@@ -170,7 +170,7 @@ pub fn open_with(path: impl AsRef<Path>, opts: ReadOptions) -> Result<Workbook, 
     let path = path.as_ref();
     let limits = &opts.limits;
     if is_delimited_text(path) {
-        let wb = csv::open(path)?;
+        let wb = csv::open(path, limits.max_cells)?;
         limits.check_cells(wb.sheets.iter().map(|s| s.cells.len() as u64).sum())?;
         return Ok(wb);
     }

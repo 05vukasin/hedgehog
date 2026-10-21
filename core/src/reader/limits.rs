@@ -61,14 +61,14 @@ impl Limits {
 
     pub(super) fn check_cells(&self, n: u64) -> Result<(), Error> {
         if n > self.max_cells {
-            return Err(Error::limit(format!(
-                "the workbook has more than {} cells (limit {})",
-                thousands(self.max_cells),
-                thousands(self.max_cells)
-            )));
+            return Err(too_many_cells(self.max_cells));
         }
         Ok(())
     }
+}
+
+pub(super) fn too_many_cells(max: u64) -> Error {
+    Error::limit(format!("the workbook has more than {} cells (limit {})", thousands(max), thousands(max)))
 }
 
 pub(super) fn thousands(n: u64) -> String {
