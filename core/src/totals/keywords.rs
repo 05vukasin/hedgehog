@@ -320,12 +320,25 @@ fn keyword(text: &str, more: bool) -> Option<KeywordLevel> {
 /// "Sumas" (a place), "SOM" (Somalia), "SUMA Kommunikation", "Zusammen interreligiös".
 const AMBIGUOUS: &[&str] = &["som", "suma", "sumas", "somme", "soma", "summa", "zusammen"];
 
-/// True if the only total word of `text` is one of [`AMBIGUOUS`] (its first word): the label
-/// names a total only if the row's numbers add up (see `totals::detect`).
-pub fn ambiguous_keyword(text: &str) -> bool {
+/// Of [`AMBIGUOUS`], the words that are names or codes on their own ("Somme", "Sumas", "SOM");
+/// "Suma" or "Zusammen" alone is a total label.
+const NAME_WORDS: &[&str] = &["som", "sumas", "somme"];
+
+/// How a label's only total word may be a name instead ([`AMBIGUOUS`]): `Some(true)` for a longer
+/// name starting with it ("SUMA Kommunikation", "Zusammen interreligiös"), `Some(false)` for a
+/// word that alone is also a name or a code ("Somme", "Sumas", "SOM"), `None` otherwise. Such a
+/// label names a total only if the row's numbers add up (see `totals::detect`).
+pub fn ambiguous_keyword(text: &str) -> Option<bool> {
     let folded = folded_tokens(text);
-    let Some((first, rest)) = folded.split_first() else { return false };
-    AMBIGUOUS.contains(&first.as_str()) && rest.iter().all(|w| total_keyword(w).is_none())
+    let (first, rest) = folded.split_first()?;
+    if !AMBIGUOUS.contains(&first.as_str()) || rest.iter().any(|w| total_keyword(w).is_some()) {
+        return None;
+    }
+    if !rest.is_empty() {
+        Some(true)
+    } else {
+        NAME_WORDS.contains(&first.as_str()).then_some(false)
+    }
 }
 
 /// A row that is neither data nor a sum of other rows.
@@ -450,7 +463,12 @@ pub fn nonsum_keyword(text: &str) -> Option<(NonSumKind, NonSumLabel)> {
         let bare = toks[1..].iter().all(|w| w.bytes().all(|b| b.is_ascii_digit()));
         return Some((NonSumKind::Average, if bare { NonSumLabel::Bare } else { NonSumLabel::Phrase }));
     }
-    if OF_WHICH.iter().any(|p| toks.len() >= p.len() && toks.iter().zip(p.iter()).all(|(a, b)| a == b)) {
+    // The phrase and what the part is ("davon Inland", "of which: exports"), or the phrase ending in
+    // a colon: "Josta" alone is a first name, not Finnish "of which".
+    let colon = t.trim_end().ends_with(':');
+    if OF_WHICH.iter().any(|p| {
+        (toks.len() > p.len() || (toks.len() == p.len() && colon)) && toks.iter().zip(p.iter()).all(|(a, b)| a == b)
+    }) {
         return Some((NonSumKind::OfWhich, NonSumLabel::Phrase));
     }
     None
@@ -577,11 +595,14 @@ mod tests {
         assert_eq!(base("Deutschland gesamt"), None);
         assert_eq!(base("Total"), Some(Total));
         // Names and codes that hold a total word.
-        for s in ["Somme", "Sumas", "SOM", "SUMA Kommunikation", "Zusammen interreligiös"] {
-            assert!(amb(s), "{s}");
+        for s in ["Somme", "Sumas", "SOM"] {
+            assert_eq!(amb(s), Some(false), "{s}");
         }
-        for s in ["Suma total", "Total", "Summe", "Gesamt"] {
-            assert!(!amb(s), "{s}");
+        for s in ["SUMA Kommunikation", "Zusammen interreligiös"] {
+            assert_eq!(amb(s), Some(true), "{s}");
+        }
+        for s in ["Suma total", "Total", "Summe", "Gesamt", "Zusammen", "Suma"] {
+            assert_eq!(amb(s), None, "{s}");
         }
     }
 
@@ -601,7 +622,7 @@ mod tests {
         assert_eq!(ns("Average North"), Some((Average, Phrase)));
         assert_eq!(ns("Median"), Some((Average, Bare)));
         for s in ["Østfold", "Durchschnittshöhe in Euro", "Average hourly earnings of all full-time employees", "Dontworry",
-            "Of course", "Total"]
+            "Of course", "Total", "Josta", "Davon"]
         {
             assert_eq!(ns(s), None, "{s}");
         }

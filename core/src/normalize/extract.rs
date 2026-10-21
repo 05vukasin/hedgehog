@@ -101,10 +101,17 @@ enum RowOverride {
 /// Row overrides from the sheet's total detection (see [`RowOverride`]). A total word confirms a
 /// total row only as the row's first text (its label): in long-format data a total category beside
 /// other keys ("2020 | Wien | Insgesamt") stays in the data, marked on Totals as kept.
-fn row_overrides(grid: &Grid, det: &totals::Detection) -> HashMap<u32, RowOverride> {
-    let mut out: HashMap<u32, RowOverride> = HashMap::new();
+///
+/// Row → overrides, each with the columns it was found in (a table gets an override only when it
+/// holds one of them: a total row of one block does not make the row of the block beside it a
+/// total); no columns: the whole row.
+type Overrides = HashMap<u32, Vec<(RowOverride, Vec<u32>)>>;
+
+fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
+    let mut out: Overrides = HashMap::new();
+    let mut add = |row: u32, o: RowOverride, cols: Vec<u32>| out.entry(row).or_default().push((o, cols));
     for &r in &det.incidental_rows {
-        out.insert(r, RowOverride::Data);
+        add(r, RowOverride::Data, Vec::new());
     }
     let first_text = |row: u32| {
         grid.row_cells(row).iter().map(|&i| &grid.sheet.cells[i as usize]).find_map(|c| match &c.value {
@@ -125,14 +132,18 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> HashMap<u32, RowOverri
                 TotalOrigin::Formula => labelled || c.evidence.contains(&Evidence::SourceBelow),
             };
         if confirmed {
-            out.insert(c.row, RowOverride::Total);
+            let mut cols = vec![c.col];
+            cols.extend(c.label.map(|l| l.1));
+            add(c.row, RowOverride::Total, cols);
         }
     }
-    for &(r, _) in &det.aggregates {
-        out.insert(r, RowOverride::Total);
+    for &(r, lc) in &det.aggregates {
+        add(r, RowOverride::Total, vec![lc]);
     }
     for n in &det.nonsum {
-        out.insert(n.row, RowOverride::NonSum(n.kind));
+        let mut cols: Vec<u32> = n.cells.iter().map(|c| c.col).collect();
+        cols.push(n.label_col);
+        add(n.row, RowOverride::NonSum(n.kind), cols);
     }
     out
 }
@@ -295,7 +306,7 @@ fn build_table(
     n: usize,
     sheet_hints: &OnceCell<HashMap<u32, ColumnHints>>,
     row_total: &HashMap<u32, RowTotal>,
-    overrides: &HashMap<u32, RowOverride>,
+    overrides: &Overrides,
     opts: &Options,
     owner: &mut [u8],
 ) -> Built {
@@ -452,10 +463,14 @@ fn build_table(
         body_rows_seen += 1;
         let mut kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
         if matches!(kind, RowKind::Data | RowKind::Total) {
-            kind = match overrides.get(row) {
+            // The last override that applies to this table wins ("of which" over a total).
+            let here = overrides.get(row).and_then(|list| {
+                list.iter().rev().find(|(_, cols)| cols.is_empty() || cols.iter().any(|c| (r.left..=r.right).contains(c)))
+            });
+            kind = match here.map(|x| x.0) {
                 Some(RowOverride::Total) => RowKind::Total,
                 Some(RowOverride::Data) => RowKind::Data,
-                Some(RowOverride::NonSum(k)) => RowKind::NonSum(*k),
+                Some(RowOverride::NonSum(k)) => RowKind::NonSum(k),
                 None => kind,
             };
         }
@@ -1145,15 +1160,15 @@ pub(super) fn process_sheet(
                 .map(move |(&r, _)| (t.n, r))
         }))
         .collect();
+    // The table of a cell of an "of which" / average row, when that table took the row out of its
+    // data (or marked it): (table index, table number).
+    let nonsum_table = |row: u32, col: u32| {
+        table_at(row, col).map(|k| (k, first + k + 1)).filter(|&(_, n)| nonsum_rows.contains(&(n, row)))
+    };
     for ns in &det.nonsum {
-        let Some(k) = table_at(ns.row, ns.label_col) else { continue };
-        let n = first + k + 1;
-        if !nonsum_rows.contains(&(n, ns.row)) {
-            continue;
-        }
-        let kept_in_data = kept[k].contains(&ns.row);
+        let label_table = nonsum_table(ns.row, ns.label_col);
         let label = grid.cell_index(ns.row, ns.label_col).and_then(|i| {
-            if owner[i] == OWN_NONE {
+            if label_table.is_some() && owner[i] == OWN_NONE {
                 owner[i] = OWN_TOTALS;
             }
             cells[i].value.as_ref().map(display)
@@ -1163,6 +1178,8 @@ pub(super) fn process_sheet(
             NonSumKind::OfWhich => ("of_which", false),
         };
         for ch in &ns.cells {
+            let Some((k, n)) = nonsum_table(ns.row, ch.col) else { continue };
+            let kept_in_data = kept[k].contains(&ns.row);
             if let Some(i) = grid.cell_index(ns.row, ch.col)
                 && owner[i] == OWN_NONE
             {
@@ -1176,7 +1193,8 @@ pub(super) fn process_sheet(
                 (NonSumKind::Average, _, Some(_)) => ("unknown", "unconfirmed"),
                 (NonSumKind::Average, _, None) => ("unknown", "no_source"),
                 (NonSumKind::OfWhich, Some(true), _) => ("ok", "within_parent"),
-                (NonSumKind::OfWhich, Some(false), _) => ("mismatch", "exceeds_parent"),
+                // A larger part is not reported as wrong: rates, shares and changes are no parts.
+                (NonSumKind::OfWhich, Some(false), _) => ("unknown", "exceeds_parent"),
                 (NonSumKind::OfWhich, None, _) => ("unknown", "no_parent"),
             };
             items.push(TotalItem {

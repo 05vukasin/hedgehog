@@ -165,8 +165,10 @@ a total word, or with its sum below it, likewise.
   implant`, `BEECH TREE TOTAL CARE LIMITED`). Such a row is a total only if more than half of its
   numbers add up (or it closes its group).
 - **Names and codes** that start with a total word in another language are total labels only if
-  more than half of the row's numbers add up: `Somme` (a département), `Sumas` (a place), `SOM`
-  (Somalia's code), `SUMA Kommunikation`, `Zusammen interreligiös`.
+  more than half of the row's numbers add up: a longer name starting with one (`SUMA Kommunikation`,
+  `Zusammen interreligiös`), or `Somme` (a département), `Sumas` (a place) and `SOM` (Somalia's
+  code) right of other text or with numbers on the row below (inside a list). Alone as the label
+  under a table's numbers they stay total labels, as `Suma` and `Zusammen` always do.
 - A label recurring as a category of its column (`Summe der bezogenen Rohstoffe` once per industry
   in long-format data) stays a total label when the row shares its other keys with a neighbouring
   row; a record with an id of its own (`K-24-00758 | Total station survey equipment`) does not.
@@ -187,7 +189,8 @@ left out of every sum:
 - **Of-which** rows (`of which`, `thereof`, `davon`, `darunter`, `dont`, `di cui`, `de los cuales`,
   `od toga`, `w tym`, `z toho`, `waarvan`, `varav`, `heraf`, `josta`, `ebből`, `из них`, ...): a
   part of the row directly above it (past other of-which rows and a spacer row). The part must not
-  be larger than the whole: `within_parent` (`ok`), `exceeds_parent` (`mismatch`), `no_parent`.
+  be larger than the whole: `within_parent` (`ok`); `exceeds_parent` (`unknown`, not `mismatch`: a rate,
+  share or change column is no part of its row above) or `no_parent` otherwise.
 
 A total under such rows adds the data rows only, so `Total` after `of which: exports` or after
 `Average` still checks out.

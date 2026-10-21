@@ -349,7 +349,7 @@ fn keyword_rows_with(
             && keyword_at_edge(t)
             && ((n * 100 >= grid.col_cells(col).len() && shares_keys(grid, row, col)) || ends_block(grid, row, col))
     };
-    // An ambiguous word ("Somme", "Suma") alone as the row's label under a table's numbers is its
+    // A word that is also a name ("Somme") alone as the row's label under a table's numbers is its
     // total label; the same word with numbers on the row below sits inside a list (a département).
     let data_below = |row: u32| {
         grid.row_cells(row + 1).iter().any(|&j| matches!(cells[j as usize].value, Some(Value::Number(_))))
@@ -376,13 +376,23 @@ fn keyword_rows_with(
         }
         match (&label, &c.value) {
             (None, Some(Value::Text(s))) => {
-                if let Some(&level) = kw_of.get(&i) {
+                // A key in a run of at least three rows ("Deutschland Insgesamt" on every row of a
+                // long table) is a category, not this row's label: look further right.
+                let repeated = || {
+                    let same = |d: i64| {
+                        let r = c.row as i64 + d;
+                        r >= 0 && text(grid.cell(r as u32, c.col)).is_some_and(|t| t.trim() == s.trim())
+                    };
+                    (same(-1) && (same(1) || same(-2))) || (same(1) && same(2))
+                };
+                let kw = kw_of.get(&i).filter(|_| !(registers && repeated()));
+                if let Some(&level) = kw {
                     // A free text in a register, or a word that is also a name or a code ("Somme",
                     // "SOM", "SUMA Kommunikation"): a total only if its numbers add up.
                     let right = n_rows >= REGISTER_MIN_ROWS && text_right(c.row, c.col);
                     let weak = registers
                         && (incidental_keyword(s, text_left, right, n_rows)
-                            || (ambiguous_keyword(s) && (text_left || s.split_whitespace().count() > 1 || data_below(c.row))));
+                            || ambiguous_keyword(s).is_some_and(|name| name || text_left || data_below(c.row)));
                     let inc = weak && !category(c.row, c.col, s);
                     label = Some((c.row, c.col, level, inc));
                 } else if header_text(s) {
@@ -1727,12 +1737,14 @@ fn mark_sibling_support(grid: &Grid, cands: &mut [TotalCandidate]) {
             if c.origin != TotalOrigin::Typed || c.direction != Direction::Vertical || matched[i] {
                 return false;
             }
+            // A sibling that adds the rows below it says nothing about a source above.
+            let below = |k: usize| cands[k].evidence.contains(&Evidence::SourceBelow);
             let count = |list: &[usize]| {
                 let others = list.iter().filter(|&&j| j != i);
                 let (mut n, mut ok) = (0, 0);
                 for &j in others {
                     n += 1;
-                    ok += matched[j] as usize;
+                    ok += (matched[j] && below(j) == below(i)) as usize;
                 }
                 (n, ok)
             };
