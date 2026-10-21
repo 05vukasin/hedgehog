@@ -255,12 +255,33 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         let r = &rows[start + d];
         if is_key_value_row(sheet, r) {
             // Rows above key/value metadata are titles or metadata too, not a header ("Profit
-            // Sharing Summary" over "Operation Day: | 12 May 2001").
-            d = 0;
+            // Sharing Summary" over "Operation Day: | 12 May 2001"); but a row of form labels
+            // (`ATTORNEY:` over `DATE: | … | DEAL MAKER: | …`, B57) keeps its header place.
+            let form_labels = rows[start..start + d]
+                .iter()
+                .any(|x| x.filled().any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with(':')));
+            if !form_labels {
+                d = 0;
+            }
             break;
         }
         if !is_header_row(r, &rows[start + d + 1..end]) || is_note_row(sheet, r) {
-            break;
+            // Parent labels over a header row (`Kalenderkorrigerad | … | Trend` over `2016K3 |
+            // 2016K4 | …`; `2011 | 2015 | 2018` over the measures, B53): labels only, spread over
+            // the columns of the header row below, which heads the numbers.
+            let parent = d == 0
+                && PARENT_HEADER_ROWS
+                && r.n() >= 2
+                && r.n_measure() == 0
+                && r.n_text() + (r.n_num() - r.n_measure()) == r.n()
+                && start + 2 < end
+                && rows[start + 1].row == r.row + 1
+                && rows[start + 1].n() > r.n()
+                && !is_key_value_row(sheet, &rows[start + 1])
+                && is_header_row(&rows[start + 1], &rows[start + 2..end]);
+            if !parent {
+                break;
+            }
         }
         // A lone label below the first header row starts a group, not another header level.
         if d > 0 && single_text(r).is_some_and(|e| e.right == e.left) {
@@ -753,6 +774,24 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     let mut e = rows.len();
     while e > s + 1 && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1])) {
         e -= 1;
+    }
+    // A block of single text lines below a blank row at the end of the region (the footnotes,
+    // sources and contacts under a statistics-database export's one or two data rows, B53):
+    // notes, not body rows of the table above them.
+    let mut k = e;
+    while k > s + 1 && rows[k - 1].n() == 1 {
+        k -= 1;
+    }
+    // The lines start at the region's left edge, one of them reads as a sentence or source line,
+    // and the row above the gap is a data row with numbers.
+    let lines = &rows[k..e];
+    if e - k >= NOTE_BLOCK_MIN_ROWS
+        && rows[k].row > rows[k - 1].bottom() + 1
+        && rows[k - 1].n_measure() >= 2
+        && lines.iter().all(|r| r.left() == region.rect.left)
+        && lines.iter().any(|r| single_text(r).is_some_and(|x| text(sheet, x).trim().chars().count() >= NOTE_BLOCK_LONG))
+    {
+        e = k;
     }
     let numbers = out.column_numbers;
     let h0 = header_depth(sheet, rows, s, e, region.rect, numbers);

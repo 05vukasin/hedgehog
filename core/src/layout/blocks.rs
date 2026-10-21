@@ -277,6 +277,9 @@ struct Profile {
     first_sig: Vec<String>,
     /// Per column: (text, numeric) entry counts over body rows.
     counts: BTreeMap<u32, (u32, u32)>,
+    /// A filled cell over the block's columns on one of the two rows above it (a header it
+    /// belongs under).
+    capped: bool,
 }
 
 impl Profile {
@@ -352,7 +355,7 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
                 .collect()
         })
         .unwrap_or_default();
-    Profile { rect: region.rect, starts_with_header, single_line, header_only, first_sig, counts }
+    Profile { rect: region.rect, starts_with_header, single_line, header_only, first_sig, counts, capped: false }
 }
 
 fn overlap(a0: u32, a1: u32, b0: u32, b1: u32) -> u32 {
@@ -422,8 +425,28 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
         && left.rect.bottom > left.rect.top + 1
         && !right.first_sig.is_empty()
         && left.first_sig != right.first_sig
-        // Each block with its own row labels and numbers: two tables side by side (B35).
-        && !(left.labels_then_numbers() && right.labels_then_numbers())
+        // Each block with its own row labels and numbers, and each either with a header or at
+        // least a label and two value columns: two tables side by side (B35). A header-less
+        // two-column label/value block (a map of small blocks, a `TOTAL $$` summary beside a
+        // table, B55/B56) stays with its neighbour.
+        && !(left.labels_then_numbers()
+            && right.labels_then_numbers()
+            && ((left.starts_with_header && right.starts_with_header)
+                || (left.rect.right >= left.rect.left + SBS_MIN_COLS - 1
+                    && right.rect.right >= right.rect.left + SBS_MIN_COLS - 1)))
+    {
+        return true;
+    }
+    // Header-less blocks of numbers on exactly the same rows, across up to two blank columns:
+    // repeated column groups of one table (an hourly block per day, B55).
+    if gap <= MAX_COL_GAP_ALIGNED as i64
+        && left.rect.top == right.rect.top
+        && left.rect.bottom == right.rect.bottom
+        && left.rect.bottom > left.rect.top + 1
+        && right.first_sig.is_empty()
+        && !right.capped
+        && !right.has_label_col()
+        && right.has_numeric_col()
     {
         return true;
     }
@@ -532,7 +555,16 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
         return blocks;
     }
     blocks.sort_by_key(|b| (b.rect.top, b.rect.left));
-    let profiles: Vec<Profile> = blocks.iter().map(|b| profile(grid.sheet, b)).collect();
+    let capped = |r: &Rect| {
+        (r.top.saturating_sub(2)..r.top).any(|row| {
+            grid.row_cells(row).iter().any(|&i| {
+                let c = &grid.sheet.cells[i as usize];
+                c.col >= r.left && c.col <= r.right && super::cells::kind_of(c) != Kind::Blank
+            })
+        })
+    };
+    let profiles: Vec<Profile> =
+        blocks.iter().map(|b| Profile { capped: capped(&b.rect), ..profile(grid.sheet, b) }).collect();
     let mut group: Vec<Profile> = profiles.clone();
     let mut dsu = Dsu::new(blocks.len());
     let join = |dsu: &mut Dsu, group: &mut Vec<Profile>, a: u32, b: u32| {

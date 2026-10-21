@@ -199,13 +199,17 @@ fn sniff_delimiter(head: &[u8]) -> u8 {
         let mut parser = Parser::new(sample, delim);
         let mut counts: BTreeMap<usize, usize> = BTreeMap::new();
         let mut seen = 0;
+        // Records with a quote inside a field: quoted fields split by the wrong delimiter
+        // (`"Payroll staff;⏎AO/AA;⏎Headcount"` read with `;`, B53).
+        let mut stray = 0usize;
         while seen < SNIFF_RECORDS && parser.next_record(&mut rec).unwrap_or(false) {
             seen += 1;
             if rec.len() >= 2 {
                 *counts.entry(rec.len()).or_default() += 1;
             }
+            stray += rec.fields().any(|f| f.contains(&b'"')) as usize;
         }
-        let consistent = counts.values().copied().max().unwrap_or(0);
+        let consistent = counts.values().copied().max().unwrap_or(0).saturating_sub(2 * stray);
         if consistent > best.1 {
             best = (delim, consistent);
         }

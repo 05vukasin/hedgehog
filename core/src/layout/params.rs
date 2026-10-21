@@ -14,6 +14,9 @@ pub const MAX_COL_GAP_ALIGNED: u32 = 2;
 /// Numbers on a few rows inside a taller block's rows, across one spacer column, join it when
 /// they have no header of their own and are at most this many columns wide (sparse columns).
 pub const INSIDE_MAX_WIDTH: u32 = 4;
+/// Row-aligned blocks that each have row labels and numbers are separate tables side by side
+/// only when both are at least this many columns wide (a label and two values, B35/B55).
+pub const SBS_MIN_COLS: u32 = 3;
 /// Vertical gap merge: column overlap / wider block width must reach this.
 pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 /// Horizontal gap merge: row overlap / taller block height must reach this.
@@ -89,6 +92,11 @@ pub const NOTE_MIN_LEN: usize = 50;
 /// A single text cell of at least this many words and characters ending a block is a note.
 pub const NOTE_SENTENCE_WORDS: usize = 5;
 pub const NOTE_SENTENCE_LEN: usize = 30;
+/// At least this many single text lines below a blank row at the end of a region are a notes
+/// block, not table rows (B53).
+pub const NOTE_BLOCK_MIN_ROWS: usize = 2;
+/// One line of such a notes block is at least this long.
+pub const NOTE_BLOCK_LONG: usize = 20;
 
 // --- Headers ----------------------------------------------------------------------------------
 
@@ -110,6 +118,9 @@ pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
 pub const COLUMN_NUMBER_ROWS: bool = true;
 /// A unit row (`Mrd. EUR | % | 2020 = 100`) directly under the header belongs to the header.
 pub const UNIT_ROWS: bool = true;
+/// A row of parent labels (fewer cells, labels only) right over a header row is part of the
+/// header even when its own type votes do not make it one (B53).
+pub const PARENT_HEADER_ROWS: bool = true;
 /// A header-like row inside a body starts a new table when it has text/years in at least this many
 /// (and this share of) the body's numeric columns (numeric in ≥ half the rows so far).
 pub const SPLIT_MIN_HITS: usize = 2;

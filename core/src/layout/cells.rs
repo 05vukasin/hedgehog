@@ -28,6 +28,8 @@ pub(crate) enum Agg {
 
 const MISSING_TOKENS: &[&str] = &[
     "-", "--", "---", "–", "—", "n/a", "na", "n.a.", "#n/a", "x", ".", "..", "...", "?", "null", "none", "nema", "нема",
+    // NCES and other US tables: not applicable, rounds to zero, reporting standards not met.
+    "†", "#", "‡",
 ];
 
 const TOTAL_WORDS: &[&str] = &[
@@ -70,12 +72,16 @@ fn text_kind(s: &str) -> Kind {
     if t.len() <= 5 && MISSING_TOKENS.iter().any(|m| t.eq_ignore_ascii_case(m)) {
         return Kind::Missing;
     }
+    // Eurostat's `:` (not available) with or without flag letters (`: m`, `:c`, `: bu`, B54).
+    if t.starts_with(':') && crate::values::missing::missing_token(t).is_some() {
+        return Kind::Missing;
+    }
     if looks_numeric(t) {
         return Kind::Num;
     }
     // `20221)`, `2022 1)`: a year with a note mark in a header stays a label.
     let unbalanced = t.matches(')').count() > t.matches('(').count();
-    if !unbalanced && t.len() <= 40 && t.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '-' | '(' | '+' | '.')) {
+    if !unbalanced && t.len() <= 40 && !is_period_code(t) && t.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '-' | '(' | '+' | '.')) {
         // A number with a footnote mark or flag (`28472.72*`, `1737³`, `6077.61 (p)`, `20560.32e`)
         // is a number, not a label (B33: such rows started new tables).
         use crate::values::number::{NumberHint, parse_number};
@@ -182,6 +188,7 @@ pub(crate) fn is_label_number(cell: &Cell) -> bool {
             let year = |n: f64| n.fract() == 0.0 && (YEAR_MIN..=YEAR_MAX).contains(&n);
             (t.len() == 4 && t.parse::<f64>().is_ok_and(year))
                 || is_text_period(t)
+                || is_split_year(t)
                 // `2022¹`, `2023*`: a year with a footnote mark (counted as a number by `kind_of`).
                 || (t.len() <= 12
                     && kind_of(cell) == Kind::Num
@@ -197,6 +204,9 @@ pub(crate) fn is_label_number(cell: &Cell) -> bool {
 /// `31.01.2010`, `1/31/2010` (B39: a header row of `YYYY-MM` periods). Not `2010.01` or `01.2010`,
 /// which read as decimals.
 pub(crate) fn is_text_period(t: &str) -> bool {
+    if is_period_code(t) {
+        return true;
+    }
     if t.len() < 6 || t.len() > 10 || !t.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'-' | b'/' | b'.')) {
         return false;
     }
@@ -216,6 +226,43 @@ pub(crate) fn is_text_period(t: &str) -> bool {
         [a, b, c] => (year(a) && small(b, 12) && small(c, 31)) || (small(a, 31) && small(b, 31) && year(c)),
         _ => false,
     }
+}
+
+/// A split year (school, fiscal or marketing year): `1990-91`, `2011/12`, `2004-2005`, the second
+/// year one after the first. A column label, not a number (B55).
+pub(crate) fn is_split_year(t: &str) -> bool {
+    let b = t.as_bytes();
+    if !(7..=9).contains(&b.len()) || !b[..4].iter().all(u8::is_ascii_digit) || !matches!(b[4], b'-' | b'/') {
+        return false;
+    }
+    let rest = &t[5..];
+    let Ok(y) = t[..4].parse::<u32>() else { return false };
+    if !(YEAR_MIN as u32..=YEAR_MAX as u32).contains(&y) || !rest.bytes().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
+    match rest.len() {
+        2 => rest.parse::<u32>().is_ok_and(|n| n == (y + 1) % 100),
+        4 => rest.parse::<u32>().is_ok_and(|n| n == y + 1),
+        _ => false,
+    }
+}
+
+/// A statistics-database period code: a year, a period letter and its number (`2016K3`,
+/// `2016Q4`, `2014M01`, `2020H1`; PX-Web and SDMX exports, B53). Not a number with a scale.
+pub(crate) fn is_period_code(t: &str) -> bool {
+    let b = t.as_bytes();
+    if !(6..=7).contains(&b.len()) || !b[..4].iter().all(u8::is_ascii_digit) {
+        return false;
+    }
+    let year = t[..4].parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n));
+    let n = &t[5..];
+    let max = match b[4].to_ascii_uppercase() {
+        b'Q' | b'K' => 4,
+        b'M' => 12,
+        b'H' | b'S' => 2,
+        _ => return false,
+    };
+    year && n.bytes().all(|c| c.is_ascii_digit()) && n.parse::<u32>().is_ok_and(|v| (1..=max).contains(&v))
 }
 
 pub(crate) fn text_of(cell: &Cell) -> Option<&str> {
@@ -246,10 +293,27 @@ pub(crate) fn is_total_label(s: &str) -> bool {
 }
 
 /// "Source: …", "Napomena", "* preliminary", "(1) …", "a) …", "Извор: РЗС".
+/// A symbol legend under a table: a missing-value mark, then what it means (`---Not available.`,
+/// `#Rounds to zero.`, `!Interpret data with caution.`, `: not available`). A single dash
+/// (`-Counterparty`) is a list item and `... aber` a continued sentence, not a legend.
+fn is_legend_line(t: &str) -> bool {
+    let mark: String = t.chars().take_while(|c| matches!(c, '-' | '–' | '—' | ':' | '#' | '!')).collect();
+    let rest = t[mark.len()..].trim_start();
+    let n = mark.chars().count();
+    let first = mark.chars().next();
+    let ok_mark = (n >= 3 && first.is_some_and(|f| f != ':' && mark.chars().all(|c| c == f)))
+        || (n == 1 && matches!(first, Some('#' | '!')))
+        || (n == 1 && first == Some(':') && t[1..].starts_with(' '));
+    ok_mark && rest.chars().next().is_some_and(char::is_alphabetic) && rest.split_whitespace().count() >= 2
+}
+
 pub(crate) fn is_note_label(s: &str) -> bool {
     let t = s.trim();
     let Some(first) = t.chars().next() else { return false };
     if matches!(first, '*' | '†' | '‡' | '¹' | '²' | '³' | '⁽') {
+        return true;
+    }
+    if is_legend_line(t) {
         return true;
     }
     // "(1) text", "1) text", "a) text"

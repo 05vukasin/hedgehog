@@ -61,7 +61,8 @@ pub fn missing_token(s: &str) -> Option<MissingKind> {
     // Eurostat: ":" with flag letters ("not available, confidential" `: c`, `:z`, `: bu`).
     if let Some(flags) = t.strip_prefix(':') {
         let flags = trim(flags);
-        if (1..=3).contains(&flags.len()) && flags.bytes().all(|b| FLAG_LETTERS.contains(&b)) {
+        // `m`: "missing, data cannot exist" (only after `:`; a number with `m` is a unit).
+        if (1..=3).contains(&flags.len()) && flags.bytes().all(|b| FLAG_LETTERS.contains(&b) || b == b'm') {
             return Some(MissingKind::Placeholder);
         }
     }
@@ -195,6 +196,7 @@ mod tests {
             ("NaN", NotAvailable),
             (":", Placeholder),
             (": c", Placeholder),
+            (": m", Placeholder),
             (":z", Placeholder),
             ("k.A.", NotAvailable),
             ("k. A.", NotAvailable),
