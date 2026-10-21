@@ -6,7 +6,8 @@ use std::ops::Range;
 
 use crate::analysis::{DetectedTable, Role};
 use crate::model::{Rect, Sheet, Value};
-use crate::totals::incidental_keyword;
+use crate::totals::keywords::REGISTER_MIN_ROWS;
+use crate::totals::{incidental_keyword, total_keyword};
 
 use super::blocks::{Entry, Region, Row, Ty};
 use super::cells::{Agg, Kind, is_note_label, is_total_label, text_of};
@@ -142,12 +143,22 @@ fn has_own_total_label(sheet: &Sheet, r: &Row, labelled: &[u32]) -> bool {
     };
     // Text right of the label is left to the normalized output's row overrides: the learned model
     // keeps these rows' roles as trained ("Total debt service (% of GNI) | country | …").
+    // B50: those overrides know only the totals' words; a word only this layer reads as a total
+    // ("Maximum", "Average" in "MAXIMUM MARKETING SERVICES INC", "MORE THAN AVERAGE LLC") does not
+    // label a register row that holds other text, since nothing downstream would take it back.
+    let texts = r.entries.iter().filter(|e| e.kind == Kind::Text).count();
+    let other_text = rows >= REGISTER_MIN_ROWS && texts > 1;
     r.entries
         .iter()
         .filter(|e| e.kind == Kind::Text)
         .take(3)
         .enumerate()
-        .any(|(k, e)| is_total_label(text(sheet, e)) && !incidental_keyword(text(sheet, e), k > 0, false, rows))
+        .any(|(k, e)| {
+            let t = text(sheet, e);
+            is_total_label(t)
+                && !incidental_keyword(t, k > 0, false, rows)
+                && !(other_text && total_keyword(t).is_none())
+        })
 }
 
 /// Most of the row's numbers are aggregate formulas over the cells above.
