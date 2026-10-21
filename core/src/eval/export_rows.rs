@@ -42,7 +42,7 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
         if opts.progress && k % 50 == 0 {
             eprintln!("  {}/{} files, {} segments", k, files.len(), stats.rows);
         }
-        let Some(wb) = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open_with(p, crate::reader::ReadOptions { formats: true }).ok())
+        let Some(wb) = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open_with(p, crate::reader::ReadOptions { formats: true, ..Default::default() }).ok())
         else {
             stats.failed += 1;
             continue;

@@ -19,7 +19,7 @@ pub use analysis::{DetectedTable, Role, SheetLayout};
 pub use features::Features;
 pub use grid::Grid;
 pub use model::{a1, Cell, Rect, Sheet, Value, Workbook};
-pub use normalize::{normalize_file, normalize_workbook, Normalized, Options as NormalizeOptions, Output as NormalizeOutput};
+pub use normalize::{normalize_file, normalize_workbook, try_normalize_workbook, Normalized, Options as NormalizeOptions, Output as NormalizeOutput};
 pub use reader::{open, Error};
 
 /// Short plain-text overview of a workbook, one line per sheet.

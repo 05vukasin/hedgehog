@@ -266,9 +266,20 @@ impl Workbook {
     }
 }
 
+/// Runs `f`; a panic (a bug hit by a malformed file) becomes a `RuntimeError` instead of PyO3's
+/// `PanicException`, which `except Exception` does not catch. The wheels are built with
+/// `panic = "unwind"` (the release profile), so the interpreter survives either way.
+fn guarded<T>(what: &str, f: impl FnOnce() -> PyResult<T>) -> PyResult<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
+        let msg = p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default();
+        Err(pyo3::exceptions::PyRuntimeError::new_err(format!("internal error in {what} ({msg}); the file may be malformed")))
+    })
+}
+
 #[pyfunction]
-fn open(path: &str) -> PyResult<Workbook> {
-    hh_core::open(path).map(Workbook).map_err(|e| PyValueError::new_err(e.to_string()))
+fn open(py: Python<'_>, path: &str) -> PyResult<Workbook> {
+    let path = path.to_string();
+    py.detach(move || guarded("open", || hh_core::open(&path).map(Workbook).map_err(|e| PyValueError::new_err(e.to_string()))))
 }
 
 /// Writes `<stem>.normalized.xlsx` + `<stem>.manifest.json` (+ CSVs) into `out_dir`; see
@@ -292,11 +303,11 @@ fn normalize<'py>(
         ),
         None => None,
     };
-    let opts = hh_core::normalize::Options { keep_totals, csv, locale, rules_only, model_max_cells };
+    let opts = hh_core::normalize::Options { keep_totals, csv, locale, rules_only, model_max_cells, deadline: None };
     let (path, out_dir) = (path.to_string(), out_dir.to_string());
-    let out = py
-        .detach(move || hh_core::normalize_file(&path, &out_dir, &opts))
-        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let out = py.detach(move || {
+        guarded("normalize", || hh_core::normalize_file(&path, &out_dir, &opts).map_err(|e| PyValueError::new_err(e.to_string())))
+    })?;
     let d = PyDict::new(py);
     d.set_item("xlsx_path", out.xlsx_path.to_string_lossy())?;
     d.set_item("manifest_path", out.manifest_path.to_string_lossy())?;

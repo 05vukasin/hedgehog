@@ -47,6 +47,10 @@ pub fn run(args: &[&str]) -> Result<(), String> {
             "--max-file-mb" => {
                 opts.max_file_bytes = val()?.parse::<u64>().map_err(|_| "--max-file-mb needs a number")? << 20
             }
+            "--max-cells" => opts.max_cells = val()?.parse().map_err(|_| "--max-cells needs a number")?,
+            "--max-seconds" => {
+                opts.max_seconds = Duration::from_secs(val()?.parse().map_err(|_| "--max-seconds needs a number")?)
+            }
             _ => return Err(format!("unknown argument `{a}`")),
         }
     }
@@ -56,6 +60,9 @@ pub fn run(args: &[&str]) -> Result<(), String> {
     };
     let session = Session::with_options(&root, &allow, opts).map_err(|e| e.0)?;
     log(&format!("serving tools over stdio; root {}", session.bounds().root().display()));
+    if cfg!(panic = "abort") {
+        log("warning: built with panic = \"abort\": a crash in one tool call ends the server (build with the release profile, which unwinds)");
+    }
     let stdin = std::io::stdin();
     serve(session, stdin.lock(), std::io::stdout()).map_err(|e| e.to_string())
 }
@@ -266,7 +273,7 @@ fn handle(session: &mut Session, msg: Value) -> Option<Value> {
             }
             let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             let t0 = Instant::now();
-            let res = session.call(name, &args);
+            let res = call_isolated(session, name, &args);
             let ms = t0.elapsed().as_secs_f64() * 1000.0;
             let (text, is_error) = match res {
                 Ok(t) => (t, false),
@@ -282,6 +289,26 @@ fn handle(session: &mut Session, msg: Value) -> Option<Value> {
         }
         other => error(id, -32601, &format!("method not found: {other}")),
     })
+}
+
+/// One tool call; a panic in it (a bug hit by a malformed file) becomes this call's one-line
+/// error instead of ending the server. Needs a build with `panic = "unwind"` (the release
+/// profile); see [`run`] for the warning otherwise.
+fn call_isolated(session: &mut Session, name: &str, args: &Value) -> Result<String, hh_agent::ToolError> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.call(name, args))) {
+        Ok(r) => r,
+        Err(p) => {
+            let msg = p
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| p.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".into());
+            Err(hh_agent::ToolError(format!(
+                "internal error in {name} ({}); the file may be malformed — the server is still running, try another file or tool",
+                msg.split_whitespace().collect::<Vec<_>>().join(" ")
+            )))
+        }
+    }
 }
 
 /// Resident and peak resident memory of this process (Linux only).

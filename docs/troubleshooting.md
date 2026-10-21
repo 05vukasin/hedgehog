@@ -35,7 +35,13 @@ source: [installation.md](installation.md#the-hedgehog-command).
 | `Xlsx error: I/O error: No such file or directory` | Wrong path. | Check the path and the working directory. |
 | `Cannot detect file format` | The file is a zip or OLE container that is not an xlsx, xlsm, xlsb, xls or ods workbook (a Word document, for example). The format is detected from the file's content, so a wrong extension alone is not a problem. | Export the data from the program that made the file. |
 | `not a spreadsheet or delimited text file (binary content)` | The file is neither a workbook nor text: it was read as CSV (a text extension, or a name hedgehog does not know) and holds NUL bytes. | Check that it is the file you meant; export it as xlsx or CSV. |
-| `Xlsx error: Zip error: invalid Zip archive` | The file is not really an xlsx: truncated, an HTML or CSV export renamed to `.xlsx`, or password-protected (encrypted files are not zip archives). | Re-export the file from Excel or LibreOffice; remove the password. |
+| `Xlsx error: Zip error: invalid Zip archive` | The file is not really an xlsx: truncated, or an HTML or CSV export renamed to `.xlsx`. | Re-export the file from Excel or LibreOffice. |
+| `the file is password-protected (encrypted); …` | The workbook is encrypted with a password (Excel's *Encrypt with Password*, an encrypted ODS, or an xls with a password). | Save a copy without the password and open that. |
+| `file refused: the file decompresses to … (a zip bomb?)` | The package's parts add up to more than 2 GB uncompressed. | A real file this large is rare; split it, or read it with `ReadOptions::limits` raised (Rust). |
+| `file refused: the workbook has more than 10,000,000 cells` | Over the cell limit (an ODS file also counts the empty cells it repeats between filled ones). | `hedgehog mcp --max-cells N` raises it for the server; Rust: `ReadOptions::limits.max_cells`. |
+| `file refused: reading took longer than the time limit` / `normalizing took longer …` | The MCP server's per-file time limit (`--max-seconds`, 120 s). | Raise `--max-seconds`, or normalize the file once with `hedgehog normalize` (no time limit). |
+| `Corrupt compound file: …`, `Xls error: …`, `Xml error: …` | A damaged xls, xlsx or ods file. | Open and re-save it in Excel or LibreOffice. |
+| `internal error in … ; the file may be malformed` | A bug in hedgehog hit by an unusual file. The server or your program keeps running. | Please report it with the file if you can share it. |
 | `TypeError: ... is not an instance of 'str'` | `hedgehog.open` was given a `pathlib.Path`. | Pass `str(path)`. `normalize` and `summarize` accept both. |
 
 Workbooks that list a hidden sheet with an empty relationship id (a leftover of xls-to-xlsx

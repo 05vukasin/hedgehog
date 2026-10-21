@@ -21,7 +21,7 @@ const USAGE: &str = "usage:
   hedgehog describe <file>
   hedgehog cells <file> [--sheet NAME]   (every non-empty cell as TSV: sheet row col a1 value)
   hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG] [--rules-only] [--model-max-cells N]
-  hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N]
+  hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N] [--max-cells N] [--max-seconds N]
                (MCP tool server over stdio: open_file, describe_table, query, cells, totals, list_files; see docs/mcp.md)
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
   hedgehog eval synthetic --dir DIR [--analyzer NAME] [--limit N] [--values] [--json OUT.json] [--no-json] [--progress]

@@ -1,0 +1,17 @@
+[package]
+name = "hh_fuzz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Stable-Rust mutation fuzzer for hedgehog's readers and normalize pipeline (see fuzz/README.md)"
+
+[[bin]]
+name = "hh_fuzz"
+path = "src/main.rs"
+
+[dependencies]
+hh_core.workspace = true
+hh_agent.workspace = true
+zip = { workspace = true }
+rust_xlsxwriter.workspace = true

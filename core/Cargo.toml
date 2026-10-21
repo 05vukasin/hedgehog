@@ -11,6 +11,10 @@ rustc-hash.workspace = true
 memchr = "2.7"
 rust_xlsxwriter.workspace = true
 
+# getrlimit / setrlimit: the xlsx writer keeps one temp file open per sheet (normalize/write.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 

@@ -44,6 +44,9 @@ pub struct Options {
     /// Sheets with more cells than this use the rules alone (the model's features take about
     /// 440 bytes per cell). None: [`DEFAULT_MODEL_MAX_CELLS`].
     pub model_max_cells: Option<usize>,
+    /// Stop after this instant: [`try_normalize_workbook`] (and [`normalize_file`], which also
+    /// stops reading) returns an error; sheets not started by then are skipped.
+    pub deadline: Option<std::time::Instant>,
 }
 
 /// Default for [`Options::model_max_cells`].
@@ -539,14 +542,32 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// Analyzes every sheet and builds the normalized tables, totals and notes (no I/O).
+/// Analyzes every sheet and builds the normalized tables, totals and notes (no I/O). With
+/// [`Options::deadline`] set, sheets reached after it are left out; [`try_normalize_workbook`]
+/// reports that as an error.
 pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
     let mut out = Normalized::default();
     let layouts = layouts(wb, opts);
     for (sheet, lay) in wb.sheets.iter().zip(layouts) {
+        if past(opts.deadline) {
+            break;
+        }
         extract::process_sheet(sheet, opts, lay, &mut out);
     }
     out
+}
+
+/// [`normalize_workbook`], or an error when [`Options::deadline`] passed before it finished.
+pub fn try_normalize_workbook(wb: &Workbook, opts: &Options) -> Result<Normalized, Error> {
+    let norm = normalize_workbook(wb, opts);
+    if past(opts.deadline) {
+        return Err(Error("file refused: normalizing took longer than the time limit".into()));
+    }
+    Ok(norm)
+}
+
+fn past(deadline: Option<std::time::Instant>) -> bool {
+    deadline.is_some_and(|d| std::time::Instant::now() >= d)
 }
 
 /// Workbooks whose model sheets hold at most this many cells in total analyze their sheets on
@@ -565,6 +586,9 @@ fn layouts(wb: &Workbook, opts: &Options) -> Vec<SheetAnalysis> {
     let limit = opts.model_max_cells.unwrap_or(DEFAULT_MODEL_MAX_CELLS);
     let model = crate::learned::embedded().filter(|_| !opts.rules_only);
     let one = |sheet: &crate::model::Sheet| {
+        if past(opts.deadline) {
+            return (crate::analysis::SheetLayout::default(), None, None);
+        }
         let grid = crate::grid::Grid::new(sheet);
         let n = sheet.cells.len();
         let (lay, warning) = match model {
@@ -616,9 +640,11 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
     let size = bytes.len();
     drop(bytes);
     let t0 = std::time::Instant::now();
-    let wb = crate::reader::open(path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
+    let mut read = crate::reader::ReadOptions::default();
+    read.limits.deadline = opts.deadline;
+    let wb = crate::reader::open_with(path, read).map_err(|e| Error(format!("{}: {e}", path.display())))?;
     trace("open", t0);
-    let norm = normalize_workbook(&wb, opts);
+    let norm = try_normalize_workbook(&wb, opts)?;
     trace("analyze", t0);
     drop(wb);
     std::fs::create_dir_all(out_dir).map_err(|e| Error(format!("{}: {e}", out_dir.display())))?;
