@@ -1,7 +1,7 @@
 31fa30692770920f	1920196	irregular/enron/kam_keiser__17897__ERMS_MTM_Values Nov 30 2001 v2 JH final.xlsx
 e8ace936e148116d	24566	irregular/enron/dutch_quigley__9378__modeldutch.xlsx
 f2c8204b9221c85e	890220	irregular/enron/benjamin_rogers__1002__NYISO Price Information version 2.xlsx
-7fc43edb1847e61f	653364	irregular/enron/darron_c_giron__7917__NG-PRICE_FinancialOnly.xlsx
+5fd145d603f90ac8	653364	irregular/enron/darron_c_giron__7917__NG-PRICE_FinancialOnly.xlsx
 8821b918996c0b49	767613	irregular/enron/gstorey__12100__Totals_xx.xlsx
 fb02c234650888aa	804275	irregular/enron/kam_keiser__17851___EYrequest.xlsx
 3cdc5cb55b7532e1	709503	irregular/enron/larry_may__21911__larryoptmodel.xlsx
@@ -41,7 +41,7 @@ dedf75fca7cf1751	86	irregular/enron/marie_heard__24536__Brothers Production #Y43
 ea20e3fa339de581	9905	irregular/enron/michelle_lokay__26659__SOCAL_PERMIAN_SPRD_REPORT.xlsx
 24e33d5a4a9df48a	251	irregular/enron/monika_causholli__28122__Enron_Fiber_Pulp_Properties.xlsx
 ae1a563bb5e76feb	723	irregular/enron/phillip_allen__28928__MAPTTRA.xlsx
-a6ae316ff60efc00	97231	irregular/enron/phillip_platter__31371__ca0912epmi.xlsx
+c353e8df2870798b	97231	irregular/enron/phillip_platter__31371__ca0912epmi.xlsx
 872481a8aec0e92e	3136	irregular/enron/rick_buy__32779__Sovereign Bonds_070901.xlsx
 2f1ffbdb34af9332	117	irregular/enron/sally_beck__33736__NA GAS AND POWER-REGION BREAKOUT 07-26-00 EM.xlsx
 69ba8466ef70e4da	2069	irregular/enron/sally_beck__35523__MgmtSum-Q201-Global-0601.xlsx
