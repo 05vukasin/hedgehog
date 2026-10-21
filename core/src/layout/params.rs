@@ -59,6 +59,10 @@ pub const TAIL_MIN_ROWS: usize = 3;
 /// Cut columns at the right edge of a table that have no header cell above them (→ Other).
 /// Tried: worse on DECO dev (tables -1.1, roles -0.2), so off.
 pub const RIGHT_TRIM_UNHEADED: bool = false;
+/// A last column without a header cell, holding only text on at most this many body rows (or
+/// this share of them), is a comment column: its cells are notes (B38).
+pub const COMMENT_MAX_CELLS: usize = 2;
+pub const COMMENT_MAX_FRAC: f32 = 0.15;
 
 // --- Titles & notes ---------------------------------------------------------------------------
 
@@ -79,6 +83,9 @@ pub const NOTE_MAX_GAP: u32 = 6;
 pub const LOOSE_MAX_ROWS: usize = 4;
 /// A single text cell at least this long below a table is a note even without a marker.
 pub const NOTE_MIN_LEN: usize = 50;
+/// A single text cell of at least this many words and characters ending a block is a note.
+pub const NOTE_SENTENCE_WORDS: usize = 5;
+pub const NOTE_SENTENCE_LEN: usize = 30;
 
 // --- Headers ----------------------------------------------------------------------------------
 
@@ -105,6 +112,9 @@ pub const SPLIT_MIN_HIT_FRAC: f32 = 0.5;
 /// Years in this range are header-like labels ("2023") rather than measures.
 pub const YEAR_MIN: f64 = 1900.0;
 pub const YEAR_MAX: f64 = 2100.0;
+/// Two or more years on one row are labels only when neighbours differ by at most this much (a
+/// data row whose values happen to lie in the year range jumps further).
+pub const YEAR_MAX_STEP: f64 = 10.0;
 
 /// Outline key column (label on the first row of each group only) → GroupHeader cells.
 pub const KEY_COLUMN_GROUPS: bool = true;

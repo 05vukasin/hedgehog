@@ -14,6 +14,9 @@ pub(crate) enum Kind {
     Missing,
     /// Empty merged area (no value at its anchor).
     Blank,
+    /// A ruling line drawn with characters (`-----`, `=====`, `_____`, `~~~~~`, a `|` column):
+    /// not content, and not a blank either (it keeps the table connected). Never table data (B38).
+    Rule,
 }
 
 /// How a formula aggregates other cells.
@@ -42,6 +45,10 @@ const NOTE_WORDS: &[&str] = &[
     "note", "notes", "source", "sources", "napomena", "napomene", "izvor", "izvori", "напомена", "напомене", "извор",
     "извори", "nb", "footnote", "footnotes", "comment", "comments", "remark", "remarks", "prepared", "pripremio",
     "pripremila", "припремио", "disclaimer",
+    // de, fr, es, it, pt, nl, pl, cs, da, sv, fi (B38)
+    "quelle", "quellen", "anmerkung", "anmerkungen", "hinweis", "hinweise", "fussnote", "fußnote", "fussnoten",
+    "fußnoten", "remarque", "remarques", "nota", "notas", "fuente", "fuentes", "fonte", "fontes", "opmerking",
+    "opmerkingen", "bron", "uwaga", "uwagi", "źródło", "poznámka", "poznámky", "zdroj", "kilde", "källa", "lähde",
 ];
 
 pub(crate) fn kind_of(cell: &Cell) -> Kind {
@@ -62,7 +69,40 @@ fn text_kind(s: &str) -> Kind {
     if t.len() <= 5 && MISSING_TOKENS.iter().any(|m| t.eq_ignore_ascii_case(m)) {
         return Kind::Missing;
     }
-    if looks_numeric(t) { Kind::Num } else { Kind::Text }
+    if looks_numeric(t) {
+        return Kind::Num;
+    }
+    // `20221)`, `2022 1)`: a year with a note mark in a header stays a label.
+    let unbalanced = t.matches(')').count() > t.matches('(').count();
+    if !unbalanced && t.len() <= 40 && t.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '-' | '(' | '+' | '.')) {
+        // A number with a footnote mark or flag (`28472.72*`, `1737³`, `6077.61 (p)`, `20560.32e`)
+        // is a number, not a label (B33: such rows started new tables).
+        use crate::values::number::{NumberHint, parse_number};
+        if parse_number(t, NumberHint::default()).is_some_and(|p| p.footnote && p.unit.is_none() && p.currency.is_none())
+        {
+            return Kind::Num;
+        }
+    }
+    // Censored and suppressed values (`<5`, `> 1000`, `confidential`, `[c]`, `see note`) stand
+    // in for a number: type-neutral, like a missing token.
+    if t != "C" && t != "F" && crate::values::missing::numeric_annotation(t).is_some() {
+        return Kind::Missing;
+    }
+    Kind::Text
+}
+
+/// A ruling line drawn with text: a run of at least 3 of one of `- = _ ~ * . # + – —` (or `|`
+/// alone). Only a whole row of such cells (or a `|` cell) is a ruling line ([`super::blocks`]).
+pub(crate) fn is_rule_text(t: &str) -> bool {
+    let t = t.trim();
+    if t == "|" || t == "||" || t == "¦" {
+        return true;
+    }
+    let mut it = t.chars();
+    let Some(first) = it.next() else { return false };
+    matches!(first, '-' | '=' | '_' | '~' | '*' | '.' | '#' | '+' | '–' | '—')
+        && t.chars().count() >= 3
+        && t.chars().all(|c| c == first || (c == ' ' && first != ' '))
 }
 
 /// "1,200.50", "(500)", "12%", "$ 3.4", "1.200,50 RSD"-ish, "01/02/2001", "-7".
@@ -89,8 +129,40 @@ pub(crate) fn is_label_number(cell: &Cell) -> bool {
         Some(Value::Number(n)) => n.fract() == 0.0 && (YEAR_MIN..=YEAR_MAX).contains(n),
         Some(Value::Text(s)) => {
             let t = s.trim();
-            t.len() == 4 && t.parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n))
+            let year = |n: f64| n.fract() == 0.0 && (YEAR_MIN..=YEAR_MAX).contains(&n);
+            (t.len() == 4 && t.parse::<f64>().is_ok_and(year))
+                || is_text_period(t)
+                // `2022¹`, `2023*`: a year with a footnote mark (counted as a number by `kind_of`).
+                || (t.len() <= 12
+                    && kind_of(cell) == Kind::Num
+                    && t.as_bytes()[..4.min(t.len())].iter().all(u8::is_ascii_digit)
+                    && crate::values::number::parse_number(t, Default::default())
+                        .is_some_and(|p| p.footnote && p.thousands_sep.is_none() && year(p.value)))
         }
+        _ => false,
+    }
+}
+
+/// A period or date written as text with a year: `2010-01`, `2010/01`, `01/2010`, `2010-01-31`,
+/// `31.01.2010`, `1/31/2010` (B39: a header row of `YYYY-MM` periods). Not `2010.01` or `01.2010`,
+/// which read as decimals.
+pub(crate) fn is_text_period(t: &str) -> bool {
+    if t.len() < 6 || t.len() > 10 || !t.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'-' | b'/' | b'.')) {
+        return false;
+    }
+    let sep = match t.bytes().find(|b| !b.is_ascii_digit()) {
+        Some(s) => s,
+        None => return false,
+    };
+    let parts: Vec<&str> = t.split(sep as char).collect();
+    if parts.iter().any(|p| p.is_empty()) || t.bytes().any(|b| !b.is_ascii_digit() && b != sep) {
+        return false;
+    }
+    let year = |p: &str| p.len() == 4 && p.parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n));
+    let small = |p: &str, max: u32| p.len() <= 2 && p.parse::<u32>().is_ok_and(|n| (1..=max).contains(&n));
+    match parts[..] {
+        [a, b] if sep != b'.' => (year(a) && small(b, 12)) || (small(a, 12) && year(b)),
+        [a, b, c] => (year(a) && small(b, 12) && small(c, 31)) || (small(a, 31) && small(b, 31) && year(c)),
         _ => false,
     }
 }

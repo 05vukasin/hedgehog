@@ -184,9 +184,10 @@ fn text(cell: Option<&Cell>) -> Option<&str> {
 }
 
 /// Text that can head a column of numbers: not a number stored as text and not a missing-value
-/// token ("n/a", "-", "#N/A"), which stand in for blank data cells.
+/// token ("n/a", "-", "#N/A"), which stand in for blank data cells, and not a ruling line
+/// (`=====`, `~~~~~` between the data and its total, B38).
 fn header_text(s: &str) -> bool {
-    numeric_text(s).is_none() && missing_token(s).is_none()
+    numeric_text(s).is_none() && missing_token(s).is_none() && !crate::layout::is_rule_text(s)
 }
 
 fn number(cell: Option<&Cell>) -> Option<f64> {

@@ -270,9 +270,18 @@ fn build_table(
     tr.add(T::TitleRowsMoved, title_rows);
 
     // --- Header ----------------------------------------------------------------------------
+    // Ruling lines drawn with text (`=====` rows, a `|` column) are not content (B38).
+    let rule_text = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if crate::layout::is_rule_text(t));
+    let pipe = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if matches!(t.trim(), "|" | "||" | "¦"));
     let mut head: Vec<Vec<Head>> = vec![vec![None; ncols]; nh];
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= htop && *row < body_top) {
+        let all_rules = idxs.iter().all(|&i| rule_text(i) || cells[i].value.as_ref().is_none_or(|v| display(v).is_empty()));
         for &i in idxs {
+            if pipe(i) || (all_rules && rule_text(i)) {
+                owner[i] = OWN_NOTES;
+                notes.push(note(i, "other"));
+                continue;
+            }
             owner[i] = OWN_TABLE;
             let c = &cells[i];
             if let Some(v) = &c.value {
@@ -361,6 +370,27 @@ fn build_table(
     let mut key_cols: HashSet<usize> = HashSet::new();
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
+        let blank = |i: usize| cells[i].value.as_ref().is_none_or(|v| display(v).is_empty());
+        if idxs.iter().any(|&i| rule_text(i)) && idxs.iter().all(|&i| rule_text(i) || blank(i)) {
+            for &i in idxs {
+                owner[i] = OWN_NOTES;
+                if !blank(i) {
+                    notes.push(note(i, "other"));
+                }
+            }
+            continue;
+        }
+        let idxs_kept: Vec<usize>;
+        let idxs = if idxs.iter().any(|&i| pipe(i)) {
+            for &i in idxs.iter().filter(|&&i| pipe(i)) {
+                owner[i] = OWN_NOTES;
+                notes.push(note(i, "other"));
+            }
+            idxs_kept = idxs.iter().copied().filter(|&i| !pipe(i)).collect();
+            &idxs_kept
+        } else {
+            idxs
+        };
         let kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
         match kind {
             RowKind::Group => {

@@ -79,6 +79,15 @@ pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
     !is_total_label(t) && (is_note_label(t) || t.trim().chars().count() >= NOTE_MIN_LEN)
 }
 
+/// A sentence alone on the last row of a block ("Data as reported by the departments; not
+/// audited."): one text cell of at least [`NOTE_SENTENCE_WORDS`] words and
+/// [`NOTE_SENTENCE_LEN`] characters. Only for the rows that end a block (B38).
+fn is_trailing_sentence(sheet: &Sheet, r: &Row) -> bool {
+    let Some(e) = single_text(r) else { return false };
+    let t = text(sheet, e).trim();
+    !is_total_label(t) && t.chars().count() >= NOTE_SENTENCE_LEN && t.split_whitespace().count() >= NOTE_SENTENCE_WORDS
+}
+
 /// Header row relative to the rows below it: more of its cells break the column's body type
 /// (text or a year over plain numbers) than repeat it (Pytheas-style signature votes).
 pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
@@ -452,7 +461,7 @@ fn set(out: &mut Out, r: &Row, role: Role) {
 
 /// Like [`set`], for entries starting at or left of `max_col` only.
 fn set_upto(out: &mut Out, r: &Row, role: Role, max_col: u32) {
-    for e in r.entries.iter().filter(|e| e.left <= max_col) {
+    for e in r.entries.iter().filter(|e| e.left <= max_col && e.kind != Kind::Rule) {
         if let Some(i) = e.cell {
             out.roles[i] = role;
         }
@@ -549,6 +558,32 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         let covered = rows[seg.start..body_start].iter().map(|r| r.right()).max().unwrap_or(rect.right);
         rect.right = rect.right.min(covered.max(rect.left + 1));
     }
+    // A comment column right of the table ("check!", "per KL 3/4" on a row or two): no header
+    // cell, only text, on few body rows. Its cells are notes, not a data column (B38).
+    let mut comments: Vec<usize> = Vec::new();
+    if seg.header > 0 && rect.right > rect.left + 1 {
+        let c = rect.right;
+        let headed = rows[seg.start..body_start].iter().any(|r| r.filled().any(|e| e.left <= c && e.right >= c));
+        let body = &rows[body_start..seg.end];
+        let at_c: Vec<&Entry> = body.iter().flat_map(|r| r.filled().filter(|e| e.left == c && e.right == c)).collect();
+        let others = body.iter().flat_map(|r| r.filled()).any(|e| e.left < c && e.right >= c);
+        let left_fill = body.iter().filter(|r| r.filled().any(|e| e.left == c - 1)).count();
+        if !headed
+            && !others
+            && !at_c.is_empty()
+            && at_c.len() <= COMMENT_MAX_CELLS.max((COMMENT_MAX_FRAC * body.len() as f32) as usize)
+            && at_c.iter().all(|e| e.kind == Kind::Text)
+            && left_fill * 2 > body.len()
+        {
+            comments = at_c.iter().filter_map(|e| e.cell).collect();
+            rect.right = trows
+                .iter()
+                .flat_map(|r| r.entries.iter().filter(|e| e.left < c))
+                .map(|e| e.right.min(c - 1))
+                .max()
+                .unwrap_or(c - 1);
+        }
+    }
     let mut header_rows = 0;
     if seg.header > 0 {
         let first_body = rows[body_start].row;
@@ -595,7 +630,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         if role == Role::Data {
             data_rows.push(k);
             for e in r.entries.iter().filter(|e| e.left <= rect.right) {
-                body_cells += (e.kind != Kind::Blank) as usize;
+                body_cells += !matches!(e.kind, Kind::Blank | Kind::Rule) as usize;
                 let c = col_counts.entry(e.left).or_default();
                 match e.kind {
                     Kind::Text => c.0 += 1,
@@ -610,6 +645,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
                 }
             }
         }
+    }
+    for i in comments {
+        out.roles[i] = Role::Note;
     }
     if INLINE_GROUP_LABELS {
         mark_inline_group_labels(sheet, rows, body_start..seg.end, &data_rows, out);
@@ -641,7 +679,7 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         s += 1;
     }
     let mut e = rows.len();
-    while e > s + 1 && is_note_row(sheet, &rows[e - 1]) {
+    while e > s + 1 && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1])) {
         e -= 1;
     }
     let numbers = out.column_numbers;
