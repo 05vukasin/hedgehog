@@ -1,0 +1,18 @@
+{
+  "name": "hedgehog",
+  "owner": {
+    "name": "Vukasin Teslic"
+  },
+  "metadata": {
+    "description": "hedgehog: spreadsheet tools for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "hedgehog",
+      "source": "./integrations/claude-code",
+      "description": "Spreadsheet questions answered from a compact catalog and read-only SQL instead of hand-written pandas. Needs the hedgehog binary on PATH.",
+      "category": "data",
+      "tags": ["spreadsheet", "excel", "csv", "sql", "mcp"]
+    }
+  ]
+}

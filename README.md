@@ -279,6 +279,12 @@ Standalone `hedgehog` binaries for Linux, macOS and Windows are attached to each
 [release](https://github.com/05vukasin/hedgehog/releases). Tools, limits and examples:
 [docs/mcp.md](docs/mcp.md).
 
+**Claude Code plugin:** with `hedgehog` on your PATH, run `/plugin marketplace add 05vukasin/hedgehog`
+and `/plugin install hedgehog@hedgehog` in Claude Code. It adds the tools for the project folder and a
+`spreadsheets` skill that tells Claude to answer from the catalog and SQL instead of writing pandas.
+On the four cases in [eval/agents](eval/agents/RESULTS.md), that took a third to two thirds less cost
+for the same answers. See [docs/mcp.md](docs/mcp.md#claude-code).
+
 ## How good is it?
 
 Accuracy is measured, not guessed: hedgehog is scored against spreadsheets that people labelled by
@@ -313,6 +319,7 @@ Full comparison and what we're fixing:
 | [Quickstart](docs/quickstart.md) | a messy sample workbook, end to end |
 | [Agent recipes](docs/agent-recipes.md) | pandas/openpyxl code for AI agents |
 | [MCP server](docs/mcp.md) | `hedgehog mcp`: tools for AI clients over stdio |
+| [Claude Code plugin](docs/mcp.md#claude-code) | `/plugin install hedgehog@hedgehog`: the tools plus a `spreadsheets` skill |
 | [Normalized output](docs/normalized-output.md) | every sheet and manifest field |
 | [CLI](docs/cli.md) · [Python API](docs/python-api.md) · [Node API](docs/node-api.md) | full reference |
 | [LLMs](docs/llm.md) · [Locales](docs/locales.md) | AI providers and keys; numbers, dates, currencies |

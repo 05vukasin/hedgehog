@@ -13,7 +13,10 @@ general agent that has no hedgehog?**
 2. **The same prompt goes to every agent**, as `File: <path>` plus the questions:
    - `hedgehog`: hedgehog-cli, one-shot, with its configured model;
    - `claude`: Claude Code with shell and file tools only (it writes its own pandas);
-   - `claude-hh`: Claude Code plus hedgehog's tools over MCP.
+   - `claude-hh`: Claude Code with the [hedgehog plugin](../../integrations/claude-code): its
+     `spreadsheets` skill (`--plugin-dir`) and `hedgehog mcp` (the binary under test, `--hedgehog`),
+     plus the same shell and file tools. Its skill-listing budget is raised (`--skill-budget`, default
+     80000) so the skill keeps its description when many user skills are installed.
 3. **Every run is recorded** in [results.jsonl](results.jsonl): time, turns, tokens, cost, tool calls
    and errors, the answer, and the automatic checks. [RESULTS.md](RESULTS.md) shows the latest run per
    case and agent; the full answers are in [answers/](answers/).
