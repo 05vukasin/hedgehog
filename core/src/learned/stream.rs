@@ -151,7 +151,7 @@ fn stream<'g>(
     threads: usize,
     min_chunk_cells: usize,
     keep: bool,
-) -> Option<(Streamed, Vec<f32>)> {
+) -> Option<(Streamed, Vec<u64>)> {
     let names = base_names();
     debug_assert_eq!(names.len(), NB);
     let base: rustc_hash::FxHashMap<&str, usize> = names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
@@ -195,7 +195,7 @@ fn stream<'g>(
     let cursors = ctx.cursors(&starts);
     let rows = &rows;
     let src = &src;
-    let outs: Vec<(Streamed, Vec<f32>)> = if spans.len() == 1 {
+    let outs: Vec<(Streamed, Vec<u64>)> = if spans.len() == 1 {
         let cur = cursors.into_iter().next().expect("one cursor");
         vec![walk(src, model, values.fork(), cur, rows, spans[0], keep)]
     } else {
@@ -273,7 +273,7 @@ fn walk<'g>(
     rows: &[(usize, usize)],
     (a, b, c, d): (usize, usize, usize, usize),
     keep: bool,
-) -> (Streamed, Vec<f32>) {
+) -> (Streamed, Vec<u64>) {
     let mut sink = Sink::new(model, src);
     sink.keep = keep.then(Vec::new);
     let mut prev: Option<RowFeats> = None;
@@ -350,8 +350,8 @@ struct Sink<'m, 's> {
     vecs: Vec<f32>,
     pending: usize,
     out: Streamed,
-    /// Every segment vector, when asked to keep them (equivalence checks).
-    keep: Option<Vec<f32>>,
+    /// A hash of every segment vector, when asked to keep them (equivalence checks).
+    keep: Option<Vec<u64>>,
 }
 
 impl<'m, 's> Sink<'m, 's> {
@@ -376,7 +376,7 @@ impl<'m, 's> Sink<'m, 's> {
         let v = &self.vecs[self.pending * W..(self.pending + 1) * W];
         self.out.guard.push(self.pos.2.map(|p| v[p]));
         if let Some(k) = &mut self.keep {
-            k.extend_from_slice(v);
+            k.push(vector_hash(v));
         }
         self.out.segs.push(seg);
         self.pending += 1;
@@ -405,65 +405,100 @@ impl<'m, 's> Sink<'m, 's> {
     }
 }
 
+/// FNV-1a over the bits of a segment vector.
+fn vector_hash(v: &[f32]) -> u64 {
+    let mut h = 0xcbf29ce484222325u64;
+    for x in v {
+        for b in x.to_bits().to_le_bytes() {
+            h = (h ^ b as u64).wrapping_mul(0x100000001b3);
+        }
+    }
+    h
+}
+
 /// Equivalence check of this path against the materialized one on one sheet (a test aid for the
-/// P7 gates): with `threads` chunks, every segment's every feature must have the same bits as
-/// [`super::segment_features`] gives, every role the same as [`RowModel::predict`] gives, and the
-/// final layout the same as [`super::analyze_on`] with [`super::Input::Materialized`]. Returns the
-/// number of segments compared, or the first difference. Sheets the stream does not take
-/// (not row-major) only compare the layouts.
-pub fn equivalence(grid: &Grid, model: &RowModel, threads: usize) -> Result<usize, String> {
+/// P7 gates): for every entry of `threads` (rows split into that many chunks), every segment's
+/// vector of all segment features must have the same bits as [`super::segment_features`] gives
+/// (compared by a hash per segment), and every role the same as [`RowModel::predict`] gives;
+/// every class score of the lockstep tree walk must equal the plain walk's; and the final layout
+/// must equal [`super::analyze_on`] with [`super::Input::Materialized`]. Returns the number of
+/// segments compared, or the first difference. Sheets the stream does not take (not row-major)
+/// only compare the layouts.
+pub fn equivalence(grid: &Grid, model: &RowModel, threads: &[usize]) -> Result<usize, String> {
     use super::{analyze_on, segment_features, Input, RefineSteps};
+    // The rules' table confidence averages column purities in hash-map order, so its last bits
+    // vary from run to run whatever the path (the manifest rounds it to three decimals): it is
+    // compared with a tolerance, everything else exactly.
+    let shape = |l: &SheetLayout| {
+        let t: Vec<_> = l.tables.iter().map(|t| (t.rect, t.header_top, t.header_rows)).collect();
+        format!("{t:?} {:?}", l.roles)
+    };
     let full = analyze_on(grid, model, RefineSteps::ALL, Input::Materialized);
     let fast = analyze_on(grid, model, RefineSteps::ALL, Input::Auto);
-    if format!("{full:?}") != format!("{fast:?}") {
+    if shape(&full) != shape(&fast) {
         return Err("layouts differ".into());
     }
+    if let Some((a, b)) =
+        full.tables.iter().zip(&fast.tables).find(|(a, b)| (a.confidence - b.confidence).abs() > 1e-5)
+    {
+        return Err(format!("table confidence differs: {} materialized, {} streamed", a.confidence, b.confidence));
+    }
+    drop((full, fast));
     if !eligible(grid) || model.reads_formats() {
         return Ok(0);
     }
     let (lay, f) = crate::eval::export::layout_and_features(grid, false);
     let (segs, sf) = segment_features(grid, &f);
     drop(f);
-    let ctx = Context::new(grid);
-    let values = Values::new(grid, None);
-    let (totals, cands) = Totals::new(grid);
-    let lt = LayoutTotals::new(grid, &lay, &cands);
-    let Some((s, vecs)) = stream(grid, model, &ctx, &values, &totals, &lt, threads, 1, true) else {
-        return Err("stream refused the model".into());
-    };
-    if s.segs.len() != segs.len() {
-        return Err(format!("{} segments streamed, {} materialized", s.segs.len(), segs.len()));
-    }
-    for (k, (a, b)) in s.segs.iter().zip(&segs).enumerate() {
-        if (a.row, a.left, a.right, &a.members) != (b.row, b.left, b.right, &b.members) {
-            return Err(format!("segment {k} differs"));
-        }
-    }
+    // The materialized segment vectors, hashed in segment-vector order.
     let names = base_names();
     let base: rustc_hash::FxHashMap<&str, usize> = names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
+    let mut at = vec![usize::MAX; W];
     for (j, name) in sf.names().iter().enumerate() {
-        let p = position(name, &base).ok_or(format!("no position for `{name}`"))?;
-        let col = sf.column(j);
-        for k in 0..segs.len() {
-            if col[k].to_bits() != vecs[k * W + p].to_bits() {
-                return Err(format!(
-                    "`{name}` of segment {k} (row {}): {} materialized, {} streamed",
-                    segs[k].row,
-                    col[k],
-                    vecs[k * W + p]
-                ));
+        at[position(name, &base).ok_or(format!("no position for `{name}`"))?] = j;
+    }
+    if at.contains(&usize::MAX) {
+        return Err("the materialized features do not cover every segment feature".into());
+    }
+    let mut v = vec![0f32; W];
+    let want_hash: Vec<u64> = (0..segs.len())
+        .map(|k| {
+            for (p, &j) in at.iter().enumerate() {
+                v[p] = sf.column(j)[k];
             }
-        }
-    }
+            vector_hash(&v)
+        })
+        .collect();
     let want = model.predict(&sf)?;
-    if want != s.pred {
-        return Err("roles differ".into());
-    }
     // The lockstep tree evaluation against the plain walk, every class score bit for bit.
     for (name, m) in [("coarse", &model.coarse), ("fine", &model.fine)] {
         let (a, b) = (m.scores(&sf)?, m.scores_reference(&sf)?);
         if let Some(k) = a.iter().zip(&b).position(|(x, y)| x.to_bits() != y.to_bits()) {
             return Err(format!("{name} score {k}: {} lockstep, {} plain walk", a[k], b[k]));
+        }
+    }
+    drop(sf);
+    let ctx = Context::new(grid);
+    let values = Values::new(grid, None);
+    let (totals, cands) = Totals::new(grid);
+    let lt = LayoutTotals::new(grid, &lay, &cands);
+    for &t in threads {
+        let Some((s, hashes)) = stream(grid, model, &ctx, &values, &totals, &lt, t, 1, true) else {
+            return Err("stream refused the model".into());
+        };
+        if s.segs.len() != segs.len() {
+            return Err(format!("{t} chunks: {} segments streamed, {} materialized", s.segs.len(), segs.len()));
+        }
+        for (k, (a, b)) in s.segs.iter().zip(&segs).enumerate() {
+            if (a.row, a.left, a.right, &a.members) != (b.row, b.left, b.right, &b.members) {
+                return Err(format!("{t} chunks: segment {k} differs"));
+            }
+        }
+        if let Some(k) = (0..segs.len()).find(|&k| hashes[k] != want_hash[k]) {
+            return Err(format!("{t} chunks: features of segment {k} (row {}, col {}) differ", segs[k].row, segs[k].left));
+        }
+        if want != s.pred {
+            return Err(format!("{t} chunks: roles differ"));
         }
     }
     Ok(segs.len())

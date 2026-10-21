@@ -908,16 +908,14 @@ mod tests {
         for (seed, rows) in [(1, 12), (2, 60), (3, 400), (4, 7)] {
             let sheet = mixed_sheet(seed, rows);
             let grid = Grid::new(&sheet);
-            for threads in [1, 2, 3, 5] {
-                let n = equivalence(&grid, m, threads).unwrap_or_else(|e| panic!("seed {seed}, {threads} threads: {e}"));
-                assert!(n > 0);
-            }
+            let n = equivalence(&grid, m, &[1, 2, 3, 5]).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+            assert!(n > 0);
         }
         // Not row-major: the materialized path, same layout either way.
         let mut sheet = mixed_sheet(5, 40);
         sheet.cells.reverse();
         let grid = Grid::new(&sheet);
-        assert_eq!(equivalence(&grid, m, 2), Ok(0));
+        assert_eq!(equivalence(&grid, m, &[2]), Ok(0));
     }
 
     #[test]
