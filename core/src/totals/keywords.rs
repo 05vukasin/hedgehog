@@ -610,7 +610,7 @@ mod tests {
     fn of_which_and_average_labels() {
         use super::{nonsum_keyword as ns, NonSumKind::*, NonSumLabel::*};
         for s in ["of which: domestic", "  of which exports", "davon Inland", "davon: Export", "od toga: izvoz",
-            "dont : exportations", "di cui: estero", "w tym: eksport", "thereof abroad", "- of which online", "из них"]
+            "dont : exportations", "di cui: estero", "w tym: eksport", "thereof abroad", "- of which online", "из них: женщины"]
         {
             assert_eq!(ns(s), Some((OfWhich, Phrase)), "{s}");
         }

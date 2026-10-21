@@ -122,7 +122,10 @@ const LABEL_MAX_WORDS: usize = 4;
 fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
     let mut out: Overrides = HashMap::new();
     let mut add = |row: u32, o: RowOverride, cols: Vec<u32>| out.entry(row).or_default().push((o, cols));
-    for &r in &det.incidental_rows {
+    // A row with a SUM formula is a total whatever its text says.
+    let with_formula: HashSet<u32> =
+        det.candidates.iter().filter(|c| c.origin == TotalOrigin::Formula).map(|c| c.row).collect();
+    for &r in det.incidental_rows.iter().filter(|r| !with_formula.contains(r)) {
         add(r, RowOverride::Data, Vec::new());
     }
     let first_text = |row: u32| {

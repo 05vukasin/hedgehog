@@ -1584,6 +1584,16 @@ fn nonsum_rows(
             }
             checks.push(check);
         }
+        // In a register a name starting with an average word, with more text beside it ("AVG
+        // VITRAIS, UNIPESSOAL LDA | NIF | …"), is a record whose number met a mean by chance.
+        if f.kind == NonSumKind::Average && f.plain == NonSumLabel::Phrase && sheet_rows(grid) >= REGISTER_MIN_ROWS {
+            let more_text = grid.row_cells(f.row).iter().map(|&i| &cells[i as usize]).any(|c| {
+                c.col != f.col && matches!(&c.value, Some(Value::Text(t)) if header_text(t) && !t.trim().is_empty())
+            });
+            if more_text {
+                continue;
+            }
+        }
         if f.kind == NonSumKind::Average && !keep {
             // Unchecked: only a plain label over at least two numbers; a word at the end of its block.
             let block_end = !rows_with_cells.contains(&(f.row + 1))
