@@ -183,7 +183,7 @@ header. Rules' tables vs the model path's (which refines them with the row roles
 |---|---|---|---|
 | DECO | 65.5 / 51.6 / 34.2 | **68.2 / 56.0 / 36.7** | 75.8 → **81.5** |
 | StatSheets | 83.6 / 72.5 / 36.8 | **91.5 / 86.9 / 74.6** | 60.2 → **72.2** |
-| Synthetic | 98.1 / 95.7 / 82.4 | **98.0 / 97.0 / 94.8** | 89.7 → **96.3** |
+| Synthetic | 98.1 / 95.7 / 82.4 | **98.1 / 97.2 / 94.8** | 89.7 → **96.3** |
 
 To see where tables go wrong, `HH_GT_CORPUS=deco|statsheets|synthetic cargo test --release -p hh_core
 --test tables_gtdump -- --ignored --nocapture` lists dev sheets whose tables miss the ground truth,

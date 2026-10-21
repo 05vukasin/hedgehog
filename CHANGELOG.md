@@ -15,7 +15,7 @@ All notable changes to hedgehog are listed here. The format follows
   at a new header after a blank row, key/value metadata blocks stop being tables and data rows
   left below a table join it. Table F1 on the test splits at IoU ≥ 0.5 / 0.8 / 1.0: DECO
   65.5 / 51.6 / 34.2 → 68.2 / 56.0 / 36.7, StatSheets 83.6 / 72.5 / 36.8 → 91.5 / 86.9 / 74.6,
-  synthetic 98.1 / 95.7 / 82.4 → 98.0 / 97.0 / 94.8; cell roles unchanged. See
+  synthetic 98.1 / 95.7 / 82.4 → 98.1 / 97.2 / 94.8; cell roles unchanged. See
   [docs/learned-model.md](docs/learned-model.md#how-it-works).
 - Column-numbering rows (`1 2 3 4 …` under a Destatis header) are part of the header, not the
   first data row (rules and model path).

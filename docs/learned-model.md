@@ -95,11 +95,12 @@ DECO headers 56 → 84). StatSheets labels only four roles, so it is scored in t
 |---|---|---|---|
 | DECO | 65.5 / 51.6 / 34.2 | **68.2 / 56.0 / 36.7** | 75.8 → **81.5** |
 | StatSheets | 83.6 / 72.5 / 36.8 | **91.5 / 86.9 / 74.6** | 60.2 → **72.2** |
-| Synthetic | 98.1 / 95.7 / 82.4 | **98.0 / 97.0 / 94.8** | 89.7 → **96.3** |
+| Synthetic | 98.1 / 95.7 / 82.4 | **98.1 / 97.2 / 94.8** | 89.7 → **96.3** |
 
-Cell roles stay where they were (DECO 67.4 / 59.8, StatSheets 89.6, Strudel 63.2 / 61.6, synthetic
-93.0 / 91.3); on the European sample the per-file score drops 0.5 (65.4 → 64.9), from one Destatis
-unit row (`Mrd. EUR`) that the model now calls header instead of group header.
+No cell-role score is lower than before (test: DECO 67.3 / 59.6 → 67.4 / 59.8, StatSheets 89.6,
+Strudel 63.2 / 61.6, synthetic 93.0 / 91.3, European sample 61.3 / 65.4 → 61.4 / 65.5). The row
+model's features see the rule layout without the column-numbering rule (`layout::analyze_for_model`),
+as in training; this step applies it afterwards.
 
 **Generalization.** Before training on all four corpora, each corpus was held out in turn and the
 model trained on the other three (leave-one-corpus-out). It still beat the rules on every held-out
