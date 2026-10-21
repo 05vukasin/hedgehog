@@ -9,7 +9,10 @@ use std::time::{Duration, Instant};
 use hh_core::reader::{open_with, Limits, ReadOptions};
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("hh_hostile_{}", std::process::id()));
+    // One folder per call: tests run in parallel and several use the same file name.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let d = std::env::temp_dir().join(format!("hh_hostile_{}_{n}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
     d.join(name)
 }
@@ -67,6 +70,9 @@ fn open_bytes(name: &str, bytes: &[u8], opts: ReadOptions) -> Result<hh_core::Wo
     std::fs::write(&p, bytes).unwrap();
     let r = open_with(&p, opts);
     std::fs::remove_file(&p).ok();
+    if let Some(d) = p.parent() {
+        std::fs::remove_dir(d).ok();
+    }
     r
 }
 
@@ -205,6 +211,24 @@ fn ods_repeat_bomb_is_refused_before_parsing() {
     assert!(e.is_limit() && e.to_string().contains("cells"), "{e}");
     assert!(t.elapsed() < Duration::from_secs(10));
     let enc = ods(&format!("<table:table-row>{cell}</table:table-row>"), "<manifest:encryption-data manifest:checksum-type=\"SHA1\"/>");
+    let e = open_default("enc.ods", &enc).unwrap_err();
+    assert!(e.to_string().contains("password-protected"), "{e}");
+}
+
+#[test]
+fn ods_with_backslash_entry_names_opens() {
+    // B52: some Windows tools write `META-INF\manifest.xml` (uk_gov RTS accompanying tables).
+    let cell = "<table:table-cell office:value-type=\"float\" office:value=\"1\"><text:p>1</text:p></table:table-cell>";
+    let backslash = |bytes: Vec<u8>| {
+        let p: Vec<(String, Vec<u8>)> = parts(&bytes).into_iter().map(|(n, d)| (n.replace('/', "\\"), d)).collect();
+        assert!(p.iter().any(|(n, _)| n == "META-INF\\manifest.xml"));
+        zip_of(&p)
+    };
+    let ok = backslash(ods(&format!("<table:table-row>{cell}{cell}</table:table-row>"), ""));
+    let wb = open_default("ok.ods", &ok).unwrap();
+    assert_eq!(wb.sheets[0].cells.len(), 2);
+    // The password check still reads the manifest.
+    let enc = backslash(ods(&format!("<table:table-row>{cell}</table:table-row>"), "<manifest:encryption-data manifest:checksum-type=\"SHA1\"/>"));
     let e = open_default("enc.ods", &enc).unwrap_err();
     assert!(e.to_string().contains("password-protected"), "{e}");
 }

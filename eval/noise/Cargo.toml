@@ -18,6 +18,10 @@ rust_xlsxwriter = { version = "0.99.1", features = ["constant_memory", "zmij"] }
 
 [workspace]
 
+# the same patched calamine as the main workspace (hostile-file fixes)
+[patch.crates-io]
+calamine = { path = "../../vendor/calamine" }
+
 [profile.release]
 opt-level = 3
 lto = false

@@ -187,7 +187,7 @@ fn cells(path: &str, args: &[&str]) -> Result<(), String> {
                 Some(hh_core::Value::DateTime(d)) => format!("date:{d}"),
                 Some(hh_core::Value::Bool(b)) => b.to_string(),
                 Some(hh_core::Value::Error(e)) => format!("error:{e}"),
-                None => format!("formula:{}", c.formula.as_deref().unwrap_or("")),
+                None => format!("no_saved_value:={}", c.formula.as_deref().unwrap_or("")),
             };
             writeln!(out, "{}\t{}\t{}\t{}\t{v}", s.name, c.row, c.col, hh_core::a1(c.row, c.col))
                 .map_err(|e| e.to_string())?;

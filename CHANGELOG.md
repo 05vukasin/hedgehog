@@ -265,6 +265,19 @@ All notable changes to hedgehog are listed here. The format follows
   8.4M segments of the benchmark corpora and `testdata/irregular`; normalized output and manifest
   identical to master on 1,302 files, single-threaded and threaded; golden check and benchmark TSVs
   identical. See [docs/architecture.md](docs/architecture.md#performance-notes).
+- **`query` keeps long values whole** (B47): text values come back exactly (CSV-quoted) up to 2,000
+  characters instead of being cut at 80 with `…`, so a `group_concat` list can be reused in the next
+  query; a longer value ends in `…[+N chars]` with a `note:` on reading the rest with `substr`.
+- **Formulas without a saved value are reported** (B48): the catalog says `FORMULAS 1,479 cells
+  without a saved value (e.g. May1!H13): NULL in the tables, not evaluated`, the quality line counts
+  them per table, and `hedgehog cells` prints such a cell as `no_saved_value:=<formula>` (was
+  `formula:<formula>`). Nothing is evaluated. Disk cache entries of earlier builds are not reused.
+- **Sign note only for flows** (B49): the `signs: … (outflows?)` line needs flow labels (receipts /
+  deliveries, debit / credit, in / out, …) or runs holding a tenth of the signed rows, and never
+  appears for price, rate or index columns (Eurostat electricity prices lost a misleading note).
+- **Time coverage ignores entity dates** (B49): start, hire, birth, expiry and valid-from date
+  columns count only when a table has no other period column (NYC payroll: `1996-06-23–2025 (day)`
+  → `2014–2025 (year, from fiscal_year)`; Chicago business licenses no longer run to 2030).
 - The model path computes only the row-segment features the trees test (and the guard's), not all
   ~450: same predictions, less memory and time per sheet.
 - `open_file` catalog (MCP, `hh_agent`, Node `HedgehogSession`), after the gpt-4o-mini chat
@@ -300,6 +313,15 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Fixed
 
+- **Register names taken for totals** (B50): in a register, a total word right of the record's own
+  keys (`GROWTH WIRELESS LLC | TOTAL WIRELESS`, a counterparty `TOTAL` beside a deal id) needs its
+  numbers to add up, and words only the rule layout reads as aggregates (`MAXIMUM MARKETING
+  SERVICES INC`, `MORE THAN AVERAGE LLC`) no longer label a row that holds other text. Chicago
+  business licenses: 87 records (1,112 cells on Totals, 1,639 on Notes) back in the data; the
+  header `Customer | Resource | Total | 1 … 24` of an Enron sheet is no longer a total row.
+- **ODS files with backslash paths** (B52): zip entries named `META-INF\manifest.xml` (written by
+  some Windows tools) are found, so such files open instead of failing with `'META-INF/manifest.xml'
+  file not found`; the xlsb workbook relationships part is looked up the same way.
 - Crashes, hangs and runaway allocations on malformed files found by the fuzzer (each with a
   regression test in `core/tests/hostile_files.rs`). In calamine, now vendored with the fixes
   (`vendor/calamine`, each change marked `hedgehog:`): looping sector chains in xls / OLE files
@@ -313,6 +335,69 @@ All notable changes to hedgehog are listed here. The format follows
   xlsx writer keeps a temp file open per output sheet. The open-file limit is raised when needed
   (a clear error if the hard limit is too low). CSV files are checked against the cell limit while
   they are read, so a huge CSV is refused before it fills memory.
+- **Layout and headers on noisy and statistical sheets** (B33, B35, B38, B39, B43–B46; noise
+  curves at t = 1, rules / model, before → after: `footnotes` 73 / 100 → 100 / 100, `wide_periods`
+  68 → 100 at every intensity, `separators` 37 → 100, `notes` 17 / 32 → 100 / 100, `mixed_types`
+  78 / 80 → 85 / 90, `multirow_header` 32 / 38 → 33 / 43, `side_by_side` 28 → 33 (t = 0.25:
+  62 → 87), `combo` 8 → 27; all families 55 / 61 → 67 / 70; no family lower; structure
+  benchmarks: table F1 up on every corpus, e.g. DECO model IoU≥0.8 56.0 → 57.8, StatSheets
+  86.9 → 88.1):
+  - numbers with footnote marks or flags (`28472.72*`, `1737³`, `6077.61 (p)`, `20560.32e`) count
+    as numbers and censored / suppressed cells (`<5`, `confidential`, `[c]`) as blanks when the
+    rules look for headers, so such rows no longer start a new table; whole numbers that fall in
+    1900–2100 but jump (`Riverbend 2 | 1948 | 2043 | 338`) are measures, not a header of years;
+  - a header row of three or more text periods (`2010-01`, `01/2010`, `2010-01-31`) is a header; so is a label
+    over period numbers (`Year | 1 | 2 | … | 20`, Enron Newco);
+  - ruling lines drawn with text (`-----`, `=====`, `_____`, `~~~~~`, `*****`, a `|` column) are
+    neither data nor a table break: they go to `Notes` as `other`, and a total under one verifies;
+  - parent labels centred over their columns without a merge name every child column;
+  - a header-less column right of a table with a remark on a row or two (`check!`) is notes; a
+    sentence alone on the last row and source lines in more languages (`Quelle:`, `Remarque :`,
+    `Fuente:`, `Uwaga:`, …) are notes;
+  - two row-aligned tables that each have their own row labels stay apart across 1–2 blank columns;
+    numbers on a few rows across one spacer column inside a taller table's rows join it (MDEA's
+    S:T profit columns on May 10–14 were 0-row header tables; every number is now in a table);
+  - a unit row under the header (`Mrd. EUR | % | 2020 = 100 | 1 000 Personen`) joins the column
+    names, and a column-numbering row no longer names them (Destatis: `In jeweiligen Preisen /
+    Ursprungswerte / Mrd. EUR`, was `… / 1`);
+  - key/value metadata rows above a table (`Date of publication: | …`) are never its header (ONS
+    Table 1: the header is rows 5–8 again), and a table's loose title skips source lines and such
+    metadata and prefers a `Table 1: …` line;
+  - a row the model calls a group header that fills the label columns like the records around it
+    (a WDI country without values) is a record: no invented `group` column;
+  - an index named after its base year (`VPI 2000`, `HICP 2015`) is not a period for time coverage.
+- **Layout regressions of the merge above, statistics-database exports and long TSVs** (B53–B57;
+  every structure-benchmark number now at or above both the release before the layout work and
+  that work itself; DECO model table F1 at IoU ≥ 0.5 / 0.8 / 1.0 69.4 / 57.9 / 38.4 → 75.0 / 62.8 /
+  41.4, header rows exact 81.4 → 82.1 %, StatSheets 92.4 / 88.1 / 75.9 → 93.8 / 89.9 / 78.4 and
+  71.6 → 73.5 %; 13 of 19 files without a table in the 1,093-file sweep now have one):
+  - two row-aligned blocks with their own row labels are two tables side by side only when each
+    has a header or a label and two value columns; a header-less two-column label/value block stays
+    with its neighbour (gstorey `Totals_xx`: the `TOTAL $$` summary is a table again, not Notes);
+  - a form's `Key: | value` rows are never its header, not even the next one past the metadata
+    rows ("Brothers Production": header at row 2 again);
+  - statistics-database exports (PX-Web, SCB, SURS: a header, one data row, then footnotes, source
+    and contact lines) get their table: a block of single lines in the first column below a blank
+    row is notes, up to two rows of parent labels over a header row are header rows, and period
+    codes (`2016K3`, `2016Q4`, `2014M01`), split years (`1990-91`, `2011/12`) and year ranges
+    (`2004-2008`) are header labels, not numbers;
+  - Eurostat's `: m` (missing, with a flag letter) is a missing value, so a long-format TSV with
+    such rows stays one table (`gov_10a_main.tsv`: 345 tables → 1; three more Eurostat TSVs
+    66–87 → 1); NCES and Census marks (`†`, `‡`, `#`, `(X)`) are blanks and symbol legends
+    (`---Not available.`) are notes, so they no longer split tables;
+  - header-less blocks of numbers on exactly the same rows, up to two blank columns apart and with
+    nothing above them, are column groups of one table (DECO `IPG INDEX`: 63 tables → 7); numbers
+    inside a taller table's rows join it only when they carry no labels of their own;
+  - a short label at the left edge right over the header row, below the title, is the header's top
+    row (`Term` over `Delivery Pt | Q3-2002 | …`); a label merged over a group of columns above the
+    header names them in the rules too (`2019 / Population`; noise `label_blocks` rules 50–82 → 100 %
+    at every intensity);
+  - two tables touching without a blank column are split where a second title stands right over the
+    header above a text label column (noise `side_by_side` t = 0.25 / 0.5: 87 → 93 / 47 → 53 %);
+  - CSV delimiter detection counts quotes out of place against a delimiter: a quoted header with
+    `;` and line breaks inside no longer turns a comma-separated file into one column (Charity
+    Commission workforce CSVs: 0 → 1 table).
+- `eval/noise` builds again against the vendored calamine (its own workspace lacked the `[patch]`).
 
 - Total words in names and descriptions (B32, B41): in a register (200+ rows) a description or
   name of more than three words that is its row's first text with more text right of it ("Total

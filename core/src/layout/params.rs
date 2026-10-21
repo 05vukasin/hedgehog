@@ -11,6 +11,16 @@ pub const MAX_COL_GAP: u32 = 1;
 /// Max blank columns between exactly row-aligned blocks (or a header-only block on the header
 /// row) that are still one table.
 pub const MAX_COL_GAP_ALIGNED: u32 = 2;
+/// Numbers on a few rows inside a taller block's rows, across one spacer column, join it when
+/// they have no header of their own and are at most this many columns wide (sparse columns).
+pub const INSIDE_MAX_WIDTH: u32 = 4;
+/// Row-aligned blocks that each have row labels and numbers are separate tables side by side
+/// only when both are at least this many columns wide (a label and two values, B35/B55).
+pub const SBS_MIN_COLS: u32 = 3;
+/// Tables side by side without a blank column: split at a second title over a text label column
+/// right of a numeric column (B35), when at least this share of the body rows agree.
+pub const SPLIT_ADJACENT_BY_TITLES: bool = true;
+pub const ADJACENT_SPLIT_SHARE: f32 = 0.8;
 /// Vertical gap merge: column overlap / wider block width must reach this.
 pub const GAP_MIN_COL_OVERLAP: f32 = 0.6;
 /// Horizontal gap merge: row overlap / taller block height must reach this.
@@ -59,6 +69,10 @@ pub const TAIL_MIN_ROWS: usize = 3;
 /// Cut columns at the right edge of a table that have no header cell above them (→ Other).
 /// Tried: worse on DECO dev (tables -1.1, roles -0.2), so off.
 pub const RIGHT_TRIM_UNHEADED: bool = false;
+/// A last column without a header cell, holding only text on at most this many body rows (or
+/// this share of them), is a comment column: its cells are notes (B38).
+pub const COMMENT_MAX_CELLS: usize = 2;
+pub const COMMENT_MAX_FRAC: f32 = 0.15;
 
 // --- Titles & notes ---------------------------------------------------------------------------
 
@@ -79,6 +93,14 @@ pub const NOTE_MAX_GAP: u32 = 6;
 pub const LOOSE_MAX_ROWS: usize = 4;
 /// A single text cell at least this long below a table is a note even without a marker.
 pub const NOTE_MIN_LEN: usize = 50;
+/// A single text cell of at least this many words and characters ending a block is a note.
+pub const NOTE_SENTENCE_WORDS: usize = 5;
+pub const NOTE_SENTENCE_LEN: usize = 30;
+/// At least this many single text lines below a blank row at the end of a region are a notes
+/// block, not table rows (B53).
+pub const NOTE_BLOCK_MIN_ROWS: usize = 2;
+/// One line of such a notes block is at least this long.
+pub const NOTE_BLOCK_LONG: usize = 20;
 
 // --- Headers ----------------------------------------------------------------------------------
 
@@ -98,6 +120,14 @@ pub const MAX_PRE_HEADER_ROWS: usize = 3;
 pub const TEXT_HEADER_MIN_FILL: f32 = 0.6;
 /// A column-numbering row (`1 2 3 …`) directly under the header belongs to the header.
 pub const COLUMN_NUMBER_ROWS: bool = true;
+/// A unit row (`Mrd. EUR | % | 2020 = 100`) directly under the header belongs to the header.
+pub const UNIT_ROWS: bool = true;
+/// A row of parent labels (fewer cells, labels only) right over a header row is part of the
+/// header even when its own type votes do not make it one (B53).
+pub const PARENT_HEADER_ROWS: bool = true;
+/// A short label at the left edge right over a header row, below a title, is the header's top
+/// row (`Term` over `Delivery Pt | Q3-2002 | …`, B55).
+pub const LABEL_OVER_HEADER: bool = true;
 /// A header-like row inside a body starts a new table when it has text/years in at least this many
 /// (and this share of) the body's numeric columns (numeric in ≥ half the rows so far).
 pub const SPLIT_MIN_HITS: usize = 2;
@@ -105,6 +135,11 @@ pub const SPLIT_MIN_HIT_FRAC: f32 = 0.5;
 /// Years in this range are header-like labels ("2023") rather than measures.
 pub const YEAR_MIN: f64 = 1900.0;
 pub const YEAR_MAX: f64 = 2100.0;
+/// Two or more years on one row are labels only when neighbours differ by at most this much (a
+/// data row whose values happen to lie in the year range jumps further).
+pub const YEAR_MAX_STEP: f64 = 30.0;
+/// Periods written as text (`2010-01`) are labels only when at least this many share a row.
+pub const TEXT_PERIOD_MIN_RUN: usize = 3;
 
 /// Outline key column (label on the first row of each group only) → GroupHeader cells.
 pub const KEY_COLUMN_GROUPS: bool = true;

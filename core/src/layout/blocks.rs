@@ -23,6 +23,9 @@ pub(crate) struct Entry {
     /// Date value (subset of `label_num`).
     pub date: bool,
     pub agg: Agg,
+    /// Part of a ruling line drawn with text (`-----`, `=====`, a `|` column; B38): never a
+    /// table break.
+    pub rule: bool,
     /// Index into `sheet.cells`.
     pub cell: Option<usize>,
 }
@@ -142,6 +145,7 @@ fn entries_of(grid: &Grid) -> Vec<Entry> {
             label_num: is_label_number(c),
             date: matches!(c.value, Some(crate::model::Value::DateTime(_))),
             agg,
+            rule: false,
             cell: Some(i),
         });
     }
@@ -156,6 +160,7 @@ fn entries_of(grid: &Grid) -> Vec<Entry> {
                 label_num: false,
                 date: false,
                 agg: Agg::None,
+                rule: false,
                 cell: None,
             });
         }
@@ -272,6 +277,9 @@ struct Profile {
     first_sig: Vec<String>,
     /// Per column: (text, numeric) entry counts over body rows.
     counts: BTreeMap<u32, (u32, u32)>,
+    /// A filled cell over the block's columns on one of the two rows above it (a header it
+    /// belongs under).
+    capped: bool,
 }
 
 impl Profile {
@@ -280,6 +288,12 @@ impl Profile {
     }
     fn has_numeric_col(&self) -> bool {
         self.counts.values().any(|&(t, n)| n > t)
+    }
+    /// The leftmost column is a row-label column and some column right of it is numeric.
+    fn labels_then_numbers(&self) -> bool {
+        let mut it = self.counts.iter();
+        let Some((_, &(t, n))) = it.next() else { return false };
+        t > 0 && t as f32 >= LABEL_COL_TEXT_FRAC * (t + n) as f32 && t > 2 && it.any(|(_, &(t2, n2))| n2 > t2)
     }
     fn absorb(&mut self, other: &Profile) {
         self.rect = Rect {
@@ -341,7 +355,7 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
                 .collect()
         })
         .unwrap_or_default();
-    Profile { rect: region.rect, starts_with_header, single_line, header_only, first_sig, counts }
+    Profile { rect: region.rect, starts_with_header, single_line, header_only, first_sig, counts, capped: false }
 }
 
 fn overlap(a0: u32, a1: u32, b0: u32, b1: u32) -> u32 {
@@ -411,6 +425,29 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
         && left.rect.bottom > left.rect.top + 1
         && !right.first_sig.is_empty()
         && left.first_sig != right.first_sig
+        // Each block with its own row labels and numbers, and each either with a header or at
+        // least a label and two value columns: two tables side by side (B35). A header-less
+        // two-column label/value block (a map of small blocks, a `TOTAL $$` summary beside a
+        // table, B55/B56) stays with its neighbour.
+        && !(left.labels_then_numbers()
+            && right.labels_then_numbers()
+            && ((left.starts_with_header && right.starts_with_header)
+                || (left.rect.right >= left.rect.left + SBS_MIN_COLS - 1
+                    && right.rect.right >= right.rect.left + SBS_MIN_COLS - 1)))
+    {
+        return true;
+    }
+    // Header-less blocks of numbers on exactly the same rows, across up to two blank columns:
+    // repeated column groups of one table (an hourly block per day, B55).
+    if gap <= MAX_COL_GAP_ALIGNED as i64
+        && left.rect.top == right.rect.top
+        && left.rect.bottom == right.rect.bottom
+        && left.rect.bottom > left.rect.top + 1
+        && right.first_sig.is_empty()
+        && !right.starts_with_header
+        && !right.capped
+        && !right.has_label_col()
+        && right.has_numeric_col()
     {
         return true;
     }
@@ -419,17 +456,118 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     }
     let (hl, hr) = (left.rect.bottom - left.rect.top + 1, right.rect.bottom - right.rect.top + 1);
     let ov = overlap(left.rect.top, left.rect.bottom, right.rect.top, right.rect.bottom);
-    ov as f32 >= GAP_MIN_ROW_OVERLAP * hl.max(hr) as f32
+    // Numbers on a few rows inside a taller table's rows, across one spacer column: the sparse
+    // columns of that table (MDEA's profit columns S:T, filled on the hours that traded, B43).
+    let inside = right.rect.top > left.rect.top
+        && right.rect.bottom <= left.rect.bottom
+        && hl >= 4
+        && hr >= 2
+        && !right.starts_with_header
+        && right.rect.right - right.rect.left < INSIDE_MAX_WIDTH
+        // numbers, not a small labelled block of its own (`Peak | Start | End`, `Jan | Feb`, B55)
+        && right.counts.values().map(|&(t, _)| t).sum::<u32>() * 10 <= right.counts.values().map(|&(_, n)| n).sum::<u32>();
+    ov as f32 >= GAP_MIN_ROW_OVERLAP * hl.max(hr) as f32 || inside
 }
 
 /// Connected components, then gap-tolerant merging into regions.
 pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
+    let mut out = regions_inner(grid);
+    for r in &mut out {
+        for row in &mut r.rows {
+            mark_rules(grid.sheet, row);
+            drop_stray_years(grid.sheet, row);
+        }
+    }
+    out
+}
+
+/// Whole numbers in the year range that do not read as a row of years (B33): a header of years
+/// counts up or repeats in small steps (`2022 2023 2024`, `2000 2005 2010`, `2023 2023 2024`), while
+/// a data row with values that happen to lie in 1900–2100 (`Riverbend 2 | 1948 | 2043 | 338`) jumps.
+/// Such numbers are measures, not labels.
+/// Ruling lines (B38): a row whose every cell is a run of `-`, `=`, `_`, … and any `|` cell.
+fn mark_rules(sheet: &Sheet, row: &mut Row) {
+    let rule = |e: &Entry| e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])).is_some_and(super::cells::is_rule_text);
+    let pipe = |e: &Entry| {
+        e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])).is_some_and(|t| matches!(t.trim(), "|" | "||" | "¦"))
+    };
+    let all = row.filled().count() > 0 && row.filled().all(rule);
+    for e in &mut row.entries {
+        if e.kind != Kind::Blank && (pipe(e) || (all && rule(e))) {
+            e.rule = true;
+        }
+    }
+}
+
+fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
+    // Periods written as text (`2010-01`) label columns only as a run across the row (a header
+    // of periods); one or two text dates on a record are values.
+    let text_period = |e: &Entry| {
+        e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])).is_some_and(|t| super::cells::is_text_period(t.trim()))
+    };
+    if row.entries.iter().filter(|e| e.label_num && text_period(e)).count() < TEXT_PERIOD_MIN_RUN {
+        for k in 0..row.entries.len() {
+            if row.entries[k].label_num && text_period(&row.entries[k]) {
+                row.entries[k].label_num = false;
+            }
+        }
+    }
+    let years: Vec<(usize, f64)> = row
+        .entries
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.label_num && !e.date)
+        .filter_map(|(k, e)| {
+            let v = e.cell.and_then(|i| sheet.cells[i].value.as_ref())?;
+            let n = match v {
+                crate::model::Value::Number(n) => *n,
+                crate::model::Value::Text(t) => t.trim().get(..4)?.parse::<f64>().ok()?,
+                _ => return None,
+            };
+            Some((k, n))
+        })
+        .collect();
+    // Most neighbours close together (a header of two year blocks jumps back once).
+    let jumps = years.windows(2).filter(|w| (w[1].1 - w[0].1).abs() > YEAR_MAX_STEP).count();
+    if years.len() < 2 || jumps * 3 < years.len() - 1 {
+        return;
+    }
+    for (k, _) in years {
+        // A text period (`2010-01`) or a marked year stays a label; only plain numbers turn.
+        let plain = |v: &Option<crate::model::Value>| match v {
+            Some(crate::model::Value::Number(_)) => true,
+            Some(crate::model::Value::Text(t)) => t.trim().len() == 4 && t.trim().bytes().all(|b| b.is_ascii_digit()),
+            _ => false,
+        };
+        if row.entries[k].cell.is_some_and(|i| plain(&sheet.cells[i].value)) {
+            row.entries[k].label_num = false;
+        }
+    }
+}
+
+fn regions_inner(grid: &Grid) -> Vec<Region> {
     let mut blocks: Vec<Region> = components(grid).into_iter().map(make_region).collect();
+    // Ruling lines and stray years before the blocks' profiles decide the gap merges.
+    for b in &mut blocks {
+        for row in &mut b.rows {
+            mark_rules(grid.sheet, row);
+            drop_stray_years(grid.sheet, row);
+        }
+    }
     if blocks.len() <= 1 {
         return blocks;
     }
     blocks.sort_by_key(|b| (b.rect.top, b.rect.left));
-    let profiles: Vec<Profile> = blocks.iter().map(|b| profile(grid.sheet, b)).collect();
+    let capped = |r: &Rect| {
+        (r.top.saturating_sub(2)..r.top).any(|row| {
+            grid.row_cells(row).iter().any(|&i| {
+                let c = &grid.sheet.cells[i as usize];
+                c.col >= r.left && c.col <= r.right && super::cells::kind_of(c) != Kind::Blank
+            })
+        })
+    };
+    let profiles: Vec<Profile> =
+        blocks.iter().map(|b| Profile { capped: capped(&b.rect), ..profile(grid.sheet, b) }).collect();
     let mut group: Vec<Profile> = profiles.clone();
     let mut dsu = Dsu::new(blocks.len());
     let join = |dsu: &mut Dsu, group: &mut Vec<Profile>, a: u32, b: u32| {

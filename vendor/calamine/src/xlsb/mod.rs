@@ -174,7 +174,9 @@ impl<RS: Read + Seek> Xlsb<RS> {
     /// MS-XLSB
     fn read_relationships(&mut self) -> Result<HashMap<String, String>, XlsbError> {
         let mut relationships = HashMap::new();
-        match self.zip.by_name("xl/_rels/workbook.bin.rels") {
+        // hedgehog: through the path cache, so backslash entry names are found (B52)
+        let rels = cached_zip_path(&self.zip_path_cache, "xl/_rels/workbook.bin.rels").to_string();
+        match self.zip.by_name(&rels) {
             Ok(f) => {
                 let mut xml = XmlReader::from_reader(BufReader::new(f));
                 let config = xml.config_mut();

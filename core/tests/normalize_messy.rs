@@ -463,6 +463,46 @@ fn register_rows_with_total_in_their_description_stay_in_the_table() {
 }
 
 #[test]
+fn register_trade_names_with_total_or_aggregate_words_stay_data() {
+    // B50. Like the Chicago business licenses: a licensee's name, then a short trade name
+    // "TOTAL WIRELESS"; names starting with "MAXIMUM" or holding "AVERAGE" (words only the rule
+    // layout reads as aggregates). No total rows, nothing on Totals or Notes.
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.set_name("Licenses").unwrap();
+    for (j, h) in ["id", "license_id", "legal_name", "dba_name", "address", "ward"].iter().enumerate() {
+        ws.write_string(0, j as u16, *h).unwrap();
+    }
+    let n = 300u32;
+    for r in 1..=n {
+        let (legal, dba) = match r {
+            40 | 41 | 120 => (format!("GROWTH WIRELESS {r} LLC"), "TOTAL WIRELESS".to_string()),
+            200 => ("MAXIMUM MARKETING SERVICES INC".to_string(), "Maximum Marketing".to_string()),
+            201 => ("AAA MAXIMUM TOWING AND RECOVERY INC.".to_string(), "AAA MAXIMUM TOWING".to_string()),
+            250 => ("MORE THAN AVERAGE LLC".to_string(), "Above Average Candle Studio".to_string()),
+            _ => (format!("Business {r} LLC"), format!("Shop {r}")),
+        };
+        ws.write_string(r, 0, format!("{}-20260416", 2_800_000 + r * 7)).unwrap();
+        ws.write_number(r, 1, (3_000_000 + r * 13) as f64).unwrap();
+        ws.write_string(r, 2, &legal).unwrap();
+        ws.write_string(r, 3, &dba).unwrap();
+        ws.write_string(r, 4, format!("{} N MAIN ST", 100 + r)).unwrap();
+        ws.write_number(r, 5, (r % 50 + 1) as f64).unwrap();
+    }
+    let dir = tmp_dir("register_trade_names");
+    let src = dir.join("licenses.xlsx");
+    wb.save(&src).unwrap();
+    let book = open(&src).unwrap();
+    for rules_only in [true, false] {
+        let norm = hh_core::normalize::normalize_workbook(&book, &Options { rules_only, ..Options::default() });
+        assert_eq!(norm.tables.len(), 1, "rules_only={rules_only}");
+        assert_eq!(norm.tables[0].src_rows.len(), n as usize, "rules_only={rules_only}");
+        assert_eq!((norm.cells.in_totals, norm.cells.in_notes), (0, 0), "rules_only={rules_only}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn total_rows_take_the_keys_of_their_block() {
     // B17. Like the Austrian pension table: year headers (numbers), a group-header row, a "Gesamt"
     // row closing the first group (its sums reach up into the year header), then a second group.

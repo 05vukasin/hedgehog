@@ -6,7 +6,8 @@ use std::ops::Range;
 
 use crate::analysis::{DetectedTable, Role};
 use crate::model::{Rect, Sheet, Value};
-use crate::totals::incidental_keyword;
+use crate::totals::keywords::REGISTER_MIN_ROWS;
+use crate::totals::{incidental_keyword, total_keyword};
 
 use super::blocks::{Entry, Region, Row, Ty};
 use super::cells::{Agg, Kind, is_note_label, is_total_label, text_of};
@@ -79,6 +80,54 @@ pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
     !is_total_label(t) && (is_note_label(t) || t.trim().chars().count() >= NOTE_MIN_LEN)
 }
 
+/// A sentence alone on the last row of a block ("Data as reported by the departments; not
+/// audited."): one text cell ending with a full stop, of at least [`NOTE_SENTENCE_WORDS`] words
+/// and [`NOTE_SENTENCE_LEN`] characters. Only for the rows that end a block (B38).
+fn is_trailing_sentence(sheet: &Sheet, r: &Row) -> bool {
+    let Some(e) = single_text(r) else { return false };
+    let t = text(sheet, e).trim();
+    !is_total_label(t)
+        && t.ends_with('.')
+        && t.chars().count() >= NOTE_SENTENCE_LEN
+        && t.split_whitespace().count() >= NOTE_SENTENCE_WORDS
+}
+
+/// Metadata written as key/value pairs on one row ("Date of publication: | 15 Sep 2026 | … |
+/// Date of next publication: | 20 Oct 2026", B46): at least two cells, and at least half of them
+/// a `Key:` label (a word, then a colon in the first 40 characters). Not a header.
+pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
+    let n = r.n();
+    if n < 2 {
+        return false;
+    }
+    // A `Key:` label with its value in the cell beside it, or `Key: value` in one cell.
+    let filled: Vec<&Entry> = r.filled().collect();
+    let keys = filled
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.kind == Kind::Text)
+        .filter(|&(k, e)| {
+            let t = text(sheet, e).trim();
+            let colon = t.char_indices().take(40).find(|&(i, c)| {
+                c == ':' && t[..i].chars().last().is_some_and(char::is_alphabetic)
+                    && t[i + 1..].chars().next().is_none_or(|c| !c.is_ascii_digit())
+            });
+            match colon {
+                Some((i, _)) if t[i + 1..].trim().is_empty() => {
+                    filled.get(k + 1).is_some_and(|x| x.left <= e.right + 2 && !text(sheet, x).trim_end().ends_with(':'))
+                }
+                Some(_) => true,
+                None => false,
+            }
+        })
+        .count();
+    let pure = r
+        .filled()
+        .filter(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with(':'))
+        .count();
+    2 * keys >= n && (keys >= 2 || (n == 2 && pure == 1 && r.n_text() == 1))
+}
+
 /// Header row relative to the rows below it: more of its cells break the column's body type
 /// (text or a year over plain numbers) than repeat it (Pytheas-style signature votes).
 pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
@@ -142,12 +191,22 @@ fn has_own_total_label(sheet: &Sheet, r: &Row, labelled: &[u32]) -> bool {
     };
     // Text right of the label is left to the normalized output's row overrides: the learned model
     // keeps these rows' roles as trained ("Total debt service (% of GNI) | country | …").
+    // B50: those overrides know only the totals' words; a word only this layer reads as a total
+    // ("Maximum", "Average" in "MAXIMUM MARKETING SERVICES INC", "MORE THAN AVERAGE LLC") does not
+    // label a register row that holds other text, since nothing downstream would take it back.
+    let texts = r.entries.iter().filter(|e| e.kind == Kind::Text).count();
+    let other_text = rows >= REGISTER_MIN_ROWS && texts > 1;
     r.entries
         .iter()
         .filter(|e| e.kind == Kind::Text)
         .take(3)
         .enumerate()
-        .any(|(k, e)| is_total_label(text(sheet, e)) && !incidental_keyword(text(sheet, e), k > 0, false, rows))
+        .any(|(k, e)| {
+            let t = text(sheet, e);
+            is_total_label(t)
+                && !incidental_keyword(t, k > 0, false, rows)
+                && !(other_text && total_keyword(t).is_none())
+        })
 }
 
 /// Most of the row's numbers are aggregate formulas over the cells above.
@@ -200,13 +259,79 @@ fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
     r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
 }
 
+/// A short label at the table's left edge right over its header row (`Term` over `Delivery Pt |
+/// Q3-2002 | …`, under the title "Last Week's Peak Power Prices"): the top row of the header, not
+/// a second title (B55).
+fn is_label_over_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
+    let Some(e) = single_text(&rows[k]) else { return false };
+    let t = text(sheet, e).trim();
+    let next = match rows.get(k + 1) {
+        Some(n) if k + 2 < end && n.row == rows[k].row + 1 => n,
+        _ => return false,
+    };
+    LABEL_OVER_HEADER
+        && e.left == rect.left
+        && e.right == e.left
+        && t.chars().count() <= 20
+        && t.split_whitespace().count() <= 2
+        && !t.chars().any(|c| c.is_ascii_digit())
+        && !super::cells::is_unit_text(t)
+        && !is_total_label(t)
+        && !is_note_label(t)
+        && !t.contains(':')
+        && next.n() >= 3
+        && next.n_measure() == 0
+        && next.filled().next().is_some_and(|x| x.left == rect.left && x.kind == Kind::Text)
+        && is_header_row(next, &rows[k + 2..end])
+}
+
 /// Number of leading rows (from `start`) that form the header.
 fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect, numbers: bool) -> usize {
     let mut d = 0;
-    while d < MAX_HEADER_ROWS && start + d < end {
+    // A parent row the type votes did not take does not count against the header-row limit.
+    let mut extra = 0;
+    while d < MAX_HEADER_ROWS + extra && start + d < end {
         let r = &rows[start + d];
-        if !is_header_row(r, &rows[start + d + 1..end]) || is_note_row(sheet, r) {
+        if is_key_value_row(sheet, r) {
+            // Rows above key/value metadata are titles or metadata too, not a header ("Profit
+            // Sharing Summary" over "Operation Day: | 12 May 2001"); but a row of form labels
+            // (`ATTORNEY:` over `DATE: | … | DEAL MAKER: | …`, B57) keeps its header place.
+            let form_labels = rows[start..start + d]
+                .iter()
+                .any(|x| x.filled().any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with(':')));
+            if !form_labels {
+                d = 0;
+            }
             break;
+        }
+        if !is_header_row(r, &rows[start + d + 1..end]) || is_note_row(sheet, r) {
+            // Parent labels over a header row (`Kalenderkorrigerad | … | Trend` over `2016K3 |
+            // 2016K4 | …`; `2011 | 2015 | 2018` over the measures, B53): labels only, spread over
+            // the columns of the header row below, which heads the numbers.
+            // Up to two parent rows stack (`2011 | 2015` over `Starost | Starost` over the
+            // measures).
+            let k = start + d;
+            let parent_of = |k: usize| {
+                PARENT_HEADER_ROWS
+                    && k + 2 < end
+                    // two labels or more, or one merged over a group of columns (`2019` over
+                    // `Population | Area | Births`, B39)
+                    && (rows[k].n() >= 2 || rows[k].filled().next().is_some_and(|e| e.right > e.left))
+                    && rows[k].n_measure() == 0
+                    && rows[k].n_text() + (rows[k].n_num() - rows[k].n_measure()) == rows[k].n()
+                    && rows[k + 1].row == rows[k].row + 1
+                    && rows[k + 1].n() > rows[k].n()
+                    && !is_key_value_row(sheet, &rows[k + 1])
+            };
+            let header_at = |k: usize| is_header_row(&rows[k], &rows[k + 1..end]);
+            let parent = (d == 0 && is_label_over_header(sheet, rows, start, end, rect))
+                || ((d == 0 || (d == 1 && parent_of(start) && !header_at(start)))
+                    && parent_of(k)
+                    && (header_at(k + 1) || (d == 0 && parent_of(k + 1) && header_at(k + 2))));
+            if !parent {
+                break;
+            }
+            extra = 1;
         }
         // A lone label below the first header row starts a group, not another header level.
         if d > 0 && single_text(r).is_some_and(|e| e.right == e.left) {
@@ -224,16 +349,28 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         return ok as usize;
     }
     if d == 0 {
-        // Prior: nearly every table has a header. A wide all-text first row counts.
-        if HEADER_PRIOR && end - start >= 2 && is_wide_text_row(&rows[start], rect) {
+        // Prior: nearly every table has a header. A wide all-text first row counts, and so does
+        // a label over period numbers (`Year | 1 | 2 | …`).
+        let vals: Option<Vec<&Value>> =
+            rows[start].filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
+        let periods = vals.is_some_and(|v| super::labelled_numbering(v.into_iter()));
+        if end - start >= 2 && (periods || (HEADER_PRIOR && is_wide_text_row(&rows[start], rect))) {
             d = 1;
         } else {
             return 0;
         }
     }
-    // A column-numbering row right under the header ("1 2 3 4 …") is part of it.
-    if numbers && start + d + 1 < end && is_column_number_row(sheet, &rows[start + d]) {
-        d += 1;
+    // A ruling line drawn under the header (`-------- | -----`) underlines it.
+    // A column-numbering row right under the header ("1 2 3 4 …") is part of it, and so is a
+    // unit row ("Mrd. EUR | % | 2020 = 100", B45), in either order.
+    for _ in 0..2 {
+        if !numbers || start + d + 1 >= end {
+            break;
+        }
+        let r = &rows[start + d];
+        if is_column_number_row(sheet, r) || (UNIT_ROWS && is_unit_row(sheet, r)) {
+            d += 1;
+        }
     }
     // Vertical merges in the header (e.g. "Region" over two header rows) push its bottom down.
     let mut last = rows[start + d - 1].row;
@@ -246,6 +383,11 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         d += 1;
     }
     d
+}
+
+/// A unit row under a header: at least two cells, all unit labels ([`super::cells::is_unit_text`]).
+pub(crate) fn is_unit_row(sheet: &Sheet, r: &Row) -> bool {
+    r.n() >= 2 && r.filled().all(|e| e.kind == Kind::Text && super::cells::is_unit_text(text(sheet, e)))
 }
 
 /// A column-numbering row ([`super::column_numbering`]).
@@ -264,6 +406,9 @@ fn starts_new_table(
     header_sig: &Signature,
 ) -> bool {
     let r = &rows[k];
+    if r.filled().all(|e| e.rule) {
+        return false; // a ruling line (B38)
+    }
     if numeric_cols.is_empty() || r.n() < 2 || !is_header_row(r, &rows[k + 1..end]) {
         return false;
     }
@@ -398,10 +543,20 @@ fn segment(
         // Metadata rows (dates, labels) between titles and the header: skip up to a few sparse rows.
         if h == 0 && segs.is_empty() {
             let mut o = 0;
-            while o < MAX_PRE_HEADER_ROWS && start + o + 2 < e && rows[start + o].n() <= 2 {
+            while o < MAX_PRE_HEADER_ROWS
+                && start + o + 2 < e
+                && (rows[start + o].n() <= 2 || is_key_value_row(sheet, &rows[start + o]))
+            {
                 o += 1;
                 let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
-                if h2 > 0 {
+                // Past key/value rows, only a row that reads as a header by its types (not by
+                // the wide-text prior) starts the table: a form's next `Key: | value` row is not
+                // a header (B57).
+                let past_kv = rows[start..start + o].iter().any(|r| is_key_value_row(sheet, r));
+                let real = !past_kv
+                    || (!is_key_value_row(sheet, &rows[start + o])
+                        && is_header_row(&rows[start + o], &rows[start + o + 1..e]));
+                if h2 > 0 && real {
                     titles = titles.start..start + o;
                     start += o;
                     h = h2;
@@ -551,6 +706,34 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         let covered = rows[seg.start..body_start].iter().map(|r| r.right()).max().unwrap_or(rect.right);
         rect.right = rect.right.min(covered.max(rect.left + 1));
     }
+    // A comment column right of the table ("check!", "per KL 3/4" on a row or two): no header
+    // cell, only text, on few body rows. Its cells are notes, not a data column (B38).
+    let mut comments: Vec<usize> = Vec::new();
+    if seg.header > 0 && rect.right > rect.left + 1 {
+        let c = rect.right;
+        let headed = rows[seg.start..body_start].iter().any(|r| r.filled().any(|e| e.left <= c && e.right >= c));
+        let body = &rows[body_start..seg.end];
+        let at_c: Vec<&Entry> = body.iter().flat_map(|r| r.filled().filter(|e| e.left == c && e.right == c)).collect();
+        let others = body.iter().flat_map(|r| r.filled()).any(|e| e.left < c && e.right >= c);
+        let left_fill = body.iter().filter(|r| r.filled().any(|e| e.left == c - 1)).count();
+        if !headed
+            && !others
+            && !at_c.is_empty()
+            && at_c.len() <= COMMENT_MAX_CELLS.max((COMMENT_MAX_FRAC * body.len() as f32) as usize)
+            && at_c.iter().all(|e| e.kind == Kind::Text)
+            // remarks are scattered, not a run of values down the column
+            && at_c.windows(2).all(|w| w[1].row > w[0].row + 1)
+            && left_fill * 2 > body.len()
+        {
+            comments = at_c.iter().filter_map(|e| e.cell).collect();
+            rect.right = trows
+                .iter()
+                .flat_map(|r| r.entries.iter().filter(|e| e.left < c))
+                .map(|e| e.right.min(c - 1))
+                .max()
+                .unwrap_or(c - 1);
+        }
+    }
     let mut header_rows = 0;
     if seg.header > 0 {
         let first_body = rows[body_start].row;
@@ -613,6 +796,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
             }
         }
     }
+    for i in comments {
+        out.roles[i] = Role::Note;
+    }
     if INLINE_GROUP_LABELS {
         mark_inline_group_labels(sheet, rows, body_start..seg.end, &data_rows, out);
     }
@@ -632,19 +818,94 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     true
 }
 
+/// Tables side by side without a blank column between them (B35): a title row with one title per
+/// table right over a shared header row, each later title over a text label column that follows a
+/// numeric column (`Extract from gapminder | … | Hospital activity` over `country | year | pop |
+/// gdpPercap | Ward | Beds`). The pieces between the titles' columns.
+fn split_adjacent_tables(region: &Region) -> Option<Vec<Region>> {
+    let rows = &region.rows;
+    if !SPLIT_ADJACENT_BY_TITLES || rows.len() < 5 {
+        return None;
+    }
+    let (t, h) = (&rows[0], &rows[1]);
+    let titles: Vec<&Entry> = t.filled().collect();
+    if titles.len() < 2
+        || titles.iter().any(|e| e.kind != Kind::Text)
+        || titles[0].left != region.rect.left
+        || h.row != t.row + 1
+        || h.n() < 4
+        || h.n_measure() > 0
+    {
+        return None;
+    }
+    let body = &rows[2..];
+    let share = |c: u32, text: bool| {
+        let hit = |e: &Entry| e.left == c && if text { e.kind == Kind::Text } else { e.kind == Kind::Num && !e.label_num };
+        body.iter().filter(|r| r.filled().any(hit)).count() as f32 / body.len() as f32
+    };
+    let mut cuts = vec![region.rect.left];
+    for e in &titles[1..] {
+        let c = e.left;
+        let headed = h.filled().any(|x| x.left == c) && h.filled().any(|x| x.right + 1 == c);
+        if !headed || share(c, true) < ADJACENT_SPLIT_SHARE || share(c - 1, false) < ADJACENT_SPLIT_SHARE {
+            return None;
+        }
+        cuts.push(c);
+    }
+    let mut out = Vec::new();
+    for (k, &lo) in cuts.iter().enumerate() {
+        let hi = cuts.get(k + 1).map_or(region.rect.right, |&c| c - 1);
+        let piece: Vec<Row> = rows
+            .iter()
+            .map(|r| Row { row: r.row, entries: r.entries.iter().filter(|e| e.left >= lo && e.left <= hi).cloned().collect() })
+            .filter(|r| !r.entries.is_empty())
+            .collect();
+        out.push(Region { rect: bounds(&piece), rows: piece });
+    }
+    Some(out)
+}
+
 pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
+    if let Some(parts) = split_adjacent_tables(&region) {
+        for p in parts {
+            analyze_region(sheet, p, out);
+        }
+        return;
+    }
     let rows = &region.rows;
     if rows.len() < MIN_TABLE_ROWS || region.width() < MIN_TABLE_COLS || is_form(sheet, &region) {
         out.loose.push(region);
         return;
     }
     let mut s = 0;
-    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1)) {
+    while s + 1 < rows.len()
+        && s < MAX_TITLE_ROWS
+        && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1))
+        && !(s >= 1 && is_label_over_header(sheet, rows, s, rows.len(), region.rect))
+    {
         s += 1;
     }
     let mut e = rows.len();
-    while e > s + 1 && is_note_row(sheet, &rows[e - 1]) {
+    while e > s + 1 && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1])) {
         e -= 1;
+    }
+    // A block of single text lines below a blank row at the end of the region (the footnotes,
+    // sources and contacts under a statistics-database export's one or two data rows, B53):
+    // notes, not body rows of the table above them.
+    let mut k = e;
+    while k > s + 1 && rows[k - 1].n() == 1 {
+        k -= 1;
+    }
+    // The lines start at the region's left edge, one of them reads as a sentence or source line,
+    // and the row above the gap is a data row with numbers.
+    let lines = &rows[k..e];
+    if e - k >= NOTE_BLOCK_MIN_ROWS
+        && rows[k].row > rows[k - 1].bottom() + 1
+        && rows[k - 1].n_measure() >= 2
+        && lines.iter().all(|r| r.left() == region.rect.left)
+        && lines.iter().any(|r| single_text(r).is_some_and(|x| text(sheet, x).trim().chars().count() >= NOTE_BLOCK_LONG))
+    {
+        e = k;
     }
     let numbers = out.column_numbers;
     let h0 = header_depth(sheet, rows, s, e, region.rect, numbers);

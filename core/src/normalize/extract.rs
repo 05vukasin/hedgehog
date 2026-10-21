@@ -417,9 +417,18 @@ fn build_table(
     tr.add(T::TitleRowsMoved, title_rows);
 
     // --- Header ----------------------------------------------------------------------------
+    // Ruling lines drawn with text (`=====` rows, a `|` column) are not content (B38).
+    let rule_text = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if crate::layout::is_rule_text(t));
+    let pipe = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if matches!(t.trim(), "|" | "||" | "¦"));
     let mut head: Vec<Vec<Head>> = vec![vec![None; ncols]; nh];
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= htop && *row < body_top) {
+        let all_rules = idxs.iter().all(|&i| rule_text(i) || cells[i].value.as_ref().is_none_or(|v| display(v).is_empty()));
         for &i in idxs {
+            if pipe(i) || (all_rules && rule_text(i)) {
+                owner[i] = OWN_NOTES;
+                notes.push(note(i, "other"));
+                continue;
+            }
             owner[i] = OWN_TABLE;
             let c = &cells[i];
             if let Some(v) = &c.value {
@@ -454,6 +463,47 @@ fn build_table(
             }
         }
     }
+    // Parent labels centred over their children without a merge (B39): when blank parent cells
+    // over labelled measure columns lie left of the row's first label, the labels sit in the
+    // middle of their spans, and each such blank takes the nearest label (the left one on a tie).
+    let measure = |hc: usize| {
+        let col = r.left + hc as u32;
+        let vals: Vec<bool> = rows
+            .iter()
+            .filter(|(row, _)| *row >= body_top)
+            .take(5)
+            .filter_map(|(_, idxs)| idxs.iter().find(|&&i| cells[i].col == col))
+            .map(|&i| matches!(cells[i].value, Some(Value::Number(_))))
+            .collect();
+        !vals.is_empty() && vals.iter().all(|&b| b)
+    };
+    for hr in 0..nh.saturating_sub(1) {
+        let labelled_below = |hc: usize| (hr + 1..nh).any(|k| head[k][hc].is_some());
+        if (0..ncols).any(|hc| merged_in_header.contains(&(hr, hc))) {
+            continue;
+        }
+        let labels: Vec<usize> = (0..ncols).filter(|&hc| head[hr][hc].is_some() && labelled_below(hc)).collect();
+        let Some(&first) = labels.first() else { continue };
+        let centred = (0..first).any(|hc| head[hr][hc].is_none() && labelled_below(hc) && measure(hc));
+        if !centred {
+            continue;
+        }
+        let same_parent = |a: usize, b: usize| hr == 0 || head[hr - 1][a] == head[hr - 1][b];
+        let mut fill: Vec<(usize, usize)> = Vec::new();
+        for (hc, cell) in head[hr].iter().enumerate() {
+            if cell.is_some() || !labelled_below(hc) || !measure(hc) {
+                continue;
+            }
+            let near = labels.iter().copied().filter(|&l| same_parent(l, hc)).min_by_key(|&l| (l.abs_diff(hc), l > hc));
+            if let Some(l) = near {
+                fill.push((hc, l));
+            }
+        }
+        for (hc, l) in fill {
+            head[hr][hc] = head[hr][l].clone();
+            tr.add(T::HeaderCellsForwardFilled, 1);
+        }
+    }
     // Blank cells right of a parent label (not merged) take it, while columns below are labelled
     // and the parent's own parent does not change.
     for hr in 0..nh.saturating_sub(1) {
@@ -474,6 +524,20 @@ fn build_table(
             }
         }
     }
+
+    // A column-numbering header row ("1 2 3 …", so notes can say "Sp. 3–4") stays in
+    // `original_header` but does not name the columns (B45: not "… / 1").
+    let numbering_rows: Vec<bool> = (0..nh)
+        .map(|hr| {
+            let vals: Vec<&Value> = rows
+                .iter()
+                .filter(|(row, _)| *row == htop + hr as u32)
+                .flat_map(|(_, idxs)| idxs.iter().filter_map(|&i| cells[i].value.as_ref()))
+                .filter(|v| !display(v).is_empty())
+                .collect();
+            crate::layout::column_numbering(vals.into_iter())
+        })
+        .collect();
 
     // --- Body --------------------------------------------------------------------------------
     // Vertically merged body cells (e.g. a label over 3 rows): fill down in the label's column.
@@ -505,13 +569,59 @@ fn build_table(
     let mut group_labels: Vec<String> = Vec::new();
     let mut removed_totals = Vec::new();
     let mut body_rows_seen = 0u32;
+    // Text label columns of the records (text on most data rows): a "group header" row that fills
+    // two or more of them like a record, only without values (a WDI country with no data), is a
+    // record, not a group label (B44).
+    let label_cols: HashSet<u32> = {
+        let mut text_rows: HashMap<u32, usize> = HashMap::new();
+        let mut data_rows = 0usize;
+        for (_, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
+            if !idxs.iter().any(|&i| lay.roles[i] == Role::Data) {
+                continue;
+            }
+            data_rows += 1;
+            for &i in idxs {
+                if lay.roles[i] == Role::Data && matches!(&cells[i].value, Some(Value::Text(t)) if !t.trim().is_empty()) {
+                    *text_rows.entry(cells[i].col).or_default() += 1;
+                }
+            }
+        }
+        text_rows.into_iter().filter(|&(_, n)| data_rows >= 4 && 2 * n > data_rows).map(|(c, _)| c).collect()
+    };
     let mut key_cols: HashSet<usize> = HashSet::new();
     // Block of each output row: the rows between two total rows (removed or kept).
     let mut block_of: Vec<u32> = Vec::new();
     let mut block = 0u32;
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
+        let blank = |i: usize| cells[i].value.as_ref().is_none_or(|v| display(v).is_empty());
+        if idxs.iter().any(|&i| rule_text(i)) && idxs.iter().all(|&i| rule_text(i) || blank(i)) {
+            for &i in idxs {
+                owner[i] = OWN_NOTES;
+                if !blank(i) {
+                    notes.push(note(i, "other"));
+                }
+            }
+            continue;
+        }
+        let idxs_kept: Vec<usize>;
+        let idxs = if idxs.iter().any(|&i| pipe(i)) {
+            for &i in idxs.iter().filter(|&&i| pipe(i)) {
+                owner[i] = OWN_NOTES;
+                notes.push(note(i, "other"));
+            }
+            idxs_kept = idxs.iter().copied().filter(|&i| !pipe(i)).collect();
+            &idxs_kept
+        } else {
+            idxs
+        };
         let mut kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
+        if kind == RowKind::Group {
+            let filled: Vec<usize> = idxs.iter().copied().filter(|&i| !blank(i)).collect();
+            if filled.len() >= 2 && filled.iter().all(|&i| label_cols.contains(&cells[i].col)) {
+                kind = RowKind::Data;
+            }
+        }
         if matches!(kind, RowKind::Data | RowKind::Total) {
             // The last override that applies to this table wins ("of which" over a total).
             let here = overrides.get(row).and_then(|list| {
@@ -756,13 +866,17 @@ fn build_table(
     for k in 0..ncols {
         let col = r.left + k as u32;
         let mut parts: Vec<(String, (u32, u32))> = Vec::new();
-        for h in head.iter().flat_map(|row| &row[k]) {
+        let mut named: Vec<(String, (u32, u32))> = Vec::new();
+        for (hr, h) in head.iter().enumerate().filter_map(|(hr, row)| row[k].as_ref().map(|h| (hr, h))) {
             if parts.last().is_none_or(|p| p.0 != h.0) {
                 parts.push(h.clone());
             }
+            if !numbering_rows[hr] && named.last().is_none_or(|p| p.0 != h.0) {
+                named.push(h.clone());
+            }
         }
         let raw_name = parts.iter().map(|p| p.0.as_str()).collect::<Vec<_>>().join(" / ");
-        let mut name = clean_name(grid, &parts);
+        let mut name = clean_name(grid, &named);
         if name != raw_name {
             tr.add(T::HeadersCleaned, 1);
         }
@@ -1089,9 +1203,17 @@ pub(super) fn process_sheet(
         used_range: sheet.used_range(),
         cells: cells.len(),
         formulas: sheet.formula_count(),
+        formulas_without_value: 0,
+        formula_without_value_at: None,
         merges: sheet.merges.len(),
         tables: Vec::new(),
     };
+    for c in cells.iter().filter(|c| c.formula.is_some() && c.value.is_none()) {
+        info.formulas_without_value += 1;
+        if info.formula_without_value_at.is_none_or(|at| (c.row, c.col) < at) {
+            info.formula_without_value_at = Some((c.row, c.col));
+        }
+    }
     if cells.is_empty() {
         out.sheets.push(info);
         return;
@@ -1398,6 +1520,14 @@ pub(super) fn process_sheet(
         }
     }
 
+    // Rows of loose `Key:` cells (key/value metadata above a table), for the title choice.
+    let mut notes_keys: HashMap<u32, usize> = HashMap::new();
+    for x in &notes {
+        let t = x.text.trim();
+        if t.char_indices().take(40).any(|(i, c)| c == ':' && t[..i].chars().last().is_some_and(char::is_alphabetic)) {
+            *notes_keys.entry(x.row).or_default() += 1;
+        }
+    }
     // Titles / notes per table, then output names.
     let tables = &mut out.tables[first..];
     for t in tables.iter_mut() {
@@ -1406,12 +1536,26 @@ pub(super) fn process_sheet(
             .filter(|x| x.table == Some(t.n) && x.kind != "repeated_header" && !x.text.is_empty())
             .collect();
         if t.title.is_none() {
-            // Nearest loose title above the table.
-            t.title = mine
+            // Nearest loose title above the table; not a source line or key/value metadata
+            // ("Source: …", "Date of publication:", B46), and a "Table 1: …" line first.
+            let above: Vec<&&NoteItem> = mine.iter().filter(|x| x.kind == "title" && x.row < t.rect.top).collect();
+            let keyed = |row: u32| {
+                notes_keys.get(&row).is_some_and(|&n| n >= 2)
+            };
+            let plain: Vec<&&&NoteItem> =
+                above.iter().filter(|x| !crate::layout::is_note_label(&x.text) && !keyed(x.row)).collect();
+            let table_word = |s: &str| {
+                let w = s.split(|c: char| !c.is_alphabetic()).next().unwrap_or("").to_lowercase();
+                ["table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabulka", "tabell", "taulukko", "tabel"]
+                    .contains(&w.as_str())
+            };
+            let pick = plain
                 .iter()
-                .filter(|x| x.kind == "title" && x.row < t.rect.top)
+                .filter(|x| table_word(&x.text))
                 .max_by_key(|x| x.row)
+                .or_else(|| plain.iter().max_by_key(|x| x.row))
                 .map(|x| (x.text.clone(), (x.row, x.col)));
+            t.title = pick.or_else(|| above.iter().max_by_key(|x| x.row).map(|x| (x.text.clone(), (x.row, x.col))));
         }
         let title_cell = t.title.as_ref().map(|x| x.1);
         t.notes = mine

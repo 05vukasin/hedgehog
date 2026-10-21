@@ -282,9 +282,22 @@ struct Content {
     defined_names: Vec<(String, String)>,
 }
 
+/// hedgehog: the entry `name`, or its spelling with backslash separators
+/// (`META-INF\manifest.xml`, written by some Windows tools); `name` when neither exists.
+fn entry_name<RS: Read + Seek>(zip: &ZipArchive<RS>, name: &str) -> String {
+    if zip.index_for_name(name).is_none() {
+        let alt = name.replace('/', "\\");
+        if zip.index_for_name(&alt).is_some() {
+            return alt;
+        }
+    }
+    name.to_string()
+}
+
 /// Check password protection
 fn check_for_password_protected<RS: Read + Seek>(zip: &mut ZipArchive<RS>) -> Result<(), OdsError> {
-    let mut reader = match zip.by_name("META-INF/manifest.xml") {
+    let manifest = entry_name(zip, "META-INF/manifest.xml");
+    let mut reader = match zip.by_name(&manifest) {
         Ok(f) => {
             let mut r = XmlReader::from_reader(BufReader::new(f));
             let config = r.config_mut();

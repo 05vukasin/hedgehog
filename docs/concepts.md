@@ -27,14 +27,45 @@ rule-based detector (`core/src/layout/`) works like this:
 
 1. **Blocks.** Filled cells and merged areas are grouped into 8-connected components. Pieces
    separated by one or two blank spacer rows or one spacer column are merged when they look like one
-   table (same columns, a header above, numbers continuing).
+   table (same columns, a header above, numbers continuing). Numbers on a few rows across one
+   spacer column, inside a taller table's rows, are that table's sparse columns (profit columns
+   filled only on the hours that traded); a small block with labels of its own stays apart. Two
+   row-aligned blocks that each have their own row-label column and numbers stay two tables side
+   by side, even one or two blank columns apart, when each has its own header or at least two value
+   columns; a header-less two-column label/value block (a `TOTAL $$` summary beside a table) stays
+   with its neighbour. Header-less blocks of numbers on exactly the same rows, up to two blank
+   columns apart and with nothing above them, are column groups of one table (an hourly block per
+   day). Two tables touching without a blank column are split where a second title stands right
+   over the header row above a text label column that follows a numeric column.
 2. **Regions.** Within a block, rows at the top that look like a title and rows at the bottom that
-   look like notes or sources are split off. Stacked tables are split where a header-like row
-   appears in the middle.
+   look like notes or sources are split off, including a sentence alone on the last row ("Data as
+   reported by the departments; not audited.") and source lines in many languages (`Quelle:`,
+   `Remarque :`, `Fuente:`, `Uwaga:`), symbol legends (`---Not available.`, `#Rounds to zero.`) and
+   a block of single lines in the first column below a blank row (the footnotes, source and contact
+   lines under a statistics-database export's one data row). Stacked tables are split where a header-like row appears in
+   the middle. A data row does not look like a header just because of its values: numbers with
+   footnote marks or flags (`28472.72*`, `1737³`, `6077.61 (p)`, `20560.32e`) count as numbers,
+   censored and suppressed values (`<5`, `confidential`, `[c]`) and missing-value marks (Eurostat's
+   `:` and `: m`, `†`, `‡`, `#`, `(X)`) as blanks, and whole numbers that
+   fall in 1900–2100 but jump (`1948 | 2043`) are measures, not a row of years. Ruling lines drawn
+   with text (`-----`, `=====`, `_____`, `~~~~~`, a column of `|`) are neither data nor a table
+   break: they go to `Notes` as `other`, and a total under one is still checked against the rows
+   above. A column right of the table with no header and a remark on a row or two (`check!`,
+   `per KL 3/4`) is notes, not a data column.
 3. **Header depth.** The number of header rows is found from text versus numbers, merged cells and
    the first data-like row, so multi-row headers (`2024` over `Q1 Q2 Q3 Q4`) stay together. A
    column-numbering row right under the header (`1 2 3 4 5`, as in Destatis tables whose notes say
-   "Sp. 3–4") is part of the header, not the first data row.
+   "Sp. 3–4") is part of the header, not the first data row, and so is a unit row (`Mrd. EUR | % |
+   2020 = 100 | 1 000 Personen`). A header row of periods written as text (three or more of
+   `2010-01`, `01/2010`, `2010-01-31`) or of period codes (`2016K3`, `2016Q4`, `2014M01`) is a
+   header like a row of years, as are split years and year ranges (`1990-91`, `2011/12`,
+   `2004-2008`), and so is a label over period numbers (`Year | 1 | 2 | … | 20`). Up to two rows of
+   parent labels over a header row (`2011 | 2015` over `Starost | Starost` over the measures) and a
+   short label at the left edge right over the header row, below the title (`Term` over `Delivery
+   Pt | Q3-2002 | …`), are header rows, and so is a label merged over a group of columns (`2019`
+   over `Population | Area | Births`). Key/value metadata above a table (`Date of publication: |
+   15 Sep 2026 | Date of next publication: | …`) is never its header, and neither is the next
+   `Key: | value` row of a form.
 4. **Loose cells.** Filled cells outside every table become titles (text near the top), notes
    (marked text or text below a table) or other.
 5. **Label columns.** A label written once per block in one of the leftmost columns (`Receipts HH`
@@ -103,21 +134,25 @@ Multi-row headers are flattened into one row with ` / ` between levels:
 ```
 
 Before joining, a merged header cell fills its whole area, and a parent label written once over
-several labelled columns is copied to the right. Empty, duplicate and over-long names are fixed so
+several labelled columns is copied to the right. A unit row under the header ends the names
+(`In jeweiligen Preisen / Ursprungswerte / Mrd. EUR`); a column-numbering row does not name the
+columns (it stays in `original_header`). Empty, duplicate and over-long names are fixed so
 the header is valid for an Excel table. Names are cleaned for agents: footnote marks glued to a word
 or year are dropped (`20221)` becomes `2022`) and words split by a hyphen at a line break are joined
 (`De-⏎zember` becomes `Dezember`). The manifest keeps the original header cells of each column
 (`original_header`) with their addresses. Details:
 [normalized-output.md](normalized-output.md#header).
 
-A table's title is the title row above it. Navigation links such as `zur Inhaltsübersicht`,
+A table's title is the title row above it; among loose lines above a table, source lines and
+key/value metadata are skipped and a `Table 1: …` line comes first. Navigation links such as `zur Inhaltsübersicht`,
 `Back to contents`, `Retour au sommaire` or `Powrót do spisu tablic` are never a title: the next
 title-like line takes their place, and the link goes to `Notes` as `other`.
 
 ## Group-header rows
 
 A row with a single label followed by data rows (`Region: North`, then the North products) is a
-group header. In a flat table that structure would be lost, so it becomes a leading column whose
+group header. A row that fills the label columns like the records around it but has no values
+(a WDI country without data) is a record, not a group header. In a flat table that structure would be lost, so it becomes a leading column whose
 value repeats for every row of the group. A shared `Prefix: value` form names the column after the
 prefix; otherwise the column is called `group`.
 

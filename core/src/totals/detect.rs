@@ -192,9 +192,10 @@ fn text(cell: Option<&Cell>) -> Option<&str> {
 }
 
 /// Text that can head a column of numbers: not a number stored as text and not a missing-value
-/// token ("n/a", "-", "#N/A"), which stand in for blank data cells.
+/// token ("n/a", "-", "#N/A"), which stand in for blank data cells, and not a ruling line
+/// (`=====`, `~~~~~` between the data and its total, B38).
 fn header_text(s: &str) -> bool {
-    numeric_text(s).is_none() && missing_token(s).is_none()
+    numeric_text(s).is_none() && missing_token(s).is_none() && !crate::layout::is_rule_text(s)
 }
 
 fn number(cell: Option<&Cell>) -> Option<f64> {
@@ -476,9 +477,14 @@ fn keyword_rows_with(
                     let inc = if legacy {
                         incidental_keyword(s, text_left, false, n_rows) && !b1_category(c.row, c.col, s)
                     } else {
+                        // B50: a short name right of the record's own keys ("GROWTH WIRELESS LLC |
+                        // TOTAL WIRELESS", a shop's trade name) is a value, not the row's label:
+                        // a total label right of text sits under keys shared with its neighbours.
+                        let own_keys = || n_rows >= REGISTER_MIN_ROWS && text_left && !shares_keys(grid, c.row, c.col);
                         let weak = registers
                             && (incidental_keyword(s, text_left, right, n_rows)
-                                || ambiguous_keyword(s).is_some_and(|name| name || text_left || data_below(c.row)));
+                                || ambiguous_keyword(s).is_some_and(|name| name || text_left || data_below(c.row))
+                                || own_keys());
                         weak && !category(c.row, c.col, s)
                     };
                     if registers
