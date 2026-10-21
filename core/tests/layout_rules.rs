@@ -375,3 +375,58 @@ fn block_labels_in_a_second_column_are_group_keys() {
     assert_eq!(role(&s, &l, 7, 1), Role::GroupHeader);
     assert_eq!(role(&s, &l, 2, 2), Role::Data);
 }
+
+#[test]
+fn statistics_database_export_with_one_data_row() {
+    // PX-Web export (SCB, SURS; B53): title, parent labels over period codes, one data row, a
+    // blank row, then footnotes, sources and contacts in column A.
+    let s = fixture("pxweb", |ws| {
+        ws.write_string(0, 0, "Industrial production index by quarter").unwrap();
+        ws.write_string(2, 0, "Calendar adjusted").unwrap();
+        ws.write_string(2, 4, "Trend").unwrap();
+        for (j, p) in ["2016K3", "2016K4", "2017K1", "2017K2", "2016K3", "2016K4", "2017K1", "2017K2"].iter().enumerate() {
+            ws.write_string(3, j as u16, *p).unwrap();
+        }
+        for j in 0..8u16 {
+            ws.write_number(4, j, 97.0 + j as f64 * 1.3).unwrap();
+        }
+        ws.write_string(6, 0, "2016-12-01: revised figures for the whole series").unwrap();
+        ws.write_string(7, 0, "Source:").unwrap();
+        ws.write_string(8, 0, "Statistics Sweden").unwrap();
+        ws.write_string(9, 0, "+46 010-479 50 00").unwrap();
+    });
+    let l = run(&s);
+    assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
+    assert_eq!(l.tables[0].rect, rect(2, 0, 4, 7));
+    assert_eq!((l.tables[0].header_top, l.tables[0].header_rows), (2, 2));
+    assert_eq!(role(&s, &l, 3, 0), Role::Header);
+    assert_eq!(role(&s, &l, 4, 3), Role::Data);
+    assert_eq!(role(&s, &l, 6, 0), Role::Note);
+    assert_eq!(role(&s, &l, 8, 0), Role::Note);
+}
+
+#[test]
+fn two_column_summary_beside_a_table_stays_in_a_table() {
+    // gstorey Totals_xx (B56): a header-less `TOTAL $$` label/value block in A:B next to a table
+    // in D:G on the same rows; it must not fall out to Notes.
+    let s = fixture("summary_beside", |ws| {
+        ws.write_string(0, 0, "TOTAL $$").unwrap();
+        ws.write_number(0, 1, -481355295.0).unwrap();
+        for (j, h) in ["Positions", "Nov", "Dec", "Total"].iter().enumerate() {
+            ws.write_string(0, 3 + j as u16, *h).unwrap();
+        }
+        for (i, name) in ["ngi socal", "rocky", "san juan", "waha", "permian"].iter().enumerate() {
+            let r = 1 + i as u32;
+            ws.write_string(r, 0, *name).unwrap();
+            ws.write_number(r, 1, 1000.0 * (i + 1) as f64).unwrap();
+            ws.write_string(r, 3, *name).unwrap();
+            for j in 0..3u16 {
+                ws.write_number(r, 4 + j, (i as f64 + 1.0) * (j as f64 + 2.5)).unwrap();
+            }
+        }
+    });
+    let l = run(&s);
+    assert!(l.tables.iter().any(|t| t.rect.left == 0 && t.rect.bottom == 5), "{:?}", l.tables);
+    assert_eq!(role(&s, &l, 2, 0), Role::Data);
+    assert_eq!(role(&s, &l, 2, 1), Role::Data);
+}

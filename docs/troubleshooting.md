@@ -55,7 +55,9 @@ may span lines).
 
 **The columns are split wrongly.** The delimiter is detected from the first 200 records: of `,`
 `;` tab and `|`, the one that splits the most of them into the same number of fields wins (quotes
-respected; ties go to tab, then `;`, then `|`). A `.tsv` file always uses tab. A file with very few
+respected; ties go to tab, then `;`, then `|`). Records in which a field ends up holding a quote
+character count against a delimiter (a quoted header such as `"Payroll staff;⏎Headcount"` read
+with `;`). A `.tsv` file always uses tab. A file with very few
 lines and fields that contain the other delimiters can be detected wrongly; re-export it with a
 `.tsv` extension and tabs, or as xlsx.
 

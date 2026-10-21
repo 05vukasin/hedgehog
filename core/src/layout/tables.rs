@@ -259,19 +259,79 @@ fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
     r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
 }
 
+/// A short label at the table's left edge right over its header row (`Term` over `Delivery Pt |
+/// Q3-2002 | …`, under the title "Last Week's Peak Power Prices"): the top row of the header, not
+/// a second title (B55).
+fn is_label_over_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
+    let Some(e) = single_text(&rows[k]) else { return false };
+    let t = text(sheet, e).trim();
+    let next = match rows.get(k + 1) {
+        Some(n) if k + 2 < end && n.row == rows[k].row + 1 => n,
+        _ => return false,
+    };
+    LABEL_OVER_HEADER
+        && e.left == rect.left
+        && e.right == e.left
+        && t.chars().count() <= 20
+        && t.split_whitespace().count() <= 2
+        && !t.chars().any(|c| c.is_ascii_digit())
+        && !super::cells::is_unit_text(t)
+        && !is_total_label(t)
+        && !is_note_label(t)
+        && !t.contains(':')
+        && next.n() >= 3
+        && next.n_measure() == 0
+        && next.filled().next().is_some_and(|x| x.left == rect.left && x.kind == Kind::Text)
+        && is_header_row(next, &rows[k + 2..end])
+}
+
 /// Number of leading rows (from `start`) that form the header.
 fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect, numbers: bool) -> usize {
     let mut d = 0;
-    while d < MAX_HEADER_ROWS && start + d < end {
+    // A parent row the type votes did not take does not count against the header-row limit.
+    let mut extra = 0;
+    while d < MAX_HEADER_ROWS + extra && start + d < end {
         let r = &rows[start + d];
         if is_key_value_row(sheet, r) {
             // Rows above key/value metadata are titles or metadata too, not a header ("Profit
-            // Sharing Summary" over "Operation Day: | 12 May 2001").
-            d = 0;
+            // Sharing Summary" over "Operation Day: | 12 May 2001"); but a row of form labels
+            // (`ATTORNEY:` over `DATE: | … | DEAL MAKER: | …`, B57) keeps its header place.
+            let form_labels = rows[start..start + d]
+                .iter()
+                .any(|x| x.filled().any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with(':')));
+            if !form_labels {
+                d = 0;
+            }
             break;
         }
         if !is_header_row(r, &rows[start + d + 1..end]) || is_note_row(sheet, r) {
-            break;
+            // Parent labels over a header row (`Kalenderkorrigerad | … | Trend` over `2016K3 |
+            // 2016K4 | …`; `2011 | 2015 | 2018` over the measures, B53): labels only, spread over
+            // the columns of the header row below, which heads the numbers.
+            // Up to two parent rows stack (`2011 | 2015` over `Starost | Starost` over the
+            // measures).
+            let k = start + d;
+            let parent_of = |k: usize| {
+                PARENT_HEADER_ROWS
+                    && k + 2 < end
+                    // two labels or more, or one merged over a group of columns (`2019` over
+                    // `Population | Area | Births`, B39)
+                    && (rows[k].n() >= 2 || rows[k].filled().next().is_some_and(|e| e.right > e.left))
+                    && rows[k].n_measure() == 0
+                    && rows[k].n_text() + (rows[k].n_num() - rows[k].n_measure()) == rows[k].n()
+                    && rows[k + 1].row == rows[k].row + 1
+                    && rows[k + 1].n() > rows[k].n()
+                    && !is_key_value_row(sheet, &rows[k + 1])
+            };
+            let header_at = |k: usize| is_header_row(&rows[k], &rows[k + 1..end]);
+            let parent = (d == 0 && is_label_over_header(sheet, rows, start, end, rect))
+                || ((d == 0 || (d == 1 && parent_of(start) && !header_at(start)))
+                    && parent_of(k)
+                    && (header_at(k + 1) || (d == 0 && parent_of(k + 1) && header_at(k + 2))));
+            if !parent {
+                break;
+            }
+            extra = 1;
         }
         // A lone label below the first header row starts a group, not another header level.
         if d > 0 && single_text(r).is_some_and(|e| e.right == e.left) {
@@ -489,7 +549,14 @@ fn segment(
             {
                 o += 1;
                 let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
-                if h2 > 0 {
+                // Past key/value rows, only a row that reads as a header by its types (not by
+                // the wide-text prior) starts the table: a form's next `Key: | value` row is not
+                // a header (B57).
+                let past_kv = rows[start..start + o].iter().any(|r| is_key_value_row(sheet, r));
+                let real = !past_kv
+                    || (!is_key_value_row(sheet, &rows[start + o])
+                        && is_header_row(&rows[start + o], &rows[start + o + 1..e]));
+                if h2 > 0 && real {
                     titles = titles.start..start + o;
                     start += o;
                     h = h2;
@@ -751,19 +818,94 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     true
 }
 
+/// Tables side by side without a blank column between them (B35): a title row with one title per
+/// table right over a shared header row, each later title over a text label column that follows a
+/// numeric column (`Extract from gapminder | … | Hospital activity` over `country | year | pop |
+/// gdpPercap | Ward | Beds`). The pieces between the titles' columns.
+fn split_adjacent_tables(region: &Region) -> Option<Vec<Region>> {
+    let rows = &region.rows;
+    if !SPLIT_ADJACENT_BY_TITLES || rows.len() < 5 {
+        return None;
+    }
+    let (t, h) = (&rows[0], &rows[1]);
+    let titles: Vec<&Entry> = t.filled().collect();
+    if titles.len() < 2
+        || titles.iter().any(|e| e.kind != Kind::Text)
+        || titles[0].left != region.rect.left
+        || h.row != t.row + 1
+        || h.n() < 4
+        || h.n_measure() > 0
+    {
+        return None;
+    }
+    let body = &rows[2..];
+    let share = |c: u32, text: bool| {
+        let hit = |e: &Entry| e.left == c && if text { e.kind == Kind::Text } else { e.kind == Kind::Num && !e.label_num };
+        body.iter().filter(|r| r.filled().any(hit)).count() as f32 / body.len() as f32
+    };
+    let mut cuts = vec![region.rect.left];
+    for e in &titles[1..] {
+        let c = e.left;
+        let headed = h.filled().any(|x| x.left == c) && h.filled().any(|x| x.right + 1 == c);
+        if !headed || share(c, true) < ADJACENT_SPLIT_SHARE || share(c - 1, false) < ADJACENT_SPLIT_SHARE {
+            return None;
+        }
+        cuts.push(c);
+    }
+    let mut out = Vec::new();
+    for (k, &lo) in cuts.iter().enumerate() {
+        let hi = cuts.get(k + 1).map_or(region.rect.right, |&c| c - 1);
+        let piece: Vec<Row> = rows
+            .iter()
+            .map(|r| Row { row: r.row, entries: r.entries.iter().filter(|e| e.left >= lo && e.left <= hi).cloned().collect() })
+            .filter(|r| !r.entries.is_empty())
+            .collect();
+        out.push(Region { rect: bounds(&piece), rows: piece });
+    }
+    Some(out)
+}
+
 pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
+    if let Some(parts) = split_adjacent_tables(&region) {
+        for p in parts {
+            analyze_region(sheet, p, out);
+        }
+        return;
+    }
     let rows = &region.rows;
     if rows.len() < MIN_TABLE_ROWS || region.width() < MIN_TABLE_COLS || is_form(sheet, &region) {
         out.loose.push(region);
         return;
     }
     let mut s = 0;
-    while s + 1 < rows.len() && s < MAX_TITLE_ROWS && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1)) {
+    while s + 1 < rows.len()
+        && s < MAX_TITLE_ROWS
+        && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1))
+        && !(s >= 1 && is_label_over_header(sheet, rows, s, rows.len(), region.rect))
+    {
         s += 1;
     }
     let mut e = rows.len();
     while e > s + 1 && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1])) {
         e -= 1;
+    }
+    // A block of single text lines below a blank row at the end of the region (the footnotes,
+    // sources and contacts under a statistics-database export's one or two data rows, B53):
+    // notes, not body rows of the table above them.
+    let mut k = e;
+    while k > s + 1 && rows[k - 1].n() == 1 {
+        k -= 1;
+    }
+    // The lines start at the region's left edge, one of them reads as a sentence or source line,
+    // and the row above the gap is a data row with numbers.
+    let lines = &rows[k..e];
+    if e - k >= NOTE_BLOCK_MIN_ROWS
+        && rows[k].row > rows[k - 1].bottom() + 1
+        && rows[k - 1].n_measure() >= 2
+        && lines.iter().all(|r| r.left() == region.rect.left)
+        && lines.iter().any(|r| single_text(r).is_some_and(|x| text(sheet, x).trim().chars().count() >= NOTE_BLOCK_LONG))
+    {
+        e = k;
     }
     let numbers = out.column_numbers;
     let h0 = header_depth(sheet, rows, s, e, region.rect, numbers);
