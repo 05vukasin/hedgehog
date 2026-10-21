@@ -176,6 +176,12 @@ fn exec(target: Target, path: &Path, data: &[u8]) -> String {
             }
         }
     };
+    if !QUIET.load(Ordering::Relaxed) {
+        eprint!("{}", hh_core::describe(&wb));
+        for s in &wb.sheets {
+            eprintln!("  {} merges: {:?}", s.name, s.merges);
+        }
+    }
     let cells: usize = wb.sheets.iter().map(|s| s.cells.len()).sum();
     let merges: usize = wb.sheets.iter().map(|s| s.merges.len()).sum();
     let formulas: usize = wb.sheets.iter().map(|s| s.formula_count()).sum();
@@ -188,18 +194,35 @@ fn exec(target: Target, path: &Path, data: &[u8]) -> String {
 
 /// normalize → agent catalog, describe_table, totals → SQLite load and one query.
 fn pipeline(wb: &hh_core::Workbook) -> String {
+    let verbose = !QUIET.load(Ordering::Relaxed);
+    let t = Instant::now();
+    let stage = |name: &str| {
+        if verbose {
+            eprintln!("  {name}: {:.2} s", t.elapsed().as_secs_f64());
+        }
+    };
     let opts = hh_core::NormalizeOptions { keep_totals: true, ..Default::default() };
     let norm = hh_core::normalize_workbook(wb, &opts);
+    stage("normalize");
+    if verbose {
+        for t in &norm.tables {
+            eprintln!("  table {} on {}: {} rows x {} cols, rect {:?}", t.id(), t.sheet, t.rows(), t.columns.len(), t.rect);
+        }
+    }
     let mut text = hh_agent::catalog::catalog(&norm, "fuzz.xlsx", 12_000);
+    stage("catalog");
     for t in &norm.tables {
         text.push_str(&hh_agent::catalog::describe_table(&norm, t));
     }
+    stage("describe");
     let _ = hh_agent::catalog::totals(&norm, None, None);
+    stage("totals");
     if let Ok(db) = hh_agent::sql::Db::load(&norm)
         && let Some(t) = norm.tables.first()
     {
         let _ = db.query(&format!("SELECT * FROM {} LIMIT 5", t.id()), 5, Duration::from_secs(2));
     }
+    stage("sql");
     format!(":t{}", norm.tables.len().min(6))
 }
 
@@ -558,7 +581,7 @@ fn fuzz(args: &[String]) -> Result<(), String> {
     let mut out = PathBuf::from("fuzz-out");
     let mut seconds = 60u64;
     let mut timeout = 10u64;
-    let mut rss_mb = 2048usize;
+    let mut rss_mb = 1500usize;
     let mut seed = 0u64;
     let mut it = args[1..].iter();
     while let Some(a) = it.next() {
@@ -649,7 +672,7 @@ fn fuzz(args: &[String]) -> Result<(), String> {
 
 fn run(files: &[String]) -> Result<(), String> {
     install_panic_hook();
-    let mb = std::env::var("HH_FUZZ_RSS_MB").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(2048);
+    let mb = std::env::var("HH_FUZZ_RSS_MB").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(1500);
     LIMIT.store(mb << 20, Ordering::Relaxed);
     OOM_BACKTRACE.store(true, Ordering::Relaxed);
     for f in files {

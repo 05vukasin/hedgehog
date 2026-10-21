@@ -167,19 +167,35 @@ fn clean_name(grid: &Grid, parts: &[(String, (u32, u32))]) -> String {
     out.join(" / ")
 }
 
-/// Makes `name` unique (case-insensitive, like Excel) by appending ` (2)`, ` (3)`…
-fn unique(name: String, seen: &mut HashSet<String>, tr: &mut Transforms) -> String {
-    if seen.insert(name.to_lowercase()) {
-        return name;
+/// Column names made unique (case-insensitive, like Excel) by appending ` (2)`, ` (3)`…
+#[derive(Default)]
+struct UniqueNames {
+    seen: HashSet<String>,
+    /// Lowercased name → the suffix to try first: every smaller one is taken. Without it,
+    /// thousands of equal headers (a merged header across a wide table) took quadratic time.
+    next: HashMap<String, usize>,
+}
+
+impl UniqueNames {
+    fn taken<'a>(names: impl IntoIterator<Item = &'a str>) -> UniqueNames {
+        UniqueNames { seen: names.into_iter().map(str::to_lowercase).collect(), next: HashMap::new() }
     }
-    tr.add(T::DuplicateHeadersRenamed, 1);
-    let mut k = 2;
-    loop {
-        let cand = format!("{name} ({k})");
-        if seen.insert(cand.to_lowercase()) {
-            return cand;
+
+    fn make(&mut self, name: String, tr: &mut Transforms) -> String {
+        let lower = name.to_lowercase();
+        if self.seen.insert(lower.clone()) {
+            return name;
         }
-        k += 1;
+        tr.add(T::DuplicateHeadersRenamed, 1);
+        let mut k = self.next.get(&lower).copied().unwrap_or(2);
+        loop {
+            let cand = format!("{name} ({k})");
+            k += 1;
+            if self.seen.insert(cand.to_lowercase()) {
+                self.next.insert(lower, k);
+                return cand;
+            }
+        }
     }
 }
 
@@ -625,14 +641,10 @@ fn build_table(
     }
 
     // Unique names: reserved columns claim theirs first.
-    let mut seen: HashSet<String> = HashSet::new();
-    seen.insert(SRC_ROW.to_string());
-    if opts.keep_totals {
-        seen.insert(ROW_TYPE.to_string());
-    }
+    let mut seen = UniqueNames::taken(std::iter::once(SRC_ROW).chain(opts.keep_totals.then_some(ROW_TYPE)));
     let mut columns: Vec<Column> = Vec::new();
     for mut c in group_col.into_iter().chain(data_cols) {
-        c.name = unique(std::mem::take(&mut c.name), &mut seen, &mut tr);
+        c.name = seen.make(std::mem::take(&mut c.name), &mut tr);
         columns.push(c);
     }
     let plain = |name: &str, role: ColRole, dtype: Dtype, values: Vec<Out>| Column {
@@ -833,11 +845,11 @@ fn copy_row_labels(tables: &mut [Table], layouts: &[Vec<(u32, bool)>]) {
             })
             .collect();
         let t = &mut tables[u];
-        let mut seen: HashSet<String> = t.columns.iter().map(|c| c.name.to_lowercase()).collect();
+        let mut seen = UniqueNames::taken(t.columns.iter().map(|c| c.name.as_str()));
         let mut names = Vec::with_capacity(copies.len());
         let mut copies = copies;
         for c in &mut copies {
-            c.name = unique(std::mem::take(&mut c.name), &mut seen, &mut t.transforms);
+            c.name = seen.make(std::mem::take(&mut c.name), &mut t.transforms);
             names.push(format!("\"{}\"", c.name));
         }
         t.transforms.add(T::RowLabelsCopied, copies.len());

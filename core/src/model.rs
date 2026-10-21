@@ -21,7 +21,8 @@ pub struct Cell {
     pub formula: Option<String>,
 }
 
-/// Inclusive rectangle.
+/// Inclusive rectangle; `top <= bottom` and `left <= right` (the reader orders the corners of
+/// merged areas written the other way round).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub top: u32,

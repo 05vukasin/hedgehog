@@ -70,7 +70,7 @@ pub fn workbook(data: &[u8]) -> Workbook {
             // occasionally inverted or huge
             let (bottom, right) = match b.u8() {
                 0..=200 => (top + b.below(3) as u32, left + b.below(4) as u32),
-                201..=230 => (top.saturating_sub(1), left),
+                201..=230 => (top, left), // single cell
                 _ => (top + 1_000_000, left + 16_000),
             };
             merges.push(Rect { top, left, bottom, right });

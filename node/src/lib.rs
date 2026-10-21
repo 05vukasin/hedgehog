@@ -480,6 +480,7 @@ fn core_options(o: Option<NormalizeOptions>) -> Result<hh_core::NormalizeOptions
         locale,
         rules_only: o.rules_only.unwrap_or(false),
         model_max_cells: o.model_max_cells.map(|n| n as usize),
+        deadline: None,
     })
 }
 

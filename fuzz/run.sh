@@ -5,7 +5,7 @@
 #   fuzz/run.sh <target> <seconds> <corpus_dir> <out_dir> [hh_fuzz binary]
 #
 # Run it under a memory cap (scripts/run_capped.sh); the fuzzer's own heap limit is --rss-mb
-# (default 2048 MB). Findings: <out>/crashes (panics, aborts), <out>/hangs; log: <out>/log.
+# (default 1500 MB). Findings: <out>/crashes (panics, aborts), <out>/hangs; log: <out>/log.
 set -uo pipefail
 target=$1 secs=$2 corpus=$3 out=$4
 bin=${5:-${CARGO_TARGET_DIR:-target}/fuzz/hh_fuzz}
@@ -14,7 +14,7 @@ end=$((SECONDS + secs))
 while ((SECONDS < end)); do
   left=$((end - SECONDS))
   "$bin" fuzz "$target" --corpus "$corpus" --out "$out" --seconds "$left" --timeout "${HH_FUZZ_TIMEOUT:-10}" \
-    --rss-mb "${HH_FUZZ_RSS_MB:-2048}" 2>>"$out/log"
+    --rss-mb "${HH_FUZZ_RSS_MB:-1500}" 2>>"$out/log"
   rc=$?
   if ((rc == 0)); then
     break

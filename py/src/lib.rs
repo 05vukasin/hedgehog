@@ -292,7 +292,7 @@ fn normalize<'py>(
         ),
         None => None,
     };
-    let opts = hh_core::normalize::Options { keep_totals, csv, locale, rules_only, model_max_cells };
+    let opts = hh_core::normalize::Options { keep_totals, csv, locale, rules_only, model_max_cells, deadline: None };
     let (path, out_dir) = (path.to_string(), out_dir.to_string());
     let out = py
         .detach(move || hh_core::normalize_file(&path, &out_dir, &opts))
