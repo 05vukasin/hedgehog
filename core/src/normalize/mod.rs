@@ -198,10 +198,11 @@ pub enum T {
     NoteRowsMoved,
     TitleRowsMoved,
     EmptyColumnsRemoved,
+    RowLabelsCopied,
 }
 
 impl T {
-    pub const ALL: [T; 32] = [
+    pub const ALL: [T; 33] = [
         T::NumbersFromText,
         T::PercentFromText,
         T::CurrencyStripped,
@@ -234,6 +235,7 @@ impl T {
         T::NoteRowsMoved,
         T::TitleRowsMoved,
         T::EmptyColumnsRemoved,
+        T::RowLabelsCopied,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -270,12 +272,19 @@ impl T {
             T::NoteRowsMoved => "note_rows_moved",
             T::TitleRowsMoved => "title_rows_moved",
             T::EmptyColumnsRemoved => "empty_columns_removed",
+            T::RowLabelsCopied => "row_labels_copied",
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Transforms(pub [usize; T::ALL.len()]);
+
+impl Default for Transforms {
+    fn default() -> Self {
+        Transforms([0; T::ALL.len()])
+    }
+}
 
 impl Transforms {
     pub fn add(&mut self, t: T, n: usize) {

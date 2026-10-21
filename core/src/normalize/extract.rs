@@ -24,6 +24,10 @@ const OWN_NOTES: u8 = 3;
 
 /// Max blank rows between a loose title (note) and the table below (above) it.
 const ASSOC_MAX_GAP: u32 = 6;
+/// Data rows a table needs before it takes row labels from a neighbour ([`copy_row_labels`]).
+const COPY_LABELS_MIN_ROWS: usize = 4;
+/// Share of its rows a table's label column must name to lend its labels.
+const COPY_LABELS_MIN_FILL: f32 = 0.8;
 /// Excel's limit for a table column name.
 const MAX_HEADER_LEN: usize = 255;
 pub(super) const SRC_ROW: &str = "_src_row";
@@ -717,6 +721,134 @@ fn associate(tables: &[Table], row: u32, col: u32, title: bool) -> Option<usize>
     best.map(|b| b.1)
 }
 
+/// A table's body rows as (source row, is a total row), top to bottom: its data and kept total
+/// rows plus the total rows taken out of it.
+fn row_layout(t: &Table, removed: &[(u32, RowType, Vec<usize>)]) -> Vec<(u32, bool)> {
+    let mut v: Vec<(u32, bool)> =
+        t.src_rows.iter().zip(&t.row_types).map(|(&r, &rt)| (r, rt != RowType::Data)).collect();
+    v.extend(removed.iter().map(|(r, _, _)| (*r, true)));
+    v.sort_unstable();
+    v
+}
+
+/// The leading label columns of a table: its group column and the text columns before its first
+/// other column ("Henry Hub | Receipts HH | ACADIAN | 200000 | …" → the first three). Empty unless
+/// one of them names nearly every row (a group column alone only names blocks of rows).
+fn label_columns(t: &Table) -> Vec<usize> {
+    let n: Vec<usize> = t
+        .columns
+        .iter()
+        .take_while(|c| c.role == ColRole::Group || (c.role == ColRole::Data && c.dtype == Dtype::Text))
+        .enumerate()
+        .map(|(i, _)| i)
+        .collect();
+    let rows = t.src_rows.len();
+    let names_rows = n.iter().any(|&i| {
+        let c = &t.columns[i];
+        let filled = c.values.iter().filter(|v| !matches!(v, Out::Null)).count();
+        c.role == ColRole::Data && filled as f32 >= COPY_LABELS_MIN_FILL * rows as f32
+    });
+    if names_rows { n } else { Vec::new() }
+}
+
+/// Nothing but measures: no group, text, date or bool column, and no key-like whole-number column
+/// (distinct values in order: years, ids, line numbers), so no row says what it is.
+fn has_no_labels(t: &Table) -> bool {
+    t.columns.iter().all(|c| match c.role {
+        ColRole::Data if c.dtype == Dtype::Integer => !is_sequence(&c.values),
+        ColRole::Data => matches!(c.dtype, Dtype::Number | Dtype::Percent | Dtype::Currency | Dtype::Empty),
+        ColRole::Group => false,
+        ColRole::SrcRow | ColRole::RowType => true,
+    })
+}
+
+/// Distinct numbers, strictly rising or strictly falling (nulls skipped): a key, not a measure.
+fn is_sequence(values: &[Out]) -> bool {
+    let v: Vec<f64> = values.iter().filter_map(|x| if let Out::Num(n) = x { Some(*n) } else { None }).collect();
+    v.len() >= 2 && (v.windows(2).all(|w| w[0] < w[1]) || v.windows(2).all(|w| w[0] > w[1]))
+}
+
+/// Row labels for tables that have none (side-by-side and stacked grids that share the row labels
+/// of a neighbouring table). A table of numbers only, whose body rows — data rows, total rows and
+/// the blank rows between them — repeat those of a table with label columns row for row, gets
+/// copies of that table's label columns:
+/// - **beside it** (the same sheet rows, the labelled table on the left), or else
+/// - **above it** (the same rows shifted down, overlapping columns; the nearest such table):
+///   a month's daily grid under a summary that names the rows once.
+///
+/// Both need at least [`COPY_LABELS_MIN_ROWS`] data rows and exactly the same body layout, so a
+/// grid with another number of rows, or totals in other places, keeps its plain numbers. The copied
+/// columns have no source column (their values come from the other table's cells) and are named
+/// like the originals, so the tables join on them.
+fn copy_row_labels(tables: &mut [Table], layouts: &[Vec<(u32, bool)>]) {
+    let shape = |l: &[(u32, bool)]| -> Vec<(u32, bool)> {
+        let first = l.first().map_or(0, |x| x.0);
+        l.iter().map(|&(r, t)| (r - first, t)).collect()
+    };
+    let data_rows = |l: &[(u32, bool)]| l.iter().filter(|x| !x.1).count();
+    let takers: Vec<usize> = (0..tables.len())
+        .filter(|&u| has_no_labels(&tables[u]) && data_rows(&layouts[u]) >= COPY_LABELS_MIN_ROWS)
+        .collect();
+    if takers.is_empty() {
+        return;
+    }
+    let lenders: Vec<(usize, Vec<(u32, bool)>)> =
+        (0..tables.len()).filter(|&d| !label_columns(&tables[d]).is_empty()).map(|d| (d, shape(&layouts[d]))).collect();
+    let mut plan: Vec<(usize, usize)> = Vec::new();
+    for u in takers {
+        let (ru, lu, su) = (tables[u].rect, &layouts[u], shape(&layouts[u]));
+        let mut beside: Option<usize> = None;
+        let mut above: Option<usize> = None;
+        for (d, sd) in &lenders {
+            let rd = tables[*d].rect;
+            if rd.right < ru.left && rd.top <= ru.bottom && ru.top <= rd.bottom && layouts[*d] == *lu {
+                beside = beside.or(Some(*d));
+            } else if rd.bottom < ru.top
+                && rd.left <= ru.right
+                && ru.left <= rd.right
+                && *sd == su
+                && above.is_none_or(|a| tables[a].rect.bottom < rd.bottom)
+            {
+                above = Some(*d);
+            }
+        }
+        if let Some(d) = beside.or(above) {
+            plan.push((u, d));
+        }
+    }
+    for (u, d) in plan {
+        let delta = layouts[u][0].0 - layouts[d][0].0;
+        let (src, n) = (&tables[d], tables[d].n);
+        let at: HashMap<u32, usize> = src.src_rows.iter().enumerate().map(|(i, &r)| (r, i)).collect();
+        let rows: Vec<Option<usize>> = tables[u].src_rows.iter().map(|&r| at.get(&(r - delta)).copied()).collect();
+        let copies: Vec<Column> = label_columns(src)
+            .into_iter()
+            .map(|k| {
+                let c = &src.columns[k];
+                Column {
+                    source_col: None,
+                    values: rows.iter().map(|i| i.map_or(Out::Null, |i| c.values[i].clone())).collect(),
+                    ..c.clone()
+                }
+            })
+            .collect();
+        let t = &mut tables[u];
+        let mut seen: HashSet<String> = t.columns.iter().map(|c| c.name.to_lowercase()).collect();
+        let mut names = Vec::with_capacity(copies.len());
+        let mut copies = copies;
+        for c in &mut copies {
+            c.name = unique(std::mem::take(&mut c.name), &mut seen, &mut t.transforms);
+            names.push(format!("\"{}\"", c.name));
+        }
+        t.transforms.add(T::RowLabelsCopied, copies.len());
+        t.warnings.push(format!(
+            "{} copied from T{n}: these rows have no labels of their own and repeat T{n}'s rows one for one",
+            names.join(", ")
+        ));
+        t.columns.splice(0..0, copies);
+    }
+}
+
 pub(super) fn process_sheet(
     sheet: &Sheet,
     opts: &Options,
@@ -766,15 +898,18 @@ pub(super) fn process_sheet(
     let mut kept: Vec<HashSet<u32>> = Vec::new();
     let mut removed: Vec<(usize, u32, RowType, Vec<usize>)> = Vec::new();
     let mut notes: Vec<NoteItem> = Vec::new();
+    let mut layouts: Vec<Vec<(u32, bool)>> = Vec::new();
     for t in &lay.tables {
         let n = out.tables.len() + 1;
         let b = build_table(&grid, &lay, t, n, &sheet_hints, &row_total, opts, &mut owner);
         info.tables.push(n);
+        layouts.push(row_layout(&b.table, &b.removed_totals));
         kept.push(b.kept);
         removed.extend(b.removed_totals.into_iter().map(|(row, rt, idxs)| (n, row, rt, idxs)));
         notes.extend(b.notes);
         out.tables.push(b.table);
     }
+    copy_row_labels(&mut out.tables[first..], &layouts);
     super::trace("build_tables", t0);
     let tables = &out.tables[first..];
     let table_at = |row: u32, col: u32| -> Option<usize> {

@@ -189,6 +189,37 @@ fn page_break_headers_do_not_split() {
     assert_eq!(role(&s, &l, 26, 1), Role::Header);
 }
 
+/// A header of dates only: a data row of zeros under it is data (it has the header's columns but
+/// not its values), while the same dates again further down are a repeated header.
+#[test]
+fn date_header_repeats_by_its_dates() {
+    let s = fixture("dateheader", |ws| {
+        let date = Format::new().set_num_format("yyyy-mm-dd");
+        let head = |ws: &mut Worksheet, row: u32| {
+            for d in 0..5u16 {
+                ws.write_number_with_format(row, d, 45292.0 + d as f64, &date).unwrap();
+            }
+        };
+        head(ws, 0);
+        let mut r = Rng(7);
+        for row in 1..40u32 {
+            if row == 20 {
+                head(ws, row);
+                continue;
+            }
+            for d in 0..5u16 {
+                let v = if row == 1 { 0.0 } else { (r.next() * 1e5).round() };
+                ws.write_number(row, d, v).unwrap();
+            }
+        }
+    });
+    let l = run(&s);
+    assert_eq!(l.tables.len(), 1, "{:?}", rects(&l));
+    assert_eq!(role(&s, &l, 0, 1), Role::Header);
+    assert_eq!(role(&s, &l, 1, 1), Role::Data, "zeros under the dates");
+    assert_eq!(role(&s, &l, 20, 1), Role::Header, "the dates again");
+}
+
 /// Numbers stored as text ("1.234,50 EUR") in the second half of a column are still numbers.
 #[test]
 fn text_numbers_do_not_split() {

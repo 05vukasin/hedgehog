@@ -119,7 +119,9 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
   `group` and holds the full label. Nested group labels are joined with ` / `.
 - **`_src_row`** is the 1-based row number in the source sheet. It is always the last column, or the
   one before `_row_type`. A value in output column `c` came from source cell
-  `<columns[c].source_column><_src_row>` on `source.sheet` of the table's manifest entry.
+  `<columns[c].source_column><_src_row>` on `source.sheet` of the table's manifest entry. Row
+  labels copied from a table beside or above (`source_column` `null`, named in the table's
+  `warnings`) come from that table's label cells in the matching row.
 - **`_row_type`** (only with `keep_totals`): `data`, `subtotal` or `total`.
 
 ### Values and dtypes
@@ -335,7 +337,7 @@ Column fields:
 | `role` | `data` (from a source column), `group` (from group-header rows), `source_row` (`_src_row`), `row_type` (`_row_type`). |
 | `dtype` | See [Values and dtypes](#values-and-dtypes). Authoritative: trust it over pandas' guess. |
 | `number_format` | Excel number format written for the column, or `null`. |
-| `source_column` | Source column letter, or `null` for non-data roles. |
+| `source_column` | Source column letter, or `null` for non-data roles and for row labels copied from another table (`row_labels_copied`; see [concepts](concepts.md#tables)). |
 | `original_header` | The header cells joined into `name`, top to bottom, with their addresses. |
 | `unit`, `currency` | Unit or ISO currency code carried by more than half of the numeric values (the most common one), or `null`. Mixed currencies are also listed in `warnings`. |
 | `locale` | `decimal` (`"."`, `","` or `null`), `date_order` (`"dmy"`, `"mdy"` or `null`), and `ambiguous`: how many values were read with a guess. `null` means no evidence. |
@@ -408,6 +410,7 @@ Every key below is present in every table's `transformations`, with a count (oft
 | `group_header_rows_to_column` | Group-header rows turned into the group column |
 | `note_rows_moved`, `title_rows_moved` | Rows inside the table range moved to `Notes` |
 | `empty_columns_removed` | Columns with neither header nor values |
+| `row_labels_copied` | Label columns copied from a table beside or above whose rows this table repeats (a daily grid under a summary that names the rows once) |
 
 ## Known limits
 
