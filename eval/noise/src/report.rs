@@ -57,7 +57,7 @@ pub fn render(rs: &[Outcome], ts: &[f64], seeds: u64, secs: f64, real: &[String]
     writeln!(s).unwrap();
     writeln!(s, "```sh").unwrap();
     writeln!(s, "export CARGO_TARGET_DIR=$PWD/target-noise HEDGEHOG_DATA=/path/to/testdata").unwrap();
-    writeln!(s, "eval/noise/sweep.sh {seeds}        # capped jobs of one family x intensity (<= 200 workbooks each), then this report").unwrap();
+    writeln!(s, "eval/noise/sweep.sh {seeds}        # capped jobs of one family x 5 intensities x <= 40 seeds (<= 200 workbooks each), then this report").unwrap();
     writeln!(s, "$CARGO_TARGET_DIR/release/noise_eval --repro subtotals 0.75 3   # one scenario: the sheet, both paths, every invariant").unwrap();
     writeln!(s, "```").unwrap();
     writeln!(s).unwrap();
