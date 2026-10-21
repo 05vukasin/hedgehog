@@ -122,7 +122,7 @@ tables). Tables are named `T1`, `T2`, … per file, as in the [manifest](normali
 | Tool | Arguments | Returns |
 |---|---|---|
 | `open_file` | `path` | The catalog: file line, time coverage, tables with source range, rows, total rows, every column (type, unit; value ranges for up to 14 columns), all values of small label columns, mixed measures, group column, totals check, the rows of small tables as CSV, notes, warnings. Long catalogs list tables one line each. See [The catalog](#the-catalog). |
-| `describe_table` | `path`, `table` | Every column (SQL name, dtype, unit, nulls, distinct, min..max, example or all values (≤ 12), source column ← header cells), source and header range, group column, total rows, first 5 rows as CSV. |
+| `describe_table` | `path`, `table` | Every column (SQL name, dtype, unit, nulls, distinct, min..max, example or all values (≤ 12), source column ← header cells), source and header range, group column, total rows, entity columns (`<col>_id`, `<col>_name`), first 5 rows as CSV. |
 | `query` | `path`, `sql`, `limit?` | One read-only SQLite `SELECT`/`WITH` as CSV with a header, at most `limit` rows (default 50, max 200), then `(<n> rows)` or `(<n> rows, showing first <k>)`. |
 | `cells` | `path`, `sheet`, `range` | Original source cells (max 200) as `A1<TAB>value` lines, formulas after the value, merged areas marked. |
 | `totals` | `path`, `table?`, `status?` | Counts per status (`ok`, `mismatch`, `unknown`), then up to 50 items, mismatches first: cell, label, value, recomputed, sources, reason. |
@@ -143,6 +143,21 @@ Types: integers `INTEGER`; numbers, currency and percentages `REAL` (a percentag
 Column names are the normalized headers; quote them with double quotes (`"Revenue / Q1"`, `"2024"`,
 `"group"`). The source cell of a value is `<source column><_src_row>` on the table's source sheet;
 query results that include `_src_row` say which column maps to which source column (`cite as:`).
+
+The dialect is SQLite: date parts come from `strftime` (`strftime('%Y-%m', "Signed")` for the month,
+`CAST(strftime('%m', d) AS INTEGER)` for a number), days between dates are
+`julianday(b) - julianday(a)`, and `LIMIT n` replaces `TOP n`.
+
+**Entity columns.** A text column whose values are mostly `"<id> - <name>"` with a code-like ID
+(digits, or letters and digits: a tax number, a CPV or NUTS code), such as
+`"503933813 - IP - Infraestruturas de Portugal, S.A."`, gets two more columns in `T<n>` and
+`T<n>_all`, right after it: `<col>_id` (the code, as text) and `<col>_name` (the rest). Registers
+write one entity under several spellings with the same code, so group by `<col>_id`, not by the text.
+A value that is only a code has an empty `<col>_name`; a value without a code (`"- - Name"`) has an
+empty `<col>_id`; a cell naming several entities (`"a | b"`, `"a; b"`, one per line, or run together
+as `"501… - A, Lda 502… - B, SA"`) is not split: its `<col>_id` lists every ID as `"id1 | id2"`. The
+catalog and `describe_table` describe each such column (see [The catalog](#the-catalog)); `cite as:`
+maps `<col>_id` to the source cell it comes from.
 
 ### Example
 
@@ -177,12 +192,24 @@ cite as: Richtsatz = '2_2'!A<_src_row>; "2024" = '2_2'!O<_src_row>; "2025" = '2_
 (5 rows)
 ```
 
-An unquoted keyword or a guessed column name gets a hint instead of a bare error:
+An unquoted keyword, a guessed column name, a row label used as a column or another SQL dialect
+gets a hint instead of a bare error:
 
 ```text
 SQL error: near "group": syntax error (at character 7) — group is a column name that is also an SQL keyword; quote it: "group"
 SQL error: no such column: "Dezember / 2021" (at character 7) — did you mean T1."De-zember / 20211)", T1."No-vember / 2021", …? (quote names with double quotes)
+SQL error: no such column: "Total" (at character 7) — "Total" is a row label, not a column: total rows are in T1_all with _row_type = 'total' (label in col_C): SELECT * FROM T1_all WHERE _row_type = 'total'
+SQL error: no such column: "SEA ROBIN" (at character 7) — "SEA ROBIN" is a value of column col_C, not a column: SELECT * FROM T1 WHERE "col_C" = 'SEA ROBIN'
+SQL error: no such function: MONTH (at character 7) — SQLite has no MONTH(); dates are ISO text, use strftime('%m', col) for the month (text '01'..'12'; CAST(strftime('%m', col) AS INTEGER) for a number)
+SQL error: near "5": syntax error (at character 11) — SQLite has no TOP n; put LIMIT n at the end: SELECT … ORDER BY x DESC LIMIT 5
 ```
+
+A "no such column" whose name is the label of a total row (or a total word: Total, Gesamt, Summe,
+Totale, Ukupno, Subtotal, …) says where the total rows are; one that is a value of a text column
+says which column to filter. MySQL / Postgres / SQL Server functions and syntax SQLite lacks
+(`YEAR`, `MONTH`, `DAY`, `DATE_FORMAT`, `TO_CHAR`, `EXTRACT(… FROM …)`, `DATEDIFF`, `DATE_ADD`, `NOW`,
+`CONCAT`, `ISNULL`, `LEN`, `STRING_AGG`, `MEDIAN`/`PERCENTILE_CONT`, `STDDEV`, `TOP n`, `ILIKE`,
+`::type`, `FETCH FIRST`, `INTERVAL`, …) get the SQLite replacement.
 
 ### The catalog
 
@@ -200,6 +227,11 @@ Per table (when the whole catalog fits in ~12,000 characters):
 - **Mixed measures**: `rows mix measures by "group" — filter before aggregating` when one label
   column separates counts, amounts, rates (by units and words in the labels, such as `Anzahl` and
   `in Euro`, or by numbers of very different size under each label).
+- **Entity columns**: one line per `"<id> - <name>"` column: an example, how many IDs, how many
+  have several spellings, cells with several entities, values without an ID, and to group by
+  `<col>_id`: `adjudicante = "<id> - <name>" (e.g. "600082440 - Direção-Geral de …"): 3,872 IDs, 808
+  with several spellings (e.g. 508481287: 5 names; up to 52) — group by adjudicante_id, not by the
+  text; adjudicante_name holds the name · …`.
 - **Small tables** (≤ 15 data rows, ≤ 12 columns): all data rows as CSV under the table, added in
   table order while the catalog stays under its cap (the values lines are then left out).
 
