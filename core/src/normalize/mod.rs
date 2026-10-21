@@ -113,7 +113,7 @@ pub enum ColRole {
     Group,
     /// `_src_row`: 1-based row number in the source sheet.
     SrcRow,
-    /// `_row_type`: data | subtotal | total (only with `keep_totals`).
+    /// `_row_type`: data | subtotal | total | average | of_which (only with `keep_totals`).
     RowType,
 }
 
@@ -157,6 +157,10 @@ pub enum RowType {
     Data,
     Subtotal,
     Total,
+    /// An "Average" / "Mean" / "Ø" row: not data, not a sum.
+    Average,
+    /// An "of which" / "davon" row: a part of the row above it, already counted there.
+    OfWhich,
 }
 
 impl RowType {
@@ -165,6 +169,8 @@ impl RowType {
             RowType::Data => "data",
             RowType::Subtotal => "subtotal",
             RowType::Total => "total",
+            RowType::Average => "average",
+            RowType::OfWhich => "of_which",
         }
     }
 }
@@ -364,7 +370,7 @@ pub struct TotalItem {
     pub row_end: u32,
     pub label: Option<String>,
     pub label_cell: Option<(u32, u32)>,
-    /// total | subtotal | grand_total
+    /// total | subtotal | grand_total | average | of_which
     pub level: &'static str,
     /// vertical | horizontal
     pub direction: &'static str,
@@ -473,7 +479,7 @@ pub struct TableTotalRow {
     /// 1-based source row.
     pub row: u32,
     pub label: Option<String>,
-    /// total | subtotal | grand_total
+    /// total | subtotal | grand_total | average | of_which
     pub level: &'static str,
     pub kept_in_data: bool,
 }

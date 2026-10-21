@@ -137,8 +137,9 @@ For table *n*:
 - `T<n>` — the data rows, one column per normalized column plus `_src_row` (the row number in the
   source sheet).
 - `T<n>_all` — the same plus total and subtotal rows, with `_row_type` = `data`, `subtotal` or
-  `total`. Use it for overall figures the file states itself (a "Gesamt" or "Total" row); never add
-  those rows to the data rows.
+  `total`, and the rows that are no data and no sums: `average` ("Average", "Ø 2024") and `of_which`
+  ("of which: exports", "davon Inland"). Use it for overall figures the file states itself (a
+  "Gesamt" or "Total" row, an annual average); never add those rows to the data rows.
 - `T<n>_long` — only for a table with a run of 4 or more numeric columns named by periods of one
   granularity (`"2011".."2025"`, `Jan 2024`, `2024 Q1`, `Oktober / 2022`, `Thu / 2002-01-31`,
   `Rev 2024-03`): the period columns as rows, so a model filters `WHERE period = '2025'` instead of

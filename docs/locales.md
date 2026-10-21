@@ -127,10 +127,23 @@ diacritics and script: `Beograd`, ` BEOGRAD ` and `Београд` all match; `�
   German, French, Spanish, Italian, Dutch, Portuguese, Polish, Nordic languages and
   Serbian/Croatian/Bosnian/Slovenian: `Total`, `Subtotal`, `Grand total`, `Summe`, `Gesamt`,
   `Totaal`, `Razem`, `Ukupno`, `Σ`; `Note`, `Source`, `Quelle`, `Fuente`, `Bron`, `Izvor`, `*`, `¹`.
-- **Totals verification** recognizes a typed total by an English or Serbian/Croatian/Bosnian label
-  (`Total`, `Subtotal`, `Grand total`, `Sum`, `Ukupno`, `Svega`, `Međuzbir`, `Укупно`, ...). A total
-  written as a formula (`SUM`, `SUBTOTAL`, `A+B+C`) is recognized whatever its label. Extending the
-  verification keywords to the other languages is planned.
+- **Totals verification** recognizes a typed total by its label: English and
+  Serbian/Croatian/Bosnian (`Total`, `Subtotal`, `Grand total`, `Sum`, `Ukupno`, `Svega`,
+  `Međuzbir`, `Укупно`, ...); the first word of a German, French, Spanish, Italian, Dutch,
+  Portuguese, Polish or Nordic label (`Summe`, `Insgesamt`, `Somme`, `Totale`, `Totaal`, `Razem`);
+  and, as the first or last word of a label of up to five words, Czech/Slovak `Celkem`/`Celkom`,
+  Finnish `Yhteensä`, Danish `I alt`, Swedish/Norwegian `Totalt`, Hungarian `Összesen`, Russian
+  `Всего`/`Итого`, Polish `Ogółem`/`Łącznie`, Estonian `Kokku`, Icelandic `Samtals`, Turkish
+  `Toplam`, Greek `Σύνολο`, German `gesamt`/`insgesamt` after a name (`Deutschland gesamt`). Short
+  labels with a one-letter typo of `total` (`Toal`, `Totl`, `Grand Totl`) and spaced letters
+  (`T o t a l`) count too. Words that are also names or codes (`Somme`, `Sumas`, `SOM`, `Suma …`,
+  `Zusammen …`) need the row's numbers to add up. A total written as a formula (`SUM`, `SUBTOTAL`,
+  `A+B+C`) is recognized whatever its label.
+- **Average and of-which rows** (not data, not sums): `Average`, `Mean`, `Median`, `Ø`,
+  `Durchschnitt`, `Mittelwert`, `Moyenne`, `Media`, `Promedio`, `Prosek`, `Średnia`, `Gemiddelde`,
+  `Gennemsnit`, `Keskiarvo`, `Átlag`, `Průměr`; `of which`, `thereof`, `davon`, `darunter`, `dont`,
+  `di cui`, `de los cuales`, `dos quais`, `od toga`, `w tym`, `z toho`, `waarvan`, `varav`, `heraf`,
+  `josta`, `ebből`, `из них` ([concepts](concepts.md#average-and-of-which-rows)).
 
 ## Ambiguous values
 
