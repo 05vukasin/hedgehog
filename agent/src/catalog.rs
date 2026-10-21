@@ -891,6 +891,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     };
 
     let mut tail = Vec::new();
+    tail.extend(formulas_line(norm)); // B48
     let (ok, bad, unk) = status_counts(norm.totals.iter());
     if ok + bad + unk > 0 {
         tail.push(format!("TOTALS {ok} ok, {bad} mismatch, {unk} unknown (call totals for details)"));
@@ -1254,6 +1255,19 @@ pub fn totals(norm: &Normalized, table: Option<&Table>, status: Option<&str>) ->
         ));
     }
     Ok(cut(lines.join("\n"), MAX_CHARS, |n| format!("{n} more lines"), "totals with table=T<n> or a status"))
+}
+
+/// B48: formula cells saved without a value (the file was written by a tool that does not
+/// calculate): their table values are NULL. Count and the first such cell, to check with `cells`.
+pub fn formulas_line(norm: &Normalized) -> Option<String> {
+    let n: usize = norm.sheets.iter().map(|s| s.formulas_without_value).sum();
+    let s = norm.sheets.iter().find(|s| s.formulas_without_value > 0)?;
+    let (r, c) = s.formula_without_value_at?;
+    Some(format!(
+        "FORMULAS {} without a saved value (e.g. {}): NULL in the tables, not evaluated; cells shows the formula",
+        plural(n, "cell", "cells"),
+        sheet_ref(&s.name, &hh_core::a1(r, c))
+    ))
 }
 
 #[cfg(test)]
