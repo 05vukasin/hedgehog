@@ -25,8 +25,20 @@ use tables::Out;
 
 /// Detects tables and assigns one [`Role`] per entry of `grid.sheet.cells` (same order).
 pub fn analyze(grid: &Grid) -> SheetLayout {
+    analyze_inner(grid, params::COLUMN_NUMBER_ROWS)
+}
+
+/// [`analyze`] as the learned row model's features see it: without the column-numbering rule
+/// (the model was trained on layouts without it, and a numbering row's role feeds its neighbours'
+/// features). The model path applies the rule itself afterwards (`learned::tables`).
+pub fn analyze_for_model(grid: &Grid) -> SheetLayout {
+    analyze_inner(grid, false)
+}
+
+fn analyze_inner(grid: &Grid, column_numbers: bool) -> SheetLayout {
     let sheet = grid.sheet;
-    let mut out = Out { roles: vec![Role::Other; sheet.cells.len()], tables: Vec::new(), loose: Vec::new() };
+    let mut out =
+        Out { roles: vec![Role::Other; sheet.cells.len()], tables: Vec::new(), loose: Vec::new(), column_numbers };
     for region in blocks::regions(grid) {
         tables::analyze_region(sheet, region, &mut out);
     }

@@ -45,7 +45,7 @@ pub fn role_id(r: Role) -> i32 {
 
 /// Every feature column for one sheet, in a fixed order: core features, then layout features.
 pub fn sheet_features(grid: &Grid) -> Features {
-    sheet_features_with(grid, &crate::layout::analyze(grid))
+    sheet_features_with(grid, &crate::layout::analyze_for_model(grid))
 }
 
 /// [`sheet_features`] with the rule layout already computed.
@@ -67,12 +67,12 @@ const PARALLEL_MIN_CELLS: usize = 20_000;
 pub fn layout_and_features(grid: &Grid) -> (crate::analysis::SheetLayout, Features) {
     let n = grid.sheet.cells.len();
     if n < PARALLEL_MIN_CELLS {
-        let lay = crate::layout::analyze(grid);
+        let lay = crate::layout::analyze_for_model(grid);
         let f = sheet_features_with(grid, &lay);
         return (lay, f);
     }
     let (lay, mut f, values, (totals, cands)) = std::thread::scope(|s| {
-        let lay = s.spawn(|| crate::layout::analyze(grid));
+        let lay = s.spawn(|| crate::layout::analyze_for_model(grid));
         let values = s.spawn(|| {
             let mut f = Features::new(n);
             crate::values::features::compute(grid, &mut f);

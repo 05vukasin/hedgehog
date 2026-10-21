@@ -16,6 +16,9 @@ pub(crate) struct Out {
     pub tables: Vec<DetectedTable>,
     /// Filled things not in any table; classified once all tables are known.
     pub loose: Vec<Region>,
+    /// Column-numbering rows join the header ([`COLUMN_NUMBER_ROWS`]; off for the row model's
+    /// features, see [`super::analyze_for_model`]).
+    pub column_numbers: bool,
 }
 
 fn text<'a>(sheet: &'a Sheet, e: &Entry) -> &'a str {
@@ -151,7 +154,7 @@ fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
 }
 
 /// Number of leading rows (from `start`) that form the header.
-fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect) -> usize {
+fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect, numbers: bool) -> usize {
     let mut d = 0;
     while d < MAX_HEADER_ROWS && start + d < end {
         let r = &rows[start + d];
@@ -182,7 +185,7 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         }
     }
     // A column-numbering row right under the header ("1 2 3 4 …") is part of it.
-    if COLUMN_NUMBER_ROWS && start + d + 1 < end && is_column_number_row(sheet, &rows[start + d]) {
+    if numbers && start + d + 1 < end && is_column_number_row(sheet, &rows[start + d]) {
         d += 1;
     }
     // Vertical merges in the header (e.g. "Region" over two header rows) push its bottom down.
@@ -329,18 +332,28 @@ struct Seg {
     end: usize,
 }
 
-fn segment(sheet: &Sheet, rows: &[Row], titles: Range<usize>, s: usize, e: usize, rect: Rect, cut: bool) -> Vec<Seg> {
+#[allow(clippy::too_many_arguments)]
+fn segment(
+    sheet: &Sheet,
+    rows: &[Row],
+    titles: Range<usize>,
+    s: usize,
+    e: usize,
+    rect: Rect,
+    cut: bool,
+    numbers: bool,
+) -> Vec<Seg> {
     let mut segs = Vec::new();
     // Leading title rows belong to the first table.
     let (mut start, mut titles) = (s, titles);
     while start < e {
-        let mut h = header_depth(sheet, rows, start, e, rect);
+        let mut h = header_depth(sheet, rows, start, e, rect, numbers);
         // Metadata rows (dates, labels) between titles and the header: skip up to a few sparse rows.
         if h == 0 && segs.is_empty() {
             let mut o = 0;
             while o < MAX_PRE_HEADER_ROWS && start + o + 2 < e && rows[start + o].n() <= 2 {
                 o += 1;
-                let h2 = header_depth(sheet, rows, start + o, e, rect);
+                let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
                 if h2 > 0 {
                     titles = titles.start..start + o;
                     start += o;
@@ -584,14 +597,15 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     while e > s + 1 && is_note_row(sheet, &rows[e - 1]) {
         e -= 1;
     }
-    let h0 = header_depth(sheet, rows, s, e, region.rect);
+    let numbers = out.column_numbers;
+    let h0 = header_depth(sheet, rows, s, e, region.rect, numbers);
     let hsig = if h0 > 0 { signature(sheet, &rows[s + h0 - 1]) } else { Vec::new() };
     let cuts = super::changepoint::boundaries(sheet, rows, s + h0, e, &hsig);
     let mut segs = Vec::new();
     let mut ps = s;
     for pe in cuts.iter().copied().chain(std::iter::once(e)) {
         if ps == s {
-            segs.extend(segment(sheet, rows, 0..s, s, pe, region.rect, false));
+            segs.extend(segment(sheet, rows, 0..s, s, pe, region.rect, false, numbers));
         } else {
             // Title rows at the top of a piece belong to its table.
             let mut q = ps;
@@ -602,7 +616,7 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
             {
                 q += 1;
             }
-            segs.extend(segment(sheet, rows, ps..q, q, pe, region.rect, true));
+            segs.extend(segment(sheet, rows, ps..q, q, pe, region.rect, true, numbers));
         }
         ps = pe;
     }
