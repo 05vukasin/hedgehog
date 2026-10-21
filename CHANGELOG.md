@@ -290,6 +290,10 @@ All notable changes to hedgehog are listed here. The format follows
   sparsely (two cells far apart no longer allocate the whole rectangle between them); merged areas
   written bottom-right first get their corners ordered; duplicate column names were made unique in
   quadratic time (a merged header over 16,000 columns took 22 s).
+- `normalize` of a workbook with more than ~1,000 tables panicked with "Too many open files": the
+  xlsx writer keeps a temp file open per output sheet. The open-file limit is raised when needed
+  (a clear error if the hard limit is too low). CSV files are checked against the cell limit while
+  they are read, so a huge CSV is refused before it fills memory.
 
 - Total words in names and descriptions (B32, B41): in a register (200+ rows) a description or
   name of more than three words that is its row's first text with more text right of it ("Total
