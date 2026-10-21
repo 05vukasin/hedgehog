@@ -279,7 +279,7 @@ fn walk<'g>(
     let mut prev: Option<RowFeats> = None;
     let mut here: Option<RowFeats> = None;
     for ri in a..=d {
-        let next = (ri < d).then(|| row_feats(src, &mut values, &mut cur, rows[ri]));
+        let next = rows.get(ri).filter(|_| ri < d).map(|&r| row_feats(src, &mut values, &mut cur, r));
         // `here` is row ri - 1.
         if let Some(h) = &here
             && ri >= 1

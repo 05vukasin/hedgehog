@@ -631,12 +631,12 @@ impl RowModel {
         // family with a single fine role (title) needs no fine trees at all.
         let fine_classes = &self.fine.classes;
         let mut families = [Role::Other; BLOCK];
-        for b in 0..n {
+        for (b, family) in families.iter_mut().enumerate().take(n) {
             let fam = self.coarse.classes[self.coarse.argmax(&s.sc[b * kc..(b + 1) * kc])];
-            families[b] = fam;
+            *family = fam;
             let single = fine_classes.iter().filter(|&&c| coarse_of(c) == fam).count() <= 1;
-            for c in 0..kf {
-                s.mask[b * kf + c] = !single && coarse_of(fine_classes[c]) == fam;
+            for (m, &c) in s.mask[b * kf..(b + 1) * kf].iter_mut().zip(fine_classes) {
+                *m = !single && coarse_of(c) == fam;
             }
         }
         for row in s.sf[..n * kf].chunks_exact_mut(kf) {

@@ -96,6 +96,46 @@ Per sheet, each step computed once and reused:
 6. `normalize/write.rs` and `manifest.rs`: write the xlsx (README, tables as Excel tables, Totals,
    Notes), optional CSVs and the manifest JSON (fixed key order, no timestamps).
 
+## Performance notes
+
+Speed-ups must leave every output byte the same (finance data): each one either computes the
+same function in another order or skips work that provably cannot change the result, and is
+checked against the previous code path (design and measurements: the P7 research note,
+`docs/research/p7_fast_exact_structure.md` in the project folder, outside this repository).
+
+- **Streamed model input** (`learned/stream.rs`). The row model reads ~450 numbers per row
+  segment, built from ~110 per-cell features. Every global quantity behind them is a count, a set
+  or a rectangle, so a first pass (`context::Context`, `values::features::Values`,
+  `totals::features::Totals`, `eval::export::LayoutTotals`, the rules layout) holds them, and a
+  segment's features then need only its own row and the rows directly above and below. The
+  sheet is walked row by row with that three-row window, and segments are scored in blocks of 256
+  as soon as they are complete: no per-cell feature matrix (~440 bytes per cell) and no segment
+  matrix (~1.8 kB per segment). Rows are split into up to four chunks on parallel threads; a
+  chunk starts one row early and ends one row late for the window, and the context's running
+  column counters start where a single walk would stand (`Context::cursors`). Only row-major
+  sheets (what the readers produce) take this path, and only when the model reads no cell
+  formats; the others use the materialized path (`eval::export::layout_and_features`,
+  `learned::segment_features_where`), which stays the reference.
+- **Tree evaluation** (`learned.rs`, `TreeModel::add_block`). Eight rows walk a tree in lockstep
+  for exactly the tree's depth; leaves point to themselves with a NaN threshold (`x < NaN` is
+  false), so there is no leaf test and the eight loads are independent. Leaf values are added tree
+  by tree in model order, so every class score has the same bits as the plain walk
+  (`TreeModel::scores_reference`).
+- **Rules layout.** `layout::changepoint` stops classifying a block's rows as soon as rows ×
+  columns passes `CP_MAX_WORK` (it used to classify every row first and then drop the result);
+  `l_in_table` uses a sweep over the rows instead of testing every table for every cell.
+- **Values.** The sheet's column-convention vote parses each distinct text once with the default
+  reading and shares it between the decimal vote and the currency evidence (it parsed twice).
+- **Checks.** `learned::equivalence` compares, on one sheet, every segment feature bit for bit,
+  every role, every class score and the final layout of the streamed path against the
+  materialized one, with the rows in 1 and in several chunks; `core/tests/p7_equivalence.rs`
+  runs it over a file list. The golden check (`hedgehog golden`) covers the per-cell feature
+  columns.
+- **Where the time goes.** `HEDGEHOG_TRACE=1` prints each stage with the process peak memory,
+  and indented sub-steps: `layout.totals / blocks / regions / cp_signatures / cp_search / loose`,
+  `M.layout / context / values / totals / layout_totals / stream` (model path) and
+  `build_tables.typing`.
+
 ## Python layer
 
 | Module | Contents |

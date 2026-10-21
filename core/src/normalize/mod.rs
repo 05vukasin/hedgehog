@@ -41,8 +41,9 @@ pub struct Options {
     pub locale: Option<Locale>,
     /// Cell roles from the layout rules only, without the learned row model ([`crate::learned`]).
     pub rules_only: bool,
-    /// Sheets with more cells than this use the rules alone (the model's features take about
-    /// 440 bytes per cell). None: [`DEFAULT_MODEL_MAX_CELLS`].
+    /// Sheets with more cells than this use the rules alone. None: [`DEFAULT_MODEL_MAX_CELLS`].
+    /// (The model's input is streamed, a few dozen bytes per cell on row-major sheets; the limit
+    /// stays where it was so results on huge sheets do not change.)
     pub model_max_cells: Option<usize>,
     /// Stop after this instant: [`try_normalize_workbook`] (and [`normalize_file`], which also
     /// stops reading) returns an error; sheets not started by then are skipped.
