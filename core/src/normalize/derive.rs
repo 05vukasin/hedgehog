@@ -29,8 +29,8 @@ const KEY_WARN_GROUPS: usize = 3;
 /// B78: a text column of names or categories in which some values differ only in case, spaces,
 /// punctuation or diacritics ('Mc Kay' / 'McKay') gets `<name>_key`, every value replaced by the
 /// most frequent spelling of its group, so `GROUP BY "<name>_key"` counts them together; a table
-/// warning names the groups. Not for long free text (more than 60 characters on average) or
-/// columns where most values are distinct (registers of descriptions).
+/// warning names the groups. Only for names and categories: values repeat (at most half of them
+/// distinct) and are short (at most 40 characters on average), not registers of descriptions.
 fn add_key_columns(t: &mut Table) {
     let mut adds: Vec<(usize, Column, String)> = Vec::new();
     for (i, c) in t.columns.iter().enumerate() {
@@ -49,7 +49,7 @@ fn add_key_columns(t: &mut Table) {
                 }
             }
         }
-        if counts.len() < 2 || counts.len() > KEY_MAX_DISTINCT || chars > 60 * n || counts.len() * 10 > n * 9 {
+        if counts.len() < 2 || counts.len() > KEY_MAX_DISTINCT || chars > 40 * n || counts.len() * 2 > n {
             continue;
         }
         // Spellings per key, most frequent first (ties: alphabetical, for determinism).
@@ -77,7 +77,7 @@ fn add_key_columns(t: &mut Table) {
                 other => other.clone(),
             })
             .collect();
-        let name = derived_name(&c.name, "key");
+        let name = format!("{}_key", c.name);
         let shown: Vec<String> = variants
             .iter()
             .take(KEY_WARN_GROUPS)
@@ -267,14 +267,14 @@ mod tests {
     #[test]
     fn spelling_variants_get_a_key_column() {
         let mut t = table(vec![
-            data_col("Trader", text(&["McKay", "Mc Kay", "McKay", "Smith", "SMITH", "Jones", "Smith"]), 0),
-            data_col("Desk", text(&["East", "West", "East", "West", "East", "West", "East"]), 1),
+            data_col("Trader", text(&["McKay", "Mc Kay", "McKay", "Smith", "SMITH", "Jones", "Smith", "Jones", "McKay", "Smith"]), 0),
+            data_col("Desk", text(&["East", "West", "East", "West", "East", "West", "East", "West", "East", "West"]), 1),
         ]);
         add_columns(&mut t);
         let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["Trader", "Trader_key", "Desk"]);
         let keys: Vec<&str> = t.columns[1].values.iter().map(|v| if let Out::Text(s) = v { s.as_str() } else { "" }).collect();
-        assert_eq!(keys, ["McKay", "McKay", "McKay", "Smith", "Smith", "Jones", "Smith"]);
+        assert_eq!(keys, ["McKay", "McKay", "McKay", "Smith", "Smith", "Jones", "Smith", "Jones", "McKay", "Smith"]);
         assert_eq!(t.columns[1].derived_kind(), Some("key"));
         assert!(t.warnings[0].contains("'Smith' / 'SMITH'") && t.warnings[0].contains("\"Trader_key\""), "{:?}", t.warnings);
         // Mostly distinct values (a register of descriptions): no key column.

@@ -620,7 +620,8 @@ fn roll_over_header_dates(row_heads: &mut [Head], grid: &Grid) -> Option<(String
 /// B72: the header rows the layout found, or a fuller header row below them. When every header
 /// row is sparse (a year label "Ano: 2016" over a numbered caption) and a row of header cells
 /// with at least three labels and twice as many as any header row comes before the first data
-/// row, that row (and header rows right under it) is the header; the rows above it are titles.
+/// row, the first such row (and header rows right under it) is the header; the rows above it are
+/// titles. Its labels must be distinct (not a unit row or a legend).
 fn promote_header(
     rows: &[(u32, Vec<usize>)],
     cells: &[crate::model::Cell],
@@ -639,8 +640,16 @@ fn promote_header(
             break;
         }
         let n = filled(idxs);
-        if is_header(idxs) && n >= 3 && n >= 2 * widest.max(1) && idxs.iter().any(|&i| roles[i] == Role::Header) {
+        // Distinct labels (not a unit or legend row: "EURO EURO EURO", "nichts vorhanden" × 6).
+        let distinct: HashSet<String> = idxs.iter().filter_map(|&i| cells[i].value.as_ref().map(display)).filter(|s| !s.is_empty()).collect();
+        if is_header(idxs)
+            && n >= 3
+            && n >= 2 * widest.max(1)
+            && distinct.len() * 10 >= n * 8
+            && idxs.iter().any(|&i| roles[i] == Role::Header)
+        {
             found = Some(k);
+            break;
         }
     }
     let Some(k) = found else { return (htop, body_top) };
@@ -1490,6 +1499,116 @@ fn is_sequence(values: &[Out]) -> bool {
     v.len() >= 2 && (v.windows(2).all(|w| w[0] < w[1]) || v.windows(2).all(|w| w[0] > w[1]))
 }
 
+/// `name` without the " (2)" that makes a duplicate unique.
+fn name_base(name: &str) -> &str {
+    name.rsplit_once(" (").filter(|(_, t)| t.trim_end_matches(')').bytes().all(|b| b.is_ascii_digit())).map_or(name, |(h, _)| h)
+}
+
+/// A column name that does not say what the column holds: `col_F`, or a phrase repeated over the
+/// block's columns ("Mrd. EUR", "Messzahl (1991 = 100) (2)").
+fn weak_name(name: &str, repeated: &HashSet<&str>) -> bool {
+    name.strip_prefix("col_").is_some_and(|l| l.bytes().all(|b| b.is_ascii_uppercase())) || repeated.contains(name_base(name))
+}
+
+/// Names (without the duplicate suffix) used by three or more source columns of `t` (a unit row).
+fn repeated_names(t: &Table) -> HashSet<&str> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for c in t.columns.iter().filter(|c| c.source_col.is_some()) {
+        *seen.entry(name_base(&c.name)).or_default() += 1;
+    }
+    seen.into_iter().filter(|&(_, n)| n >= 3).map(|(s, _)| s).collect()
+}
+
+/// B86: stacked blocks of one statistical table (levels, then "% change on the previous year",
+/// then "% of GDP" or an index) where only the first block has a header: a block below whose
+/// columns are unnamed (`col_D`, or a unit repeated over them) takes the header of the nearest
+/// block above with the same source columns, each name followed by the column's own unit or the
+/// block's phrase or short title (`Finanzierungs-saldo / % des Bruttoinlandsprodukts`). A block
+/// that borrowed passes on the header it borrowed, not its phrase. A table warning says where the
+/// names come from.
+fn borrow_headers(tables: &mut [Table]) {
+    // Per table: its header by source column (own strong names, or what it borrowed).
+    let mut headers: Vec<Option<HashMap<u32, String>>> = Vec::with_capacity(tables.len());
+    for low in 0..tables.len() {
+        let t = &tables[low];
+        let data: Vec<usize> =
+            (0..t.columns.len()).filter(|&i| t.columns[i].source_col.is_some() && t.columns[i].role == ColRole::Data).collect();
+        let rep = repeated_names(t);
+        let strong: HashMap<u32, String> = data
+            .iter()
+            .map(|&i| &t.columns[i])
+            .filter(|c| !weak_name(&c.name, &rep))
+            .filter_map(|c| Some((c.source_col?, c.name.clone())))
+            .collect();
+        let weak = data.len() - strong.len();
+        // Unnamed: (nearly) every column, or all but one (a unit written over the first one).
+        if data.len() < 3 || (weak * 10 < data.len() * 8 && weak + 1 < data.len()) {
+            headers.push((!strong.is_empty()).then_some(strong));
+            continue;
+        }
+        let cols: Vec<u32> = data.iter().filter_map(|&i| t.columns[i].source_col).collect();
+        // The nearest block above on the same sheet with a header for (nearly) all these columns.
+        let donor = (0..low).rev().find(|&up| {
+            let u = &tables[up];
+            u.source_sheet == t.source_sheet
+                && u.rect.bottom < t.rect.top
+                && headers[up].as_ref().is_some_and(|h| cols.iter().filter(|c| h.contains_key(c)).count() * 10 >= cols.len() * 8)
+        });
+        let Some(up) = donor else {
+            headers.push((!strong.is_empty()).then_some(strong));
+            continue;
+        };
+        let header = headers[up].clone().unwrap_or_default();
+        // Each column's phrase: its own name unless it is a column letter, else the block's one
+        // phrase (a unit centred over the block) or its short title.
+        let own: Vec<Option<String>> = data
+            .iter()
+            .map(|&i| Some(name_base(&t.columns[i].name).to_string()).filter(|n| !n.starts_with("col_")))
+            .collect();
+        let phrases: HashSet<&String> = own.iter().flatten().collect();
+        let block = match phrases.len() {
+            1 => phrases.into_iter().next().cloned(),
+            0 => t.title.as_ref().map(|x| x.0.clone()).filter(|x| x.chars().count() <= 60),
+            _ => None,
+        };
+        let years = |c: &Column| {
+            c.values.iter().all(|v| match v {
+                Out::Num(x) => x.fract() == 0.0 && (1900.0..=2100.0).contains(x),
+                Out::Null => true,
+                _ => false,
+            })
+        };
+        let names: Vec<Option<String>> = data
+            .iter()
+            .zip(&own)
+            .map(|(&i, own)| {
+                let c = &t.columns[i];
+                let base = header.get(&c.source_col?)?;
+                let numeric = !matches!(c.dtype, Dtype::Text | Dtype::Empty) && !years(c);
+                Some(match own.as_ref().or(block.as_ref()) {
+                    Some(p) if numeric => format!("{base} / {p}"),
+                    _ => base.clone(),
+                })
+            })
+            .collect();
+        let donor_id = tables[up].id();
+        let t = &mut tables[low];
+        let keep: Vec<&str> = t.columns.iter().enumerate().filter(|(i, _)| !data.contains(i)).map(|(_, c)| c.name.as_str()).collect();
+        let mut seen = UniqueNames::taken(keep);
+        let mut tr = t.transforms;
+        for (&i, name) in data.iter().zip(names) {
+            let name = name.unwrap_or_else(|| std::mem::take(&mut t.columns[i].name));
+            t.columns[i].name = seen.make(name, &mut tr);
+        }
+        t.transforms = tr;
+        t.warnings.push(format!(
+            "column names taken from {donor_id} above (same columns): this block has no header of its own{}",
+            block.map_or(String::new(), |p| format!("; its values are \"{p}\""))
+        ));
+        headers.push(Some(header));
+    }
+}
+
 /// Row labels for tables that have none (side-by-side and stacked grids that share the row labels
 /// of a neighbouring table). A table of numbers only, whose body rows — data rows, total rows and
 /// the blank rows between them — repeat those of a table with label columns row for row, gets
@@ -1963,6 +2082,8 @@ pub(super) fn process_sheet(
             .unwrap_or_else(|| "table".to_string());
         t.sheet = format!("{prefix}{base}");
     }
+    // After the titles: a block's title can be the phrase of its borrowed names.
+    borrow_headers(&mut out.tables[first..]);
 
     let mut counts = CellCounts { total: cells.len(), ..Default::default() };
     for o in &owner {

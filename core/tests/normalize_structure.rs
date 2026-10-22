@@ -130,6 +130,33 @@ fn month_end_headers_roll_over_into_the_next_year() {
 }
 
 #[test]
+fn stacked_blocks_without_a_header_borrow_the_one_above() {
+    let n = normalize("borrow", |ws| {
+        for (c, h) in ["Jahr", "Einnahmen", "Ausgaben", "Finanzierungssaldo"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        for (k, y) in (1991..2026).enumerate() {
+            let r = 1 + k as u32;
+            ws.write_number(r, 0, y as f64).unwrap();
+            for c in 1..4u16 {
+                ws.write_number(r, c, 1000.0 + (k as f64) * 13.5 + c as f64 * 7.25).unwrap();
+            }
+        }
+        ws.write_string(40, 1, "% des Bruttoinlandsprodukts").unwrap();
+        for (k, y) in (1991..2026).enumerate() {
+            let r = 41 + k as u32;
+            ws.write_number(r, 0, y as f64).unwrap();
+            for c in 1..4u16 {
+                ws.write_number(r, c, 40.0 + (k as f64) * 0.37 - c as f64 * 3.1).unwrap();
+            }
+        }
+    });
+    let low = n.tables.iter().find(|t| t.rect.top >= 38).unwrap_or_else(|| panic!("{:?}", n.tables.iter().map(|t| t.rect).collect::<Vec<_>>()));
+    let names = names(low);
+    assert!(names.contains(&"Finanzierungssaldo / % des Bruttoinlandsprodukts") && names.contains(&"Jahr"), "{names:?}");
+}
+
+#[test]
 fn period_labels_get_a_sortable_period_column() {
     let n = normalize("periods", |ws| {
         ws.write_string(0, 0, "Jahr / Monat").unwrap();

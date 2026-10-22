@@ -1474,7 +1474,7 @@
           2.45
         ],
         "abs": true,
-        "ref_sql": "SELECT -col_M FROM T29 WHERE col_A = 2025"
+        "ref_sql": "SELECT -\"Finanzierungs-saldo / % des Bruttoinlandsprodukts\" FROM T29 WHERE Jahr = 2025"
       },
       {
         "id": "population",
