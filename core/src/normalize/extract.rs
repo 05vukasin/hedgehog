@@ -509,16 +509,39 @@ fn sex_blocks(rows: &[(u32, Vec<usize>)], cells: &[crate::model::Cell], r: Rect,
         })
     };
     for col in r.left..=r.right.min(r.left + 3) {
-        let keys: Vec<Option<String>> = body.iter().map(|(_, idxs)| text_at(idxs, col).map(|t| norm_key(&t))).collect();
+        // Each distinct text is keyed once (a column of 600k records repeats a few hundred
+        // values, B90); `keys` holds an index into `distinct`, whose flag says whether the key
+        // is a word of some triple at all.
+        let mut ids: HashMap<&str, u32> = HashMap::new();
+        let mut distinct: Vec<(String, bool)> = Vec::new();
+        let keys: Vec<Option<u32>> = body
+            .iter()
+            .map(|(_, idxs)| {
+                let i = *idxs.iter().find(|&&i| cells[i].col == col)?;
+                let Some(Value::Text(t)) = &cells[i].value else { return None };
+                let t = t.trim();
+                if t.is_empty() {
+                    return None;
+                }
+                Some(*ids.entry(t).or_insert_with(|| {
+                    let k = norm_key(t);
+                    let word = SEX_TRIPLES.iter().any(|tr| tr.contains(&k.as_str()));
+                    distinct.push((k, word));
+                    (distinct.len() - 1) as u32
+                }))
+            })
+            .collect();
+        let word = |k: &Option<u32>| k.is_some_and(|id| distinct[id as usize].1);
         let mut blocks: Vec<(usize, [usize; 3])> = Vec::new(); // (first body index, triple positions m/f/t)
         let mut i = 0;
         while i + 2 < body.len() {
             let three = [&keys[i], &keys[i + 1], &keys[i + 2]];
             let contiguous = body[i + 1].0 == body[i].0 + 1 && body[i + 2].0 == body[i].0 + 2;
-            let hit = contiguous
+            // A triple needs a word on each of the three rows.
+            let hit = (contiguous && three.iter().all(|k| word(k)))
                 .then(|| {
                     SEX_TRIPLES.iter().find_map(|tr| {
-                        let pos = |w: &str| three.iter().position(|k| k.as_deref() == Some(w));
+                        let pos = |w: &str| three.iter().position(|k| k.is_some_and(|id| distinct[id as usize].0 == w));
                         let (m, f, t) = (pos(tr[0])?, pos(tr[1])?, pos(tr[2])?);
                         (m != f && f != t && m != t).then_some([m, f, t])
                     })
@@ -706,8 +729,7 @@ fn build_table(
 ) -> Built {
     let sheet = grid.sheet;
     let cells = &sheet.cells;
-    let r = t.rect;
-    let ncols = (r.right - r.left + 1) as usize;
+    let mut r = t.rect;
     let mut tr = Transforms::default();
     let mut notes: Vec<NoteItem> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
@@ -739,6 +761,19 @@ fn build_table(
     }
     let (htop, body_top) = promote_header(&rows, cells, &lay.roles, t.header_top.clamp(r.top, r.bottom), t.header_rows, r.bottom);
     let nh = (body_top - htop) as usize;
+    // Columns of the rect left and right of every cell of the header and body hold nothing but
+    // a merged area reaching past the data (a full-row merge `A2:XFD2` over six columns, B90):
+    // they are left out, so the table costs its cells, not its rows × the width of a merge.
+    let (first_col, last_col) = rows
+        .iter()
+        .filter(|(row, _)| *row >= htop)
+        .flat_map(|(_, idxs)| idxs.iter().map(|&i| cells[i].col))
+        .fold((u32::MAX, 0), |(a, b), c| (a.min(c), b.max(c)));
+    if first_col <= last_col && (first_col > r.left || last_col < r.right) {
+        tr.add(T::EmptyColumnsRemoved, ((first_col - r.left) + (r.right - last_col)) as usize);
+        (r.left, r.right) = (first_col, last_col);
+    }
+    let ncols = (r.right - r.left + 1) as usize;
 
     // Title rows inside the rect (above the header).
     let mut title: Option<(String, (u32, u32))> = None;
@@ -929,7 +964,8 @@ fn build_table(
             }
         }
     }
-    let sex = sex_blocks(&rows, cells, r, body_top);
+    // The rect's own left edge: the codes are looked for in its first four columns.
+    let sex = sex_blocks(&rows, cells, Rect { left: t.rect.left, ..r }, body_top);
     // B72: the caption of the next table ("Quadros 1.1 | Contagem dos prestadores …") as the last
     // row of this one, after a blank row and without numbers, is a loose title (attached to the
     // table below it in `process_sheet`).
@@ -1436,7 +1472,7 @@ fn build_table(
             n,
             sheet: String::new(),
             source_sheet: sheet.name.clone(),
-            rect: r,
+            rect: t.rect,
             header_top: htop,
             header_rows: t.header_rows,
             title,
