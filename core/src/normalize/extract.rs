@@ -1579,16 +1579,32 @@ fn borrow_headers(tables: &mut [Table]) {
         let header = headers[up].clone().unwrap_or_default();
         // Each column's phrase: its own name unless it is a column letter, else the block's one
         // phrase (a unit centred over the block) or its short title.
-        // A phrase says something: two letters or digits, or a percent sign ("%", "Mrd. EUR"), not
-        // a footnote letter or a slash ("z", "s", "/").
-        let says = |n: &str| n.contains('%') || n.chars().filter(|c| c.is_alphanumeric()).count() >= 2;
-        let own: Vec<Option<String>> = data
+        // A column's own phrase is kept when it is a unit ("Mrd. EUR", "%", "Index (2020 = 100)",
+        // "1 000 Personen"); other names of a headerless block are often its first labels or
+        // footnote letters ("Belgio", "Sport", "z"). One phrase written once over the block
+        // ("% des Bruttoinlandsprodukts") is the block's phrase.
+        let unit = |n: &str| {
+            let l = n.to_lowercase();
+            n.contains('%')
+                || n.bytes().any(|b| b.is_ascii_digit())
+                || l.split(|c: char| !c.is_alphanumeric()).any(|w| {
+                    matches!(
+                        w,
+                        "eur" | "usd" | "chf" | "gbp" | "pln" | "czk" | "sek" | "nok" | "dkk" | "huf" | "rsd" | "mrd" | "mio" | "tsd"
+                            | "euro" | "index" | "indeks" | "indice" | "prozent" | "percent" | "personen" | "anzahl" | "tonnen"
+                            | "kwh" | "gwh" | "twh" | "mwh"
+                    )
+                })
+        };
+        let names: Vec<Option<String>> = data
             .iter()
-            .map(|&i| Some(name_base(&t.columns[i].name).to_string()).filter(|n| !n.starts_with("col_") && says(n)))
+            .map(|&i| Some(name_base(&t.columns[i].name).to_string()).filter(|n| !n.starts_with("col_")))
             .collect();
-        let phrases: HashSet<&String> = own.iter().flatten().collect();
+        let own: Vec<Option<String>> = names.iter().map(|n| n.clone().filter(|n| unit(n))).collect();
+        let phrases: HashSet<&String> = names.iter().flatten().collect();
+        let once = names.iter().flatten().count() == 1;
         let block = match phrases.len() {
-            1 => phrases.into_iter().next().cloned(),
+            1 if once || phrases.iter().all(|p| unit(p)) => phrases.into_iter().next().cloned(),
             0 => t.title.as_ref().map(|x| x.0.clone()).filter(|x| x.chars().count() <= 60),
             _ => None,
         };
