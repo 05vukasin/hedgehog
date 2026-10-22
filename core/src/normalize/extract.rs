@@ -126,7 +126,7 @@ fn is_series_code(t: &str) -> bool {
 /// unterwegs", "Total Energies SE") and that stayed a data row: its keyword candidate is no total
 /// unless its numbers add up, so it is not listed on Totals (where an agent would be told to
 /// exclude it). A name: the total word followed by words that are no total word or year, in a
-/// column of mostly distinct values (names, purposes), not of categories ("Summe der bezogenen
+/// column of many distinct values (names, purposes), not of categories ("Summe der bezogenen
 /// Rohstoffe" once per industry, "Total liabilities" in long-format data), on a row where no
 /// number adds up (`arith_rows`).
 fn record_named_like_a_total(grid: &Grid, cand: &TotalCandidate, t: &Table, arith_rows: &HashSet<u32>) -> bool {
@@ -160,7 +160,7 @@ fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
     if !name {
         return false;
     }
-    // A column of names: most of its texts are distinct.
+    // A column of names or purposes: more than a third of its texts are distinct.
     let mut texts: HashSet<&str> = HashSet::new();
     let mut n = 0usize;
     for &i in grid.col_cells(lc) {
@@ -169,7 +169,7 @@ fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
             n += 1;
         }
     }
-    texts.len() * 2 > n
+    texts.len() * 3 > n
 }
 
 /// A total label recurring this often in its column is a category of long-format data.
