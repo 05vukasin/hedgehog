@@ -430,3 +430,36 @@ fn two_column_summary_beside_a_table_stays_in_a_table() {
     assert_eq!(role(&s, &l, 2, 0), Role::Data);
     assert_eq!(role(&s, &l, 2, 1), Role::Data);
 }
+
+/// ABS data cube (EQ08, B90): the agency merged over A:L, the title merged over the whole row
+/// (`A2:XFD2`), the release line merged over A:L with the copyright in N, then a six-column
+/// header and records. The lines are titles, not parent labels over the header (they reach past
+/// its columns); as parents they made the table 16,384 columns wide.
+#[test]
+fn full_row_merged_title_lines_stay_titles() {
+    let s = fixture("full_row_merge", |ws| {
+        let f = Format::new();
+        ws.merge_range(0, 0, 0, 11, "Australian Bureau of Statistics", &f).unwrap();
+        ws.merge_range(1, 0, 1, 16_383, "6291.0.55.001 - EQ08 - Employed persons by Occupation, Sex, State", &f).unwrap();
+        ws.merge_range(2, 0, 2, 11, "Released at 11.30 am (Canberra time) 23 December 2021", &f).unwrap();
+        ws.write_string(2, 13, "© Commonwealth of Australia 2021").unwrap();
+        for (j, h) in ["Midquarter month", "Sex", "State", "Occupation", "Employed total ('000)", "Hours ('000)"].iter().enumerate() {
+            ws.write_string(3, j as u16, *h).unwrap();
+        }
+        for i in 0..30u32 {
+            let r = 4 + i;
+            ws.write_number(r, 0, 31_000.0 + 91.0 * (i / 6) as f64).unwrap();
+            ws.write_string(r, 1, if i % 2 == 0 { "Males" } else { "Females" }).unwrap();
+            ws.write_string(r, 2, ["New South Wales", "Victoria", "Queensland"][(i % 3) as usize]).unwrap();
+            ws.write_string(r, 3, format!("Occupation {}", i % 5)).unwrap();
+            ws.write_number(r, 4, 1.5 + i as f64 * 0.37).unwrap();
+            ws.write_number(r, 5, 20.25 + i as f64 * 1.13).unwrap();
+        }
+    });
+    let l = run(&s);
+    assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
+    let t = &l.tables[0];
+    assert_eq!((t.header_top, t.header_rows), (3, 1), "{t:?}");
+    assert_eq!(role(&s, &l, 3, 0), Role::Header);
+    assert_eq!(role(&s, &l, 5, 4), Role::Data);
+}

@@ -315,8 +315,11 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
                 PARENT_HEADER_ROWS
                     && k + 2 < end
                     // two labels or more, or one merged over a group of columns (`2019` over
-                    // `Population | Area | Births`, B39)
+                    // `Population | Area | Births`, B39), and none past the columns below (title
+                    // lines merged over the whole row, `A2:XFD2`, or a copyright line right of a
+                    // six-column header are no group labels, B90)
                     && (rows[k].n() >= 2 || rows[k].filled().next().is_some_and(|e| e.right > e.left))
+                    && rows[k].filled().all(|e| e.right <= rows[k + 1].right())
                     && rows[k].n_measure() == 0
                     && rows[k].n_text() + (rows[k].n_num() - rows[k].n_measure()) == rows[k].n()
                     && rows[k + 1].row == rows[k].row + 1
