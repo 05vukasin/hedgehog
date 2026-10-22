@@ -160,7 +160,7 @@ fn mcp_session_end_to_end() {
     assert!(cat.contains("TIME 2023"), "{cat}");
     assert!(cat.contains("T1 "), "{cat}");
     assert!(cat.contains("'Total'@8"), "total row label and row in the catalog:\n{cat}");
-    assert!(cat.contains("\"Revenue Q1\"[number"), "{cat}");
+    assert!(cat.contains("\"Revenue Q1\"[210..2850]"), "{cat}");
     // a small table: its rows inline, the total row marked; how to select total rows
     assert!(cat.contains("all 5 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):\n    City,Units,Revenue Q1,Revenue Q2,_row_type\n    Beograd,10,1200.5,1300,data\n"), "{cat}");
     assert!(cat.contains("\n    Total,28,2850.5,3140.25,total\n"), "{cat}");
