@@ -125,10 +125,13 @@ fn is_series_code(t: &str) -> bool {
 /// B81: a register record whose name starts with a total word ("TOTAL RECRUIT LTD", "Zusammen
 /// unterwegs", "Total Energies SE") and that stayed a data row: its keyword candidate is no total
 /// unless its numbers add up, so it is not listed on Totals (where an agent would be told to
-/// exclude it). A name: the total word followed by words that are no total word or year.
-fn record_named_like_a_total(grid: &Grid, cand: &TotalCandidate, t: &Table) -> bool {
+/// exclude it). A name: the total word followed by words that are no total word or year, in a
+/// column of mostly distinct values (names, purposes), not of categories ("Summe der bezogenen
+/// Rohstoffe" once per industry, "Total liabilities" in long-format data), on a row where no
+/// number adds up (`arith_rows`).
+fn record_named_like_a_total(grid: &Grid, cand: &TotalCandidate, t: &Table, arith_rows: &HashSet<u32>) -> bool {
     let Some(i) = t.src_rows.iter().position(|&r| r == cand.row) else { return false };
-    t.row_types[i] == RowType::Data && named_like_a_total(grid, cand)
+    t.row_types[i] == RowType::Data && !arith_rows.contains(&cand.row) && named_like_a_total(grid, cand)
 }
 
 /// The keyword candidate of a register record named with a leading total word, without
@@ -151,9 +154,22 @@ fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
     };
     let words: Vec<&str> = label.split_whitespace().collect();
     let Some((first, rest)) = words.split_first() else { return false };
-    !rest.is_empty()
+    let name = !rest.is_empty()
         && totals::total_keyword(first).is_some()
-        && rest.iter().all(|w| totals::total_keyword(w).is_none() && !w.trim_matches(|c: char| !c.is_alphanumeric()).bytes().all(|b| b.is_ascii_digit()))
+        && rest.iter().all(|w| totals::total_keyword(w).is_none() && !w.trim_matches(|c: char| !c.is_alphanumeric()).bytes().all(|b| b.is_ascii_digit()));
+    if !name {
+        return false;
+    }
+    // A column of names: most of its texts are distinct.
+    let mut texts: HashSet<&str> = HashSet::new();
+    let mut n = 0usize;
+    for &i in grid.col_cells(lc) {
+        if let Some(Value::Text(x)) = &sheet.cells[i as usize].value {
+            texts.insert(x.as_str());
+            n += 1;
+        }
+    }
+    texts.len() * 2 > n
 }
 
 /// A total label recurring this often in its column is a category of long-format data.
@@ -646,6 +662,8 @@ fn promote_header(
             && n >= 3
             && n >= 2 * widest.max(1)
             && distinct.len() * 10 >= n * 8
+            // Words, not a legend of symbols ("– | = | nichts vorhanden").
+            && distinct.iter().filter(|t| t.chars().filter(|c| c.is_alphabetic()).count() >= 2).count() * 10 >= n * 8
             && idxs.iter().any(|&i| roles[i] == Role::Header)
         {
             found = Some(k);
@@ -1780,6 +1798,8 @@ pub(super) fn process_sheet(
     };
 
     // Totals: detected candidates with their verification.
+    let arith_rows: HashSet<u32> =
+        cands.iter().filter(|c| c.evidence.contains(&Evidence::ArithmeticMatch)).map(|c| c.row).collect();
     let mut items: Vec<TotalItem> = Vec::new();
     let mut listed: HashSet<(u32, u32)> = HashSet::new();
     for (cand, check) in cands.iter().zip(&checks) {
@@ -1787,7 +1807,7 @@ pub(super) fn process_sheet(
         let kept_in_data = k.is_some_and(|k| kept[k].contains(&cand.row));
         if let Some(k) = k
             && kept_in_data
-            && record_named_like_a_total(&grid, cand, &tables[k])
+            && record_named_like_a_total(&grid, cand, &tables[k], &arith_rows)
         {
             continue;
         }
