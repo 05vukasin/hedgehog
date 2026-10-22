@@ -12,9 +12,8 @@ use crate::model::{Cell, Rect, Sheet};
 
 pub struct Grid<'a> {
     pub sheet: &'a Sheet,
-    /// (row, col) packed into a u64 → index into `sheet.cells`. For duplicate positions the last
-    /// cell wins.
-    index: FxHashMap<u64, u32>,
+    /// (row, col) → index into `sheet.cells`. For duplicate positions the last cell wins.
+    index: CellIndex,
     merges: MergeIndex,
     used: Option<Rect>,
     /// Built on first use: per row / per column, the cell indices sorted by column / row.
@@ -32,10 +31,7 @@ fn key(row: u32, col: u32) -> u64 {
 
 impl<'a> Grid<'a> {
     pub fn new(sheet: &'a Sheet) -> Self {
-        let mut index = FxHashMap::with_capacity_and_hasher(sheet.cells.len(), Default::default());
-        for (i, c) in sheet.cells.iter().enumerate() {
-            index.insert(key(c.row, c.col), i as u32);
-        }
+        let index = CellIndex::new(&sheet.cells);
         Grid {
             sheet,
             index,
@@ -60,13 +56,13 @@ impl<'a> Grid<'a> {
     #[inline]
     pub fn cell(&self, row: u32, col: u32) -> Option<&'a Cell> {
         let sheet: &'a Sheet = self.sheet;
-        self.index.get(&key(row, col)).map(|&i| &sheet.cells[i as usize])
+        self.index.get(&sheet.cells, row, col).map(|i| &sheet.cells[i as usize])
     }
 
     /// Index of the cell at (row, col) in `sheet.cells` — the row index into [`crate::Features`].
     #[inline]
     pub fn cell_index(&self, row: u32, col: u32) -> Option<usize> {
-        self.index.get(&key(row, col)).map(|&i| i as usize)
+        self.index.get(&self.sheet.cells, row, col).map(|i| i as usize)
     }
 
     /// Merged area covering (row, col), if any. For overlapping (malformed) merges, the one listed
@@ -85,7 +81,7 @@ impl<'a> Grid<'a> {
     /// True if the position holds a value/formula or is covered by a merged area.
     #[inline]
     pub fn is_filled(&self, row: u32, col: u32) -> bool {
-        self.index.contains_key(&key(row, col)) || self.merges.at(row, col).is_some()
+        self.index.get(&self.sheet.cells, row, col).is_some() || self.merges.at(row, col).is_some()
     }
 
     /// Bounding box of cells and merged areas ([`Sheet::used_range`]), computed once.
@@ -120,8 +116,8 @@ impl<'a> Grid<'a> {
             let mut out = Vec::new();
             for r in rect.top..=rect.bottom {
                 for c in rect.left..=rect.right {
-                    if let Some(i) = self.index.get(&key(r, c)) {
-                        out.push(*i);
+                    if let Some(i) = self.index.get(&self.sheet.cells, r, c) {
+                        out.push(i);
                     }
                 }
             }
@@ -145,6 +141,56 @@ impl<'a> Grid<'a> {
     }
 }
 
+/// Position → cell lookup. Readers list cells row by row, left to right, each position once: then
+/// a cell is found by its row's range of `sheet.cells` and a binary search on the column (a few
+/// bytes per row instead of a hash table of ~32 bytes per cell). Cells in any other order (or with
+/// duplicate positions) use a hash table, where the last cell of a position wins.
+enum CellIndex {
+    /// `starts[r - first]..starts[r - first + 1]` are the cells of row `r`.
+    Sorted { first: u32, starts: Vec<u32> },
+    Hashed(FxHashMap<u64, u32>),
+}
+
+impl CellIndex {
+    fn new(cells: &[Cell]) -> CellIndex {
+        let sorted = cells.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col));
+        if sorted && let (Some(a), Some(b)) = (cells.first(), cells.last()) {
+            // One entry per row of the span: at most a few MB even for a sheet's last row.
+            let (first, last) = (a.row, b.row);
+            let mut starts = Vec::with_capacity((last - first) as usize + 2);
+            let mut i = 0usize;
+            for r in first..=last {
+                starts.push(i as u32);
+                while i < cells.len() && cells[i].row == r {
+                    i += 1;
+                }
+            }
+            starts.push(cells.len() as u32);
+            return CellIndex::Sorted { first, starts };
+        }
+        let mut index = FxHashMap::with_capacity_and_hasher(cells.len(), Default::default());
+        for (i, c) in cells.iter().enumerate() {
+            index.insert(key(c.row, c.col), i as u32);
+        }
+        CellIndex::Hashed(index)
+    }
+
+    #[inline]
+    fn get(&self, cells: &[Cell], row: u32, col: u32) -> Option<u32> {
+        match self {
+            CellIndex::Sorted { first, starts } => {
+                let r = row.checked_sub(*first)? as usize;
+                if r + 1 >= starts.len() {
+                    return None;
+                }
+                let (a, b) = (starts[r] as usize, starts[r + 1] as usize);
+                cells[a..b].binary_search_by_key(&col, |c| c.col).ok().map(|k| (a + k) as u32)
+            }
+            CellIndex::Hashed(index) => index.get(&key(row, col)).copied(),
+        }
+    }
+}
+
 /// Cell indices grouped by a major coordinate (row or column), sorted by the minor one.
 struct Lines {
     order: Vec<u32>,
@@ -161,7 +207,7 @@ impl Lines {
         let mut order: Vec<u32> = (0..cells.len() as u32)
             .filter(|&i| {
                 let c = &cells[i as usize];
-                grid.index.get(&key(c.row, c.col)) == Some(&i)
+                grid.index.get(cells, c.row, c.col) == Some(i)
             })
             .collect();
         let sorted = order.windows(2).all(|w| major_minor(&cells[w[0] as usize]) < major_minor(&cells[w[1] as usize]));

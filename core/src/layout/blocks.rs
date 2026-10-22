@@ -228,25 +228,44 @@ fn components(grid: &Grid) -> Vec<Vec<Entry>> {
         }
     }
     let entries = entries_of(grid);
-    let mut groups: HashMap<u32, Vec<Entry>> = HashMap::new();
-    let mut order = Vec::new();
-    for e in entries {
-        let node = match e.cell {
-            Some(i) => i as u32,
-            None => merge_node[&(e.row, e.left)],
-        };
-        let root = dsu.find(node);
-        let g = groups.entry(root).or_insert_with(|| {
-            order.push(root);
-            Vec::new()
-        });
-        g.push(e);
+    // Each entry's component, numbered in order of first appearance; then the entries are moved
+    // into one vector per component, sized exactly (no growth by doubling on large sheets).
+    let mut number: HashMap<u32, u32> = HashMap::new();
+    let mut sizes: Vec<usize> = Vec::new();
+    let group_of: Vec<u32> = entries
+        .iter()
+        .map(|e| {
+            let node = match e.cell {
+                Some(i) => i as u32,
+                None => merge_node[&(e.row, e.left)],
+            };
+            let root = dsu.find(node);
+            let next = sizes.len() as u32;
+            let g = *number.entry(root).or_insert(next);
+            if g == next {
+                sizes.push(0);
+            }
+            sizes[g as usize] += 1;
+            g
+        })
+        .collect();
+    drop(dsu);
+    if sizes.len() == 1 {
+        return vec![entries];
     }
-    order.into_iter().map(|r| groups.remove(&r).unwrap()).collect()
+    let mut groups: Vec<Vec<Entry>> = sizes.iter().map(|&n| Vec::with_capacity(n)).collect();
+    for (e, g) in entries.into_iter().zip(group_of) {
+        groups[g as usize].push(e);
+    }
+    groups
 }
 
 fn make_region(mut entries: Vec<Entry>) -> Region {
-    entries.sort_by_key(|e| (e.row, e.left));
+    // A stable sort leaves sorted entries as they are; most components come sorted already (the
+    // readers list cells row by row), and the check spares the sort's scratch buffer.
+    if !entries.is_sorted_by_key(|e| (e.row, e.left)) {
+        entries.sort_by_key(|e| (e.row, e.left));
+    }
     let mut rect = Rect { top: u32::MAX, left: u32::MAX, bottom: 0, right: 0 };
     for e in &entries {
         rect.top = rect.top.min(e.row);
@@ -254,12 +273,21 @@ fn make_region(mut entries: Vec<Entry>) -> Region {
         rect.bottom = rect.bottom.max(e.bottom);
         rect.right = rect.right.max(e.right);
     }
-    let mut rows: Vec<Row> = Vec::new();
-    for e in entries {
-        match rows.last_mut() {
-            Some(r) if r.row == e.row => r.entries.push(e),
-            _ => rows.push(Row { row: e.row, entries: vec![e] }),
+    // Rows sized exactly: (row, number of entries) first.
+    let mut lens: Vec<(u32, usize)> = Vec::new();
+    for e in &entries {
+        match lens.last_mut() {
+            Some(l) if l.0 == e.row => l.1 += 1,
+            _ => lens.push((e.row, 1)),
         }
+    }
+    let mut rows: Vec<Row> = lens.iter().map(|&(row, n)| Row { row, entries: Vec::with_capacity(n) }).collect();
+    let mut k = 0;
+    for e in entries {
+        if rows[k].entries.len() == lens[k].1 {
+            k += 1;
+        }
+        rows[k].entries.push(e);
     }
     Region { rect, rows }
 }

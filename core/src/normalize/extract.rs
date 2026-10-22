@@ -2,18 +2,18 @@
 //! every other filled cell → `NoteItem`s. Each source cell ends up in exactly one place
 //! (table, Totals or Notes), which `CellCounts` reports.
 
-use std::cell::OnceCell;
+use std::sync::OnceLock;
 use std::collections::{HashMap, HashSet};
 
 use super::headers::{clean_header, is_nav_link, not_additive};
-use super::typing::{Slot, display, fit, type_column};
+use super::typing::{Slot, Typed, display, fit, type_column};
 use super::{
     CellCounts, ColRole, Column, Dtype, Normalized, NoteItem, Options, Out, RowType, SheetInfo, T, Table, TotalItem,
     Transforms,
 };
 use crate::analysis::{DetectedTable, Role, SheetLayout};
 use crate::grid::Grid;
-use crate::model::{Rect, Sheet, Value, a1};
+use crate::model::{Rect, Value, a1};
 use crate::totals::{
     self, CheckReason, Direction, Evidence, KeywordLevel, NonSumKind, TotalCandidate, TotalCheck, TotalLevel, TotalOrigin,
 };
@@ -736,7 +736,7 @@ fn build_table(
     lay: &SheetLayout,
     t: &DetectedTable,
     n: usize,
-    sheet_hints: &OnceCell<HashMap<u32, ColumnHints>>,
+    sheet_hints: &OnceLock<HashMap<u32, ColumnHints>>,
     row_total: &HashMap<u32, RowTotal>,
     overrides: &Overrides,
     opts: &Options,
@@ -1330,8 +1330,10 @@ fn build_table(
     }
 
     // --- Columns -----------------------------------------------------------------------------
-    let mut data_cols: Vec<Column> = Vec::new();
-    let mut col_warnings = Vec::new();
+    // Names first (in column order), then every column typed (on parallel threads for a large
+    // table: each column's typing reads only its own values and the sheet's shared hints, B120),
+    // then the columns assembled in order.
+    let mut heads: Vec<(Vec<(String, (u32, u32))>, String)> = Vec::with_capacity(ncols);
     for k in 0..ncols {
         let col = r.left + k as u32;
         let mut parts: Vec<(String, (u32, u32))> = Vec::new();
@@ -1359,6 +1361,10 @@ fn build_table(
         } else {
             format!("col_{}", col_letter(col))
         };
+        heads.push((parts, label));
+    }
+    let type_one = |k: usize| -> (Typed, Transforms) {
+        let col = r.left + k as u32;
         let first = opts.locale.map(|l| l.hints()).unwrap_or_default();
         let mut refine = |sample: &[&str], ambiguous: bool, native: &NativeNumbers| -> ColumnHints {
             let inferred = infer_column_with(sample.iter().copied(), native);
@@ -1379,7 +1385,18 @@ fn build_table(
             }
             h
         };
-        let typed = type_column(&label, col, &slots[k], &src_rows, first, &mut refine, &mut tr);
+        let mut tr = Transforms::default();
+        let typed = type_column(&heads[k].1, col, &slots[k], &src_rows, first, &mut refine, &mut tr);
+        (typed, tr)
+    };
+    let t_typing = std::time::Instant::now();
+    let typed_cols: Vec<(Typed, Transforms)> = in_parallel(ncols, ncols * src_rows.len() >= PARALLEL_TYPING_MIN_VALUES, type_one);
+    super::typing::add_typing_time(t_typing.elapsed());
+    let mut data_cols: Vec<Column> = Vec::new();
+    let mut col_warnings = Vec::new();
+    for (k, ((parts, label), (typed, col_tr))) in heads.into_iter().zip(typed_cols).enumerate() {
+        let col = r.left + k as u32;
+        tr.merge(&col_tr);
         if parts.is_empty() && typed.dtype == Dtype::Empty {
             tr.add(T::EmptyColumnsRemoved, 1);
             continue;
@@ -1789,13 +1806,46 @@ fn copy_row_labels(tables: &mut [Table], layouts: &[Vec<(u32, bool)>]) {
     }
 }
 
-pub(super) fn process_sheet(
-    sheet: &Sheet,
-    opts: &Options,
-    layout: super::SheetAnalysis,
-    out: &mut Normalized,
-) {
-    let grid = Grid::new(sheet);
+/// Tables with at least this many values (columns × rows) type their columns on parallel threads.
+const PARALLEL_TYPING_MIN_VALUES: usize = 200_000;
+/// Threads for typing one table's columns.
+const TYPING_THREADS: usize = 4;
+
+/// `f(0), f(1), …, f(n - 1)` in this order; on up to [`TYPING_THREADS`] threads when `parallel`
+/// (each index is taken by one thread; the results are put back in index order).
+fn in_parallel<R: Send>(n: usize, parallel: bool, f: impl Fn(usize) -> R + Sync) -> Vec<R> {
+    let threads = if parallel { std::thread::available_parallelism().map_or(1, |x| x.get()).min(TYPING_THREADS).min(n) } else { 1 };
+    if threads <= 1 {
+        return (0..n).map(f).collect();
+    }
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let done: Vec<Vec<(usize, R)>> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..threads)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut mine = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if i >= n {
+                            break;
+                        }
+                        mine.push((i, f(i)));
+                    }
+                    mine
+                })
+            })
+            .collect();
+        workers.into_iter().map(|w| w.join().unwrap_or_else(|e| std::panic::resume_unwind(e))).collect()
+    });
+    let mut slots: Vec<Option<R>> = (0..n).map(|_| None).collect();
+    for (i, r) in done.into_iter().flatten() {
+        slots[i] = Some(r);
+    }
+    slots.into_iter().map(|r| r.expect("every index computed")).collect()
+}
+
+pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAnalysis, out: &mut Normalized) {
+    let sheet = grid.sheet;
     let (lay, warning, detection) = layout;
     if let Some(d) = detection {
         grid.set_totals(d);
@@ -1828,7 +1878,7 @@ pub(super) fn process_sheet(
     out.warnings.extend(warning);
     super::trace("layout", t0);
     let mut owner = vec![OWN_NONE; cells.len()];
-    let sheet_hints = OnceCell::new();
+    let sheet_hints = OnceLock::new();
     let det = totals::detection(&grid);
     let cands = &det.candidates;
     super::trace("totals_detect.detection", t0);
