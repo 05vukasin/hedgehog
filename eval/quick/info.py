@@ -27,7 +27,8 @@ QBASE = HERE / "info_question.tsv"
 # Small and medium files (the 4.5M-cell and multi-million-cell cases stay in the full scoreboard).
 CASES = ["at-pension", "enron-henry-hub", "de-truck-toll", "enron-om-2plants", "enron-newco-cashflow",
          "enron-deals-pl", "enron-storage-inventory", "at-salzburg-budget", "ms-financial-sample",
-         "nw-orders", "at-cpi", "wb-gdp-wide", "rs-pancevo-budget", "at-tourism-2months", "rs-geodetic-licenses"]
+         "nw-orders", "at-cpi", "wb-gdp-wide", "rs-pancevo-budget", "at-tourism-2months", "rs-geodetic-licenses",
+         "pt-social-report", "uk-ons-labour"]
 
 
 Rows = dict[str, tuple[int, int, int, int, int]]

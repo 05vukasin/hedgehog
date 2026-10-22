@@ -1,0 +1,86 @@
+# snapshot: total_codes_grouped_names_rolling
+
+## open_file social.xlsx
+FILE social.xlsx · 1 sheet · 70 cells (100% in tables) · 1 table
+TIME no dates or periods found
+T1  ← 'Quadro 1'!A1:E16 · 8 rows (+7 total rows only in T1_all)
+    columns (5): "Relação Jurídica" Sexo "Técnico"[3..2170] Outros[0..279] TOTAL[3..2449]
+    rows mix measures by "Relação Jurídica" — filter before aggregating
+    total rows: SELECT … FROM T1_all WHERE _row_type IN ('subtotal', 'total') — labels in "Relação Jurídica"/Sexo: grand total 'Total' by Sexo @2–4: M 910 · F 1,539 · T 2,449 in TOTAL (T = M + F: don't add); subtotals (_row_type 'subtotal') Sexo 'T' @7/10/13/16
+    all 15 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
+    Relação Jurídica,Sexo,Técnico,Outros,TOTAL,_row_type
+    Total,M,727,183,910,total
+    Total,F,1443,96,1539,total
+    Total,T,2170,279,2449,total
+    Comissão,M,8,4,12,data
+    Comissão,F,6,7,13,data
+    Comissão,T,14,11,25,subtotal
+    CTFP indeterminado,M,712,152,864,data
+    CTFP indeterminado,F,1429,87,1516,data
+    CTFP indeterminado,T,2141,239,2380,subtotal
+    CTFP certo,M,3,0,3,data
+    CTFP certo,F,5,1,6,data
+    CTFP certo,T,8,1,9,subtotal
+    Outras,M,4,27,31,data
+    Outras,F,3,1,4,data
+    Outras,T,7,28,35,subtotal
+TOTALS 15 ok, 0 mismatch, 0 unknown (details: totals)
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
+
+## describe_table social.xlsx T1
+T1 = 'Quadro 1'!A1:E16 · 8 data rows · confidence 1.00
+header: 'Quadro 1'!A1:E1 (1 row; names below are flattened from it)
+total rows (only in T1_all, _row_type, unless marked): grand total 'Total' by Sexo @2–4: M 910 · F 1,539 · T 2,449 in TOTAL (T = M + F: don't add); subtotals (_row_type 'subtotal') Sexo 'T' @7/10/13/16
+rows mix measures by "Relação Jurídica" — filter before aggregating
+columns (name | dtype · type | unit | nulls | distinct | min..max, example or all values | source column ← header cells):
+  "Relação Jurídica" | text · dim |  | 0 | 5 | "Comissão" | "CTFP indeterminado" | "CTFP certo" | "Outras" | A ← A1 "Relação Jurídica"
+  Sexo | text · dim |  | 0 | 3 | "M" | "F" | B ← B1 "Sexo"
+  "Técnico" | integer · mixed |  | 0 | 13 | 3..2170 | C ← C1 "Técnico"
+  Outros | integer · mixed |  | 0 | 13 | 0..279 | D ← D1 "Outros"
+  TOTAL | integer · mixed |  | 0 | 15 | 3..2449 | E ← E1 "TOTAL"
+first 5 rows:
+Relação Jurídica,Sexo,Técnico,Outros,TOTAL,_src_row
+Comissão,M,8,4,12,5
+Comissão,F,6,7,13,6
+CTFP indeterminado,M,712,152,864,8
+CTFP indeterminado,F,1429,87,1516,9
+CTFP certo,M,3,0,3,11
+
+## query social.xlsx: SELECT SUM(TOTAL) FROM T1
+SUM(TOTAL)
+2449
+(1 row)
+
+## query social.xlsx: SELECT SUM(TOTAL) FROM T1_all WHERE _row_type = 'total'
+SUM(TOTAL)
+4898
+(1 row)
+
+## open_file refunds.csv
+FILE refunds.csv · 1 sheet · 36 cells (100% in tables) · 1 table
+TIME 2026-01–2026-10 (month, from columns T1.Period, T1.Period_period)
+T1  ← refunds!A1:D9 · 8 rows
+    columns (5): Period Period_period "Refund / Armed forces, 2017"[100..107] "Refund / Fire brigades, 2017"[50..64] Rate[rate 4..4.7]
+    periods: rolling 3-month windows, 1-month step — they overlap; the previous non-overlapping window is 3 rows earlier (latest Period 'Aug-Oct 2026' = Period_period 2026-08/2026-10; the one before it without overlap: 'May-Jul 2026')
+    do not sum: Rate (rate) — use AVG, a weighted mean or the file's total
+    all 8 rows (CSV):
+    Period,Period_period,"Refund / Armed forces, 2017","Refund / Fire brigades, 2017",Rate
+    Jan-Mar 2026,2026-01/2026-03,100,50,4
+    Feb-Apr 2026,2026-02/2026-04,101,52,4.1
+    Mar-May 2026,2026-03/2026-05,102,54,4.2
+    Apr-Jun 2026,2026-04/2026-06,103,56,4.3
+    May-Jul 2026,2026-05/2026-07,104,58,4.4
+    Jun-Aug 2026,2026-06/2026-08,105,60,4.5
+    Jul-Sep 2026,2026-07/2026-09,106,62,4.6
+    Aug-Oct 2026,2026-08/2026-10,107,64,4.7
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
+FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = social.xlsx (T1), f2 = refunds.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
+
+## query refunds.csv: SELECT SUM("Refund / {Armed forces, 2017}") AS armed FROM T1
+armed
+828
+(1 row)
+note: read "Refund / {Armed forces, 2017}" as "Refund / Armed forces, 2017" ({…} in the catalog groups column names; write each name in full)
+
+## query refunds.csv: SELECT SUM("Refund / Armed forces 2017") FROM T1
+ERROR: SQL error: no such column: "Refund / Armed forces 2017" (at character 11) — did you mean T1."Refund / Armed forces, 2017"? (quote names with double quotes)

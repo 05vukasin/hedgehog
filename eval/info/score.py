@@ -200,6 +200,53 @@ TRAP_CHECKS: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+# Naive-query traps (B160–B162): for a fact, the query an agent writes first, and what keeps it
+# from a wrong answer. A trap passes when that query gives the right value on hedgehog's views, or
+# when the catalog warns about it (`warn`, a regex; None: only the right value counts). They run in
+# the case's session (`naive:<k>`) and are listed with the trap checks.
+NAIVE_TRAPS: dict[str, list[dict]] = {
+    "pt-social-report": [
+        {"what": "workers: SUM over T1_all's total rows adds Sexo M + F + T (twice the workers)",
+         "sql": "SELECT SUM(TOTAL) FROM T1_all WHERE _row_type = 'total'", "want": 7478,
+         "warn": r"(?m)^T1 [^\n]*\bT'? = M \+ F"},
+        {"what": "service providers: SUM over T2_all's total rows (M + F + T)",
+         "sql": "SELECT SUM(Total) FROM T2_all WHERE _row_type = 'total'", "want": 560,
+         "warn": r"(?m)^T2 [^\n]*\bT'? = M \+ F"},
+        {"what": "workers: SUM over the data view T1 is right", "sql": "SELECT SUM(TOTAL) FROM T1", "want": 7478, "warn": None},
+    ],
+    "pt-tax-benefits": [
+        {"what": "a column name copied in the catalog's grouped form a / {b} works in SQL",
+         "sql": "SELECT COUNT(*) FROM T7 WHERE \"RESTITUIÇÃO DO IMPOSTO / {Associações e Corpos Bombeiros - DL n.º 84/2017, "
+                "de 21/07}\" > 0", "want": 414, "warn": None},
+    ],
+    "uk-ons-labour": [
+        {"what": "previous non-overlapping 3-month period: the row before the latest overlaps it (rolling windows)",
+         "sql": "SELECT col_A FROM T2 ORDER BY period DESC LIMIT 1 OFFSET 1", "want": "Feb-Apr 2026",
+         "warn": r"periods: rolling 3-month windows[^\n]*non-overlapping[^\n]*'Feb-Apr 2026'"},
+    ],
+    "enron-henry-hub": [
+        {"what": "January day with the highest receipts: SUM over T3_long_all counts the total rows too",
+         "sql": "SELECT SUM(value) AS v FROM T3_long_all WHERE col_B = 'Receipts HH' GROUP BY period ORDER BY v DESC LIMIT 1",
+         "want": 606356, "warn": r"sum T3_long; T3_long_all adds the total rows"},
+    ],
+}
+
+
+def naive_checks(case: str, text: str, session: dict[str, str]) -> list[dict]:
+    """The case's naive-query traps: ok when the naive query is right or the catalog warns."""
+    out = []
+    for k, t in enumerate(NAIVE_TRAPS.get(case, [])):
+        v = result_value(session.get(f"naive:{k}", ""))
+        if isinstance(t["want"], str):
+            right = isinstance(v, str) and v.strip() == t["want"]
+        else:
+            right = isinstance(v, float) and abs(v - t["want"]) <= 1e-6 * max(1.0, abs(t["want"]))
+        warned = bool(t["warn"]) and re.search(t["warn"], text) is not None
+        how = "the naive query is right" if right else "the catalog warns" if warned else f"wrong: the naive query gives {v!r}"
+        out.append({"what": "naive query: " + t["what"], "ok": right or warned, "how": how})
+    return out
+
+
 _TRAP_WORDS = (("do not sum:", "nosum"), ("signs:", "signs"), ("rows mix measures", "mixed"),
                ("different measures", "measures"), ("units:", "units"), ("amounts in ", "units"),
                ("COUNT(DISTINCT", "distinct"), ("counts by this date leave them out", "datecount"),
@@ -244,8 +291,9 @@ def trap_facts(text: str) -> list[str]:
     return sorted(out)
 
 
-def trap_checks(case: str, text: str) -> list[dict]:
-    return [{"what": w, "ok": re.search(rx, text) is not None} for w, rx in TRAP_CHECKS.get(case, [])]
+def trap_checks(case: str, text: str, session: dict[str, str] | None = None) -> list[dict]:
+    return ([{"what": w, "ok": re.search(rx, text) is not None} for w, rx in TRAP_CHECKS.get(case, [])]
+            + naive_checks(case, text, session or {}))
 
 
 # Parts of a line, ablated like kinds: (the line kind they live in, the pattern removed).
@@ -846,6 +894,8 @@ def plan(case: dict) -> list[tuple[str, tuple[str, dict]]]:
         if "alt" in probes.get(ch["id"], {}):
             alt = probes[ch["id"]]["alt"]
             calls.append((f"alt:{ch['id']}", ("query", {"path": alt.get("file", case["file"]), "sql": alt["sql"], "limit": 5})))
+    for k, t in enumerate(NAIVE_TRAPS.get(case["id"], [])):
+        calls.append((f"naive:{k}", ("query", {"path": case["file"], "sql": t["sql"], "limit": 5})))
     return calls
 
 
@@ -1119,7 +1169,7 @@ def main() -> None:
                         "tokens_by_kind": by_kind, "tokens_by_segment": by_seg, "checks": checks,
                         "traps": sorted({f"f{k}:{x}" if len(catalogs) > 1 else x
                                          for k, cat in enumerate(catalogs, 1) for x in trap_facts(cat)}),
-                        "trap_checks": trap_checks(c["id"], text),
+                        "trap_checks": trap_checks(c["id"], text, session),
                         "other_lines": [l for l, k in zip(lines, kinds) if k == "other" and l.strip()][:5]})
         n_ok = sum(x["cat"] in "ab" for x in checks)
         print(f"{c['id']}: {n_ok}/{len(checks)} sufficient, {results[-1]['tokens']} tokens", flush=True)
@@ -1194,7 +1244,7 @@ def question_case(case: dict, session: dict[str, str], cache: Path, data: Path, 
             "tables": sum(table_count(cat) for cat in catalogs), "multi_table": any(table_count(cat) >= 2 for cat in catalogs),
             "matched": matched, "question_lines": [l for l in text.split("\n") if l.startswith("QUESTION ")],
             "traps": sorted({f"f{k}:{x}" if len(catalogs) > 1 else x for k, cat in enumerate(catalogs, 1) for x in trap_facts(cat)}),
-            "trap_checks": trap_checks(case["id"], text)}
+            "trap_checks": trap_checks(case["id"], text, {**session, **q})}
 
 
 def lost_traps(before: list[str], after: list[str], matched: list[str]) -> list[str]:

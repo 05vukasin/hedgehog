@@ -15,7 +15,7 @@ T1  ← gdp!A1:F7 · 6 rows
     Estonia,152,153.5,155,154,156.5
     Finland,165,166.5,168,167,169.5
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-SQL long view T1_long (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
+SQL long view T1_long (sum these; …_long_all adds the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
 
 ## query gdp.csv: SELECT * FROM T1_long WHERE Country = 'Croatia' ORDER BY 2
 Country,period,period_label,value,_src_row,_src_col
@@ -41,7 +41,7 @@ T1  ← Prices!A1:F6 · 5 rows
     Cherries,40,41,42,43,44
     Grapes,50,51,52,53,54
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-SQL long view T1_long (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
+SQL long view T1_long (sum these; …_long_all adds the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = gdp.csv (T1), f2 = prices.xlsx (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 
 ## describe_table prices.xlsx T1

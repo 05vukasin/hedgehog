@@ -169,6 +169,20 @@ class Catalog(unittest.TestCase):
 
 
 class Tokens(unittest.TestCase):
+    def test_naive_traps(self):
+        # pt-social: the naive SUM over total rows is wrong; the catalog line of T1 warns, T2's does not.
+        session = {"naive:0": "SUM(TOTAL)\n14956\n(1 row)", "naive:1": "SUM(Total)\n1120\n(1 row)",
+                   "naive:2": "SUM(TOTAL)\n7478\n(1 row)"}
+        text = ("T1  'Quadro 1' · 10 rows · 8 total rows (only in T1_all): grand total 'Total' by Sexo @8–10: "
+                "M 4,233 · F 3,245 · T 7,478 in TOTAL (T = M + F: don't add)\nT2  · 4 rows · 5 total rows in T2_all")
+        got = [(x["ok"], x["how"]) for x in S.naive_checks("pt-social-report", text, session)]
+        self.assertEqual(got, [(True, "the catalog warns"), (False, "wrong: the naive query gives 1120.0"),
+                               (True, "the naive query is right")])
+        # A text answer (uk-ons): right when the naive query gives it.
+        ok = S.naive_checks("uk-ons-labour", "", {"naive:0": "col_A\nFeb-Apr 2026\n(1 row)"})
+        self.assertTrue(ok[0]["ok"])
+        self.assertFalse(S.naive_checks("uk-ons-labour", "", {"naive:0": "col_A\nApr-Jun 2026\n(1 row)"})[0]["ok"])
+
     def test_chars_fallback(self):
         self.assertEqual(S.count_tokens(""), 0)
         self.assertEqual(S.count_tokens("abcdefgh", chars_only=True), 2)
