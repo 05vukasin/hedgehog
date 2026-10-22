@@ -1,0 +1,62 @@
+# snapshot: side_by_side_and_stacked
+
+## open_file layout.xlsx
+FILE layout.xlsx · 2 sheets · 86 cells (97% in tables) · 4 tables · roles: model
+TIME 2018–2023 (year, from columns T4.Year)
+T1  ← Two!A1:B7 · 6 rows
+    columns (2): City[text · dim] Visitors[integer · count 1000..1185]
+    all 6 rows (CSV):
+    City,Visitors
+    Graz,1000
+    Linz,1037
+    Salzburg,1074
+    Innsbruck,1111
+    Klagenfurt,1148
+    Villach,1185
+T2  ← Two!E1:G8 · 7 rows
+    columns (3): Month[text · dim] "Rain mm"[integer 40..58] "Sun h"[integer 80..200]
+    all 7 rows (CSV):
+    Month,Rain mm,Sun h
+    Jan,40,80
+    Feb,43,100
+    Mar,46,120
+    Apr,49,140
+    May,52,160
+    Jun,55,180
+    Jul,58,200
+T3  'Table A: Staff by department' ← Stacked!A3:C8 · 5 rows · same layout as T2; headers here: Department[text] Staff[integer] Vacancies[integer]
+    all 5 rows (CSV):
+    Department,Staff,Vacancies
+    Finance,10,0
+    IT,14,1
+    Legal,18,2
+    Sales,22,0
+    Support,26,1
+T4  'Table B: Contracts by year' ← Stacked!A12:D18 · 6 rows · time 2018–2023 (year)
+    columns (4): Year[integer · period 2018..2023] Contracts[integer 20..35] "Value EUR"[integer EUR · amount 150000..212500] "Average EUR"[integer EUR · avg — don't sum 7000..7500]
+    do not sum: "Average EUR" (avg) — use AVG, a weighted mean or the file's own total
+    all 6 rows (CSV):
+    Year,Contracts,Value EUR,Average EUR
+    2018,20,150000,7500
+    2019,23,162500,7400
+    2020,26,175000,7300
+    2021,29,187500,7200
+    2022,32,200000,7100
+    2023,35,212500,7000
+NOTES 2 cells (title 2); e.g. Stacked!A1: "Table A: Staff by department"
+WARNINGS none
+SQL views T1..T4 (data rows) and T1_all..T4_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## query layout.xlsx: SELECT count(*) FROM T2
+count(*)
+7
+(1 row)
+
+## query layout.xlsx: SELECT * FROM T4 ORDER BY 1 LIMIT 3
+Year,Contracts,Value EUR,Average EUR,_src_row
+2018,20,150000,7500,13
+2019,23,162500,7400,14
+2020,26,175000,7300,15
+cite as: Year = Stacked!A<_src_row>; Contracts = Stacked!B<_src_row>; "Value EUR" = Stacked!C<_src_row>; "Average EUR" = Stacked!D<_src_row>
+(3 rows)

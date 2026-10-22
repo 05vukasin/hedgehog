@@ -1,0 +1,69 @@
+# snapshot: result_notes
+
+## open_file sales.csv
+FILE sales.csv · 1 sheet · 72 cells (100% in tables) · 1 table · roles: model
+TIME no dates or periods found
+T1  ← sales!A1:D20 · 18 rows (+1 total row: 'Total'@20 — only in T1_all)
+    columns (4): region[text · dim] city[text · name] amount[integer · amount 100..3330] bonus[integer 2..34]
+    totals: 1 ok, 0 mismatch, 0 unknown
+    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in region: grand total 'Total'@20 (= rows 2–19)
+    all 19 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
+    region,city,amount,bonus,_row_type
+    North,City 0,100,,data
+    South,City 1,110,2,data
+    East,City 2,120,4,data
+    North,City 3,130,,data
+    South,City 4,140,8,data
+    East,City 5,150,10,data
+    North,City 6,160,,data
+    South,City 7,170,14,data
+    East,City 8,180,16,data
+    North,City 9,190,,data
+    South,City 10,200,20,data
+    East,City 11,210,22,data
+    North,City 12,220,,data
+    South,City 13,230,26,data
+    East,City 14,240,28,data
+    North,City 15,250,,data
+    South,City 16,260,32,data
+    East,City 17,270,34,data
+    Total,,3330,,total
+TOTALS 1 ok, 0 mismatch, 0 unknown (call totals for details)
+NOTES none
+WARNINGS none
+SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## query sales.csv: SELECT amount FROM T1 WHERE region = 'Total'
+amount
+note: T1.region = 'Total' is only on 1 total row (_row_type 'total'), which is in T1_all, not in T1
+The same query on T1_all (the total rows included):
+amount
+3330
+(0 rows)
+
+## query sales.csv: SELECT SUM(amount) FROM T1 WHERE region = 'West'
+SUM(amount)
+
+note: T1.region has no 'West' — 0 rows here means the file has no such rows, not a value of 0; its 4 values: 'East' (6 rows), 'North' (6 rows), 'South' (6 rows), 'Total' (1 row)
+(1 row)
+
+## query sales.csv: SELECT count(*) FROM T1 WHERE region = 'north'
+count(*)
+0
+note: T1.region has no 'north' — 0 rows here means the file has no such rows, not a value of 0; values that contain it: 'North' (6 rows)
+(1 row)
+
+## query sales.csv: SELECT * FROM T1 WHERE amount = 7
+region,city,amount,bonus,_src_row
+note: T1.amount has no 7 — 0 rows here means the file has no such rows, not a value of 0; its values run from 100 to 270
+cite as: region = sales!A<_src_row>; city = sales!B<_src_row>; amount = sales!C<_src_row>; bonus = sales!D<_src_row>
+(0 rows)
+
+## query sales.csv: SELECT city, amount + bonus AS x FROM T1 ORDER BY _src_row LIMIT 3
+city,x
+City 0,
+City 1,112
+City 2,124
+note: 1 result row have empty values: a + b is NULL when any part is empty (bonus empty in 6 rows); use COALESCE(col, 0) for each part, or total(col) to sum a column
+(3 rows)

@@ -1,0 +1,28 @@
+# snapshot: footnotes
+
+## open_file beds.xlsx
+FILE beds.xlsx · 1 sheet · 23 cells (78% in tables) · 1 table · roles: model
+TIME 2022–2023 (year, from column headers in T1)
+T1  'Table 1. Hospital beds by region' ← 'Table 1'!A3:C8 · 5 rows
+    columns (3): Region[text · dim] "Beds 2022"[integer 95..1200] "Beds 2023"[integer 101..1250]
+    all 5 rows (CSV):
+    Region,Beds 2022,Beds 2023
+    Alpha,1200,1250
+    Beta,830,845
+    Gamma,410,400
+    Delta²,95,101
+    Epsilon,660,702
+NOTES 5 cells (note 4, title 1); e.g. 'Table 1'!A1: "Table 1. Hospital beds by region"
+WARNINGS none
+SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## query beds.xlsx: SELECT * FROM T1 ORDER BY 1
+Region,Beds 2022,Beds 2023,_src_row
+Alpha,1200,1250,4
+Beta,830,845,5
+Delta²,95,101,7
+Epsilon,660,702,8
+Gamma,410,400,6
+cite as: Region = 'Table 1'!A<_src_row>; "Beds 2022" = 'Table 1'!B<_src_row>; "Beds 2023" = 'Table 1'!C<_src_row>
+(5 rows)
