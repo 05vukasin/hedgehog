@@ -1461,10 +1461,12 @@ fn focus(norm: &Normalized, covs: &[Option<TimeCoverage>], question: &str) -> Op
     let items: Vec<String> = ks
         .iter()
         .map(|&k| {
-            // Words first, then years and months.
-            let mut m: Vec<&String> = rel[k].matched.iter().filter(|w| !w.starts_with(|c: char| c.is_ascii_digit())).collect();
-            m.extend(rel[k].matched.iter().filter(|w| w.starts_with(|c: char| c.is_ascii_digit())));
-            m.truncate(3);
+            // A table number first (`table 1`), then words, then years and months.
+            let num = |w: &&String| w.starts_with(|c: char| c.is_ascii_digit());
+            let mut m: Vec<&String> = rel[k].matched.iter().filter(|w| w.starts_with("table ")).collect();
+            m.extend(rel[k].matched.iter().filter(|w| !num(w) && !w.starts_with("table ")));
+            m.extend(rel[k].matched.iter().filter(num));
+            m.truncate(2);
             format!("{} ({})", norm.tables[k].id(), m.iter().map(|w| w.as_str()).collect::<Vec<_>>().join(", "))
         })
         .collect();
@@ -1731,7 +1733,10 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 tail.push_str(&format!(" · low detection confidence {:.2}", t.confidence));
             }
             let entries = total_entries(info);
-            if !entries.is_empty() {
+            if !entries.is_empty() && mode != BriefMode::Plain && !prio[k] {
+                // B150: a table the question does not match: how many, not which.
+                tail.push_str(&format!(" · {} in {}_all", plural(entries.len(), "total row", "total rows"), t.id()));
+            } else if !entries.is_empty() {
                 let text = total_entries_text(&entries, &t.id(), false, 15) + &group_totals_note(&entries, None).unwrap_or_default();
                 let key = format!("{text}|{}", entries.iter().map(|e| e.row.to_string()).collect::<Vec<_>>().join(","));
                 match seen_totals.get(&key) {

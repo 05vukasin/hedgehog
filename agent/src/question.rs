@@ -137,6 +137,8 @@ const STOP: &[&str] = &[
     "together", "overall", "across", "against", "after", "before", "during", "about", "if", "so", "up", "down", "go",
     "went", "rise", "rose", "fall", "fell", "change", "changed", "did", "get", "got", "let", "say", "each", "every",
     "they", "them", "we", "our", "you", "your", "he", "she", "his", "her", "out", "money", "much", "whole",
+    // total words (every table with total rows has them)
+    "total", "totals", "sum", "gesamt", "insgesamt", "summe", "ukupno", "totale", "totaal",
     // de
     "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einen", "und", "oder", "von", "vom", "im", "am",
     "an", "auf", "aus", "bei", "mit", "nach", "fur", "zu", "zum", "zur", "ist", "sind", "war", "waren", "wie", "viel",
@@ -342,6 +344,8 @@ pub struct Relevance {
     /// The table that matches one of the question's distinctive words, years or months best: shown
     /// with the best-scoring table even when it scores lower (a question of several parts).
     pub champion: bool,
+    /// The question names this table by its number (`Table 1`).
+    pub named: bool,
     /// What each part of the question (a word with its concept, a table number, a year, a month)
     /// adds to the score; the same parts in the same order for every table.
     pub parts: Vec<f64>,
@@ -421,7 +425,7 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
     let ws: Vec<Words> = tables.iter().map(table_words).collect();
     let mut out: Vec<Relevance> = vec![Relevance::default(); n];
     let idf = |df: usize| (n as f64 / df.max(1) as f64).ln();
-    let distinctive = |df: usize| df > 0 && df < n && df <= (n / 3).max(2);
+    let distinctive = |df: usize| df > 0 && df < n && df as f64 <= (n as f64).sqrt().max(2.0);
     let groups: Vec<usize> = {
         let mut g: Vec<usize> = q.terms.iter().map(|t| t.group).collect();
         g.dedup();
@@ -484,6 +488,7 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
                 out[k].matched.push(format!("table {num}"));
                 if df <= 2 {
                     out[k].champion = true;
+                    out[k].named = true;
                 }
             }
         }
@@ -533,15 +538,22 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
 /// The tables a question is about, best score first; none when no table matches. A question often
 /// has several parts, each about another table: the best-scoring table first, then, while one
 /// scores at least a third of that on the parts no chosen table answers well (70 % of the best
-/// table for that part), the best of those; and the champions of distinctive words, years,
-/// months and table numbers.
+/// table for that part), the best of those; and the champions of distinctive words, years and
+/// months. Tables the question names by number (`Table 1`) are chosen first and answer every part
+/// they match; then only tables for the other parts follow (no champions).
 pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
     let n = rel.len();
     let parts = rel.first().map_or(0, |r| r.parts.len());
     let top: Vec<f64> = (0..parts).map(|g| rel.iter().map(|r| r.parts[g]).fold(0.0, f64::max)).collect();
     let mut covered = vec![false; parts];
-    let mut chosen: Vec<usize> = Vec::new();
-    let mut first = 0.0;
+    let mut chosen: Vec<usize> = (0..n).filter(|&k| rel[k].named).collect();
+    let named = !chosen.is_empty();
+    let mut first = chosen.iter().map(|&k| rel[k].score).fold(0.0, f64::max);
+    for &k in &chosen {
+        for g in 0..parts {
+            covered[g] |= rel[k].parts[g] > 0.0;
+        }
+    }
     while chosen.len() < n {
         let residual = |k: usize| (0..parts).filter(|&g| !covered[g]).map(|g| rel[k].parts[g]).sum::<f64>();
         let Some(k) = (0..n).filter(|k| !chosen.contains(k)).max_by(|a, b| residual(*a).total_cmp(&residual(*b)).then(b.cmp(a)))
@@ -549,7 +561,7 @@ pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
             break;
         };
         let r = residual(k);
-        if r <= 0.0 || (!chosen.is_empty() && r < first / 3.0) {
+        if r <= 0.0 || (!chosen.is_empty() && r < first * 0.4) {
             break;
         }
         if chosen.is_empty() {
@@ -567,8 +579,9 @@ pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
             covered[g] = true;
         }
     }
-    let mut ks: Vec<usize> = (0..n).filter(|&k| chosen.contains(&k) || (rel[k].champion && rel[k].score > 0.0)).collect();
-    ks.sort_by(|a, b| rel[*b].score.total_cmp(&rel[*a].score).then(a.cmp(b)));
+    let mut ks: Vec<usize> =
+        (0..n).filter(|&k| chosen.contains(&k) || (!named && rel[k].champion && rel[k].score > 0.0)).collect();
+    ks.sort_by(|a, b| rel[*b].named.cmp(&rel[*a].named).then(rel[*b].score.total_cmp(&rel[*a].score)).then(a.cmp(b)));
     ks
 }
 

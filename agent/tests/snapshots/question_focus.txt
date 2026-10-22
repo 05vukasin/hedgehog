@@ -69,7 +69,7 @@ SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all wit
 ## open_file city.xlsx question: What were the total revenues and expenses in the budget?
 FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
 TIME 2019–2024 (mixed: year (T2), month (T3) — check what one row is before summing; from columns T2.Jahr, T3.Month)
-QUESTION matches T1 (total, revenues, expenses): first, in full; then 3 other tables, one line each
+QUESTION matches T1 (revenues, expenses): first, in full; then 3 other tables, one line each
 T1  'City budget 2024' ← Budget!A3:C10 · 6 rows (+1 total row only in T1_all)
     columns (3): Item "Revenue EUR"[EUR 1000..8250] "Expenses EUR"[EUR 800..6600]
     total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in Item: grand total 'Total'@10 (= rows 4–9)
@@ -118,7 +118,7 @@ T2  'Einwohner nach Bezirk' ← Population!A3:C21 · 18 rows · time 2019–2024
     2024,Süd,10700
     2024,Mitte,11200
 (other tables, one line each)
-T1  'City budget 2024' ← Budget · 6 rows · 1 total row (only in T1_all): grand total 'Total'@10 · 3 cols: Item "Revenue EUR" "Expenses EUR"
+T1  'City budget 2024' ← Budget · 6 rows · 1 total row in T1_all · 3 cols: Item "Revenue EUR" "Expenses EUR"
 T3  'Consumer price index, monthly' ← 'Prices 2023' · 12 rows · 2 cols: Month "Index"
 T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
@@ -129,7 +129,7 @@ SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all wit
 ## open_file city.xlsx question: What was the consumer price index in March 2023?
 FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
 TIME 2019–2024 (mixed: year (T2), month (T3) — check what one row is before summing; from columns T2.Jahr, T3.Month)
-QUESTION matches T3 (consumer, price, index): first, in full; then 3 other tables, one line each
+QUESTION matches T3 (consumer, price): first, in full; then 3 other tables, one line each
 T3  'Consumer price index, monthly' ← 'Prices 2023'!A3:B15 · 12 rows · time 2023-01–2023-12 (month)
     columns (2): Month[date 2023-01-01..2023-12-01, 12 distinct] "Index"[index 100..104.4]
     do not sum: "Index" (index) — use AVG, a weighted mean or the file's total
@@ -148,7 +148,7 @@ T3  'Consumer price index, monthly' ← 'Prices 2023'!A3:B15 · 12 rows · time 
     2023-11-01,104
     2023-12-01,104.4
 (other tables, one line each)
-T1  'City budget 2024' ← Budget · 6 rows · 1 total row (only in T1_all): grand total 'Total'@10 · 3 cols: Item "Revenue EUR" "Expenses EUR"
+T1  'City budget 2024' ← Budget · 6 rows · 1 total row in T1_all · 3 cols: Item "Revenue EUR" "Expenses EUR"
 T2  'Einwohner nach Bezirk' ← Population · 18 rows · time 2019–2024 (year) · 3 cols: Jahr Bezirk Einwohner
 T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)

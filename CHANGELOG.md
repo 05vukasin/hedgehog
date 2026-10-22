@@ -40,6 +40,21 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **Question-aware catalog** (B150): `open_file` takes an optional `question` (MCP argument,
+  `Session::open_file_for`, Node `HedgehogSession.openFile(path, { question })`). The tables the
+  question is about come first and in full (in a brief catalog: first, with every column name);
+  the other tables one line each, plain ones grouped (`T10..T26 · 17 tables, 34–35 rows ← sheets
+  …`); a `QUESTION matches T3 (ksb, 2023), T5 (index, 2023): …` line says which. Matching is
+  deterministic text matching in `agent/src/question.rs`: folded, stemmed words of eight languages
+  with a small concept list (`GDP` → `Bruttoinlandsprodukt`), weighed by how few tables have them,
+  against titles, sheets, column names and values; years and months against time coverage;
+  `Table 1` against titles and sheets; a question of several parts gets a table per part. Trap
+  warnings of the matching tables stay. Without a question, when it tells no table apart, for one
+  table, or when focusing would not be shorter, the catalog is unchanged (byte-identical without
+  it). On the 30 info cases with their prompts as questions: 168 of 168 checks still in the
+  catalog or one query away, catalog tokens −18 % overall, −29 % on multi-table files, −35 % where
+  the question told tables apart ([eval/info/QUESTION.md](eval/info/QUESTION.md)). `score.py
+  --question` measures it; `make quick` has it as a second `info` line.
 - **Information scoreboard without a model** ([eval/info](eval/info/README.md)). For each automatic
   check of the 30 agent cases, `eval/info/score.py` decides from the `open_file` catalog and
   `hedgehog mcp` query results whether the answer is **a** in the catalog, **b** one query away
