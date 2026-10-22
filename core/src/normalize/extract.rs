@@ -113,6 +113,15 @@ fn label_words(t: &str) -> usize {
     if words.len() >= 3 && words.iter().all(|w| w.chars().count() == 1) { 1 } else { words.len() }
 }
 
+/// A series identifier code: 3–8 uppercase letters and digits with at least two letters
+/// (`MGSL`, `LF24`, `G7AU`, `YBWF`).
+fn is_series_code(t: &str) -> bool {
+    let t = t.trim();
+    (3..=8).contains(&t.len())
+        && t.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        && t.bytes().filter(u8::is_ascii_uppercase).count() >= 2
+}
+
 /// A total label recurring this often in its column is a category of long-format data.
 const LABEL_CATEGORY_REPEATS: usize = 3;
 /// A total label confirming a total row has at most this many words ("Grand Total", "Razem
@@ -299,7 +308,7 @@ fn clean_name(grid: &Grid, parts: &[(String, (u32, u32))]) -> String {
 
 /// Column names made unique (case-insensitive, like Excel) by appending ` (2)`, ` (3)`…
 #[derive(Default)]
-struct UniqueNames {
+pub(super) struct UniqueNames {
     seen: HashSet<String>,
     /// Lowercased name → the suffix to try first: every smaller one is taken. Without it,
     /// thousands of equal headers (a merged header across a wide table) took quadratic time.
@@ -307,11 +316,11 @@ struct UniqueNames {
 }
 
 impl UniqueNames {
-    fn taken<'a>(names: impl IntoIterator<Item = &'a str>) -> UniqueNames {
+    pub(super) fn taken<'a>(names: impl IntoIterator<Item = &'a str>) -> UniqueNames {
         UniqueNames { seen: names.into_iter().map(str::to_lowercase).collect(), next: HashMap::new() }
     }
 
-    fn make(&mut self, name: String, tr: &mut Transforms) -> String {
+    pub(super) fn make(&mut self, name: String, tr: &mut Transforms) -> String {
         let lower = name.to_lowercase();
         if self.seen.insert(lower.clone()) {
             return name;
@@ -536,6 +545,25 @@ fn build_table(
                 .filter(|v| !display(v).is_empty())
                 .collect();
             crate::layout::column_numbering(vals.into_iter())
+        })
+        .collect();
+    // B70: the row label of a header row of series codes ("Dataset identifier code | MGSL | MGSF
+    // …", ONS) labels that row, not the column below it (the periods): it stays in
+    // `original_header` but does not name the column. The label must say code / identifier /
+    // series, so "Country name | USA | GBR | FRA" keeps its name.
+    let code_row_labels: HashSet<(usize, usize)> = (0..nh)
+        .filter_map(|hr| {
+            let filled: Vec<(usize, &str)> =
+                head[hr].iter().enumerate().filter_map(|(hc, h)| h.as_ref().map(|h| (hc, h.0.as_str()))).collect();
+            let (&(hc0, label), rest) = filled.split_first()?;
+            let codes: HashSet<&str> = rest.iter().map(|(_, t)| *t).filter(|t| is_series_code(t)).collect();
+            (rest.len() >= 3
+                && codes.len() * 10 >= rest.len() * 9
+                && !is_series_code(label)
+                && label.split(|c: char| !c.is_alphanumeric()).any(|w| {
+                    matches!(w.to_lowercase().as_str(), "code" | "codes" | "identifier" | "series" | "cdid" | "id" | "kennung" | "kennziffer" | "código" | "codice")
+                }))
+            .then_some((hr, hc0))
         })
         .collect();
 
@@ -871,7 +899,7 @@ fn build_table(
             if parts.last().is_none_or(|p| p.0 != h.0) {
                 parts.push(h.clone());
             }
-            if !numbering_rows[hr] && named.last().is_none_or(|p| p.0 != h.0) {
+            if !numbering_rows[hr] && !code_row_labels.contains(&(hr, k)) && named.last().is_none_or(|p| p.0 != h.0) {
                 named.push(h.clone());
             }
         }
