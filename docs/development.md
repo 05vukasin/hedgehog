@@ -56,7 +56,7 @@ test what the change can affect, and run the full gate once at the end of a batc
 
 | Tier | When | What | Time |
 |---|---|---|---|
-| 0. Quick — `make quick` | after every edit | feature snapshots, mini golden on 22 real files, noise smoke (below); no LLM, no network, same output on every run | ~5 s with nothing to rebuild, ~15 s after an edit in `core/` (up to ~30 s on a busy machine), ~2–3 min cold |
+| 0. Quick — `make quick` | after every edit | feature snapshots, mini golden on 22 real files, noise smoke, info scoreboard on 15 small cases (`eval/quick/info.py`: no case may lose a check that's in the catalog or one query away, no trap check may fail, no catalog may grow > 5 %) (below); no LLM, no network, same output on every run | ~5 s with nothing to rebuild, ~15 s after an edit in `core/` (up to ~30 s on a busy machine), ~2–3 min cold |
 | 1. Targeted | after each small change | `cargo test -p <crate> <filter>` for the touched module; the specific files, eval cases (`check_cases.py --cases …`) or noise family (`noise_eval --families …`, `--repro`) the change is about | seconds to ~2 min |
 | 2. Merge — `make merge-check AREA=core\|agent\|docs` | when merging a branch | tests of the affected crates; clippy; golden check; only the benchmarks/noise families the changed area can affect (layout/totals/values → both benchmark analyzers; agent/ → agent tests + Node; docs/eval only → nothing heavy) | ~5–10 min |
 | 3. Full verify — `make full` | once per batch, before a release or a published comparison | everything: `cargo test --workspace`, clippy, golden, both benchmark analyzers on all corpora, all noise families, the file sweep, `check_cases.py`, Node, Python, then the agent eval (by hand) | ~1–2 h |

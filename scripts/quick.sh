@@ -168,11 +168,31 @@ fi
 #   run "$WORK/info.log" python3 -I eval/info/score.py --quick ...; cat "$WORK/info.log"
 # and compare with a stored result like the parts above.
 if want info; then
-  if [ -f "$ROOT/eval/info/score.py" ]; then
-    echo "info: eval/info/score.py exists but its quick mode is not wired yet (see HOOK(info) in scripts/quick.sh)"
+  t0=$(now)
+  if [ -z "$HEDGEHOG_DATA" ] || [ ! -d "$HEDGEHOG_DATA" ]; then
+    echo "info: skipped (no test data; set HEDGEHOG_DATA)"
   else
-    echo "info: skipped (no eval/info/score.py on this branch)"
+    log=$WORK/info.log
+    : >"$log"
+    BIN=${HEDGEHOG_BIN:-}
+    rc=0
+    if [ -z "$BIN" ]; then
+      run "$log" cargo build --offline --profile quick -p hh_cli -q
+      rc=$?
+      BIN=$CARGO_TARGET_DIR/quick/hedgehog
+    fi
+    if [ $rc -ne 0 ]; then
+      echo "info: build FAILED"; tail -30 "$log" | sed 's/^/  /'
+    else
+      : >"$log"
+      args=(--bin "$BIN" --data "$HEDGEHOG_DATA" --tmp "$WORK")
+      [ $UPDATE = 1 ] && args+=(--update)
+      run "$log" python3 -I "$ROOT/eval/quick/info.py" "${args[@]}"
+      rc=$?
+      grep -E "^info|^  " "$log"
+    fi
   fi
+  finish info "${rc:-0}" "$t0"
 fi
 
 # --- summary ---------------------------------------------------------------------------------------
