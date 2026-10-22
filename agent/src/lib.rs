@@ -18,6 +18,7 @@
 pub mod brief;
 pub mod cache;
 pub mod catalog;
+pub mod codes;
 pub mod cells;
 pub mod dialect;
 pub mod entity;

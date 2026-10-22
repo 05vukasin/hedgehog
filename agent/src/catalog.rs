@@ -174,6 +174,11 @@ pub struct RowInfo {
     pub scopes: HashMap<u32, Vec<(u32, u32)>>,
     /// B74: total rows the totals check calls the grand total.
     pub grand_rows: HashSet<u32>,
+    /// B160: total rows are labelled with these key columns' values joined by `/` (`Total/M`),
+    /// when one column alone does not tell them apart; empty otherwise.
+    pub key_cols: Vec<usize>,
+    /// B160: total codes (`Sexo 'T' = M + F`), checked on the numbers.
+    pub codes: Vec<crate::codes::TotalCode>,
 }
 
 /// Indexes of a table's data rows (all rows when it has no row types).
@@ -204,6 +209,8 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
         info.data = t.rows();
     }
     relabel_totals(t, &mut info.total_rows);
+    info.key_cols = full_key_labels(t, &mut info.total_rows);
+    info.codes = crate::codes::total_codes(t);
     let in_data: HashSet<u32> = data_rows(t).into_iter().filter_map(|r| t.src_rows.get(r).map(|s| s + 1)).collect();
     info.kept_totals = totals
         .rows
@@ -277,6 +284,66 @@ fn relabel_totals(t: &Table, rows: &mut [TotalRow]) {
             }
         }
     }
+}
+
+/// B160: total rows whose labels one column does not tell apart (`Total`/`M`, `Total`/`F`,
+/// `Total`/`T`: the label taken from either column) are labelled with their full key, every key
+/// column's value joined by `/` (`'Total/M'`), when a key column holds codes that split every
+/// group and the full key tells more of them apart. The key columns used; empty when the labels
+/// stay.
+fn full_key_labels(t: &Table, rows: &mut [TotalRow]) -> Vec<usize> {
+    let keys = crate::codes::key_columns(t);
+    if keys.len() < 2 || rows.len() < 2 {
+        return Vec::new();
+    }
+    let idx: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data)).collect();
+    if idx.len() != rows.len() {
+        return Vec::new();
+    }
+    // Only where the total rows differ in a key column of codes that split every group (`Sexo`:
+    // M, F, T), not for labels repeated down a group column.
+    let split = keys.iter().any(|&k| {
+        let vals: HashSet<Option<&str>> = idx
+            .iter()
+            .zip(rows.iter())
+            .filter(|(_, tr)| tr.kind == RowType::Total)
+            .map(|(&r, _)| match t.columns[k].values.get(r) {
+                Some(Out::Text(s)) => Some(s.trim()),
+                _ => None,
+            })
+            .collect();
+        vals.len() >= 2 && crate::codes::code_dimension(t, k)
+    });
+    if !split {
+        return Vec::new();
+    }
+    // Total rows only: subtotals of one code per group read well by their code ('T'@13/16/19).
+    let full: Vec<Option<String>> = idx
+        .iter()
+        .zip(rows.iter())
+        .map(|(&r, tr)| if tr.kind == RowType::Total { crate::codes::row_key(t, &keys, r) } else { None })
+        .collect();
+    if full.iter().all(Option::is_none) {
+        return Vec::new();
+    }
+    for (r, f) in rows.iter_mut().zip(full) {
+        if let Some(f) = f {
+            r.label = f;
+        }
+    }
+    keys
+}
+
+/// B160: total rows as the catalog lists them: with a total code, the code's phrase first (the
+/// grand total by the code column, its subtotals per group), then the other total rows as usual.
+pub(crate) fn totals_text(t: &Table, info: &RowInfo, entries: &[TotalEntry], scopes: bool, max: usize) -> String {
+    if let Some(code) = info.codes.first()
+        && let Some((text, covered)) = crate::codes::coded_totals(t, &sql_names(t), code, entries)
+    {
+        let rest: Vec<TotalEntry> = entries.iter().filter(|e| !covered.contains(&e.row)).cloned().collect();
+        return if rest.is_empty() { text } else { format!("{text}; {}", total_entries_text(&rest, &t.id(), scopes, max)) };
+    }
+    total_entries_text(entries, &t.id(), scopes, max)
 }
 
 fn total_rows_text(rows: &[TotalRow], n: usize) -> String {
@@ -1736,8 +1803,13 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             if !entries.is_empty() && mode != BriefMode::Plain && !prio[k] {
                 // B150: a table the question does not match: how many, not which.
                 tail.push_str(&format!(" · {} in {}_all", plural(entries.len(), "total row", "total rows"), t.id()));
+                // B160: a total code, briefly.
+                if let Some(code) = info.codes.first() {
+                    tail.push_str(&format!(" ({})", crate::codes::brief_note(code, &names)));
+                }
             } else if !entries.is_empty() {
-                let text = total_entries_text(&entries, &t.id(), false, 15) + &group_totals_note(&entries, None).unwrap_or_default();
+                let groups = if info.codes.is_empty() && info.key_cols.is_empty() { group_totals_note(&entries, None) } else { None };
+                let text = totals_text(t, info, &entries, false, 15) + &groups.unwrap_or_default();
                 let key = format!("{text}|{}", entries.iter().map(|e| e.row.to_string()).collect::<Vec<_>>().join(","));
                 match seen_totals.get(&key) {
                     Some(first) => tail.push_str(&format!(" · total rows as in {first}")),
@@ -2277,7 +2349,7 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     if !entries.is_empty() {
         lines.push(format!(
             "total rows (only in {id}_all, _row_type, unless marked): {}",
-            total_entries_text(&entries, &t.id(), true, 24),
+            totals_text(t, &info, &entries, true, 24),
             id = t.id()
         ));
     }
