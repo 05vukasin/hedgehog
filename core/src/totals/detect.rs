@@ -323,10 +323,16 @@ pub fn labelled_rows(grid: &Grid) -> Vec<u32> {
     rows
 }
 
-/// Rows from the sheet's first to its last cell (cells are row-major).
+/// Rows from the sheet's first to its last cell. Readers keep cells row-major, but a grid built
+/// in another order must not underflow, so fall back to a scan when the ends are out of order.
 fn sheet_rows(grid: &Grid) -> u32 {
-    match (grid.sheet.cells.first(), grid.sheet.cells.last()) {
-        (Some(a), Some(b)) => b.row - a.row + 1,
+    let cells = &grid.sheet.cells;
+    match (cells.first(), cells.last()) {
+        (Some(a), Some(b)) if b.row >= a.row => b.row - a.row + 1,
+        (Some(_), Some(_)) => {
+            let (lo, hi) = cells.iter().fold((u32::MAX, 0), |(lo, hi), c| (lo.min(c.row), hi.max(c.row)));
+            hi - lo + 1
+        }
         _ => 0,
     }
 }
