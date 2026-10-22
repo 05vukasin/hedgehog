@@ -308,13 +308,20 @@ pub fn labelled_rows(grid: &Grid) -> Vec<u32> {
     if sheet_rows(grid) < REGISTER_MIN_ROWS {
         return Vec::new();
     }
-    let (strong, weak, b1) = keyword_rows_with(grid, &keyword_cells(grid, true), true, false);
+    let t = std::time::Instant::now();
+    let kw_cells = keyword_cells(grid, true);
+    crate::normalize::trace_ms("tot.keyword_cells", t.elapsed());
+    let t = std::time::Instant::now();
+    let (strong, weak, b1) = keyword_rows_with(grid, &kw_cells, true, false);
+    crate::normalize::trace_ms("tot.keyword_rows", t.elapsed());
     // The rule layout (and through it the learned model) keeps the register rule it was built with
     // (B1, see [`model_records`]); the other weak rows are left to the normalized output.
     let mut rows: Vec<u32> = if b1.is_empty() {
         strong.into_keys().chain(weak.into_keys()).collect()
     } else {
-        let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
+        // The detection starts from the same keyword cells and rows (computed once, B127).
+        let keywords = (kw_cells, strong.clone(), weak.clone());
+        let d = grid.totals.get_or_init(|| detect_rows_from(grid, &DependencyIndex::new(grid), true, Some(keywords)));
         let mut v: Vec<u32> = d.keyword_rows.keys().copied().collect();
         v.extend(weak.into_keys().filter(|r| !b1.contains(r) && !d.keyword_rows.contains_key(r)));
         v
@@ -672,10 +679,25 @@ pub struct NonSumCheck {
 /// group; without, every keyword counts (the behaviour the learned row model's features were
 /// trained on). Totals are cached on the grid only for `registers` (see [`detect`]).
 pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Detection {
+    detect_rows_from(grid, deps, registers, None)
+}
+
+/// Keyword cells and the (strong, weak) keyword rows found from them, as [`detect_rows`] computes
+/// them first.
+type Keywords = (Vec<(usize, KeywordLevel)>, KeywordRows, KeywordRows);
+
+/// [`detect_rows`], given the `keywords` it would compute first when the caller has them already
+/// (`keyword_cells(grid, registers)` and `keyword_rows_with(grid, …, registers, false)`).
+fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywords: Option<Keywords>) -> Detection {
     let sheet = grid.sheet;
-    let kw_cells = keyword_cells(grid, registers);
+    let tr = crate::normalize::trace_ms;
+    let t = std::time::Instant::now();
+    let (kw_cells, mut kw_rows, weak_rows) = keywords.unwrap_or_else(|| {
+        let kw_cells = keyword_cells(grid, registers);
+        let (strong, weak, _) = keyword_rows_with(grid, &kw_cells, registers, false);
+        (kw_cells, strong, weak)
+    });
     let kw_fn = if registers { total_keyword } else { total_keyword_base };
-    let (mut kw_rows, weak_rows, _) = keyword_rows_with(grid, &kw_cells, registers, false);
     let mut labels = Labels::new(grid);
     let mut out: Vec<TotalCandidate> = Vec::new();
 
@@ -761,6 +783,8 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
         out.push(c);
     }
 
+    tr("tot.keywords_formulas", t.elapsed());
+    let t = std::time::Instant::now();
     let formula_total: FxHashSet<(u32, u32)> = out.iter().map(|c| (c.row, c.col)).collect();
     let rows_with_cells = RowSet::new(sheet.cells.iter().map(|c| c.row));
     let mut columns: FxHashMap<u32, ColumnView> = FxHashMap::default();
@@ -782,6 +806,8 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
     };
     let skip = RowSet::new(nonsum.iter().map(|n| n.row));
     let budget = std::cell::Cell::new(WALK_BELOW_BUDGET);
+    tr("tot.nonsum", t.elapsed());
+    let t = std::time::Instant::now();
 
     // (b0) A row whose total word is incidental (free text in a register) is a total row only if
     // one of its typed numbers is the sum of at least two numbers above it (sections bounded by
@@ -841,6 +867,8 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
         }
     }
     let kw_set = RowSet::new(kw_rows.keys().copied());
+    tr("tot.incidental", t.elapsed());
+    let t = std::time::Instant::now();
 
     // (b) Typed numbers in keyword rows → column totals over the cells above (or below).
     let mut kw_sorted: Vec<_> = kw_rows.iter().map(|(&r, &v)| (r, v)).collect();
@@ -871,12 +899,16 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
         }
     }
 
+    tr("tot.typed_vertical", t.elapsed());
+    let t = std::time::Instant::now();
     // (b'') Rows without a total word that add up (normalized output only).
     if registers {
         let found = unlabelled_totals(grid, &kw_rows, &skip, &formula_total, &mut labels);
         out.extend(found);
     }
 
+    tr("tot.unlabelled", t.elapsed());
+    let t = std::time::Instant::now();
     // (b') Typed numbers under a keyword column header → row totals over the cells to the left.
     let taken: HashSet<(u32, u32)> = out.iter().map(|c| (c.row, c.col)).collect();
     for &(i, lvl) in &kw_cells {
@@ -887,11 +919,14 @@ pub fn detect_rows(grid: &Grid, deps: &DependencyIndex, registers: bool) -> Dete
         out.extend(typed_horizontal(grid, &taken, h.row, h.col, lvl));
     }
 
+    tr("tot.horizontal", t.elapsed());
+    let t = std::time::Instant::now();
     drop_unconfirmed_inside_formulas(&mut out);
     resolve_nesting(grid, &mut out);
     mark_sibling_support(grid, &mut out);
     out.sort_by_key(|c| (c.row, c.col));
     let aggregates = if registers { aggregate_rows(grid) } else { Vec::new() };
+    tr("tot.resolve", t.elapsed());
     Detection {
         candidates: out,
         keyword_rows: kw_rows,
