@@ -416,7 +416,6 @@ struct RowTotal {
     top: Option<u32>,
 }
 
-#[allow(clippy::too_many_arguments)]
 /// A caption that starts with a table word: "Table 1: …", "Tabelle 3", "Quadro 1", "Cuadro 2.1".
 fn table_word(s: &str) -> bool {
     let w = s.split(|c: char| !c.is_alphabetic()).next().unwrap_or("").to_lowercase();
@@ -682,6 +681,7 @@ fn promote_header(
     (top, end.min(bottom + 1))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_table(
     grid: &Grid,
     lay: &SheetLayout,

@@ -1858,7 +1858,9 @@ fn owid_aggregate(name: &str) -> bool {
 /// `EA20`, ...) or an Our World in Data entity column (at least 30 distinct names among them
 /// `World` and two other aggregates). (column, rows of the aggregates).
 fn named_aggregate_rows(grid: &Grid) -> Vec<(u32, Vec<u32>)> {
-    let mut per_col: FxHashMap<u32, (usize, Vec<u32>, FxHashSet<&str>, bool)> = FxHashMap::default();
+    // Per column: two-letter codes, rows of aggregates, OWID aggregate names, "World" seen.
+    type Seen<'a> = (usize, Vec<u32>, FxHashSet<&'a str>, bool);
+    let mut per_col: FxHashMap<u32, Seen> = FxHashMap::default();
     for c in &grid.sheet.cells {
         let Some(Value::Text(t)) = &c.value else { continue };
         let t = t.trim();
