@@ -39,6 +39,7 @@ def run_arm(arm: str, case: dict, prompt: str, root: Path, out: Path, run_id: st
     try:
         if arm == "swap-hedgehog":
             ts = tools.hedgehog(hedgehog_exe, root, work)
+            ts.question = case["prompt"]  # passed to open_file with HH_QUESTION=host (B150)
         elif arm == "swap-excelmcp":
             tools.copy_files(root, files, work)
             ts = tools.excelmcp(work)

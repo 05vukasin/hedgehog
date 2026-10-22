@@ -473,7 +473,7 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
                     let low = fold(text);
                     let low = low.trim();
                     let named = |rest: &str| rest.strip_prefix(num.as_str()).is_some_and(|r| !r.starts_with(|c: char| c.is_ascii_digit() || c == '.'));
-                    (*w >= 2.5 && (named(low) || TABLE_WORDS.iter().any(|tw| low.match_indices(tw).any(|(i, _)| named(low[i + tw.len()..].trim_start())))))
+                    *w >= 2.5 && (named(low) || TABLE_WORDS.iter().any(|tw| low.match_indices(tw).any(|(i, _)| named(low[i + tw.len()..].trim_start()))))
                 })
             })
             .collect();
@@ -550,8 +550,8 @@ pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
     let named = !chosen.is_empty();
     let mut first = chosen.iter().map(|&k| rel[k].score).fold(0.0, f64::max);
     for &k in &chosen {
-        for g in 0..parts {
-            covered[g] |= rel[k].parts[g] > 0.0;
+        for (c, p) in covered.iter_mut().zip(&rel[k].parts) {
+            *c |= *p > 0.0;
         }
     }
     while chosen.len() < n {
