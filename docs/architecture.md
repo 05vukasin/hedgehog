@@ -155,8 +155,35 @@ checked against the previous code path (design and measurements: the P7 research
 - **Agent path** (`agent/`, B120–B121). `open_file` never writes an xlsx, CSV or manifest. The
   SQLite load (or the disk cache entry) starts right after normalizing, beside the catalog; the
   cache entry takes the catalog once it is there. Inserts bind values in place (text borrowed).
+- **Reading** (B136; `vendor/calamine/src/xlsx/parallel.rs`, `parallel_content` in
+  `vendor/calamine/src/ods.rs`, `core/src/reader.rs`). A sheet part of 2 MB or more (uncompressed),
+  a shared string table of 2 MB or more and the tables of an ODS `content.xml` of 2 MB or more are
+  read on up to `min(4, CPUs)` threads (CPU affinity respected: pinned to one CPU, everything reads
+  as before). The calling thread inflates the part and cuts it into chunks of ~512 kB that end
+  right after a `</row>`, `</si>` or `</table:table-row>`; workers read each chunk with
+  calamine's own code (the same XML reader settings, `next_cell_formula_record`,
+  `read_string_with_bufs`, `read_row`), and the calling thread takes the results in chunk order
+  (at most `2 × threads` chunks ahead). What a chunk cannot know from its own bytes is settled in
+  order: a derived shared formula whose anchor lies in an earlier chunk is expanded from the
+  anchors of the chunks before it (exactly the anchor a one-thread read has at that cell), a chunk
+  that needs the row index of earlier rows (a row without `r`) is read again in order, row
+  repeats of an ODS table are capped in order. Anything unusual gives up before a result is used,
+  and the part is read on one thread as before (which also reports any error): comments, CDATA or
+  processing instructions after the start tag (they could hide a boundary), a nested ODS table, a
+  declared encoding other than UTF-8, a chunk that does not end right after a row, any XML or
+  value error, a part that ends early, xlsx records out of row order. Cells are converted on the
+  workers and copied into the sheet as each chunk's turn comes, so the chunks' memory is reused
+  and the sheet is not held twice; `malloc_trim` after each parallel sheet and after the
+  workbook parse. Without formats the merge scan (`merges.rs`) runs on its own view of the zip
+  beside the cell read (its dimension is compared afterwards). ODS sheets are moved out of
+  calamine instead of copied, and their cells merged from the two row-ordered ranges instead of
+  a sorted map; CSV copies runs of plain bytes at once and parses numbers without a string copy
+  (a unit test compares it with the byte-at-a-time parser). `core/tests/reader_parallel_corpus.rs`
+  compares one-thread and parallel reads (with 1–4 kB chunks, so every sheet is cut many times)
+  cell by cell, with merges, formats and errors, over a file list.
 - **Where the time goes.** `HEDGEHOG_TRACE=1` prints each stage with the process peak memory,
-  and indented sub-steps: `layout.totals / blocks / regions / cp_signatures / cp_search / loose`,
+  and indented sub-steps: `read.limits / workbook / sheets / csv`,
+  `layout.totals / blocks / regions / cp_signatures / cp_search / loose`,
   `tot.*` (the total detection), `totals_prefetch`, `M.layout / context / values / totals /
   layout_totals / stream` (model path) and `build_tables.typing`; in the agent path also `hash`,
   `read`, `normalized`, `cat.*` and `catalog`, `sql.plan / rows / long_views / unions / commit`.

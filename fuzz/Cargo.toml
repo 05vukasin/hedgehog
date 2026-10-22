@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 hh_core.workspace = true
+calamine.workspace = true
 hh_agent.workspace = true
 zip = { workspace = true }
 rust_xlsxwriter.workspace = true

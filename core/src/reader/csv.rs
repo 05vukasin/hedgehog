@@ -104,14 +104,15 @@ fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding, max_cells: u64) -> Result
     let mut row = 0u32;
     while parser.next_record(&mut rec).map_err(err)? {
         for (col, bytes) in rec.fields().enumerate() {
-            let text = match enc {
+            let value = match enc {
+                // B136: a number or a blank field is never copied into a string.
                 Encoding::Utf8 => match std::str::from_utf8(bytes) {
-                    Ok(s) => s.to_owned(),
+                    Ok(s) => typed_str(s),
                     Err(_) => return Ok(None),
                 },
-                Encoding::Windows1252 => bytes.iter().map(|&b| windows_1252(b)).collect(),
+                Encoding::Windows1252 => typed(bytes.iter().map(|&b| windows_1252(b)).collect()),
             };
-            if let Some(value) = typed(text) {
+            if let Some(value) = value {
                 cells.push(Cell { row, col: col as u32, value: Some(value), formula: None });
             }
         }
@@ -121,6 +122,17 @@ fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding, max_cells: u64) -> Result
         row = row.saturating_add(1);
     }
     Ok(Some(cells))
+}
+
+/// [`typed`] of a borrowed field: the text is copied only when it stays text.
+fn typed_str(text: &str) -> Option<Value> {
+    if text.trim().is_empty() {
+        return None;
+    }
+    Some(match plain_number(text) {
+        Some(x) => Value::Number(x),
+        None => Value::Text(text.to_owned()),
+    })
 }
 
 /// `None` for a whitespace-only field.
@@ -282,16 +294,38 @@ impl<R: BufRead> Parser<R> {
             }
             started = true;
             let mut end = None;
-            for (i, &b) in chunk.iter().enumerate() {
+            let mut i = 0;
+            while i < chunk.len() {
+                // B136: runs of plain bytes are copied at once (same states, same bytes).
                 match state {
                     State::Quoted => {
-                        if b == b'"' {
-                            state = State::QuoteInQuoted;
-                        } else {
-                            rec.buf.push(b);
+                        match memchr::memchr(b'"', &chunk[i..]) {
+                            Some(k) => {
+                                rec.buf.extend_from_slice(&chunk[i..i + k]);
+                                state = State::QuoteInQuoted;
+                                i += k + 1;
+                            }
+                            None => {
+                                rec.buf.extend_from_slice(&chunk[i..]);
+                                i = chunk.len();
+                            }
                         }
                         continue;
                     }
+                    State::FieldStart | State::Unquoted => {
+                        let run = chunk[i..].iter().position(|&b| b == self.delim || b == b'\n' || b == b'\r' || b == b'"').unwrap_or(chunk.len() - i);
+                        if run > 0 {
+                            rec.buf.extend_from_slice(&chunk[i..i + run]);
+                            state = State::Unquoted;
+                            i += run;
+                            continue;
+                        }
+                    }
+                    State::QuoteInQuoted => {}
+                }
+                let b = chunk[i];
+                i += 1;
+                match state {
                     State::QuoteInQuoted if b == b'"' => {
                         rec.buf.push(b'"');
                         state = State::Quoted;
@@ -306,7 +340,7 @@ impl<R: BufRead> Parser<R> {
                 } else if b == b'\n' || b == b'\r' {
                     rec.ends.push(rec.buf.len());
                     self.skip_lf = b == b'\r';
-                    end = Some(i + 1);
+                    end = Some(i);
                     break;
                 } else if b == b'"' && state == State::FieldStart {
                     state = State::Quoted;
@@ -343,6 +377,101 @@ fn windows_1252(b: u8) -> char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The parser before B136 (one byte at a time), the reference for the run-copying one.
+        fn next_record_reference<R: BufRead>(p: &mut Parser<R>, rec: &mut Record) -> io::Result<bool> {
+            rec.buf.clear();
+            rec.ends.clear();
+            let mut state = State::FieldStart;
+            let mut started = false;
+            loop {
+                let chunk = p.r.fill_buf()?;
+                if chunk.is_empty() {
+                    if started {
+                        rec.ends.push(rec.buf.len());
+                    }
+                    return Ok(started);
+                }
+                if std::mem::take(&mut p.skip_lf) && chunk[0] == b'\n' {
+                    p.r.consume(1);
+                    continue;
+                }
+                started = true;
+                let mut end = None;
+                for (i, &b) in chunk.iter().enumerate() {
+                    match state {
+                        State::Quoted => {
+                            if b == b'"' {
+                                state = State::QuoteInQuoted;
+                            } else {
+                                rec.buf.push(b);
+                            }
+                            continue;
+                        }
+                        State::QuoteInQuoted if b == b'"' => {
+                            rec.buf.push(b'"');
+                            state = State::Quoted;
+                            continue;
+                        }
+                        State::QuoteInQuoted if b != p.delim && b != b'\n' && b != b'\r' => p.stray += 1,
+                        _ => {}
+                    }
+                    if b == p.delim {
+                        rec.ends.push(rec.buf.len());
+                        state = State::FieldStart;
+                    } else if b == b'\n' || b == b'\r' {
+                        rec.ends.push(rec.buf.len());
+                        p.skip_lf = b == b'\r';
+                        end = Some(i + 1);
+                        break;
+                    } else if b == b'"' && state == State::FieldStart {
+                        state = State::Quoted;
+                    } else {
+                        p.stray += usize::from(b == b'"');
+                        rec.buf.push(b);
+                        state = State::Unquoted;
+                    }
+                }
+                let used = end.unwrap_or(chunk.len());
+                p.r.consume(used);
+                if end.is_some() {
+                    return Ok(true);
+                }
+            }
+        }
+
+    /// Same records, field ends and stray-quote counts as the byte-at-a-time parser, on random
+    /// inputs over the special bytes, read through tiny buffers so that runs cross chunk ends.
+    #[test]
+    fn runs_match_byte_parser() {
+        let alphabet = b"ab;,\t|\"\r\n x\"";
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for case in 0..4000 {
+            let len = (next() % 80) as usize;
+            let input: Vec<u8> = (0..len).map(|_| alphabet[(next() % alphabet.len() as u64) as usize]).collect();
+            let cap = 1 + (next() % 9) as usize;
+            for delim in [b',', b';', b'\t', b'|'] {
+                let mut a = Parser::new(std::io::BufReader::with_capacity(cap, input.as_slice()), delim);
+                let mut b = Parser::new(std::io::BufReader::with_capacity(cap, input.as_slice()), delim);
+                let (mut ra, mut rb) = (Record::default(), Record::default());
+                loop {
+                    let ga = a.next_record(&mut ra).unwrap();
+                    let gb = next_record_reference(&mut b, &mut rb).unwrap();
+                    assert_eq!(ga, gb, "case {case}");
+                    assert_eq!((&ra.buf, &ra.ends, a.stray, a.skip_lf), (&rb.buf, &rb.ends, b.stray, b.skip_lf), "case {case}: {input:?}");
+                    if !ga {
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     fn read(text: &[u8]) -> Vec<Cell> {
         read_bytes(text, false, u64::MAX).unwrap()

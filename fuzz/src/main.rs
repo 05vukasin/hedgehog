@@ -170,7 +170,26 @@ fn exec(target: Target, path: &Path, data: &[u8]) -> String {
         Target::Normalize => grid::workbook(data),
         _ => {
             let opts = hh_core::reader::ReadOptions { formats: true, ..Default::default() };
-            match hh_core::reader::open_with(path, opts) {
+            // B136: large parts are read on several threads; here every part is, in chunks of a
+            // few hundred bytes, and must read exactly as on one thread.
+            calamine::set_parallel_read_for_tests(Some((1, 1 << 20, u64::MAX)));
+            let one = hh_core::reader::open_with(path, opts);
+            calamine::set_parallel_read_for_tests(Some((3, 64 + data.len() % 512, 0)));
+            let par = hh_core::reader::open_with(path, opts);
+            calamine::set_parallel_read_for_tests(None);
+            let same = match (&one, &par) {
+                (Ok(a), Ok(b)) => {
+                    a.sheets.len() == b.sheets.len()
+                        // as text: NaN equals NaN, -0 differs from 0
+                        && a.sheets.iter().zip(&b.sheets).all(|(x, y)| {
+                            format!("{:?}", (&x.name, &x.cells, &x.merges, &x.formats)) == format!("{:?}", (&y.name, &y.cells, &y.merges, &y.formats))
+                        })
+                }
+                (Err(a), Err(b)) => a.to_string() == b.to_string(),
+                _ => false,
+            };
+            assert!(same, "parallel read differs from the one-thread read");
+            match one {
                 Ok(wb) => wb,
                 Err(e) => return format!("err:{}", squash(&e.to_string())),
             }

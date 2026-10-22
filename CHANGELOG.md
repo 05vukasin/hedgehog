@@ -90,6 +90,18 @@ All notable changes to hedgehog are listed here. The format follows
   indexed by row range instead of a hash table (~32 bytes per cell less); several hot row checks
   no longer allocate; freed memory goes back to the system after each large sheet. See
   [architecture.md](docs/architecture.md#performance-notes).
+- **Large workbooks read 3–4× faster, same cells** (B136). Sheet parts and shared string tables
+  of 2 MB or more, and the tables of a large ODS file, are read on up to four threads with
+  calamine's own parsing code, in chunks cut at row (string) ends and joined in order; anything
+  unusual falls back to the one-thread read. Read time, best of 3: `001_contratos2020.xlsx` 3.84
+  → 1.02 s, `EQ08__13.xlsx` 3.41 → 0.94 s, `008_BF_1_2023…xlsx` 2.92 → 0.90 s,
+  `040_EIA923…xlsx` 2.42 → 0.72 s, `019_dPi2025_H1-H4.xlsx` 2.10 → 0.67 s, `069_asylum-claims…xlsx`
+  1.78 → 0.49 s, `036_36752511_master.xlsx` 0.93 → 0.27 s, `083_jts0502.ods` 5.83 → 2.66 s (peak
+  769 → 501 MB: sheets moved out of calamine, not copied); peak memory otherwise the same. The
+  merge scan runs beside the cell read; CSV copies runs of plain bytes at once. Workbooks, the 30
+  agent catalogs, normalized files of 286 files (threaded and on one CPU), the golden check and
+  both benchmark TSVs are byte-identical. `HEDGEHOG_TRACE` shows `read.limits / workbook / sheets
+  / csv`. See [architecture.md](docs/architecture.md#performance-notes).
 - `HEDGEHOG_TRACE=1` traces the agent path too: `read`, `tot.*`, `totals_prefetch`, `cat.*`,
   `sql.*`.
 
