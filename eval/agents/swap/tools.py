@@ -95,6 +95,7 @@ class Mcp:
         self.cmd, self.cwd, self.logp, self.allow, self.timeout = cmd, cwd, log, allow, timeout
         self.n = 0
         self.question: str | None = None  # the case's question, for HH_QUESTION=host
+        self.opens: list[dict] = []  # per open_file: the question actually sent and the catalog size
         self.start()
         tools = self.rpc("tools/list", {})["tools"]
         self.specs = [{"type": "function", "function": {"name": t["name"], "description": t.get("description", ""),
@@ -154,6 +155,8 @@ class Mcp:
             sys.path.insert(0, str(HERE.parents[1] / "info"))
             from score import strip_kinds
             text = strip_kinds(text, HIDE_KINDS)
+        if name == "open_file":
+            self.opens.append({"path": args.get("path"), "question": args.get("question"), "chars": len(text)})
         return clip(text, MCP_MAX_OUT), bool(r.get("isError"))
 
     def close(self) -> None:
