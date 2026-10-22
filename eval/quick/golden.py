@@ -127,8 +127,8 @@ def main() -> int:
         if w is None:
             print(f"NEW   {f}: {n} tables (not in golden.tsv; run with --update)")
             continue
-        what = [k for k, x, y in zip(("tables", "catalog", "manifest"), w, got) if x != y]
-        print(f"DIFF  {f}: {', '.join(what)} changed (tables {w[0]} -> {n}, manifest {w[2]} -> {m})")
+        what = [f"{k} {x} -> {y}" if k != "catalog" else "catalog" for k, x, y in zip(("tables", "catalog", "manifest"), w, got) if x != y]
+        print(f"DIFF  {f}: {', '.join(what)} changed")
         if w[1] != c:
             kept = a.catalogs / (f.replace("/", "__") + ".txt")
             old = kept.read_text() if kept.exists() else None

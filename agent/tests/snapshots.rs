@@ -109,6 +109,7 @@ impl Snap {
 
     /// Compares with (or, with `UPDATE_SNAPSHOTS=1`, rewrites) `snapshots/<name>.txt`.
     fn check(self) {
+        let rel = format!("agent/tests/snapshots/{}.txt", self.name);
         let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(format!("{}.txt", self.name));
         let got = self.out;
         let update = std::env::var("UPDATE_SNAPSHOTS").is_ok_and(|v| !v.is_empty() && v != "0");
@@ -120,17 +121,15 @@ impl Snap {
         if update {
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
             std::fs::write(&file, &got).unwrap();
-            eprintln!("updated {}", file.display());
+            eprintln!("updated {rel}");
             return;
         }
         match want {
             None => panic!(
-                "no snapshot {} yet; create it with UPDATE_SNAPSHOTS=1 (make quick-update)\n--- output ---\n{got}",
-                file.display()
+                "no snapshot {rel} yet; create it with UPDATE_SNAPSHOTS=1 (make quick-update)\n--- output ---\n{got}"
             ),
             Some(want) => panic!(
-                "snapshot {} differs (- stored, + now); accept with UPDATE_SNAPSHOTS=1 (make quick-update)\n{}",
-                file.display(),
+                "snapshot {rel} differs (- stored, + now); accept with UPDATE_SNAPSHOTS=1 (make quick-update)\n{}",
                 diff(&want, &got)
             ),
         }

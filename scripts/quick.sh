@@ -85,7 +85,7 @@ finish() { # finish <part> <rc> <t0>
 if want snapshots; then
   t0=$(now)
   log=$WORK/snapshots.log
-  run "$log" env UPDATE_SNAPSHOTS=$UPDATE cargo test --offline --profile quick -p hh_agent --test snapshots -q
+  run "$log" env UPDATE_SNAPSHOTS=$UPDATE cargo test --offline --profile quick -p hh_agent --test snapshots -q -- --test-threads=1
   rc=$?
   if [ $rc -eq 0 ]; then
     res=$(grep -E '^test result:' "$log" | tail -1 | sed -E 's/^test result: ok\. ([0-9]+) passed.*/\1 passed/')
@@ -95,9 +95,9 @@ if want snapshots; then
       echo "snapshots OK: $res"
     fi
   else
-    echo "snapshots FAILED (log: $log)"
+    echo "snapshots FAILED (log: ${log#"$ROOT"/})"
     if grep -q '^failures:' "$log"; then
-      sed -n '/^failures:/,/^test result/p' "$log" | grep -v -E '^(note: run with|failures:$|test result)' | sed 's/^/  /'
+      sed -n '/^failures:/,/^test result/p' "$log" | grep -v -E "^(note: run with|failures:\$|test result|thread '.*'.* panicked at )" | sed 's/^/  /'
     else
       tail -40 "$log" | sed 's/^/  /'
     fi
