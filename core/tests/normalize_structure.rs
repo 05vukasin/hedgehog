@@ -107,6 +107,58 @@ fn register_names_that_start_with_a_total_word_are_no_totals() {
 }
 
 #[test]
+fn owid_and_eurostat_aggregates_are_total_rows() {
+    let owid = normalize("owid", |ws| {
+        for (c, h) in ["country", "year", "solar_electricity"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        let mut names: Vec<String> = (0..40).map(|k| format!("Country {k}")).collect();
+        names.extend(["World", "Africa", "Asia (EI)", "High-income countries"].map(String::from));
+        let mut r = 1;
+        for (k, name) in names.iter().enumerate() {
+            for y in 2019..2025 {
+                ws.write_string(r, 0, name).unwrap();
+                ws.write_number(r, 1, y as f64).unwrap();
+                ws.write_number(r, 2, (k * 7 + y as usize % 5) as f64 + 0.5).unwrap();
+                r += 1;
+            }
+        }
+    });
+    let t = &owid.tables[0];
+    let country = col(t, "country");
+    let totals: Vec<&str> = (0..t.rows()).filter(|&i| t.row_types[i] != RowType::Data).map(|i| text(&country[i])).collect();
+    assert_eq!(totals.len(), 24, "{totals:?}");
+    assert!(totals.contains(&"World") && totals.contains(&"Asia (EI)") && !totals.contains(&"Country 3"));
+
+    let eurostat = normalize("eurostat", |ws| {
+        for (c, h) in ["geo", "TIME_PERIOD", "OBS_VALUE"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        let geos = ["AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "EL", "ES", "FI", "FR", "HR", "HU", "IE", "IT", "EU27_2020", "EA20"];
+        let mut r = 1;
+        for (k, g) in geos.iter().enumerate() {
+            for half in ["2024-S1", "2024-S2"] {
+                ws.write_string(r, 0, *g).unwrap();
+                ws.write_string(r, 1, half).unwrap();
+                ws.write_number(r, 2, 0.2 + k as f64 / 100.0).unwrap();
+                r += 1;
+            }
+        }
+        // A register: more rows below.
+        for k in 0..200u32 {
+            ws.write_string(r, 0, ["LT", "LU", "LV", "MT", "NL"][k as usize % 5]).unwrap();
+            ws.write_string(r, 1, "2023-S1").unwrap();
+            ws.write_number(r, 2, 0.3 + k as f64 / 1000.0).unwrap();
+            r += 1;
+        }
+    });
+    let t = &eurostat.tables[0];
+    let geo = col(t, "geo");
+    let totals: Vec<&str> = (0..t.rows()).filter(|&i| t.row_types[i] != RowType::Data).map(|i| text(&geo[i])).collect();
+    assert_eq!(totals, ["EU27_2020", "EU27_2020", "EA20", "EA20"]);
+}
+
+#[test]
 fn month_end_headers_roll_over_into_the_next_year() {
     let n = normalize("rollover", |ws| {
         let date = rust_xlsxwriter::Format::new().set_num_format("mm/dd/yy");

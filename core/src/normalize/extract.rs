@@ -1926,11 +1926,15 @@ pub(super) fn process_sheet(
             });
         }
     }
-    let aggregate_rows: HashSet<u32> = det.aggregates.iter().map(|a| a.0).collect();
+    let aggregate_rows: HashMap<u32, u32> = det.aggregates.iter().copied().collect();
     // Removed total rows: numbers not found by `totals::detect` are listed unverified; the row's
     // label text is attached; other text goes to Notes.
     for (n, row, rt, idxs) in &removed {
-        let label_idx = idxs.iter().copied().find(|&i| matches!(cells[i].value, Some(Value::Text(_))));
+        // A known aggregate's label is its code or name (`geo` = 'EU27_2020', B87).
+        let label_idx = aggregate_rows
+            .get(row)
+            .and_then(|&lc| idxs.iter().copied().find(|&i| cells[i].col == lc && matches!(cells[i].value, Some(Value::Text(_)))))
+            .or_else(|| idxs.iter().copied().find(|&i| matches!(cells[i].value, Some(Value::Text(_)))));
         let label = label_idx.and_then(|i| cells[i].value.as_ref()).map(display);
         for &i in idxs {
             let c = &cells[i];
@@ -1963,7 +1967,7 @@ pub(super) fn process_sheet(
                         value: num,
                         recomputed: None,
                         status: "unknown",
-                        reason: if aggregate_rows.contains(row) {
+                        reason: if aggregate_rows.contains_key(row) {
                             "known_aggregate"
                         } else if rate {
                             "not_additive"
