@@ -16,7 +16,6 @@ T1  ← Staff!A1:D9 · 8 rows
     Gus,1,1,4500
     Hana,0,0,4750
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-(normalized in <t> s)
 
 ## query staff.xlsx: SELECT count(*) AS n FROM T1 WHERE Remote = 'TRUE'
 n

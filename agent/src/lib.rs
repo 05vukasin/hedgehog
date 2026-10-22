@@ -200,7 +200,6 @@ struct Opened {
     /// Catalog text per display name (before the timing line).
     catalogs: HashMap<String, String>,
     from_disk: bool,
-    seconds: f64,
     last_used: u64,
 }
 
@@ -364,7 +363,6 @@ impl Session {
                         cache::trace("cache: norm decoded", t);
                         Ok(Norm { norm: Arc::new(norm), plan: Some(plan) })
                     });
-                    let seconds = entry.seconds();
                     cache::trace("cache: entry opened", t0);
                     self.insert(sha.clone(), Opened {
                         path,
@@ -374,7 +372,6 @@ impl Session {
                         entry: Some(entry),
                         catalogs: HashMap::new(),
                         from_disk: true,
-                        seconds,
                         last_used: self.clock,
                     });
                     return Ok((sha, true));
@@ -464,7 +461,6 @@ impl Session {
             entry: None,
             catalogs,
             from_disk: false,
-            seconds,
             last_used: self.clock,
         });
         Ok((sha, false))
@@ -586,14 +582,9 @@ impl Session {
                 None => text.push_str(&format!("\n{add}")),
             }
         }
-        let o = self.files.get_mut(&sha).expect("file is open");
-        if !text.contains("\n… cut:") {
-            if cached {
-                text.push_str("\n(cached)");
-            } else {
-                text.push_str(&format!("\n(normalized in {:.1} s)", o.seconds));
-            }
-        }
+        // No timing or cache note in the catalog: the agent can't use it, it costs tokens and it
+        // made the same file's catalog differ between a first and a cached open (B143).
+        let _ = cached;
         Ok(text)
     }
 

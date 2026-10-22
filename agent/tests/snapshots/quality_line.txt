@@ -9,7 +9,6 @@ T1  ← orders!A1:D33 · 32 rows
     numbers: amount (sum 4,261)
     quality: id: 32 rows, 30 distinct — count them with COUNT(DISTINCT "id") · discount empty in 10 rows (31 %): category = 'Online' (all its 10 rows) · 3 negative amount
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-(normalized in <t> s)
 
 ## query orders.csv: SELECT category, count(*) AS n, count(discount) AS with_discount FROM T1 GROUP BY 1 ORDER BY 1
 category,n,with_discount

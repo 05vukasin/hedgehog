@@ -64,7 +64,6 @@ T4  ← Staff!A1:C5 · 4 rows · same layout as T1; headers here: Department Sta
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
 NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
 SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
-(normalized in <t> s)
 
 ## open_file city.xlsx question: What were the total revenues and expenses in the budget?
 FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
@@ -89,7 +88,6 @@ T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
 NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
 SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
-(cached)
 
 ## open_file city.xlsx question: How many inhabitants did each district have in 2024?
 FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
@@ -124,7 +122,6 @@ T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
 NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
 SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
-(cached)
 
 ## open_file city.xlsx question: What was the consumer price index in March 2023?
 FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
@@ -154,7 +151,6 @@ T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
 NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
 SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
-(cached)
 
 ## open_file city.xlsx question: Summarize this file.
 FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
@@ -220,4 +216,3 @@ T4  ← Staff!A1:C5 · 4 rows · same layout as T1; headers here: Department Sta
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
 NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
 SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
-(cached)

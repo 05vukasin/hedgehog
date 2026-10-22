@@ -28,7 +28,6 @@ T1  ← orders!A1:C21 · 20 rows
     1018,1,2022-03-19
     1019,2,2022-03-20
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-(normalized in <t> s)
 
 ## open_file order_lines.csv
 FILE order_lines.csv · 1 sheet · 160 cells (100% in tables) · 1 table
@@ -40,7 +39,6 @@ T1  ← order_lines!A1:D40 · 39 rows
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = orders.csv (T1), f2 = order_lines.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.orderID = b.orderID
 JOIN KEYS f1.T1.orderID = f2.T1.orderID (20 shared values; unique in f1.T1)
-(normalized in <t> s)
 
 ## query orders.csv: SELECT o.employeeID, SUM(l.unitPrice * l.quantity) AS revenue FROM T1 o JOIN f2.T1 l ON o.orderID = l.orderID WHERE o.orderDate LIKE '2021%' GROUP BY 1 ORDER BY 2 DESC
 employeeID,revenue
