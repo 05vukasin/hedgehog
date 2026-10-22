@@ -1,10 +1,10 @@
 # snapshot: union_views
 
 ## open_file states.xlsx
-FILE states.xlsx · 3 sheets · 66 cells (95% in tables) · 3 tables · roles: model
+FILE states.xlsx · 3 sheets · 66 cells (95% in tables) · 3 tables
 TIME 2026 (only mentioned in titles/notes/sheet or file names; no date or period columns)
 T1  'Nächtigungen in Burgenland – nach Herkunftsland Juli 2026' ← Bur!A3:C9 · 6 rows
-    columns (3): Herkunftsland[text · dim] "Ankünfte"[integer 100..135] "Nächtigungen"[integer 300..410]
+    columns (3): Herkunftsland "Ankünfte"[100..135] "Nächtigungen"[300..410]
     all 6 rows (CSV):
     Herkunftsland,Ankünfte,Nächtigungen
     Deutschland,100,300
@@ -31,8 +31,7 @@ T3  'Nächtigungen in Wien – nach Herkunftsland Juli 2026' ← Wie!A3:C9 · 6 
     Schweiz,321,966
     Ungarn,328,988
     Polen,335,1010
-NOTES 3 cells (title 3); e.g. Bur!A1: "Nächtigungen in Burgenland – nach Herkunftsland Juli 2026"
-WARNINGS none
+NOTES 3 cells; e.g. Bur!A1: "Nächtigungen in Burgenland – nach Herkunftsland Juli 2026"
 SQL views T1..T3 (data rows) and T1_all..T3_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
 SQL union view U1 = T1..T3 (3 tables with the same columns; adds _table, sheet, title, part = 'Burgenland' | 'Tirol' | 'Wien'): compare them in one query, e.g. SELECT part, SUM(…) FROM U1 GROUP BY part; U1_all also has the total rows (_row_type)
 (normalized in <t> s)

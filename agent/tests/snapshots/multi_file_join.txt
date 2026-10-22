@@ -1,10 +1,10 @@
 # snapshot: multi_file_join
 
 ## open_file orders.csv
-FILE orders.csv · 1 sheet · 63 cells (100% in tables) · 1 table · roles: model
+FILE orders.csv · 1 sheet · 63 cells (100% in tables) · 1 table
 TIME 2021-03-01–2022-03-20 (day, from columns T1.orderDate)
 T1  ← orders!A1:C21 · 20 rows
-    columns (3): orderID[integer · id 1000..1019] employeeID[integer · id 1..3] orderDate[date · period 2021-03-01..2022-03-20, 20 distinct]
+    columns (3): orderID[id] employeeID[id] orderDate[date 2021-03-01..2022-03-20, 20 distinct]
     all 20 rows (CSV):
     orderID,employeeID,orderDate
     1000,1,2021-03-01
@@ -27,20 +27,16 @@ T1  ← orders!A1:C21 · 20 rows
     1017,3,2022-03-18
     1018,1,2022-03-19
     1019,2,2022-03-20
-NOTES none
-WARNINGS none
 SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## open_file order_lines.csv
-FILE order_lines.csv · 1 sheet · 160 cells (100% in tables) · 1 table · roles: model
+FILE order_lines.csv · 1 sheet · 160 cells (100% in tables) · 1 table
 TIME no dates or periods found
 T1  ← order_lines!A1:D40 · 39 rows
-    columns (4): orderID[integer · id 1000..1019] productID[integer · id 10..12] unitPrice[number · amount 5.5..7.5] quantity[integer · count 1..4]
-    numbers: unitPrice (sum 239.5, 100 % filled)
+    columns (4): orderID[id] productID[id] unitPrice[5.5..7.5] quantity[1..4]
+    numbers: unitPrice (sum 239.5)
     quality: orderID: 39 rows, 20 distinct — count them with COUNT(DISTINCT "orderID") · productID: 39 rows, 3 distinct — count them with COUNT(DISTINCT "productID")
-NOTES none
-WARNINGS none
 SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = orders.csv (T1), f2 = order_lines.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.orderID = b.orderID
 JOIN KEYS f1.T1.orderID = f2.T1.orderID (20 shared values; unique in f1.T1)

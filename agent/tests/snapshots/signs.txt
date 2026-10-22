@@ -1,10 +1,10 @@
 # snapshot: signs
 
 ## open_file pl.xlsx
-FILE pl.xlsx · 1 sheet · 21 cells (100% in tables) · 1 table · roles: model
+FILE pl.xlsx · 1 sheet · 21 cells (100% in tables) · 1 table
 TIME 2023–2024 (year, from column headers in T1)
 T1  ← 'P&L'!A1:C7 · 6 rows
-    columns (3): "Line item"[text · dim] "2023"[integer -700..1200] "2024"[integer -760..1350]
+    columns (3): "Line item" "2023"[-700..1200] "2024"[-760..1350]
     signs: rows with _src_row 5–6 are all negative (outflows?) — a net figure is the SUM over all rows, not a difference
     all 6 rows (CSV):
     Line item,2023,2024
@@ -14,8 +14,6 @@ T1  ← 'P&L'!A1:C7 · 6 rows
     Operating expenses,-200,-230
     Depreciation,-50,-55
     Operating profit,250,305
-NOTES none
-WARNINGS none
 SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 

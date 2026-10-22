@@ -263,10 +263,11 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
     if let Some((&i, _)) = at.iter().max_by_key(|(i, n)| (**n, std::cmp::Reverse(**i))) {
         // B74: every label (up to 15) by level, the grand total named, what each adds up.
         let entries = crate::catalog::total_entries(info);
+        let col = ident(&names[i]);
         return Some(format!(
-            "{head} — labels in {}: {}",
-            ident(&names[i]),
-            crate::catalog::total_entries_text(&entries, &t.id(), true, 15)
+            "{head} — labels in {col}: {}{}",
+            crate::catalog::total_entries_text(&entries, &t.id(), true, 15),
+            crate::catalog::group_totals_note(&entries, Some(&col)).unwrap_or_default()
         ));
     }
     let cols = value_cols(t);
@@ -469,9 +470,9 @@ fn amount_text(a: &Amount, rows: usize, range: bool) -> String {
         let cur = a.col.currency.as_ref().map(|c| format!(" {c}")).unwrap_or_default();
         parts.push(format!("sum {}{cur}", big(f.sum)));
     }
-    parts.push(format!("{} filled", pct(f.filled, rows)));
-    if f.zero * 10 >= f.filled.max(1) {
-        parts.push(format!("{} zero", pct(f.zero, f.filled)));
+    // B104: the fill rate only when cells are missing (a sum or a count over them is partial).
+    if f.filled * 100 < rows * 99 {
+        parts.push(format!("{} filled", pct(f.filled, rows)));
     }
     if range {
         parts.push(format!("{}..{}", big(f.min), big(f.max)));
@@ -529,7 +530,8 @@ pub fn numbers_lines(t: &Table, names: &[String], rows: &[usize], ranges_shown: 
     let rest: Vec<String> = am
         .iter()
         .enumerate()
-        .filter(|(k, a)| !in_line.contains(k) && (!ranges_shown || a.summable || a.facts.filled * 100 < rows.len() * 99))
+        // B104: a sum, or missing cells; a range only when the columns line has none.
+        .filter(|(k, a)| !in_line.contains(k) && (a.summable || a.facts.filled * 10 < rows.len() * 9))
         .take(NUMBER_ITEMS)
         .map(|(_, a)| amount_text(a, rows.len(), !ranges_shown))
         .collect();
@@ -1019,6 +1021,12 @@ fn partial_years(c: &Column, name: &str, rows: &[usize]) -> Option<String> {
     (!parts.is_empty()).then(|| format!("{}: {} — compare full years or the same months", ident(name), parts.join(", ")))
 }
 
+/// A column of changes or differences (`Veränderung absolut`, `coal_cons_change_twh`, `Delta`).
+fn change_name(name: &str) -> bool {
+    const CHANGE: &[&str] = &["change", "changes", "veränderung", "differenz", "diff", "difference", "delta", "growth", "variation", "promena"];
+    words(name).iter().any(|w| CHANGE.contains(&w.as_str()))
+}
+
 /// A key of things to count by its name (`Order ID`, `customerID`, `Nr`), not a code such as a
 /// postcode.
 fn key_name(name: &str) -> bool {
@@ -1097,6 +1105,10 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         if empty == 0 || empty * 100 < n || empty == n {
             continue;
         }
+        // B104: a label written once per block (one value) is no gap in the data.
+        if c.dtype == Dtype::Text && label_values(c, rows).is_some_and(|v| v.len() <= 1) {
+            continue;
+        }
         let date = is_date(c.dtype);
         // Unexplained empties only for dates (counts by date drop them) and text columns (a NULL
         // group); the numbers line has the fill rate of amounts.
@@ -1112,7 +1124,7 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
             }
             None if !date => {
                 unexplained += 1;
-                s.push_str(" — one NULL group when grouping by it; filter IS NOT NULL to rank");
+                s.push_str(" (a NULL group when grouping)");
             }
             None => {}
         }
@@ -1129,7 +1141,8 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
     if !signs {
         let neg: Vec<String> = amounts(t, names, rows)
             .iter()
-            .filter(|a| a.facts.neg > 0 && a.facts.neg * 2 < a.facts.filled - a.facts.zero)
+            // B104: changes and differences are negative by nature; a negative amount changes a sum.
+            .filter(|a| a.facts.neg > 0 && a.facts.neg * 2 < a.facts.filled - a.facts.zero && !change_name(a.name))
             .take(4)
             .map(|a| format!("{} negative {}", thousands(a.facts.neg), ident(a.name)))
             .collect();
@@ -1306,7 +1319,7 @@ mod tests {
     fn amounts_and_quality() {
         let c = catalog(&register(), "x.xlsx", MAX_CHARS);
         assert!(
-            c.contains("\n    precoContratual (sum 811,970, 100 % filled) vs PrecoTotalEfetivo (sum 120,000, 100 % filled, 50 % zero) — different measures; pick deliberately\n"),
+            c.contains("\n    precoContratual (sum 811,970) vs PrecoTotalEfetivo (sum 120,000) — different measures; pick deliberately\n"),
             "{c}"
         );
         // IDs and years are not amounts.
@@ -1420,7 +1433,7 @@ mod tests {
         let c = catalog(&book(cols, vec![RowType::Data; rows]), "x.xlsx", MAX_CHARS);
         let q = c.lines().find(|l| l.starts_with("    quality: ")).unwrap_or_else(|| panic!("{c}"));
         assert!(q.contains("annual_salary empty in 10 rows (25 %): salary_or_hourly = 'HOURLY' (all its 10 rows)"), "{q}");
-        assert!(q.contains("employer empty in 14 rows (35 %) — one NULL group when grouping by it"), "{q}");
+        assert!(q.contains("employer empty in 14 rows (35 %) (a NULL group when grouping)"), "{q}");
         assert!(q.contains("\"Order ID\": 40 rows, 14 distinct — count them with COUNT(DISTINCT \"Order ID\")"), "{q}");
         assert!(q.contains("Date: 2013 has Sep–Dec only (4 of 12 months), 2016 has Jan–Nov only (11 of 12 months)"), "{q}");
     }

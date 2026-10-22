@@ -1,10 +1,10 @@
 # snapshot: booleans
 
 ## open_file staff.xlsx
-FILE staff.xlsx · 1 sheet · 36 cells (100% in tables) · 1 table · roles: model
+FILE staff.xlsx · 1 sheet · 36 cells (100% in tables) · 1 table
 TIME no dates or periods found
 T1  ← Staff!A1:D9 · 8 rows
-    columns (4): Employee[text · dim] Remote[bool · dim 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')] Certified[bool · dim 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')] Salary[integer · amount 3000..4750]
+    columns (4): Employee Remote[bool 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')] Certified[bool 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')] Salary[3000..4750]
     all 8 rows (CSV):
     Employee,Remote,Certified,Salary
     Ana,1,1,3000
@@ -15,8 +15,6 @@ T1  ← Staff!A1:D9 · 8 rows
     Finn,0,0,4250
     Gus,1,1,4500
     Hana,0,0,4750
-NOTES none
-WARNINGS none
 SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 

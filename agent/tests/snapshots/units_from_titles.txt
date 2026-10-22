@@ -1,10 +1,10 @@
 # snapshot: units_from_titles
 
 ## open_file budget.xlsx
-FILE budget.xlsx · 2 sheets · 35 cells (94% in tables) · 2 tables · roles: model
+FILE budget.xlsx · 2 sheets · 35 cells (94% in tables) · 2 tables
 TIME 2024 (only mentioned in titles/notes/sheet or file names; no date or period columns)
 T1  'Municipal budget 2024, in 1 000 EUR' ← Budget!A3:C8 · 5 rows
-    columns (3): Department[text · dim] Planned[integer 650..5400] Spent[integer 700..5120]
+    columns (3): Department Planned[650..5400] Spent[700..5120]
     all 5 rows (CSV):
     Department,Planned,Spent
     Education,5400,5120
@@ -13,7 +13,7 @@ T1  'Municipal budget 2024, in 1 000 EUR' ← Budget!A3:C8 · 5 rows
     Culture,800,760
     Parks,650,700
 T2  'Population by district (thousands)' ← People!A3:C7 · 4 rows
-    columns (3): District[text · dim] Men[number 19.9..41.2] Women[number 20.4..44.8]
+    columns (3): District Men[19.9..41.2] Women[20.4..44.8]
     units: amounts in thousands (× 1,000), says "Population by district (thousands)" — multiply by 1,000 for full figures; percentages and rates are as shown
     all 4 rows (CSV):
     District,Men,Women
@@ -21,8 +21,7 @@ T2  'Population by district (thousands)' ← People!A3:C7 · 4 rows
     North,30.5,31.9
     South,27.1,28.3
     East,19.9,20.4
-NOTES 2 cells (title 2); e.g. Budget!A1: "Municipal budget 2024, in 1 000 EUR"
-WARNINGS none
+NOTES 2 cells; e.g. Budget!A1: "Municipal budget 2024, in 1 000 EUR"
 SQL views T1..T2 (data rows) and T1_all..T2_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
