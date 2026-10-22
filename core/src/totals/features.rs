@@ -51,7 +51,7 @@ pub fn compute_returning(grid: &Grid, out: &mut Features) -> Vec<crate::totals::
 /// candidates of the sheet (first pass); [`compute_returning`] is exactly this, cell by cell.
 pub struct Totals<'g> {
     grid: &'g Grid<'g>,
-    deps: DependencyIndex,
+    deps: &'g DependencyIndex,
     keyword_rows: std::collections::HashMap<u32, (u32, crate::totals::KeywordLevel)>,
     /// `t_total_verified` of the candidate cells (the last candidate on a cell decides).
     verified: rustc_hash::FxHashMap<usize, f32>,
@@ -60,9 +60,9 @@ pub struct Totals<'g> {
 impl<'g> Totals<'g> {
     /// First pass; also returns the detected total candidates.
     pub fn new(grid: &'g Grid<'g>) -> (Totals<'g>, Vec<crate::totals::TotalCandidate>) {
-        let deps = DependencyIndex::new(grid);
+        let deps = grid.deps();
         // As the learned row model was trained: every total keyword counts, incidental or not.
-        let crate::totals::Detection { candidates: cands, keyword_rows, .. } = detect_rows(grid, &deps, false);
+        let crate::totals::Detection { candidates: cands, keyword_rows, .. } = detect_rows(grid, deps, false);
         let mut verified = rustc_hash::FxHashMap::default();
         for cand in &cands {
             if let Some(i) = grid.cell_index(cand.row, cand.col) {

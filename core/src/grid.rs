@@ -22,6 +22,9 @@ pub struct Grid<'a> {
     /// Total detection (with the register rule), built on first use: the layout rules and the
     /// normalizer both need it.
     pub(crate) totals: OnceLock<crate::totals::Detection>,
+    /// The sheet's parsed formulas and references, built on first use: the model's total features
+    /// and the total detection both need them (B131).
+    deps: OnceLock<crate::totals::DependencyIndex>,
 }
 
 #[inline]
@@ -40,7 +43,22 @@ impl<'a> Grid<'a> {
             rows: OnceLock::new(),
             cols: OnceLock::new(),
             totals: OnceLock::new(),
+            deps: OnceLock::new(),
         }
+    }
+
+    /// The parsed formula of the cell at (row, col) from the dependency index, when that index is
+    /// built and every position holds one cell (then it is `parse` of that cell's formula).
+    pub(crate) fn parsed_formula(&self, row: u32, col: u32) -> Option<&crate::totals::formula::ParsedFormula> {
+        match self.index {
+            CellIndex::Sorted { .. } => self.deps.get()?.formula(row, col),
+            CellIndex::Hashed(_) => None,
+        }
+    }
+
+    /// The sheet's dependency index ([`crate::totals::DependencyIndex::new`]), built once.
+    pub fn deps(&self) -> &crate::totals::DependencyIndex {
+        self.deps.get_or_init(|| crate::totals::DependencyIndex::new(self))
     }
 
     /// The cached total detection, if it was run (see `totals::detect`).
@@ -123,8 +141,23 @@ impl<'a> Grid<'a> {
             }
             return out;
         }
-        let cols = self.columns();
         let cells = &self.sheet.cells;
+        if rect.bottom - rect.top <= rect.right - rect.left {
+            // No taller than wide (a row of a sum across columns): row by row, each row's cells
+            // already in column order, so the result needs no sort (B132).
+            let rows = self.rows.get_or_init(|| Lines::new(self, |c| (c.row, c.col)));
+            let lo = rows.keys.partition_point(|&r| r < rect.top);
+            let hi = rows.keys.partition_point(|&r| r <= rect.bottom);
+            let mut out = Vec::new();
+            for &row in &rows.keys[lo..hi] {
+                let line = rows.get(row);
+                let a = line.partition_point(|&i| cells[i as usize].col < rect.left);
+                let b = line.partition_point(|&i| cells[i as usize].col <= rect.right);
+                out.extend_from_slice(&line[a..b]);
+            }
+            return out;
+        }
+        let cols = self.columns();
         let lo = cols.keys.partition_point(|&c| c < rect.left);
         let hi = cols.keys.partition_point(|&c| c <= rect.right);
         let mut out = Vec::new();

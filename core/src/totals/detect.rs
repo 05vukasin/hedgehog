@@ -229,7 +229,7 @@ pub fn incidental_rows(grid: &Grid) -> IncidentalRows {
     if weak.is_empty() {
         return IncidentalRows::default();
     }
-    let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
+    let d = grid.totals.get_or_init(|| detect_rows(grid, grid.deps(), true));
     IncidentalRows { records: d.incidental_rows.clone(), totals: d.confirmed_rows.clone() }
 }
 
@@ -245,7 +245,7 @@ pub fn model_records(grid: &Grid) -> Vec<u32> {
     if weak.is_empty() {
         return Vec::new();
     }
-    let d = grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true));
+    let d = grid.totals.get_or_init(|| detect_rows(grid, grid.deps(), true));
     let formula_total: FxHashSet<(u32, u32)> = d
         .candidates
         .iter()
@@ -321,7 +321,7 @@ pub fn labelled_rows(grid: &Grid) -> Vec<u32> {
     } else {
         // The detection starts from the same keyword cells and rows (computed once, B127).
         let keywords = (kw_cells, strong.clone(), weak.clone());
-        let d = grid.totals.get_or_init(|| detect_rows_from(grid, &DependencyIndex::new(grid), true, Some(keywords)));
+        let d = grid.totals.get_or_init(|| detect_rows_from(grid, grid.deps(), true, Some(keywords)));
         let mut v: Vec<u32> = d.keyword_rows.keys().copied().collect();
         v.extend(weak.into_keys().filter(|r| !b1.contains(r) && !d.keyword_rows.contains_key(r)));
         v
@@ -615,13 +615,13 @@ impl<'g> Labels<'g> {
 }
 
 pub fn detect(grid: &Grid) -> Vec<TotalCandidate> {
-    grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true)).candidates.clone()
+    grid.totals.get_or_init(|| detect_rows(grid, grid.deps(), true)).candidates.clone()
 }
 
 /// Everything [`detect`] finds on the sheet (cached on the grid): candidates, keyword rows,
 /// "of which" and average rows, known aggregates.
 pub fn detection<'a>(grid: &'a Grid) -> &'a Detection {
-    grid.totals.get_or_init(|| detect_rows(grid, &DependencyIndex::new(grid), true))
+    grid.totals.get_or_init(|| detect_rows(grid, grid.deps(), true))
 }
 
 /// [`detect`] reusing an already built dependency index.
