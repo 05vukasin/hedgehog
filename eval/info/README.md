@@ -171,6 +171,21 @@ scoreboard from 159/168 (95 %) at 53,867 tokens to 168/168 (100 %) at 42,360 tok
 sufficient checks per 1k tokens), with no case lower and no trap fact lost against the v0.4.0
 catalogs (compared with `trap_facts` on both runs' cached sessions).
 
+## Question mode (B150)
+
+`--question` opens every case's files a second time with the case's prompt as `open_file`'s
+`question` (one more `hedgehog mcp` session per case, `<case>.q.json` in the cache) and scores the
+same checks on that catalog; the query results are the same. It writes [QUESTION.md](QUESTION.md)
+and results-question.json: per case and overall, the checks in the catalog or one query away (a+b)
+and the catalog tokens without and with the question, for all cases, the multi-table files (a file
+with 2+ tables) and the cases where the question told tables apart; every check lost with the
+question and its reason; and the trap facts (`trap_facts`) of the tables the QUESTION line names
+that the catalog with the question lost (warnings of the other tables may go: they are listed one
+line each). The second session finds the file in hedgehog's disk cache, so its timing line is
+replaced by the first session's (`(cached)` vs `(normalized in …)`), so that only the question
+changes the size. `make quick` runs it on its 15 cases as a second `info` line
+(`eval/quick/info_question.tsv`).
+
 ## Running
 
 ```sh
@@ -179,6 +194,7 @@ catalogs (compared with `trap_facts` on both runs' cached sessions).
   /path/to/venv/bin/python -I eval/info/score.py --cache /some/disk/dir
 python3 -I eval/info/score.py --offline --cache /some/disk/dir     # re-score from the cached sessions
 python3 -I eval/info/score.py --cases de-gdp,owid-energy --no-ablation
+python3 -I eval/info/score.py --question --no-ablation --out /some/dir  # + QUESTION.md (B150)
 python3 -I eval/info/test_score.py                                  # unit tests (no hedgehog)
 ```
 

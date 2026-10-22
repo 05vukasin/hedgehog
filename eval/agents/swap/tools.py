@@ -26,6 +26,9 @@ MCP_MAX_OUT = 32000     # characters of an MCP tool result (≈ 8k tokens)
 # HH_HIDE_KINDS=quality,types: drop these catalog line kinds (eval/info/score.py KINDS / SEGMENTS) from
 # open_file results, to measure with a model what they are worth.
 HIDE_KINDS = {k for k in os.environ.get("HH_HIDE_KINDS", "").split(",") if k}
+# B150, test-only: HH_QUESTION=host passes the case's question to every open_file call (as a host such
+# as hedgehog-cli would); HH_QUESTION=off drops a question the model passed; unset: the model decides.
+QUESTION_MODE = os.environ.get("HH_QUESTION", "")
 # Read and analysis tools of excel-csv-mcp-server (ishayoyo/excel-mcp); its write, export, formatting
 # and LLM-calling tools are not offered.
 EXCELMCP_READ = {"read_file", "get_cell", "get_range", "get_headers", "search", "filter_rows", "aggregate",
@@ -91,6 +94,7 @@ class Mcp:
     def __init__(self, cmd: list[str], cwd: Path, log: Path, allow: set[str] | None = None, timeout: int = 300):
         self.cmd, self.cwd, self.logp, self.allow, self.timeout = cmd, cwd, log, allow, timeout
         self.n = 0
+        self.question: str | None = None  # the case's question, for HH_QUESTION=host
         self.start()
         tools = self.rpc("tools/list", {})["tools"]
         self.specs = [{"type": "function", "function": {"name": t["name"], "description": t.get("description", ""),
@@ -129,6 +133,10 @@ class Mcp:
     def call(self, name: str, args: dict) -> tuple[str, bool]:
         if self.allow is not None and name not in self.allow:
             return f"error: unknown tool {name}", True
+        if name == "open_file" and QUESTION_MODE == "host" and self.question:
+            args = {**args, "question": self.question}
+        elif name == "open_file" and QUESTION_MODE == "off":
+            args = {k: v for k, v in args.items() if k != "question"}
         try:
             r = self.rpc("tools/call", {"name": name, "arguments": args})
         except queue.Empty:

@@ -628,8 +628,8 @@ impl NativeSession {
     }
 
     #[napi(ts_return_type = "Promise<string>")]
-    pub fn open_file(&self, path: String) -> AsyncTask<ToolTask> {
-        self.task(Box::new(move |s| s.open_file(&path)))
+    pub fn open_file(&self, path: String, question: Option<String>) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| s.open_file_for(&path, question.as_deref())))
     }
 
     #[napi(ts_return_type = "Promise<string>")]

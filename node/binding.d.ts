@@ -20,7 +20,7 @@ export declare class NativeSession {
   get root(): string
   /** Allows one more file or folder outside the root. */
   allow(path: string): void
-  openFile(path: string): Promise<string>
+  openFile(path: string, question?: string | undefined | null): Promise<string>
   describeTable(path: string, table: string): Promise<string>
   query(path: string, sql: string, limit?: number | undefined | null): Promise<string>
   cells(path: string, sheet: string, range: string): Promise<string>

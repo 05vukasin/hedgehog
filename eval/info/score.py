@@ -3,6 +3,8 @@
     python3 -I eval/info/score.py                       # all cases: run hedgehog mcp, score, write REPORT.md + results.json
     python3 -I eval/info/score.py --cases at-cpi,nw-orders
     python3 -I eval/info/score.py --offline             # re-score from the session cache (no hedgehog calls)
+    python3 -I eval/info/score.py --question            # also open each file with the case's prompt as the
+                                                        # question (B150): QUESTION.md + results-question.json
 
 Run it under scripts/run_capped.sh (pt-contracts needs 4G). For every check of every case in
 eval/agents/cases.json (judge checks are out of scope) it decides, without an LLM, one of:
@@ -133,12 +135,13 @@ PROBES: dict[str, dict[str, dict]] = {
 # ---------------------------------------------------------------------------------------------
 # catalog lines by kind
 
-KINDS = ("file", "time", "sheets", "brief", "table", "columns", "units", "column_notes", "entity", "share",
+KINDS = ("file", "time", "sheets", "question", "brief", "table", "columns", "units", "column_notes", "entity", "share",
          "values", "mixed", "long", "no_sum", "table_status", "total_rows", "signs", "inline", "numbers",
          "quality", "formulas", "totals", "notes", "warnings", "sql", "sql_long", "union", "files", "cut",
          "timing", "other")
 
 _TOP = [("FILE ", "file"), ("TIME ", "time"), ("SHEETS without", "sheets"), ("(tables listed briefly", "brief"),
+        ("QUESTION ", "question"), ("(other tables, one line each", "brief"), ("(the other tables)", "brief"),
         ("FORMULAS ", "formulas"), ("TOTALS ", "totals"), ("NOTES ", "notes"), ("WARNINGS ", "warnings"),
         ("SQL view ", "sql"), ("SQL views ", "sql"), ("no tables detected", "sql"), ("SQL long view", "sql_long"),
         ("SQL union view", "union"), ("FILES ", "files"), ("JOIN KEYS", "files"), ("… cut:", "cut"),
@@ -1082,12 +1085,15 @@ def main() -> None:
                     help="where session outputs are kept (default eval/info/cache, not committed)")
     ap.add_argument("--out", type=Path, default=HERE)
     ap.add_argument("--no-ablation", action="store_true")
+    ap.add_argument("--question", action="store_true",
+                    help="also open each file with the case's prompt as the question and compare (QUESTION.md)")
     args = ap.parse_args()
     cases = json.loads((AGENTS / "cases.json").read_text())
     want = set(filter(None, args.cases.split(",")))
     args.cache.mkdir(parents=True, exist_ok=True)
     data = data_root()
     results = []
+    qresults = []
     for c in cases:
         if want and c["id"] not in want:
             continue
@@ -1117,6 +1123,11 @@ def main() -> None:
                         "other_lines": [l for l, k in zip(lines, kinds) if k == "other" and l.strip()][:5]})
         n_ok = sum(x["cat"] in "ab" for x in checks)
         print(f"{c['id']}: {n_ok}/{len(checks)} sufficient, {results[-1]['tokens']} tokens", flush=True)
+        if args.question:
+            qr = question_case(c, session, args.cache / f"{c['id']}.q.json", data, args.offline)
+            qresults.append(qr)
+            q_ok = sum(x["cat"] in "ab" for x in qr["checks"])
+            print(f"{c['id']} with question: {q_ok}/{len(checks)} sufficient, {qr['tokens']} tokens", flush=True)
     ablation = []
     if not args.no_ablation:
         sessions = {r["case"]: json.loads((args.cache / f"{r['case']}.json").read_text()) for r in results}
@@ -1137,10 +1148,132 @@ def main() -> None:
                         moved[f"{before}→{x['cat']}"] = moved.get(f"{before}→{x['cat']}", 0) + 1
             ablation.append({"kind": kind, "tokens": tokens, "lost": lost, "moved": moved})
     write(args.out, results, ablation, bool(want))
+    if args.question:
+        write_question(args.out, results, qresults, bool(want))
+
+
+# ---------------------------------------------------------------------------------------------
+# question mode (B150): open_file with the case's prompt as the question
+
+
+def question_catalogs(case: dict, root: Path) -> dict[str, str]:
+    """The case's catalogs opened with its prompt as the question (one session, like an agent's)."""
+    calls = [(f"open:{f}", ("open_file", {"path": f, "question": case["prompt"]})) for f in case_files(case)]
+    return dict(zip([k for k, _ in calls], S.call(root, [c for _, c in calls])))
+
+
+def table_count(catalog: str) -> int:
+    m = re.search(r"· ([\d,]+) tables?\b", catalog.split("\n", 1)[0])
+    return int(m.group(1).replace(",", "")) if m else 0
+
+
+def matched_tables(catalog: str) -> list[str]:
+    """The tables a catalog's QUESTION line names."""
+    m = re.search(r"^QUESTION matches (.*?): (?:first|T\d)", catalog, re.M)
+    return re.findall(r"\b(T\d+) \(", m.group(1)) if m else []
+
+
+def question_case(case: dict, session: dict[str, str], cache: Path, data: Path, offline: bool) -> dict:
+    if offline or (cache.exists() and os.environ.get("HH_INFO_REUSE")):
+        q = json.loads(cache.read_text())
+    else:
+        q = question_catalogs(case, data / case.get("root", "irregular"))
+        cache.write_text(json.dumps(q, ensure_ascii=False, indent=0))
+    # The second session finds the file in hedgehog's disk cache: the same timing line as the first
+    # one, so that only the question changes the size.
+    for k, text in q.items():
+        timing = re.compile(r"\n\((?:cached|normalized in [\d.]+ s)\)$")
+        if timing.search(text) and timing.search(session.get(k, "")):
+            last = "\n" + session[k].rsplit("\n", 1)[1]
+            q[k] = timing.sub(lambda _: last, text)
+    catalogs = [q[f"open:{f}"] for f in case_files(case)]
+    checks = score_case(case, catalogs, {**session, **q})
+    text = "\n".join(catalogs)
+    matched = [f"f{k}:{t}" if len(catalogs) > 1 else t for k, cat in enumerate(catalogs, 1) for t in matched_tables(cat)]
+    return {"case": case["id"], "tokens": count_tokens(text), "chars": len(text), "checks": checks,
+            "tables": sum(table_count(cat) for cat in catalogs), "multi_table": any(table_count(cat) >= 2 for cat in catalogs),
+            "matched": matched, "question_lines": [l for l in text.split("\n") if l.startswith("QUESTION ")],
+            "traps": sorted({f"f{k}:{x}" if len(catalogs) > 1 else x for k, cat in enumerate(catalogs, 1) for x in trap_facts(cat)}),
+            "trap_checks": trap_checks(case["id"], text)}
+
+
+def lost_traps(before: list[str], after: list[str], matched: list[str]) -> list[str]:
+    """Trap facts of the matched tables that the question's catalog lost (the other tables are listed
+    one line each, so their warnings may go)."""
+    def table_of(fact: str) -> str:
+        parts = fact.split(":")
+        pre = parts[0] + ":" if re.fullmatch(r"f\d+", parts[0]) else ""
+        rest = parts[1:] if pre else parts
+        return pre + rest[1] if len(rest) > 1 else ""
+    keep = set(matched)
+    return [f for f in before if f not in after and table_of(f) in keep]
+
+
+def write_question(out: Path, results: list[dict], qresults: list[dict], partial: bool) -> None:
+    base = {r["case"]: r for r in results}
+    rows = []
+    for q in qresults:
+        b = base[q["case"]]
+        ab0 = sum(x["cat"] in "ab" for x in b["checks"])
+        ab1 = sum(x["cat"] in "ab" for x in q["checks"])
+        lost = [{"check": x["check"], "before": y["cat"], "after": x["cat"], "reason": x["reason"]}
+                for x, y in zip(q["checks"], b["checks"]) if y["cat"] in "ab" and x["cat"] not in "ab"]
+        rows.append({"case": q["case"], "checks": len(q["checks"]), "ab_without": ab0, "ab_with": ab1,
+                     "tokens_without": b["tokens"], "tokens_with": q["tokens"], "chars_without": b["chars"],
+                     "chars_with": q["chars"], "tables": q["tables"], "multi_table": q["multi_table"],
+                     "matched": q["matched"], "lost": lost, "lost_traps": lost_traps(b["traps"], q["traps"], q["matched"]),
+                     "trap_checks": q["trap_checks"], "question_lines": q["question_lines"]})
+
+    def total(rs: list[dict]) -> dict:
+        t0, t1 = sum(r["tokens_without"] for r in rs), sum(r["tokens_with"] for r in rs)
+        return {"cases": len(rs), "checks": sum(r["checks"] for r in rs), "ab_without": sum(r["ab_without"] for r in rs),
+                "ab_with": sum(r["ab_with"] for r in rs), "tokens_without": t0, "tokens_with": t1,
+                "token_change": round((t1 - t0) / t0, 4) if t0 else 0}
+    summary = {"tokenizer": TOKENIZER, "all": total(rows), "multi_table": total([r for r in rows if r["multi_table"]]),
+               "focused": total([r for r in rows if r["matched"]])}
+    (out / "results-question.json").write_text(json.dumps({"summary": summary, "cases": rows}, ensure_ascii=False, indent=1) + "\n")
+    print(json.dumps({"question": summary}))
+    if partial:
+        return
+    pct = lambda a, b: f"{100 * (b - a) / a:+.0f} %" if a else "–"  # noqa: E731
+    L = ["# Question-aware catalog (B150): with vs without the question", "",
+         "Generated by [score.py](score.py) `--question`: every file is opened a second time with the case's prompt",
+         "as `open_file`'s `question`, and the same checks are scored on that catalog (the query results are the",
+         "same). The tables the question matches come first and in full, the others one line each.", "",
+         f"Tokens: {TOKENIZER}.", "",
+         "## Overall", "",
+         "| Cases | Checks | a+b without | a+b with | Tokens without | Tokens with | Change |",
+         "|---|---:|---:|---:|---:|---:|---:|"]
+    for name, key in (("all", "all"), ("multi-table files", "multi_table"), ("question matched some tables", "focused")):
+        t = summary[key]
+        L.append(f"| {name} ({t['cases']}) | {t['checks']} | {t['ab_without']} | {t['ab_with']} | {t['tokens_without']:,} | "
+                 f"{t['tokens_with']:,} | {pct(t['tokens_without'], t['tokens_with'])} |")
+    L += ["", "## Per case", "",
+          "| Case | Tables | Matched | a+b without | a+b with | Tokens without | Tokens with | Change |",
+          "|---|---:|---|---:|---:|---:|---:|---:|"]
+    for r in rows:
+        m = ", ".join(r["matched"]) or "–"
+        L.append(f"| {r['case']} | {r['tables']} | {m} | {r['ab_without']}/{r['checks']} | {r['ab_with']}/{r['checks']} | "
+                 f"{r['tokens_without']:,} | {r['tokens_with']:,} | {pct(r['tokens_without'], r['tokens_with'])} |")
+    L += ["", "## Checks lost with the question", ""]
+    lost = [(r["case"], x) for r in rows for x in r["lost"]]
+    L += ["| Case | Check | Without → with | Reason with the question |", "|---|---|---|---|"] if lost else ["None."]
+    for case, x in lost:
+        L.append(f"| {case} | {x['check']} | {x['before']} → {x['after']} | {x['reason'].replace('|', '/')[:200]} |")
+    L += ["", "## Trap warnings of matched tables lost with the question", ""]
+    traps = [(r["case"], f) for r in rows for f in r["lost_traps"]]
+    traps += [(r["case"], "trap check failed: " + x["what"]) for r in rows for x in r["trap_checks"] if not x["ok"]]
+    L += [f"- {c}: `{f}`" for c, f in traps] or ["None."]
+    L += ["", "## QUESTION lines", ""]
+    for r in rows:
+        for l in r["question_lines"]:
+            L.append(f"- {r['case']}: `{l[:300]}`")
+    (out / "QUESTION.md").write_text("\n".join(L) + "\n")
 
 
 KIND_DESC = {
     "file": "FILE line (sheets, cells, tables)", "time": "TIME line", "sheets": "SHEETS without tables",
+    "question": "QUESTION line (B150: the tables the question matches)",
     "brief": "'tables listed briefly' note", "table": "table head line (T<n> ← range · rows · totals; brief: cols)",
     "types": "part: [type · role · range] after each column name", "table_cols": "part: brief 'N cols: …' list on table lines",
     "table_totals": "part: total-row labels on table lines",
