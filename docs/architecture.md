@@ -131,10 +131,36 @@ checked against the previous code path (design and measurements: the P7 research
   materialized one, with the rows in 1 and in several chunks; `core/tests/p7_equivalence.rs`
   runs it over a file list. The golden check (`hedgehog golden`) covers the per-cell feature
   columns.
+- **Large sheets, one at a time** (B122–B135). A workbook whose sheets go one at a time (all but
+  small model workbooks) builds one `Grid` per sheet for both the layout and the extraction, so
+  the cell index, the row and column lines, the parsed formulas (`Grid::deps`, shared by the
+  model's total features, the detection and `verify`) and the total detection are built once.
+  Cells in reader order (row by row, each position once) are found by their row's range and a
+  column array (direct guess, then binary search) instead of a hash table: ~32 bytes per cell
+  less. On a sheet of 100k+ cells the total detection runs on its own thread beside the layout
+  (rules or model; the result is the grid's cached value, whoever computes it first), the rules
+  layout finds the labelled total rows beside the blocks, and a table of 200k+ values types its
+  columns on up to four threads (each column reads only its own values and the sheet's shared
+  hints; results go back in column order, transform counts are added). After each large sheet
+  `malloc_trim` hands the memory its threads freed back to the system (glibc).
+- **Same results, fewer steps.** Blocks: components sized exactly, sorted entries not sorted
+  again, rows sized exactly. Rows: `is_header_row` finds the overlapping entries of a row whose
+  entries do not overlap by binary search; a row is compared with a header signature without
+  building one; total labels and `norm_key` take an allocation-free path for ASCII words;
+  `missing_token` skips the key when no key can match. Column lines of reader-order cells are
+  counted per column instead of sorted; a range no taller than wide is collected row by row.
+  Typing keeps parse results only for texts that read as something. The labelled-rows pass and
+  the detection share the keyword cells and rows. Each of these has a unit test against the
+  general path where the equivalence is not obvious.
+- **Agent path** (`agent/`, B120–B121). `open_file` never writes an xlsx, CSV or manifest. The
+  SQLite load (or the disk cache entry) starts right after normalizing, beside the catalog; the
+  cache entry takes the catalog once it is there. Inserts bind values in place (text borrowed).
 - **Where the time goes.** `HEDGEHOG_TRACE=1` prints each stage with the process peak memory,
   and indented sub-steps: `layout.totals / blocks / regions / cp_signatures / cp_search / loose`,
-  `M.layout / context / values / totals / layout_totals / stream` (model path) and
-  `build_tables.typing`.
+  `tot.*` (the total detection), `totals_prefetch`, `M.layout / context / values / totals /
+  layout_totals / stream` (model path) and `build_tables.typing`; in the agent path also `hash`,
+  `read`, `normalized`, `cat.*` and `catalog`, `sql.plan / rows / long_views / unions / commit`.
+  Sub-steps on other threads overlap, so they no longer add up to the stage.
 
 ## Python layer
 
