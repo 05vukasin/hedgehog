@@ -85,6 +85,29 @@ fn sex_breakdown_blocks_are_data_with_a_subtotal_per_block() {
 }
 
 #[test]
+fn month_end_headers_roll_over_into_the_next_year() {
+    let n = normalize("rollover", |ws| {
+        let date = rust_xlsxwriter::Format::new().set_num_format("mm/dd/yy");
+        ws.write_string(0, 0, "Pipeline").unwrap();
+        // Jul–Dec 2001, then Jan–Mar typed as 2001 (serials 37103.. and 36922..).
+        let serials = [37103.0, 37134.0, 37164.0, 37195.0, 37225.0, 37256.0, 36922.0, 36950.0, 36981.0];
+        for (k, s) in serials.iter().enumerate() {
+            ws.write_number_with_format(0, 1 + k as u16, *s, &date).unwrap();
+        }
+        for r in 1..5u32 {
+            ws.write_string(r, 0, format!("P{r}")).unwrap();
+            for k in 0..serials.len() {
+                ws.write_number(r, 1 + k as u16, (r * 100 + k as u32) as f64).unwrap();
+            }
+        }
+    });
+    let t = &n.tables[0];
+    let names = names(t);
+    assert_eq!(names[6..10], ["2001-12-31", "2002-01-31", "2002-02-28", "2002-03-31"], "{names:?}");
+    assert!(t.warnings.iter().any(|w| w.contains("next year")), "{:?}", t.warnings);
+}
+
+#[test]
 fn period_labels_get_a_sortable_period_column() {
     let n = normalize("periods", |ws| {
         ws.write_string(0, 0, "Jahr / Monat").unwrap();

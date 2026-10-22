@@ -515,6 +515,65 @@ fn sex_blocks(rows: &[(u32, Vec<usize>)], cells: &[crate::model::Cell], r: Rect,
     None
 }
 
+/// B84: rolls a header row of dates over into the next year where a monthly sequence steps back
+/// from December to January of the same year. Returns (last date before the step, last date
+/// after the fix) when something changed; the header texts are rewritten in place.
+fn roll_over_header_dates(row_heads: &mut [Head], grid: &Grid) -> Option<(String, String)> {
+    use crate::values::{serial_to_ymd, ymd_to_serial};
+    let dated: Vec<(usize, (i32, u8, u8))> = row_heads
+        .iter()
+        .enumerate()
+        .filter_map(|(hc, h)| {
+            let (_, (row, col)) = h.as_ref()?;
+            match grid.cell(*row, *col)?.value {
+                Some(Value::DateTime(x)) => Some((hc, serial_to_ymd(x)?)),
+                _ => None,
+            }
+        })
+        .collect();
+    if dated.len() < 4 {
+        return None;
+    }
+    let day = |y: i32, m: u8, d: u8| ymd_to_serial(y, m, d.min(crate::values::date::days_in_month(y, m)));
+    let mut shift = 0;
+    let mut prev: Option<(f64, (i32, u8, u8))> = None;
+    let mut fixed: Vec<(usize, (i32, u8, u8))> = Vec::new();
+    let mut before = None;
+    for &(hc, (y, m, d)) in &dated {
+        let mut cur = (y + shift, m, d);
+        if let Some((p, pd)) = prev {
+            let mut s = day(cur.0, m, d);
+            if s < p {
+                let next = day(cur.0 + 1, m, d);
+                // Only the December → January step of a monthly sequence.
+                if !(pd.1 == 12 && m == 1 && next > p && next - p <= 62.0) {
+                    return None;
+                }
+                shift += 1;
+                before.get_or_insert(pd);
+                cur = (cur.0 + 1, m, d);
+                s = next;
+            } else if s - p > 62.0 {
+                return None;
+            }
+            prev = Some((s, cur));
+        } else {
+            prev = Some((day(y, m, d), cur));
+        }
+        if shift > 0 {
+            fixed.push((hc, cur));
+        }
+    }
+    let iso = |(y, m, d): (i32, u8, u8)| format!("{y:04}-{m:02}-{:02}", d.min(crate::values::date::days_in_month(y, m)));
+    let (from, last) = (before?, *fixed.last()?);
+    for (hc, ymd) in fixed {
+        if let Some(h) = row_heads[hc].as_mut() {
+            h.0 = iso(ymd);
+        }
+    }
+    Some((iso(from), iso(last.1)))
+}
+
 /// B72: the header rows the layout found, or a fuller header row below them. When every header
 /// row is sparse (a year label "Ano: 2016" over a numbered caption) and a row of header cells
 /// with at least three labels and twice as many as any header row comes before the first data
@@ -669,6 +728,16 @@ fn build_table(
                     }
                 }
             }
+        }
+    }
+    // B84: month-end dates across a header that step back from December to January of the same
+    // year (Jul … Dec 2001, Jan … Mar 2001) were typed without the year change: from the step on
+    // they are read one year later, when that continues the monthly sequence.
+    for row_heads in head.iter_mut() {
+        if let Some((from, to)) = roll_over_header_dates(row_heads, grid) {
+            warnings.push(format!(
+                "header dates after {from} that went back to the start of the year are read as the next year (to {to})"
+            ));
         }
     }
     // Parent labels centred over their children without a merge (B39): when blank parent cells

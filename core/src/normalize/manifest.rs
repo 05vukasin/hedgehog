@@ -187,7 +187,7 @@ fn table_totals(t: &Table, totals: &[TotalItem]) -> Json {
         .rows
         .into_iter()
         .map(|r| {
-            Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data).with("period", r.period)
+            Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data).with("period", r.period).with("sources_outside", r.sources_outside)
         })
         .collect();
     Json::obj()

@@ -520,6 +520,9 @@ pub struct TableTotalRow {
     /// The row's period from the table's `<name>_period` column (B70: `Ø 22` → `2022`, the
     /// year's figure), when the row is in the table data (`keep_totals`).
     pub period: Option<String>,
+    /// Source cells of the total outside its own table (B84: a grand total under the last of
+    /// stacked blocks that adds the subtotal of a block above, `D10`), in source order.
+    pub sources_outside: Vec<String>,
 }
 
 /// A table's totals (the manifest's `tables[].totals`): counts by status and one entry per total
@@ -533,6 +536,13 @@ pub struct TableTotals {
     pub rows: Vec<TableTotalRow>,
 }
 
+/// First and last 0-based row of an A1 cell or range (`D10`, `D14:D25`).
+fn a1_rows(s: &str) -> Option<(u32, u32)> {
+    let row = |c: &str| c.trim_start_matches(|ch: char| ch.is_ascii_alphabetic() || ch == '$').trim_start_matches('$').parse::<u32>().ok().filter(|&r| r > 0).map(|r| r - 1);
+    let (a, b) = s.split_once(':').unwrap_or((s, s));
+    Some((row(a)?, row(b)?))
+}
+
 /// The totals of table `t` among `totals` (usually [`Normalized::totals`]).
 pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
     let mut out = TableTotals::default();
@@ -544,11 +554,17 @@ pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
             _ => out.unknown += x.count,
         }
         if x.direction == "vertical" {
-            let e = rows.entry(x.row).or_insert(TableTotalRow { row: x.row + 1, label: None, level: x.level, kept_in_data: false, period: None });
+            let first = !rows.contains_key(&x.row);
+            let e = rows.entry(x.row).or_insert(TableTotalRow { row: x.row + 1, label: None, level: x.level, kept_in_data: false, period: None, sources_outside: Vec::new() });
             if e.label.is_none() {
                 e.label = x.label.clone();
             }
             e.kept_in_data |= x.kept_in_data;
+            for s in x.sources.iter().filter(|_| first) {
+                if a1_rows(s).is_some_and(|(a, b)| a < t.rect.top || b > t.rect.bottom) && !e.sources_outside.contains(s) {
+                    e.sources_outside.push(s.clone());
+                }
+            }
         }
     }
     out.count = out.ok + out.mismatch + out.unknown;
