@@ -244,3 +244,4 @@ Before → after (s to the first query, peak MB max of 3): pt001 17.4 → 9.6 (1
 disk cache: 1–2 ms to the catalog. This also closes the B90 note (pt001 ~10 % slower than at the
 P7 tip, `layout.totals` + `layout.blocks` +1.4 s): those two now run side by side, 2.3 s instead
 of 6.4 s on pt001.
+| B143 | the first `make quick` right after merging the speed branch printed 50,334 catalog chars for the 15 info cases; 5 later runs (cache on and off) give 50,087, identical per case. Not reproducible; suspected stale binary or cached session in the first run after a merge | if it recurs: log which case differs (info.py prints per-case sizes on mismatch) and the build ID of the binary used | not seen again over the next merges | watching |
