@@ -101,19 +101,19 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 |---|---|---|---|---:|---:|---:|---:|---:|---:|
 | pt-contracts | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 17 s | 22,047 / 1,673 | 0.0058 | 6 (1) | 8.7/13 (8) |
 | pt-contracts | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 101 s | 370,341 / 6,913 | 0.58 | – | 13/13 |
-| pt-contracts | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 67 s | 212,293 / 4,074 | 0.34 | – | 9/13 |
+| pt-contracts | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 37 s | 214,262 / 4,374 | 0.35 | – | 9/13 |
 | pt-contracts | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 27 s | 9,248 / 1,343 | 0.0042 | 6 (0) | 8.7/13 (8) |
 | at-pension | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 3 s | 10,393 / 161 | 0.0018 | 1 (0) | 4.0/4 (4) |
 | at-pension | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 17 s | 162,596 / 1,101 | 0.29 | – | 4/4 |
-| at-pension | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 132,222 / 885 | 0.21 | – | 4/4 |
+| at-pension | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 14 s | 170,730 / 1,138 | 0.23 | – | 4/4 |
 | at-pension | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 5 s | 7,737 / 370 | 0.0020 | 3 (0) | 2.7/4 (2) |
 | enron-henry-hub | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 7 s | 17,803 / 530 | 0.0037 | 6 (0) | 8.0/8 (8) |
 | enron-henry-hub | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 30 s | 284,741 / 2,298 | 0.43 | – | 8/8 |
-| enron-henry-hub | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 11 s | 143,072 / 947 | 0.25 | – | 8/8 |
+| enron-henry-hub | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 20 s | 141,644 / 1,084 | 0.23 | – | 8/8 |
 | enron-henry-hub | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 8 s | 27,700 / 572 | 0.0048 | 4 (0) | 8.0/8 (8) |
 | de-truck-toll | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 5 s | 7,543 / 388 | 0.0020 | 4 (0) | 4.0/5 (4) |
 | de-truck-toll | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 170,773 / 1,693 | 0.32 | – | 5/5 |
-| de-truck-toll | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 15 s | 167,817 / 909 | 0.22 | – | 4/5 |
+| de-truck-toll | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 21 s | 169,080 / 1,002 | 0.22 | – | 4/5 |
 | de-truck-toll | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 7 s | 13,873 / 435 | 0.0031 | 4 (0) | 4.0/5 (4) |
 | enron-om-2plants | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 7 s | 14,192 / 670 | 0.0029 | 7 (0) | 5.0/5 (5) |
 | enron-om-2plants | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 133,049 / 1,699 | 0.38 | – | 3/5 |
@@ -126,6 +126,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | enron-deals-pl | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 10,415 / 674 | 0.0033 | 9 (4) | 4.0/6 (4) |
 | enron-mdea-pl | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 7 s | 16,135 / 492 | 0.0032 | 4 (0) | 2.0/4 (1) |
 | enron-mdea-pl | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 42 s | 261,995 / 2,976 | 0.39 | – | 4/4 |
+| enron-mdea-pl | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 23 s | 248,091 / 2,162 | 0.28 | – | 4/4 |
 | enron-mdea-pl | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 31 s | 105,450 / 1,938 | 0.0167 | 17 (0) | 0.0/4 (0) |
 | enron-storage-inventory | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 24 s | 131,176 / 1,844 | 0.0199 | 13 (2) | 2.7/6 (2) |
 | enron-storage-inventory | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 21 s | 122,461 / 1,886 | 0.29 | – | 6/6 |
@@ -156,6 +157,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | uk-gender-pay-gap | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 8 s | 8,626 / 619 | 0.0029 | 8 (1) | 4.3/5 (4) |
 | pt-social-report | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 11 s | 30,652 / 662 | 0.0057 | 9 (0) | 4.5/7 (4) |
 | pt-social-report | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 20 s | 217,181 / 2,025 | 0.41 | – | 7/7 |
+| pt-social-report | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 19 s | 220,884 / 1,837 | 0.28 | – | 7/7 |
 | pt-social-report | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 26,586 / 677 | 0.0059 | 8 (1) | 5.7/7 (5) |
 | at-cpi | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 17 s | 73,744 / 1,094 | 0.0108 | 11 (0) | 3.0/6 (2) |
 | at-cpi | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 23 s | 209,246 / 1,821 | 0.32 | – | 6/6 |
@@ -171,6 +173,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | de-gdp | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 13 s | 44,427 / 1,165 | 0.0097 | 13 (6) | 5.3/6 (4) |
 | uk-ons-labour | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 6 s | 8,882 / 479 | 0.0026 | 3 (0) | 2.5/6 (2) |
 | uk-ons-labour | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 39 s | 301,107 / 2,245 | 0.38 | – | 6/6 |
+| uk-ons-labour | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 21 s | 249,102 / 1,839 | 0.28 | – | 5/6 |
 | uk-ons-labour | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 26,508 / 597 | 0.0051 | 5 (1) | 4.7/6 (4) |
 | fr-insee-pop | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 15 s | 59,460 / 1,171 | 0.0096 | 10 (0) | 7.0/7 (7) |
 | fr-insee-pop | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 21 s | 244,094 / 1,953 | 0.41 | – | 7/7 |
@@ -189,6 +192,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | de-berlin-grants | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 7 s | 5,407 / 433 | 0.0020 | 5 (0) | 5.0/5 (5) |
 | pt-tax-benefits | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 8 s | 10,022 / 682 | 0.0032 | 6 (0) | 5.0/5 (5) |
 | pt-tax-benefits | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 106 s | 329,381 / 3,172 | 0.46 | – | 5/5 |
+| pt-tax-benefits | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 18 s | 208,336 / 1,622 | 0.26 | – | 5/5 |
 | pt-tax-benefits | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 18 s | 11,342 / 674 | 0.0031 | 6 (0) | 5.0/5 (5) |
 | owid-energy | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 30,599 / 505 | 0.0050 | 5 (1) | 4.0/5 (4) |
 | owid-energy | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 13 s | 114,647 / 1,304 | 0.24 | – | 5/5 |
@@ -347,14 +351,14 @@ File: `enron/craig_dean__4381__MDEA P&L Report.xlsx`
 > For the day-ahead transactions only: what is EPMI's total net profit and MDEA's total net savings over the 14 days?
 > On which day were MDEA's day-ahead savings largest, and how much were they?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| EPMI day-ahead profit: $44,058.18 (sum of S32 on the 14 sheets) | 1/2 | ✓ | 0/3 |
-| MDEA day-ahead savings: $127,882.48 (sum of T32) | 1/2 | ✓ | 0/3 |
-| May 5, 2001 | 0/2 | ✓ | 0/3 |
-| MDEA savings on May 5: $15,056.52 | 2/2 | ✓ | 0/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| EPMI day-ahead profit: $44,058.18 (sum of S32 on the 14 sheets) | 1/2 | ✓ | ✓ | 0/3 |
+| MDEA day-ahead savings: $127,882.48 (sum of T32) | 1/2 | ✓ | ✓ | 0/3 |
+| May 5, 2001 | 0/2 | ✓ | ✓ | 0/3 |
+| MDEA savings on May 5: $15,056.52 | 2/2 | ✓ | ✓ | 0/3 |
 
-Answers (latest run): [hedgehog](answers/enron-mdea-pl.hedgehog.md), [claude](answers/enron-mdea-pl.claude.md), [swap-hedgehog](answers/enron-mdea-pl.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/enron-mdea-pl.hedgehog.md), [claude](answers/enron-mdea-pl.claude.md), [claude-hh](answers/enron-mdea-pl.claude-hh.md), [swap-hedgehog](answers/enron-mdea-pl.swap-hedgehog.md)
 
 ## enron-storage-inventory: NewPower gas storage inventory valuation (two stacked blocks with subtotals, month-end columns, price rows below)
 
@@ -561,17 +565,17 @@ File: `eu_pt_opendata/012_balanco-social-2016.xls`
 > What were total personnel costs in 2016, and what share of that was base pay?
 > How many service providers (prestadores de serviços) were there?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| 7,478 workers | 1/2 | ✓ | 3/3 |
-| 3,245 women | 1/2 | ✓ | 3/3 |
-| 43.4 % | 1/2 | ✓ | 3/3 |
-| Técnico Superior 2,148 (just above Assistente Operacional 2,138) | 0/2 | ✓ | 0/3 |
-| personnel costs €216,259,993.16 | 2/2 | ✓ | 3/3 |
-| base pay 62.6 % | 2/2 | ✓ | 2/3 |
-| 560 service providers | 2/2 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| 7,478 workers | 1/2 | ✓ | ✓ | 3/3 |
+| 3,245 women | 1/2 | ✓ | ✓ | 3/3 |
+| 43.4 % | 1/2 | ✓ | ✓ | 3/3 |
+| Técnico Superior 2,148 (just above Assistente Operacional 2,138) | 0/2 | ✓ | ✓ | 0/3 |
+| personnel costs €216,259,993.16 | 2/2 | ✓ | ✓ | 3/3 |
+| base pay 62.6 % | 2/2 | ✓ | ✓ | 2/3 |
+| 560 service providers | 2/2 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/pt-social-report.hedgehog.md), [claude](answers/pt-social-report.claude.md), [swap-hedgehog](answers/pt-social-report.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/pt-social-report.hedgehog.md), [claude](answers/pt-social-report.claude.md), [claude-hh](answers/pt-social-report.claude-hh.md), [swap-hedgehog](answers/pt-social-report.swap-hedgehog.md)
 
 ## at-cpi: Austrian consumer price index since 1990 (monthly rows interleaved with 'Ø' annual-average rows; 2026 incomplete)
 
@@ -665,18 +669,18 @@ File: `uk_ons/a01_labour_market_summary_sep2026.xls`
 > How many people were in employment and how many were unemployed?
 > Compared with the previous non-overlapping three-month period, did the unemployment rate rise or fall?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| latest period May–Jul 2026 | 1/2 | ✓ | 2/3 |
-| headline employment rate (16–64) 75.1 % | 2/2 | ✓ | 3/3 |
-| headline unemployment rate (16+) 4.9 % | 2/2 | ✓ | 3/3 |
-| 34.48 million in employment (16+) | 0/2 | ✓ | 3/3 |
-| 1.78 million unemployed | 0/2 | ✓ | 3/3 |
-| compares with Feb–Apr 2026 (4.89 %): about unchanged / up 0.02 points | ? | (✓) | ? |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| latest period May–Jul 2026 | 1/2 | ✓ | ✓ | 2/3 |
+| headline employment rate (16–64) 75.1 % | 2/2 | ✓ | ✓ | 3/3 |
+| headline unemployment rate (16+) 4.9 % | 2/2 | ✓ | ✓ | 3/3 |
+| 34.48 million in employment (16+) | 0/2 | ✓ | ✓ | 3/3 |
+| 1.78 million unemployed | 0/2 | ✓ | ✓ | 3/3 |
+| compares with Feb–Apr 2026 (4.89 %): about unchanged / up 0.02 points | ? | (✓) | ? | ? |
 
 - **claude** (`20261021T232522Z-uk-ons-labour-claude`): Feb–Apr 2026 4.886 % → 4.905 %: up ~0.02 points, essentially unchanged at one decimal
 
-Answers (latest run): [hedgehog](answers/uk-ons-labour.hedgehog.md), [claude](answers/uk-ons-labour.claude.md), [swap-hedgehog](answers/uk-ons-labour.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/uk-ons-labour.hedgehog.md), [claude](answers/uk-ons-labour.claude.md), [claude-hh](answers/uk-ons-labour.claude-hh.md), [swap-hedgehog](answers/uk-ons-labour.swap-hedgehog.md)
 
 ## fr-insee-pop: INSEE population by département, sex and age (49 yearly sheets; Ensemble/Hommes/Femmes blocks side by side; catalog takes the Somme département for a total row)
 
@@ -795,15 +799,15 @@ File: `eu_pt_opendata/008_BF_1_2023_beneficiarios_por_tipo_de_imposto_e_benefici
 > What share of the VAT refunds went to the armed and security forces category?
 > How many fire-brigade associations received a VAT refund?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| 63,209 IRC beneficiaries | 2/2 | ✓ | 3/3 |
-| VAT refunds €123,994,570.29 | 2/2 | ✓ | 3/3 |
-| Estado Maior Força Aérea €37,534,892.43 | 2/2 | ✓ | 3/3 |
-| armed and security forces 43.3 % | 2/2 | ✓ | 3/3 |
-| 414 fire-brigade associations | 2/2 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| 63,209 IRC beneficiaries | 2/2 | ✓ | ✓ | 3/3 |
+| VAT refunds €123,994,570.29 | 2/2 | ✓ | ✓ | 3/3 |
+| Estado Maior Força Aérea €37,534,892.43 | 2/2 | ✓ | ✓ | 3/3 |
+| armed and security forces 43.3 % | 2/2 | ✓ | ✓ | 3/3 |
+| 414 fire-brigade associations | 2/2 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/pt-tax-benefits.hedgehog.md), [claude](answers/pt-tax-benefits.claude.md), [swap-hedgehog](answers/pt-tax-benefits.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/pt-tax-benefits.hedgehog.md), [claude](answers/pt-tax-benefits.claude.md), [claude-hh](answers/pt-tax-benefits.claude-hh.md), [swap-hedgehog](answers/pt-tax-benefits.swap-hedgehog.md)
 
 ## owid-energy: Our World in Data energy dataset (23k country-years × 130 columns; countries mixed with regional aggregates)
 
