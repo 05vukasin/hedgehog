@@ -118,6 +118,13 @@ struct Cand {
     annotation: bool,
 }
 
+impl Cand {
+    /// Anything read (a value without readings is the same as `Cand::default()`).
+    fn has_reading(&self) -> bool {
+        self.num.is_some() || self.date.is_some() || self.boolean.is_some() || self.annotation
+    }
+}
+
 /// Types one column. `rows[i]` is the source row of `slots[i]`, `col` the source column (both
 /// 0-based, for warnings). `first` are the hints for the typing pass (explicit locale or none);
 /// `refine` is asked for the final hints of a numeric / date column, given a sample of its text
@@ -183,9 +190,9 @@ fn type_column_untimed(
     let mut words_only = true;
     let mut native = NativeNumbers::default();
     let mut ambiguous_seen = false;
-    // Readings of the text values that are not missing, in slot order (other values have none).
-    let n_text = slots.iter().zip(&missing).filter(|(s, m)| matches!((s, m), (Slot::Val(Value::Text(_)), None))).count();
-    let mut cands: Vec<Cand> = Vec::with_capacity(n_text);
+    // Readings of the text values that are not missing, by slot index in slot order; a text that
+    // reads as nothing is left out (most texts of a text column: little memory per column, B134).
+    let mut cands: Vec<(u32, Cand)> = Vec::new();
     for (i, s) in slots.iter().enumerate() {
         let Slot::Val(v) = s else { continue };
         if missing[i].is_some() {
@@ -201,8 +208,8 @@ fn type_column_untimed(
             Value::DateTime(_) => is_date = true,
             Value::Bool(_) => is_bool = true,
             Value::Text(t) => {
-                cands.push(Cand::default());
-                let c = cands.last_mut().expect("just pushed");
+                let mut cand = Cand::default();
+                let c = &mut cand;
                 if num_miss <= allowed_num && lead0 == 0 {
                     c.num = parse_number(t, nh);
                     if let Some(p) = &c.num {
@@ -237,6 +244,9 @@ fn type_column_untimed(
                             words_only = words.len() <= MAX_DISTINCT_WORDS;
                         }
                     }
+                }
+                if cand.has_reading() {
+                    cands.push((i as u32, cand));
                 }
             }
             Value::Error(_) => {}
@@ -298,15 +308,20 @@ fn type_column_untimed(
             let reparse = ambiguous_seen || hints.currency_context != first.currency_context;
             if reparse && hints != first {
                 let nh = hints.number_hint();
-                let texts = slots.iter().zip(&missing).filter_map(|(s, m)| match (s, m) {
-                    (Slot::Val(Value::Text(t)), None) => Some(t),
-                    _ => None,
-                });
-                for (t, c) in texts.zip(cands.iter_mut()) {
+                let mut old = std::mem::take(&mut cands).into_iter().peekable();
+                for (i, s) in slots.iter().enumerate() {
+                    let (Slot::Val(Value::Text(t)), None) = (s, missing[i]) else { continue };
+                    let mut c = match old.next_if(|x| x.0 == i as u32) {
+                        Some((_, c)) => c,
+                        None => Cand::default(),
+                    };
                     if kind == Kind::Num {
                         c.num = parse_number(t, nh);
                     } else {
                         c.date = parse_date(t, hints.date_order);
+                    }
+                    if c.has_reading() {
+                        cands.push((i as u32, c));
                     }
                 }
             }
@@ -318,7 +333,7 @@ fn type_column_untimed(
     let mut curs: HashMap<&'static str, usize> = HashMap::new();
     let mut units: HashMap<&'static str, usize> = HashMap::new();
     if kind == Kind::Num {
-        for c in &cands {
+        for (_, c) in &cands {
             if let Some(p) = &c.num {
                 pct += p.percent as usize;
                 if let Some(cc) = p.currency {
@@ -342,11 +357,11 @@ fn type_column_untimed(
     let mut all_int = true;
     let mut values = Vec::with_capacity(slots.len());
     let no_reading = Cand::default();
-    let mut next_cand = cands.iter();
+    let mut next_cand = cands.iter().peekable();
     for (i, s) in slots.iter().enumerate() {
-        let c = match (s, missing[i]) {
-            (Slot::Val(Value::Text(_)), None) => next_cand.next().expect("one reading per text value"),
-            _ => &no_reading,
+        let c = match next_cand.next_if(|x| x.0 == i as u32) {
+            Some((_, c)) => c,
+            None => &no_reading,
         };
         let c = (missing[i], c);
         let out = match s {
