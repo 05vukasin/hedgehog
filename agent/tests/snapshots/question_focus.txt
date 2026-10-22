@@ -1,0 +1,223 @@
+# snapshot: question_focus
+
+## open_file city.xlsx
+FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
+TIME 2019–2024 (mixed: year (T2), month (T3) — check what one row is before summing; from columns T2.Jahr, T3.Month)
+T1  'City budget 2024' ← Budget!A3:C10 · 6 rows (+1 total row only in T1_all)
+    columns (3): Item "Revenue EUR"[EUR 1000..8250] "Expenses EUR"[EUR 800..6600]
+    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in Item: grand total 'Total'@10 (= rows 4–9)
+    all 7 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
+    Item,Revenue EUR,Expenses EUR,_row_type
+    Taxes,1000,800,data
+    Fees,1150,920,data
+    Grants,1300,1040,data
+    Schools,1450,1160,data
+    Roads,1600,1280,data
+    Parks,1750,1400,data
+    Total,8250,6600,total
+T2  'Einwohner nach Bezirk' ← Population!A3:C21 · 18 rows · time 2019–2024 (year)
+    columns (3): Jahr[2019..2024] Bezirk Einwohner[10000..11200]
+    all 18 rows (CSV):
+    Jahr,Bezirk,Einwohner
+    2019,Nord,10000
+    2019,Süd,10500
+    2019,Mitte,11000
+    2020,Nord,10040
+    2020,Süd,10540
+    2020,Mitte,11040
+    2021,Nord,10080
+    2021,Süd,10580
+    2021,Mitte,11080
+    2022,Nord,10120
+    2022,Süd,10620
+    2022,Mitte,11120
+    2023,Nord,10160
+    2023,Süd,10660
+    2023,Mitte,11160
+    2024,Nord,10200
+    2024,Süd,10700
+    2024,Mitte,11200
+T3  'Consumer price index, monthly' ← 'Prices 2023'!A3:B15 · 12 rows · time 2023-01–2023-12 (month)
+    columns (2): Month[date 2023-01-01..2023-12-01, 12 distinct] "Index"[index 100..104.4]
+    do not sum: "Index" (index) — use AVG, a weighted mean or the file's total
+    all 12 rows (CSV):
+    Month,Index
+    2023-01-01,100
+    2023-02-01,100.4
+    2023-03-01,100.8
+    2023-04-01,101.2
+    2023-05-01,101.6
+    2023-06-01,102
+    2023-07-01,102.4
+    2023-08-01,102.8
+    2023-09-01,103.2
+    2023-10-01,103.6
+    2023-11-01,104
+    2023-12-01,104.4
+T4  ← Staff!A1:C5 · 4 rows · same layout as T1; headers here: Department Staff Vacancies
+    all 4 rows (CSV):
+    Department,Staff,Vacancies
+    Finance,12,0
+    IT,15,1
+    Legal,18,0
+    Parks,21,1
+TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
+NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
+SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## open_file city.xlsx question: What were the total revenues and expenses in the budget?
+FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
+TIME 2019–2024 (mixed: year (T2), month (T3) — check what one row is before summing; from columns T2.Jahr, T3.Month)
+QUESTION matches T1 (total, revenues, expenses): first, in full; then 3 other tables, one line each
+T1  'City budget 2024' ← Budget!A3:C10 · 6 rows (+1 total row only in T1_all)
+    columns (3): Item "Revenue EUR"[EUR 1000..8250] "Expenses EUR"[EUR 800..6600]
+    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in Item: grand total 'Total'@10 (= rows 4–9)
+    all 7 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
+    Item,Revenue EUR,Expenses EUR,_row_type
+    Taxes,1000,800,data
+    Fees,1150,920,data
+    Grants,1300,1040,data
+    Schools,1450,1160,data
+    Roads,1600,1280,data
+    Parks,1750,1400,data
+    Total,8250,6600,total
+(other tables, one line each)
+T2  'Einwohner nach Bezirk' ← Population · 18 rows · time 2019–2024 (year) · 3 cols: Jahr Bezirk Einwohner
+T3  'Consumer price index, monthly' ← 'Prices 2023' · 12 rows · 2 cols: Month "Index"
+T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
+TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
+NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
+SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+(cached)
+
+## open_file city.xlsx question: How many inhabitants did each district have in 2024?
+FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
+TIME 2019–2024 (mixed: year (T2), month (T3) — check what one row is before summing; from columns T2.Jahr, T3.Month)
+QUESTION matches T2 (inhabitants, 2024): first, in full; then 3 other tables, one line each
+T2  'Einwohner nach Bezirk' ← Population!A3:C21 · 18 rows · time 2019–2024 (year)
+    columns (3): Jahr[2019..2024] Bezirk Einwohner[10000..11200]
+    all 18 rows (CSV):
+    Jahr,Bezirk,Einwohner
+    2019,Nord,10000
+    2019,Süd,10500
+    2019,Mitte,11000
+    2020,Nord,10040
+    2020,Süd,10540
+    2020,Mitte,11040
+    2021,Nord,10080
+    2021,Süd,10580
+    2021,Mitte,11080
+    2022,Nord,10120
+    2022,Süd,10620
+    2022,Mitte,11120
+    2023,Nord,10160
+    2023,Süd,10660
+    2023,Mitte,11160
+    2024,Nord,10200
+    2024,Süd,10700
+    2024,Mitte,11200
+(other tables, one line each)
+T1  'City budget 2024' ← Budget · 6 rows · 1 total row (only in T1_all): grand total 'Total'@10 · 3 cols: Item "Revenue EUR" "Expenses EUR"
+T3  'Consumer price index, monthly' ← 'Prices 2023' · 12 rows · 2 cols: Month "Index"
+T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
+TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
+NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
+SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+(cached)
+
+## open_file city.xlsx question: What was the consumer price index in March 2023?
+FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
+TIME 2019–2024 (mixed: year (T2), month (T3) — check what one row is before summing; from columns T2.Jahr, T3.Month)
+QUESTION matches T3 (consumer, price, index): first, in full; then 3 other tables, one line each
+T3  'Consumer price index, monthly' ← 'Prices 2023'!A3:B15 · 12 rows · time 2023-01–2023-12 (month)
+    columns (2): Month[date 2023-01-01..2023-12-01, 12 distinct] "Index"[index 100..104.4]
+    do not sum: "Index" (index) — use AVG, a weighted mean or the file's total
+    all 12 rows (CSV):
+    Month,Index
+    2023-01-01,100
+    2023-02-01,100.4
+    2023-03-01,100.8
+    2023-04-01,101.2
+    2023-05-01,101.6
+    2023-06-01,102
+    2023-07-01,102.4
+    2023-08-01,102.8
+    2023-09-01,103.2
+    2023-10-01,103.6
+    2023-11-01,104
+    2023-12-01,104.4
+(other tables, one line each)
+T1  'City budget 2024' ← Budget · 6 rows · 1 total row (only in T1_all): grand total 'Total'@10 · 3 cols: Item "Revenue EUR" "Expenses EUR"
+T2  'Einwohner nach Bezirk' ← Population · 18 rows · time 2019–2024 (year) · 3 cols: Jahr Bezirk Einwohner
+T4  ← Staff · 4 rows · 3 cols: Department Staff Vacancies
+TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
+NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
+SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+(cached)
+
+## open_file city.xlsx question: Summarize this file.
+FILE city.xlsx · 4 sheets · 125 cells (97% in tables) · 4 tables
+TIME 2019–2024 (mixed: year (T2), month (T3) — check what one row is before summing; from columns T2.Jahr, T3.Month)
+T1  'City budget 2024' ← Budget!A3:C10 · 6 rows (+1 total row only in T1_all)
+    columns (3): Item "Revenue EUR"[EUR 1000..8250] "Expenses EUR"[EUR 800..6600]
+    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in Item: grand total 'Total'@10 (= rows 4–9)
+    all 7 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
+    Item,Revenue EUR,Expenses EUR,_row_type
+    Taxes,1000,800,data
+    Fees,1150,920,data
+    Grants,1300,1040,data
+    Schools,1450,1160,data
+    Roads,1600,1280,data
+    Parks,1750,1400,data
+    Total,8250,6600,total
+T2  'Einwohner nach Bezirk' ← Population!A3:C21 · 18 rows · time 2019–2024 (year)
+    columns (3): Jahr[2019..2024] Bezirk Einwohner[10000..11200]
+    all 18 rows (CSV):
+    Jahr,Bezirk,Einwohner
+    2019,Nord,10000
+    2019,Süd,10500
+    2019,Mitte,11000
+    2020,Nord,10040
+    2020,Süd,10540
+    2020,Mitte,11040
+    2021,Nord,10080
+    2021,Süd,10580
+    2021,Mitte,11080
+    2022,Nord,10120
+    2022,Süd,10620
+    2022,Mitte,11120
+    2023,Nord,10160
+    2023,Süd,10660
+    2023,Mitte,11160
+    2024,Nord,10200
+    2024,Süd,10700
+    2024,Mitte,11200
+T3  'Consumer price index, monthly' ← 'Prices 2023'!A3:B15 · 12 rows · time 2023-01–2023-12 (month)
+    columns (2): Month[date 2023-01-01..2023-12-01, 12 distinct] "Index"[index 100..104.4]
+    do not sum: "Index" (index) — use AVG, a weighted mean or the file's total
+    all 12 rows (CSV):
+    Month,Index
+    2023-01-01,100
+    2023-02-01,100.4
+    2023-03-01,100.8
+    2023-04-01,101.2
+    2023-05-01,101.6
+    2023-06-01,102
+    2023-07-01,102.4
+    2023-08-01,102.8
+    2023-09-01,103.2
+    2023-10-01,103.6
+    2023-11-01,104
+    2023-12-01,104.4
+T4  ← Staff!A1:C5 · 4 rows · same layout as T1; headers here: Department Staff Vacancies
+    all 4 rows (CSV):
+    Department,Staff,Vacancies
+    Finance,12,0
+    IT,15,1
+    Legal,18,0
+    Parks,21,1
+TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
+NOTES 3 cells; e.g. Budget!A1: "City budget 2024"
+SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+(cached)

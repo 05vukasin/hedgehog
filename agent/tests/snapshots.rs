@@ -79,6 +79,16 @@ impl Snap {
         self.out.push_str(&format!("\n## open_file {file}\n{text}\n"));
     }
 
+    /// `open_file` with the user's question (B150).
+    fn open_for(&mut self, file: &str, question: &str) {
+        let text = match self.session.open_file_for(file, Some(question)) {
+            Ok(t) => t,
+            Err(e) => format!("ERROR: {}", e.0),
+        };
+        let text = self.clean(&text);
+        self.out.push_str(&format!("\n## open_file {file} question: {question}\n{text}\n"));
+    }
+
     fn query(&mut self, file: &str, sql: &str) {
         let r = self.session.query(file, sql, None);
         let text = match r {
@@ -676,6 +686,57 @@ fn table_runs_and_brief() {
     }
     s.save("haushalt.xlsx", &mut wb);
     s.open("haushalt.xlsx");
+    s.check();
+}
+
+/// B150: `open_file` with a question: the tables it matches (words, column names, values, years
+/// and months) first and in full, the others one line each; a question that tells no table apart
+/// leaves the catalog as it is.
+#[test]
+fn question_focus() {
+    let mut s = Snap::new("question_focus");
+    let mut wb = Workbook::new();
+    let ws = sheet(&mut wb, "Budget");
+    ws.write(0, 0, "City budget 2024").unwrap();
+    let mut b = vec![vec![S("Item"), S("Revenue EUR"), S("Expenses EUR")]];
+    for (i, item) in ["Taxes", "Fees", "Grants", "Schools", "Roads", "Parks"].iter().enumerate() {
+        b.push(vec![S(item), N(1000.0 + 150.0 * i as f64), N(800.0 + 120.0 * i as f64)]);
+    }
+    b.push(vec![S("Total"), N(8250.0), N(6600.0)]);
+    rows(ws, 2, 0, &b);
+    let ws = sheet(&mut wb, "Population");
+    ws.write(0, 0, "Einwohner nach Bezirk").unwrap();
+    let mut p = vec![vec![S("Jahr"), S("Bezirk"), S("Einwohner")]];
+    for y in 2019..2025 {
+        for (i, d) in ["Nord", "Süd", "Mitte"].iter().enumerate() {
+            p.push(vec![N(y as f64), S(d), N(10000.0 + 500.0 * i as f64 + 40.0 * (y - 2019) as f64)]);
+        }
+    }
+    rows(ws, 2, 0, &p);
+    let ws = sheet(&mut wb, "Prices 2023");
+    ws.write(0, 0, "Consumer price index, monthly").unwrap();
+    let months: Vec<String> = (1..=12u32).map(|m| format!("2023-{m:02}")).collect();
+    let mut c = vec![vec![S("Month"), S("Index")]];
+    for (m, label) in months.iter().enumerate() {
+        c.push(vec![S(label), N(100.0 + 0.4 * m as f64)]);
+    }
+    rows(ws, 2, 0, &c);
+    let ws = sheet(&mut wb, "Staff");
+    let mut st = vec![vec![S("Department"), S("Staff"), S("Vacancies")]];
+    for (i, d) in ["Finance", "IT", "Legal", "Parks"].iter().enumerate() {
+        st.push(vec![S(d), N(12.0 + 3.0 * i as f64), N((i % 2) as f64)]);
+    }
+    rows(ws, 0, 0, &st);
+    s.save("city.xlsx", &mut wb);
+    s.open("city.xlsx");
+    // words and column names
+    s.open_for("city.xlsx", "What were the total revenues and expenses in the budget?");
+    // German names through the concept list, and a year
+    s.open_for("city.xlsx", "How many inhabitants did each district have in 2024?");
+    // a month the monthly table covers
+    s.open_for("city.xlsx", "What was the consumer price index in March 2023?");
+    // no table told apart: the catalog as without a question
+    s.open_for("city.xlsx", "Summarize this file.");
     s.check();
 }
 

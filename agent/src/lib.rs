@@ -25,6 +25,7 @@ pub mod facts;
 pub mod files;
 pub mod multi;
 pub mod notes;
+pub mod question;
 pub mod sql;
 pub mod sqlscan;
 pub mod text;
@@ -450,7 +451,7 @@ impl Session {
                 Ok((db, None))
             })
         };
-        let text = catalog_text(&norm, &name, &sql::skipped_columns(&norm));
+        let text = catalog_text(&norm, &name, &sql::skipped_columns(&norm), None);
         cache::trace("catalog", t0);
         let _ = catalog_tx.send(text.clone());
         let mut catalogs = HashMap::new();
@@ -538,16 +539,32 @@ impl Session {
 
     /// `open_file`: normalizes the file and returns its catalog.
     pub fn open_file(&mut self, path: &str) -> ToolResult {
+        self.open_file_for(path, None)
+    }
+
+    /// `open_file` with the user's question (B150): the tables the question matches come first and
+    /// in full, the others one line each. Without a question (or an empty one), or for a file of
+    /// one table, the same as [`Session::open_file`].
+    pub fn open_file_for(&mut self, path: &str, question: Option<&str>) -> ToolResult {
+        let question = question.map(str::trim).filter(|q| !q.is_empty());
         let (sha, cached) = self.load(path)?;
         let o = &self.files[&sha];
         let name = self.bounds.display(&o.path);
         let stored = o.catalogs.get(&name).cloned().or_else(|| o.entry.as_ref().and_then(|e| e.catalog(&name)));
-        let mut text = match stored {
-            Some(t) => t,
-            None => {
+        // A question changes nothing for a file of one table (or none): its stored catalog serves.
+        let one_table = |t: &str| t.lines().next().is_some_and(|l| l.ends_with(" · 1 table") || l.ends_with(" · 0 tables"));
+        let mut text = match (stored, question) {
+            (Some(t), None) => t,
+            (Some(t), Some(_)) if one_table(&t) => t,
+            (_, Some(q)) => {
+                // Not stored: the catalog depends on the question.
+                let o = self.opened(path)?;
+                catalog_text(&o.norm, &name, &o.db.skipped_columns, Some(q))
+            }
+            (None, None) => {
                 // A name this file has no catalog for yet (opened under another path).
                 let o = self.opened(path)?;
-                let t = catalog_text(&o.norm, &name, &o.db.skipped_columns);
+                let t = catalog_text(&o.norm, &name, &o.db.skipped_columns, None);
                 let o = self.files.get_mut(&sha).expect("file is open");
                 if let (Some(c), Some(e)) = (&self.opts.cache, o.entry.as_mut()) {
                     c.add_catalog(e, &name, &t);
@@ -556,7 +573,9 @@ impl Session {
             }
         };
         let o = self.files.get_mut(&sha).expect("file is open");
-        o.catalogs.entry(name).or_insert_with(|| text.clone());
+        if question.is_none() {
+            o.catalogs.entry(name).or_insert_with(|| text.clone());
+        }
         // B76: with several files open, which prefix is which file and the keys that join them.
         if self.order.len() >= 2 {
             let current = self.number_of(&sha).unwrap_or(0);
@@ -841,8 +860,8 @@ struct Loaded {
 }
 
 /// The catalog of `open_file` without the timing line.
-fn catalog_text(norm: &Normalized, name: &str, skipped: &[(String, usize)]) -> String {
-    let mut text = catalog::catalog(norm, name, MAX_CHARS - 300);
+fn catalog_text(norm: &Normalized, name: &str, skipped: &[(String, usize)], question: Option<&str>) -> String {
+    let mut text = catalog::catalog_for(norm, name, MAX_CHARS - 300, question);
     for (t, n) in skipped {
         text.push_str(&format!("\nNOTE {t}: {n} columns beyond SQLite's 2000-column limit are not queryable"));
     }

@@ -366,7 +366,7 @@ pub(crate) fn trace(stage: &str, since: Instant) {
     }
 }
 
-fn tracing() -> bool {
+pub(crate) fn tracing() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0"))
 }

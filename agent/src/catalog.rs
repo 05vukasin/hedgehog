@@ -342,6 +342,19 @@ struct BriefRow<'a> {
     n: usize,
     view: String,
     member: BriefMember<'a>,
+    /// B150: a table the question matches: listed first, with every column name.
+    prio: bool,
+}
+
+/// B150: how a brief listing is introduced.
+#[derive(Clone, Copy, PartialEq)]
+enum BriefMode {
+    /// Every table, one line each.
+    Plain,
+    /// The tables a question does not match, after its tables in full.
+    Others,
+    /// Every table, those a question matches first.
+    Focus,
 }
 
 /// Source rows (1-based) a total adds up, from its check's `sources` ("B5:B15", "B41 B47"), as
@@ -1330,14 +1343,135 @@ fn trace_steps(total: std::time::Duration) {
     crate::cache::trace_ms("cat.total", total);
 }
 
+/// The blocks' lines with their optional parts while they fit in `room` characters: total rows and
+/// signs first, then small tables' rows, then column facts; each tier in table order.
+fn with_parts(blocks: Vec<Block>, mut room: usize) -> Vec<String> {
+    let mut take: Vec<Vec<bool>> = blocks.iter().map(|b| vec![false; b.parts.len()]).collect();
+    // B104: small tables' rows up to INLINE_TOTAL characters in all (the first tables first); more
+    // rows repeat what a query gives.
+    let mut inline_room = INLINE_TOTAL;
+    for tier in 0..3 {
+        for (b, keep) in blocks.iter().zip(take.iter_mut()) {
+            for ((t, part), k) in b.parts.iter().zip(keep.iter_mut()) {
+                let need = len_of(part);
+                if *t == tier && need <= room && (tier != 1 || need <= inline_room) {
+                    room -= need;
+                    if tier == 1 {
+                        inline_room -= need;
+                    }
+                    *k = true;
+                }
+            }
+        }
+    }
+    let mut body = Vec::new();
+    for (mut b, keep) in blocks.into_iter().zip(take) {
+        b.shorten_head(&keep);
+        body.extend(b.lines);
+        for ((_, part), k) in b.parts.into_iter().zip(keep) {
+            if k {
+                body.extend(part);
+            }
+        }
+    }
+    body
+}
+
 pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
+    catalog_for(norm, display_name, budget, None)
+}
+
+/// B150: the catalog for a question: the tables it matches in full (first), the others one line
+/// each. Without a question (or with an empty one) the same as [`catalog`].
+pub fn catalog_for(norm: &Normalized, display_name: &str, budget: usize, question: Option<&str>) -> String {
     let t = std::time::Instant::now();
-    let text = catalog_inner(norm, display_name, budget);
+    let question = question.map(str::trim).filter(|q| !q.is_empty());
+    let text = catalog_inner(norm, display_name, budget, question);
     trace_steps(t.elapsed());
     text
 }
 
-fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String {
+/// B150: tables shown in full for a question at most …
+const FOCUS_TABLES: usize = 8;
+/// … and tables a question may match (more: it tells none apart, the catalog as usual).
+const FOCUS_MAX: usize = 16;
+/// B150: the other tables' one-line listing gets this many characters of titles and column names
+/// per table, within these bounds.
+const OTHER_CHARS_PER_TABLE: usize = 20;
+const OTHER_CHARS: (usize, usize) = (200, 1000);
+/// B150: distinct values per text column (over this many rows) a question is matched against.
+const MATCH_VALUES: usize = 60;
+const MATCH_ROWS: usize = 5000;
+
+/// B150: what a question is matched against in one table: title, sheet name, column names, the
+/// distinct values of its text columns, its time coverage.
+fn table_text(t: &Table, cov: Option<&TimeCoverage>) -> crate::question::TableText {
+    let mut texts: Vec<(f64, String)> = Vec::new();
+    if let Some((title, _)) = &t.title {
+        texts.push((3.0, title.clone()));
+    }
+    texts.push((2.5, t.source_sheet.clone()));
+    let names: Vec<&str> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(_, c)| c.name.as_str()).collect();
+    texts.push((2.0, names.join(" | ")));
+    let mut vals: Vec<String> = Vec::new();
+    for (_, c) in data_cols(t).filter(|(_, c)| c.dtype == Dtype::Text) {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for v in c.values.iter().take(MATCH_ROWS) {
+            if let Out::Text(s) = v
+                && seen.len() < MATCH_VALUES
+                && seen.insert(s.as_str())
+            {
+                vals.push(short(s, 80));
+            }
+        }
+    }
+    texts.push((1.0, vals.join(" | ")));
+    crate::question::TableText { texts, from: cov.map(|c| c.from.clone()), to: cov.map(|c| c.to.clone()) }
+}
+
+/// B150: the tables a question matches, best first, and how the catalog names them
+/// (`T3 (daily, index, 2023)`).
+struct Focus {
+    ks: Vec<usize>,
+    items: String,
+}
+
+fn focus(norm: &Normalized, covs: &[Option<TimeCoverage>], question: &str) -> Option<Focus> {
+    let n = norm.tables.len();
+    if n < 2 {
+        return None;
+    }
+    let q = crate::question::Question::parse(question);
+    if q.is_empty() {
+        return None;
+    }
+    let texts: Vec<_> = norm.tables.iter().zip(covs).map(|(t, c)| table_text(t, c.as_ref())).collect();
+    let rel = crate::question::rank(&q, &texts);
+    let ks = crate::question::relevant(&rel);
+    if crate::cache::tracing() {
+        for (k, r) in rel.iter().enumerate().filter(|(_, r)| r.score > 0.0) {
+            eprintln!("focus T{} {:.3} {} {:?}", k + 1, r.score, r.champion, r.matched);
+        }
+        eprintln!("focus relevant {ks:?}");
+    }
+    // No table told apart (none, too many or every table matches): the catalog as usual.
+    if ks.is_empty() || ks.len() > FOCUS_MAX || ks.len() == n {
+        return None;
+    }
+    let items: Vec<String> = ks
+        .iter()
+        .map(|&k| {
+            // Words first, then years and months.
+            let mut m: Vec<&String> = rel[k].matched.iter().filter(|w| !w.starts_with(|c: char| c.is_ascii_digit())).collect();
+            m.extend(rel[k].matched.iter().filter(|w| w.starts_with(|c: char| c.is_ascii_digit())));
+            m.truncate(3);
+            format!("{} ({})", norm.tables[k].id(), m.iter().map(|w| w.as_str()).collect::<Vec<_>>().join(", "))
+        })
+        .collect();
+    Some(Focus { ks, items: items.join(", ") })
+}
+
+fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question: Option<&str>) -> String {
     let budget = budget.min(MAX_CHARS);
     let file_name = display_name.rsplit(['/', '\\']).next().unwrap_or(display_name);
     let (mut covs, mut wb_cov) = tm(0, || time_coverages(norm));
@@ -1383,11 +1517,15 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
     }
 
     let infos: Vec<RowInfo> = tm(1, || norm.tables.iter().map(|t| row_info(norm, t)).collect());
-    let full = || -> Vec<Block> {
+    // `keep`: the tables to list (all of them without a question).
+    let full = |keep: &[bool]| -> Vec<Block> {
         let mut out = Vec::new();
         let mut layouts: HashMap<Vec<(String, &'static str)>, String> = HashMap::new();
         let mut shapes: HashMap<Vec<&'static str>, (String, Vec<String>)> = HashMap::new();
         for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
+            if !keep[k] {
+                continue;
+            }
             let names = sql_names(t);
             let cols: Vec<(String, &'static str)> =
                 data_cols(t).map(|(i, c)| (names[i].clone(), c.dtype.as_str())).collect();
@@ -1515,7 +1653,7 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
         }
         // B74: a table whose total rows read like an earlier table's says so instead.
         let mut seen: HashMap<String, String> = HashMap::new();
-        for (t, b) in norm.tables.iter().zip(out.iter_mut()) {
+        for (t, b) in norm.tables.iter().zip(keep).filter(|(_, k)| **k).map(|(t, _)| t).zip(out.iter_mut()) {
             for (_, part) in b.parts.iter_mut() {
                 let Some(l) = part.first_mut().filter(|l| l.starts_with("    total rows: ")) else { continue };
                 let key = l.replace(&format!("{}_all", t.id()), "_all").replace(&format!("[stays in {}]", t.id()), "[stays]");
@@ -1532,7 +1670,10 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
         }
         // B16: a table that is the long form of another, on both of them.
         for (k, l) in facts::long_forms(&norm.tables) {
-            out[k].lines.push(l);
+            if keep[k] {
+                let at = keep[..k].iter().filter(|x| **x).count();
+                out[at].lines.push(l);
+            }
         }
         merge_runs(out)
     };
@@ -1540,13 +1681,28 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
     // (B74, a repeated set once), the scale (B85), then the column names with shared header levels
     // written once; tables that repeat an earlier table's columns say so, runs of them in one line;
     // in table order, as many tables as fit show every column name, the others their first two.
-    let brief = |avail: usize| -> Vec<String> {
+    // B150: `keep`: the tables to list; `shown`: tables listed in full above (a question's
+    // tables), which the brief lines refer to; `prio`: tables a question matches, listed first
+    // with every column name; `room_cap`: at most this many characters of titles and column names
+    // for the other tables.
+    let brief = |avail: usize, keep: &[bool], shown: &[bool], prio: &[bool], room_cap: Option<usize>, mode: BriefMode| -> Vec<String> {
+        let what = match mode {
+            BriefMode::Plain => "tables listed briefly",
+            BriefMode::Others => "other tables, one line each",
+            BriefMode::Focus => "tables one line each, the question's first",
+        };
         let mut out = vec![format!(
-            "(tables listed briefly; a table without ← is on the sheet above; column names grouped: {}; describe_table lists a table's columns with types)",
+            "({what}; a table without ← is on the sheet above; column names grouped: {}; describe_table lists a table's columns with types)",
             crate::brief::LEGEND
         )];
         let mut seen_totals: HashMap<String, String> = HashMap::new();
         let mut seen_cols: HashMap<Vec<String>, String> = HashMap::new();
+        let mut seen_prio: HashMap<Vec<String>, String> = HashMap::new();
+        for (t, _) in norm.tables.iter().zip(shown).filter(|(_, s)| **s) {
+            let names = sql_names(t);
+            let list: Vec<String> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(i, _)| names[i].clone()).collect();
+            seen_cols.entry(list).or_insert_with(|| t.id());
+        }
         // A table's period only when it is not inside the TIME line's span at its granularity (the
         // most common one is said once there too).
         let inside = |c: &TimeCoverage| {
@@ -1563,6 +1719,9 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
         let mut sheets_seen: HashSet<&str> = HashSet::new();
         let mut rows: Vec<BriefRow> = Vec::new();
         for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
+            if !keep[k] {
+                continue;
+            }
             let names = sql_names(t);
             let mut tail = String::new();
             if let Some(c) = covs_text[k].as_ref().filter(|c| Some(*c) != common.as_ref()) {
@@ -1607,14 +1766,19 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
                 tail,
                 first_of_sheet: sheets_seen.insert(t.source_sheet.as_str()),
             };
-            let cols = match seen_cols.get(&list) {
+            // A table the question matches lists its own columns (unless another one above has them).
+            let same = if prio[k] { seen_prio.get(&list) } else { seen_cols.get(&list) };
+            let cols = match same {
                 Some(first) => BriefCols::Same(first.clone()),
                 None => {
-                    seen_cols.insert(list.clone(), t.id());
+                    seen_cols.entry(list.clone()).or_insert_with(|| t.id());
+                    if prio[k] {
+                        seen_prio.insert(list.clone(), t.id());
+                    }
                     BriefCols::Own(crate::brief::compress_names(&list), list.iter().map(|x| ident(x)).collect(), list.clone())
                 }
             };
-            rows.push(BriefRow { line: String::new(), cols, n: list.len(), view, member });
+            rows.push(BriefRow { line: String::new(), cols, n: list.len(), view, member, prio: prio[k] });
         }
         // B100: one line per run of 2+ consecutive tables with an earlier table's columns and the
         // same facts (total rows, scale, period).
@@ -1625,10 +1789,12 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
             let mut j = i + 1;
             if let BriefCols::Same(first) = &rows[i].cols
                 && rows[i].view.is_empty()
+                && !rows[i].prio
             {
                 while j < rows.len()
                     && matches!(&rows[j].cols, BriefCols::Same(f) if f == first)
                     && rows[j].view.is_empty()
+                    && !rows[j].prio
                     && rows[j].member.n == rows[i].member.n + (j - i)
                     && key_of(&rows[j]) == key_of(&rows[i])
                 {
@@ -1665,38 +1831,38 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
             }
         }
         let rows = merged;
+        // The order of the lines: B150: the question's tables first.
+        let emit: Vec<usize> = (0..rows.len()).filter(|&k| rows[k].prio).chain((0..rows.len()).filter(|&k| !rows[k].prio)).collect();
         // Each line in parts: the id, the title (optional), the rest (the sheet unless it is the one
         // above, rows, period, total rows, scale), the columns, the view.
         let mut prev_sheet: Option<&str> = None;
-        let rest: Vec<String> = rows
-            .iter()
-            .map(|r| {
-                if matches!(r.cols, BriefCols::Run) {
-                    prev_sheet = None;
-                    return String::new();
-                }
-                let m = &r.member;
-                let sheet = if prev_sheet == Some(m.sheet) {
-                    String::new()
-                } else {
-                    format!(" ← {}", sheet_ref(m.sheet, "").trim_end_matches('!'))
-                };
-                prev_sheet = Some(m.sheet);
-                format!("{sheet} · {}{}", plural(m.rows, "row", "rows"), m.tail)
-            })
-            .collect();
+        let mut rest: Vec<String> = vec![String::new(); rows.len()];
+        for &k in &emit {
+            let r = &rows[k];
+            if matches!(r.cols, BriefCols::Run) {
+                prev_sheet = None;
+                continue;
+            }
+            let m = &r.member;
+            let sheet = if prev_sheet == Some(m.sheet) {
+                String::new()
+            } else {
+                format!(" ← {}", sheet_ref(m.sheet, "").trim_end_matches('!'))
+            };
+            prev_sheet = Some(m.sheet);
+            rest[k] = format!("{sheet} · {}{}", plural(m.rows, "row", "rows"), m.tail);
+        }
         // A title the table above has too is not repeated.
         let mut prev_title: Option<&str> = None;
-        let titles: Vec<String> = rows
-            .iter()
-            .map(|r| {
-                let t = r.member.title.filter(|t| prev_title != Some(*t));
-                if r.member.title.is_some() {
-                    prev_title = r.member.title;
-                }
-                t.map(|t| format!(" '{}'", short(t, 60))).unwrap_or_default()
-            })
-            .collect();
+        let mut titles: Vec<String> = vec![String::new(); rows.len()];
+        for &k in &emit {
+            let r = &rows[k];
+            let t = r.member.title.filter(|t| prev_title != Some(*t));
+            if r.member.title.is_some() {
+                prev_title = r.member.title;
+            }
+            titles[k] = t.map(|t| format!(" '{}'", short(t, 60))).unwrap_or_default();
+        }
         let title = |k: usize| titles[k].as_str();
         // The first names (keys, labels) within a few characters.
         let shortest = |plain: &[String]| -> String {
@@ -1766,8 +1932,20 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
             }
         };
         let mut order: Vec<usize> = (0..rows.len()).filter(|&k| matches!(rows[k].cols, BriefCols::Own(..))).collect();
-        order.sort_by_key(|&k| (rank(k), k));
+        // B150: the question's tables first (with their titles), then the others within `room_cap`.
+        order.sort_by_key(|&k| (!rows[k].prio, rank(k), k));
+        for k in (0..rows.len()).filter(|&k| rows[k].prio && matches!(rows[k].cols, BriefCols::Same(_))) {
+            room = room.saturating_sub(title(k).len());
+            level[k] = 1;
+        }
+        let mut capped = false;
         for &k in &order {
+            if !capped && !rows[k].prio {
+                capped = true;
+                if let Some(cap) = room_cap {
+                    room = room.min(cap);
+                }
+            }
             if level[k] > 0 {
                 continue;
             }
@@ -1795,6 +1973,9 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
                 }
             }
         }
+        if !capped && let Some(cap) = room_cap {
+            room = room.min(cap);
+        }
         // Titles of tables with an earlier table's columns, in table order.
         for k in 0..rows.len() {
             if matches!(rows[k].cols, BriefCols::Same(_)) && title(k).len() <= room {
@@ -1802,13 +1983,76 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
                 level[k] = 1;
             }
         }
-        for (k, r) in rows.iter().enumerate() {
+        let mut after_prio = false;
+        let first_line = out.len();
+        // B150: with a question, 3+ consecutive other tables that show nothing but their sheet and
+        // rows share one line: `T10..T26 · 17 tables, 34–35 rows ← sheets '1.4', '1.5', …`.
+        let bare = |k: usize| {
+            let r = &rows[k];
+            mode != BriefMode::Plain
+                && !r.prio
+                && level[k] == 0
+                && matches!(r.cols, BriefCols::Own(..))
+                && r.view.is_empty()
+                && r.member.tail.is_empty()
+        };
+        let mut i = 0;
+        while i < emit.len() {
+            let k = emit[i];
+            let r = &rows[k];
+            if mode == BriefMode::Focus && !r.prio && !after_prio {
+                after_prio = true;
+                out.push("(the other tables)".into());
+            }
+            let mut j = i;
+            while j + 1 < emit.len() && bare(emit[j]) && bare(emit[j + 1]) && rows[emit[j + 1]].member.n == rows[emit[j]].member.n + 1 {
+                j += 1;
+            }
+            if bare(k) && j >= i + 2 {
+                let group: Vec<&BriefRow> = emit[i..=j].iter().map(|&x| &rows[x]).collect();
+                let (lo, hi) = group.iter().fold((usize::MAX, 0), |(lo, hi), r| (lo.min(r.member.rows), hi.max(r.member.rows)));
+                let n_rows = if lo == hi { format!("{} each", plural(lo, "row", "rows")) } else { format!("{lo}–{hi} rows") };
+                let mut sheets: Vec<&str> = Vec::new();
+                for r in &group {
+                    if !sheets.contains(&r.member.sheet) {
+                        sheets.push(r.member.sheet);
+                    }
+                }
+                let mut shown: Vec<String> = sheets.iter().take(6).map(|s| sheet_ref(s, "").trim_end_matches('!').to_string()).collect();
+                if sheets.len() > 6 {
+                    shown.push(format!("+{} more", sheets.len() - 6));
+                }
+                let on = if sheets.len() == 1 { "sheet" } else { "sheets" };
+                out.push(format!(
+                    "T{}..T{} · {} tables, {n_rows} ← {on} {}",
+                    group[0].member.n,
+                    group[group.len() - 1].member.n,
+                    group.len(),
+                    shown.join(", ")
+                ));
+                i = j + 1;
+                continue;
+            }
             if matches!(r.cols, BriefCols::Run) {
                 out.push(r.line.clone());
+                i += 1;
                 continue;
             }
             let t = if level[k] > 0 { title(k) } else { "" };
             out.push(format!("{:<3}{t}{}{}{}", format!("T{}", r.member.n), rest[k], cols_text(k, level[k]), r.view));
+            i += 1;
+        }
+        // B150: with a question, the legend says only what the lines use.
+        if mode != BriefMode::Plain {
+            let lines = &out[first_line..];
+            let mut legend = vec![what.to_string()];
+            if lines.iter().any(|l| l.starts_with('T') && !l.contains(" ← ") && !l.contains(" same columns as ")) {
+                legend.push("a table without ← is on the sheet above".into());
+            }
+            if lines.iter().any(|l| l.contains('{')) {
+                legend.push(format!("column names grouped: {}", crate::brief::LEGEND));
+            }
+            out[0] = format!("({})", legend.join("; "));
         }
         out
     };
@@ -1871,75 +2115,98 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String
         all.join("\n")
     };
     let fixed = len_of(&head) + len_of(&tail);
-    if norm.tables.len() <= BRIEF_TABLES_OVER {
-        let blocks = full();
-        let base: usize = fixed + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>();
+    let all = vec![true; norm.tables.len()];
+    // B150: with a question, the tables it matches in full, then the others one line each.
+    let none = vec![false; norm.tables.len()];
+    let n = norm.tables.len();
+    let cap_for = |others: usize| (OTHER_CHARS_PER_TABLE * others).clamp(OTHER_CHARS.0, OTHER_CHARS.1);
+    // Every table in full when that fits (else one line each).
+    let all_blocks: Option<Vec<Block>> = (n <= BRIEF_TABLES_OVER)
+        .then(|| full(&all))
+        .filter(|blocks| fixed + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>() <= budget + 1);
+    let in_full = all_blocks.is_some();
+    let (all2, none2) = (all.clone(), none.clone());
+    let normal = move || -> String {
+        if let Some(blocks) = all_blocks {
+            let base: usize = fixed + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>();
+            return join(&with_parts(blocks, budget + 1 - base));
+        }
+        // B104: a brief catalog fills its room with column names; this much is enough for the
+        // main tables' names (de-gdp, uk-ons) and keeps big files cheap.
+        let budget = budget.min(BRIEF_CHARS + BRIEF_CHARS_PER_TABLE * n);
+        let body = brief(budget.saturating_sub(fixed + 50), &all2, &none2, &none2, None, BriefMode::Plain);
+        let text = join(&body);
+        if text.len() <= budget {
+            return text;
+        }
+        // Still too long: keep as many table lines as fit, then say what was cut.
+        let fixed = fixed + 200;
+        let mut kept = Vec::new();
+        let mut used = fixed;
+        for l in &body {
+            if used + l.len() + 1 > budget {
+                break;
+            }
+            used += l.len() + 1;
+            kept.push(l.clone());
+        }
+        let listed = kept.len().saturating_sub(1);
+        let rest = n - listed;
+        let first_cut = norm.tables.get(listed).map(|t| t.id()).unwrap_or_default();
+        let last_id = norm.tables.last().map(|t| t.id()).unwrap_or_default();
+        let text = format!(
+            "{}\n… cut: {rest} more tables ({first_cut}..{last_id}) not listed; ask for describe_table with a table id, or query sqlite_master",
+            join(&kept)
+        );
+        if text.len() <= budget {
+            text
+        } else {
+            cut(text, budget, |n| format!("{n} more lines"), "describe_table with a table id")
+        }
+    };
+    // B150: with a question, the tables it matches first. Like the catalog without it: in full
+    // (the others one line each) when that lists every table in full, else every table one line
+    // each, the matching ones first with every column name. Only when that is shorter.
+    let Some(f) = question.and_then(|q| focus(norm, &covs, q)) else { return normal() };
+    let ids = |ks: &[usize]| ks.iter().map(|&k| norm.tables[k].id()).collect::<Vec<_>>().join(", ");
+    let rest_text = plural(n - f.ks.len(), "other table", "other tables");
+    let mut focused: Option<String> = None;
+    if in_full {
+        let (top, more) = f.ks.split_at(f.ks.len().min(FOCUS_TABLES));
+        let mut keep = none.clone();
+        let mut prio = none.clone();
+        top.iter().for_each(|&k| keep[k] = true);
+        more.iter().for_each(|&k| prio[k] = true);
+        let others: Vec<bool> = keep.iter().map(|k| !k).collect();
+        let line = if more.is_empty() {
+            format!("QUESTION matches {}: first, in full; then {rest_text}, one line each", f.items)
+        } else {
+            format!("QUESTION matches {}: {} first, in full; then {} and {rest_text}, one line each", f.items, ids(top), ids(more))
+        };
+        let blocks = full(&keep);
+        let rest = brief(budget, &others, &keep, &prio, Some(cap_for(n - f.ks.len())), BriefMode::Others);
+        let base: usize = fixed + line.len() + 1 + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>() + len_of(&rest);
         if base <= budget + 1 {
-            // Optional parts while they fit: total rows and signs first, then small tables' rows,
-            // then column facts; each tier in table order.
-            let mut room = budget + 1 - base;
-            let mut take: Vec<Vec<bool>> = blocks.iter().map(|b| vec![false; b.parts.len()]).collect();
-            // B104: small tables' rows up to INLINE_TOTAL characters in all (the first tables
-            // first); more rows repeat what a query gives.
-            let mut inline_room = INLINE_TOTAL;
-            for tier in 0..3 {
-                for (b, keep) in blocks.iter().zip(take.iter_mut()) {
-                    for ((t, part), k) in b.parts.iter().zip(keep.iter_mut()) {
-                        let need = len_of(part);
-                        if *t == tier && need <= room && (tier != 1 || need <= inline_room) {
-                            room -= need;
-                            if tier == 1 {
-                                inline_room -= need;
-                            }
-                            *k = true;
-                        }
-                    }
-                }
-            }
-            let mut body = Vec::new();
-            for (mut b, keep) in blocks.into_iter().zip(take) {
-                b.shorten_head(&keep);
-                body.extend(b.lines);
-                for ((_, part), k) in b.parts.into_iter().zip(keep) {
-                    if k {
-                        body.extend(part);
-                    }
-                }
-            }
-            return join(&body);
+            let mut body = vec![line];
+            body.extend(with_parts(blocks, budget + 1 - base));
+            body.extend(rest);
+            focused = Some(join(&body));
         }
-    }
-    // B104: a brief catalog fills its room with column names; this much is enough for the main
-    // tables' names (de-gdp, uk-ons) and keeps big files cheap.
-    let budget = budget.min(BRIEF_CHARS + BRIEF_CHARS_PER_TABLE * norm.tables.len());
-    let body = brief(budget.saturating_sub(fixed + 50));
-    let text = join(&body);
-    if text.len() <= budget {
-        return text;
-    }
-    // Still too long: keep as many table lines as fit, then say what was cut.
-    let fixed = fixed + 200;
-    let mut kept = Vec::new();
-    let mut used = fixed;
-    for l in &body {
-        if used + l.len() + 1 > budget {
-            break;
-        }
-        used += l.len() + 1;
-        kept.push(l.clone());
-    }
-    let listed = kept.len().saturating_sub(1);
-    let rest = norm.tables.len() - listed;
-    let first_cut = norm.tables.get(listed).map(|t| t.id()).unwrap_or_default();
-    let last_id = norm.tables.last().map(|t| t.id()).unwrap_or_default();
-    let text = format!(
-        "{}\n… cut: {rest} more tables ({first_cut}..{last_id}) not listed; ask for describe_table with a table id, or query sqlite_master",
-        join(&kept)
-    );
-    if text.len() <= budget {
-        text
     } else {
-        cut(text, budget, |n| format!("{n} more lines"), "describe_table with a table id")
+        let line = format!("QUESTION matches {}: first, with every column name; then {rest_text}", f.items);
+        let mut prio = none.clone();
+        f.ks.iter().for_each(|&k| prio[k] = true);
+        let budget = budget.min(BRIEF_CHARS + BRIEF_CHARS_PER_TABLE * n);
+        let mut body = vec![line];
+        let avail = budget.saturating_sub(fixed + len_of(&body) + 50);
+        body.extend(brief(avail, &all, &none, &prio, Some(cap_for(n - f.ks.len())), BriefMode::Focus));
+        let text = join(&body);
+        focused = (text.len() <= budget).then_some(text);
+    }
+    let normal = normal();
+    match focused {
+        Some(text) if text.len() < normal.len() => text,
+        _ => normal,
     }
 }
 
