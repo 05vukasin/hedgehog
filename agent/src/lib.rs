@@ -703,6 +703,14 @@ impl Session {
         self.order.iter().enumerate().map(|(i, p)| (format!("f{}", i + 1), self.bounds.display(p))).collect()
     }
 
+    /// Whether the open file shown as `display` was opened from the disk cache (the catalog no
+    /// longer says so; B143).
+    pub fn from_cache(&self, display: &str) -> bool {
+        self.order.iter().filter(|p| self.bounds.display(p) == display).any(|p| {
+            self.hashes.get(p).and_then(|h| self.files.get(&h.2)).is_some_and(|o| o.from_disk)
+        })
+    }
+
     /// The normalized form of every open file still in memory (waits for its decoding), with its
     /// prefix and display name.
     fn open_norms(&mut self) -> Vec<multi::FileInfo> {
