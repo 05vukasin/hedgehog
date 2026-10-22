@@ -93,7 +93,9 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
     `Veränderungsrate`, `Total²` becomes `Total`, `Einwohner*` becomes `Einwohner`. Only an
     unmatched `1)`/`12)`/`a)` at the end, or trailing superscripts, `*`, `†`, `‡` count as marks;
     balanced parentheses (`Gesamt-VPI (2020=100)`, `(in 1 000)`), numbers with three or more digits
-    before `)` and a header that is only a mark (`1)`) are kept;
+    before `)` and a header that is only a mark (`1)`) are kept. A `²` or `³` right after a length
+    unit is the unit's exponent, not a mark: `Fläche km²`, `Einwohner je km²`, `Wasser Mio. m³`,
+    `Dichte kg/m³` keep it (`Fläche km²¹` loses only the `¹`); subscripts (`CO₂`) are never marks;
   - a word split by a hyphen at a line break is joined (`De-⏎zember` becomes `Dezember`,
     `Kalender-⏎faktoren` becomes `Kalenderfaktoren`, `Benützungs- gebühren` becomes
     `Benützungsgebühren`), except before a conjunction (`Ein- und Ausfuhr` stays); before an
@@ -188,6 +190,13 @@ Rules:
   (`approx.`) do not either; see [locales](locales.md#footnote-marks-censored-and-suppressed-values).
 - Footnote marks on numbers (`123¹`, `12 (r)`, `7 p`, `20560.32e`) are removed from the value and
   kept in the column's `footnote_marks`.
+- Footnote marks on text labels are removed the same way and kept in the label column's
+  `footnote_marks`: `Delta²` becomes `Delta`, `Germany *` becomes `Germany`, `Norway (1)` becomes
+  `Norway`. Marks are trailing superscript digits, `*`, `†`, `‡` and one or two digits in
+  parentheses after a word; they are removed only from labels of at most 60 characters that keep
+  a letter, and only when at most half of the column's labels carry one (a column of names that
+  all end the same way is left alone). Parts of a name or unit stay: `Fläche km²`, `Mio. m³`,
+  `CO₂`, `H₂O`, `Fund II`, `Area 51`, `Formula 1`, `Table 3 (2)`, `Category (A)`.
 - Text numbers with leading zeros (`00123`) keep the column as `text`, because they are IDs.
 - A value that does not fit the column's dtype is **kept as text**, and the table's `warnings` list
   its source cell. Nothing is turned into null silently.
@@ -388,7 +397,7 @@ Column fields:
 | `original_header` | The header cells joined into `name`, top to bottom, with their addresses. |
 | `unit`, `currency` | Unit or ISO currency code carried by more than half of the numeric values (the most common one), or `null`. Mixed currencies are also listed in `warnings`. |
 | `locale` | `decimal` (`"."`, `","` or `null`), `date_order` (`"dmy"`, `"mdy"` or `null`), and `ambiguous`: how many values were read with a guess. `null` means no evidence. |
-| `footnote_marks` | `null`, or one entry per footnote mark removed from the column's numbers: `{"mark": "¹", "count": 3, "cells": ["B5", "B9", "B12"]}` (source cells, at most 100 listed; `count` is complete). Marks are `*`, `†`, superscript digits, `(r)`-style parentheses and statistical flag letters (`p`, `e`, `bep`). |
+| `footnote_marks` | `null`, or one entry per footnote mark removed from the column's numbers or text labels: `{"mark": "¹", "count": 3, "cells": ["B5", "B9", "B12"]}` (source cells, at most 100 listed; `count` is complete). Marks are `*`, `†`, superscript digits, `(r)`-style parentheses and statistical flag letters (`p`, `e`, `bep`). |
 | `nulls`, `distinct` | Missing values and distinct non-missing values. |
 | `min`, `max`, `example` | For numbers and dates (dates as ISO strings); `example` is the first non-missing value. |
 
@@ -440,7 +449,7 @@ Every key below is present in every table's `transformations`, with a count (oft
 | `currency_stripped`, `unit_stripped` | Values whose currency symbol/code or unit was removed |
 | `scale_applied` | A scale word multiplied in (`1,5 mil.` becomes 1500000) |
 | `accounting_negatives` | `(500)` or `500-` read as -500 |
-| `footnote_marks_stripped` | Numbers read from text with a footnote mark removed (`123¹`, `12 (r)`, `7 p`); marks per column in `footnote_marks` |
+| `footnote_marks_stripped` | Numbers read from text with a footnote mark removed (`123¹`, `12 (r)`, `7 p`), and text labels with one removed (`Delta²`); marks per column in `footnote_marks` |
 | `dates_from_text` | Dates parsed from text |
 | `dates_from_serial_numbers` | A plain number in a date column read as an Excel serial date |
 | `bools_from_text` | Booleans parsed from text |

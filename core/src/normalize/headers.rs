@@ -6,7 +6,8 @@
 //! flattened `name` is cleaned.
 
 use crate::values::date::is_period_label;
-use crate::values::{clean, norm_key};
+use crate::values::text::is_footnote_mark_char;
+use crate::values::{clean, norm_key, split_footnote_mark};
 
 /// Words after a line-break hyphen that are a separate word, not the rest of a split one
 /// ("Ein-\nund Ausfuhr", "Import-\nor export").
@@ -125,32 +126,12 @@ fn word_after(chars: &[char], start: usize) -> String {
         .collect()
 }
 
-fn is_superscript_mark(c: char) -> bool {
-    matches!(
-        c,
-        '¹' | '²'
-            | '³'
-            | '⁴'
-            | '⁵'
-            | '⁶'
-            | '⁷'
-            | '⁸'
-            | '⁹'
-            | '⁰'
-            | '⁾'
-            | '⁽'
-            | '*'
-            | '†'
-            | '‡'
-    )
-}
-
-/// Removes one trailing footnote mark: superscript digits / `*` / `†`, or an unmatched `1)` /
-/// `12)` / `a)` glued to a word, after a space, or glued to a year (`20221)` → `2022`).
+/// Removes one trailing footnote mark: superscript digits / `*` / `†` (not the `²` / `³` of a
+/// unit: `Fläche km²` stays, B141), or an unmatched `1)` / `12)` / `a)` glued to a word, after a
+/// space, or glued to a year (`20221)` → `2022`).
 fn strip_footnote(s: &str) -> String {
-    let t = s.trim_end_matches(is_superscript_mark).trim_end();
-    if t.len() != s.len() {
-        return t.to_string();
+    if s.ends_with(is_footnote_mark_char) {
+        return split_footnote_mark(s).map_or(s, |(body, _)| body).to_string();
     }
     let Some(body) = s.strip_suffix(')') else {
         return s.to_string();
@@ -438,6 +419,18 @@ mod tests {
         assert_eq!(clean_header("*"), "*");
         assert_eq!(clean_header("Wert (in Mio. EUR)"), "Wert (in Mio. EUR)");
         assert_eq!(clean_header("Code 123)"), "Code 123)");
+        // B141: the exponent of a unit is not a footnote mark
+        assert_eq!(clean_header("Fläche km²"), "Fläche km²");
+        assert_eq!(clean_header("Fläche km²¹"), "Fläche km²");
+        assert_eq!(clean_header("Einwohner je km²"), "Einwohner je km²");
+        assert_eq!(clean_header("Wohnfläche m²"), "Wohnfläche m²");
+        assert_eq!(clean_header("Fläche cm²"), "Fläche cm²");
+        assert_eq!(clean_header("Wasser Mio. m³"), "Wasser Mio. m³");
+        assert_eq!(clean_header("Dichte kg/m³"), "Dichte kg/m³");
+        assert_eq!(clean_header("Floor area ft²"), "Floor area ft²");
+        assert_eq!(clean_header("Volumen m³*"), "Volumen m³");
+        assert_eq!(clean_header("Delta²"), "Delta");
+        assert_eq!(clean_header("CO₂"), "CO₂");
     }
 
     #[test]

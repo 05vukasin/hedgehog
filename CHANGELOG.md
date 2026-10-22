@@ -8,6 +8,14 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Changed
 
+- **Unit exponents stay in column names** (B141): a `²` / `³` right after a length unit is part of
+  the unit, not a footnote mark, so `Fläche km²` stays `Fläche km²` (was `Fläche km`), as do
+  `Einwohner je km²`, `Wasser Mio. m³` and `kg/m³`; `Fläche km²¹` loses only the `¹`.
+- **Footnote marks are removed from text labels** (B142) like from numbers and recorded in the label
+  column's `footnote_marks`: `Delta²` → `Delta`, `Germany *` → `Germany`, `Norway (1)` →
+  `Norway` — only for short labels, when at most half of the
+  column's labels carry a mark; names and units keep theirs (`km²`, `CO₂`, `Fund II`, `Area 51`,
+  `Formula 1`).
 - **The `open_file` catalog gives more information per token** (B100–B105, B130; measured with
   [eval/info](eval/info/README.md)): 168 of 168 checks in the catalog or one query away (was 159), at
   42,360 catalog tokens over the 30 cases (was 53,867, −21 %), no case lower, no trap warning lost.
