@@ -57,3 +57,13 @@ panic = "unwind"
 debug-assertions = true
 overflow-checks = true
 debug = "line-tables-only"
+
+# Tier 0 checks (`make quick`, scripts/quick.sh): dependencies (calamine, zip, SQLite, …)
+# optimized once, hedgehog's own crates unoptimized and incremental — a rebuild after an edit takes
+# seconds, and the real files run ~1.5× faster than in a plain debug build.
+[profile.quick]
+inherits = "dev"
+debug = "line-tables-only"
+
+[profile.quick.package."*"]
+opt-level = 2
