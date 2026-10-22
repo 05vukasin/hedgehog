@@ -93,6 +93,13 @@ runs. `TRAP_CHECKS` holds case-specific patterns the catalog must show; the repo
 first one is B105: at-tourism-2months must name `'Insgesamt'` as the grand total and flag
 `'Österreich gesamt'` (guests from Austria) as the total of one group, not of the table.
 
+`NAIVE_TRAPS` (B160–B162) are trap checks of another kind: for a fact, the query an agent writes
+first (`SELECT SUM(TOTAL) FROM T1_all WHERE _row_type = 'total'`, a column name in the catalog's
+`a / {b}` form, the row before the latest of rolling windows, a `SUM` over `T3_long_all`), run in
+the case's session as `naive:<k>`. It passes when that query gives the right value on hedgehog's
+views, or when the catalog matches the trap's `warn` pattern (it warns about that query). They are
+listed with the trap checks (`naive query: …`) and counted by `make quick`.
+
 ## Tokens
 
 Catalog tokens are counted with **tiktoken `o200k_base`** when it can be imported. Otherwise score.py
@@ -183,7 +190,7 @@ question and its reason; and the trap facts (`trap_facts`) of the tables the QUE
 that the catalog with the question lost (warnings of the other tables may go: they are listed one
 line each). The second session finds the file in hedgehog's disk cache, so its timing line is
 replaced by the first session's (`(cached)` vs `(normalized in …)`), so that only the question
-changes the size. `make quick` runs it on its 15 cases as a second `info` line
+changes the size. `make quick` runs it on its 17 cases as a second `info` line
 (`eval/quick/info_question.tsv`).
 
 ## Running
