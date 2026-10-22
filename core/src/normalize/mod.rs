@@ -633,6 +633,10 @@ pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
                 let grid = crate::grid::Grid::new(sheet);
                 let (lay, warning) = sheet_layout(&grid, opts);
                 extract::process_sheet(&grid, opts, (lay, warning, None), &mut out);
+                drop(grid);
+                if sheet.cells.len() >= PREFETCH_TOTALS_MIN_CELLS {
+                    release_free_memory();
+                }
             }
         }
     }
@@ -687,6 +691,17 @@ fn sheet_layout(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::S
         h.join().unwrap_or_else(|e| std::panic::resume_unwind(e));
         out
     })
+}
+
+/// Returns memory freed by a large sheet's analysis to the system: its threads freed it in
+/// several allocator arenas, where it would otherwise stay resident while the next sheet
+/// allocates elsewhere (glibc only; no effect on results).
+fn release_free_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: `malloc_trim` only returns free heap pages to the system.
+    unsafe {
+        libc::malloc_trim(0);
+    }
 }
 
 /// Sheets with at least this many cells detect their totals beside the layout ([`sheet_layout`]).
