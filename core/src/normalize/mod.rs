@@ -671,6 +671,28 @@ pub(super) type SheetAnalysis = (crate::analysis::SheetLayout, Option<String>, O
 /// value is a warning for a sheet above the model limit. A total detection the layout runs stays
 /// in `grid`.
 fn sheet_layout(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::SheetLayout, Option<String>) {
+    if grid.sheet.cells.len() < PREFETCH_TOTALS_MIN_CELLS {
+        return sheet_layout_inner(grid, opts);
+    }
+    // The extraction needs the sheet's total detection (cached on the grid); on a large sheet it
+    // is computed on another thread while the layout runs (B133). Whoever comes first computes
+    // it, the other waits for the same result.
+    std::thread::scope(|s| {
+        let h = s.spawn(|| {
+            let t = std::time::Instant::now();
+            crate::totals::detection(grid);
+            trace_ms("totals_prefetch", t.elapsed());
+        });
+        let out = sheet_layout_inner(grid, opts);
+        h.join().unwrap_or_else(|e| std::panic::resume_unwind(e));
+        out
+    })
+}
+
+/// Sheets with at least this many cells detect their totals beside the layout ([`sheet_layout`]).
+const PREFETCH_TOTALS_MIN_CELLS: usize = 100_000;
+
+fn sheet_layout_inner(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::SheetLayout, Option<String>) {
     let limit = opts.model_max_cells.unwrap_or(DEFAULT_MODEL_MAX_CELLS);
     let model = crate::learned::embedded().filter(|_| !opts.rules_only);
     let sheet = grid.sheet;
