@@ -31,3 +31,4 @@ __pycache__/
 /eval/agents/runs/
 !eval/agents/results.jsonl
 /eval/agents/work/
+/eval/info/cache/
