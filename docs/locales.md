@@ -102,6 +102,12 @@ the number, keeps the mark, and does not let these cells turn a numeric column i
   removed from the value and kept: the column's `footnote_marks` in the manifest lists each mark
   with how many values carried it and their cells, and the table counts
   `footnote_marks_stripped` ([normalized output](normalized-output.md#values-and-dtypes)).
+- **Footnote marks on text labels** (`Delta²`, `Germany *`, `Gamma†`, `Norway (1)`) are removed
+  and kept in the label column's `footnote_marks` the same way, when at most half of the column's
+  labels carry one. **Unit exponents are not marks**: a `²` / `³` right after a length unit (`km²`,
+  `m²`, `cm²`, `m³`, `Mio. m³`, `kg/m³`, `ft²`, Cyrillic `км²`) stays in headers and labels, and
+  subscripts (`CO₂`, `H₂O`), Roman numerals (`Fund II`) and plain numbers (`Area 51`,
+  `Formula 1`) are part of the name.
 - **Censored values** (`<5`, `> 1000`, `≤ 0,5`, US Census `(Z)` for less than half the unit), **suppressed values** (`c`, `[c]`, `(c)`, `(D)`,
   `(S)`, `F`, `[low]`, `confidential`, `suppressed`, `withheld`, `vertraulich`, `confidentiel`,
   `poverljivo`, ...) and **pointers to notes** (`see note`, `see footnote`, `siehe Fußnote`,
