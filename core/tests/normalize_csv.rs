@@ -171,6 +171,40 @@ fn statistical_markers_csv() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// B141 / B142: a unit exponent in a header (`Fläche km²`) or a label (`Mio. m³`) stays; a
+/// footnote mark on a text label (`Delta²`, `Gamma *`) is stripped and recorded on the label
+/// column like the marks on numbers; names with digits (`Area 51`, `CO₂`) stay as they are.
+#[test]
+fn label_footnotes_and_unit_exponents_csv() {
+    let dir = tmp_dir("labels");
+    let src = dir.join("labels.csv");
+    let data = "Region,Fläche km²,Wasser Mio. m³¹\n\
+                Alpha,12.5,3\n\
+                Beta,8.1,4\n\
+                Gamma *,4.4,2\n\
+                Delta²,9.0,5\n\
+                Area 51,1.2,1\n\
+                CO₂ zone,2.3,1\n\
+                Epsilon,7.7,6\n";
+    std::fs::write(&src, data).unwrap();
+    let out = normalize_file(&src, &dir, &Options::default()).unwrap();
+    let wb = open(&out.xlsx_path).unwrap();
+    let t = &wb.sheets[1];
+    assert_eq!(row_vals(t, 0)[..3], [text("Region"), text("Fläche km²"), text("Wasser Mio. m³")]);
+    let labels: Vec<_> = (1..=7).map(|r| get(t, r, 0).cloned()).collect();
+    let want = ["Alpha", "Beta", "Gamma", "Delta", "Area 51", "CO₂ zone", "Epsilon"];
+    assert_eq!(labels, want.map(text));
+    let compact: String = out.manifest_json.split_whitespace().collect();
+    for needle in [
+        "{\"mark\":\"*\",\"count\":1,\"cells\":[\"A4\"]}",
+        "{\"mark\":\"²\",\"count\":1,\"cells\":[\"A5\"]}",
+        "\"footnote_marks_stripped\":2",
+    ] {
+        assert!(compact.contains(needle), "manifest lacks {needle}\n{}", out.manifest_json);
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// Layout noise from B38 / B45: a unit row under the header joins the column names, ruling
 /// lines (`=====`) are not data, a comment beside one row is a note, and the total under a
 /// ruling line still verifies.
