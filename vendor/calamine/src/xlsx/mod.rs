@@ -5,6 +5,7 @@
 #![warn(missing_docs)]
 
 mod cells_reader;
+mod parallel; // hedgehog: large sheets and shared string tables read on several threads
 
 use std::collections::HashMap;
 #[cfg(feature = "picture")]
@@ -36,6 +37,7 @@ use crate::{
 pub use cells_reader::{
     XlsxCellFormula, XlsxCellFormulaMetadataRecord, XlsxCellReader, XlsxFormulaMetadata,
 };
+pub use parallel::{parallel_read_stats, parallel_read_threads, set_parallel_read_for_tests}; // hedgehog
 
 pub(crate) type XlReader<'a, RS> = XmlReader<BufReader<ZipFile<'a, RS>>>;
 
@@ -338,6 +340,10 @@ impl<RS: Read + Seek> Xlsx<RS> {
     }
 
     fn read_shared_strings(&mut self) -> Result<(), XlsxError> {
+        // hedgehog: a large table on several threads, with the same strings (parallel.rs)
+        if self.read_shared_strings_parallel(parallel::parallel_read_threads()) {
+            return Ok(());
+        }
         let path = format!("{}sharedStrings.xml", self.xl_path);
         let mut xml = match xml_reader(&mut self.zip, path.as_ref(), &self.zip_path_cache) {
             None => return Ok(()),
@@ -2812,6 +2818,16 @@ fn col_from_cell_ref(cell_ref: &str) -> u32 {
     col.saturating_sub(1)
 }
 
+/// hedgehog: the reader settings of [`xml_reader`], shared with the chunk readers of
+/// `parallel.rs`.
+pub(crate) fn configure<R>(r: &mut XmlReader<R>) {
+    let config = r.config_mut();
+    config.check_end_names = false;
+    config.trim_text(false);
+    config.check_comments = false;
+    config.expand_empty_elements = true;
+}
+
 pub(crate) fn xml_reader<'a, RS: Read + Seek>(
     zip: &'a mut ZipArchive<RS>,
     path: &str,
@@ -2822,11 +2838,7 @@ pub(crate) fn xml_reader<'a, RS: Read + Seek>(
     match zip.by_name(zip_path) {
         Ok(f) => {
             let mut r = XmlReader::from_reader(BufReader::new(f));
-            let config = r.config_mut();
-            config.check_end_names = false;
-            config.trim_text(false);
-            config.check_comments = false;
-            config.expand_empty_elements = true;
+            configure(&mut r);
             Some(Ok(r))
         }
         Err(ZipError::FileNotFound) => None,
@@ -2946,14 +2958,14 @@ fn get_row_and_optional_column(range: &str) -> Result<(u32, Option<u32>), XlsxEr
 
 /// Attempts to read either a simple or richtext string, reusing caller-provided
 /// buffers to avoid per-call allocations.
-pub(crate) fn read_string_with_bufs<RS>(
-    xml: &mut XlReader<'_, RS>,
+pub(crate) fn read_string_with_bufs<R>(
+    xml: &mut XmlReader<R>,
     closing: QName,
     xml_buf: &mut Vec<u8>,
     text_buf: &mut Vec<u8>,
 ) -> Result<Option<String>, XlsxError>
 where
-    RS: Read + Seek,
+    R: std::io::BufRead, // hedgehog: any XML reader (was the zip part's)
 {
     let mut rich_buffer: Option<String> = None;
     let mut is_phonetic_text = false;
