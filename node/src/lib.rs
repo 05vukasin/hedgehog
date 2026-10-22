@@ -576,6 +576,15 @@ impl Task for ToolTask {
     }
 }
 
+/// One file opened in a session (`HedgehogSession.openFiles()`).
+#[napi(object)]
+pub struct OpenFileInfo {
+    /// The file's SQL prefix: `f1`, `f2`, … (`SELECT … FROM f2.T1`).
+    pub prefix: String,
+    /// The path as the session shows it (relative to the root when inside it).
+    pub path: String,
+}
+
 /// Options of the native agent-tools session.
 #[napi(object)]
 pub struct SessionOptions {
@@ -646,6 +655,13 @@ impl NativeSession {
     #[napi(ts_return_type = "Promise<string>")]
     pub fn list_files(&self, folder: Option<String>, pattern: Option<String>) -> AsyncTask<ToolTask> {
         self.task(Box::new(move |s| s.list_files(folder.as_deref(), pattern.as_deref())))
+    }
+
+    /// The files opened in this session, in order, with their SQL prefix: `f1.T1`, `f2.T1`, …
+    /// name the tables of each file in one query (B76).
+    #[napi]
+    pub fn open_files(&self) -> Vec<OpenFileInfo> {
+        lock(&self.inner).open_files().into_iter().map(|(prefix, path)| OpenFileInfo { prefix, path }).collect()
     }
 
     /// Runs a tool by its MCP name with JSON arguments (`{"path": ..., "sql": ...}`).

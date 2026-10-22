@@ -2,6 +2,7 @@
 
     python eval/agents/sql.py FILE "SELECT ..." ["SELECT ..." ...]
     python eval/agents/sql.py FILE --catalog
+    python eval/agents/sql.py FILE --open OTHER "SELECT … FROM T1 JOIN f2.T1 …"   # several files (B76)
 
 FILE is relative to --root (default: $HEDGEHOG_DATA/irregular). Every query runs in one server
 session, so the file is normalized once. Uses `hedgehog` from PATH or $HEDGEHOG_BIN.
@@ -40,12 +41,17 @@ def main() -> None:
     ap.add_argument("file")
     ap.add_argument("sql", nargs="*")
     ap.add_argument("--catalog", action="store_true")
+    ap.add_argument("--open", action="append", default=[], metavar="OTHER",
+                    help="open another file first (f2, f3, … in SQL, after FILE as f1); repeatable")
     ap.add_argument("--root", type=Path, default=Path(os.environ.get("HEDGEHOG_DATA", "testdata")) / "irregular")
     ap.add_argument("--limit", type=int, default=50)
     args = ap.parse_args()
-    calls = [("open_file", {"path": args.file})] if args.catalog else []
+    opens = [args.file, *args.open] if args.open else ([args.file] if args.catalog else [])
+    calls = [("open_file", {"path": f}) for f in opens]
     calls += [("query", {"path": args.file, "sql": q, "limit": args.limit}) for q in args.sql]
-    for q, text in zip(["catalog"] * args.catalog + args.sql, call(args.root, calls)):
+    titles = [f"catalog {f}" for f in opens]
+    shown = list(zip(titles + args.sql, call(args.root, calls)))
+    for q, text in shown[0 if args.catalog else len(opens):]:
         print(f"== {q}\n{text}\n")
 
 
