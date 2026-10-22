@@ -1787,7 +1787,9 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         let mut rolls: Vec<Option<String>> = vec![None; norm.tables.len()];
         {
             let order: Vec<usize> = (0..norm.tables.len()).filter(|&k| keep[k] && prio[k]).chain((0..norm.tables.len()).filter(|&k| keep[k] && !prio[k])).collect();
-            let mut by: Vec<((i64, i64), usize, crate::views::Rolling, Vec<String>)> = Vec::new();
+            // (length and step, the first table, its windows, the other tables)
+            type Windows = ((i64, i64), usize, crate::views::Rolling, Vec<String>);
+            let mut by: Vec<Windows> = Vec::new();
             for k in order {
                 let t = &norm.tables[k];
                 let Some(r) = crate::views::rolling(t) else { continue };
