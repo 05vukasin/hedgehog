@@ -178,6 +178,40 @@ as `"501… - A, Lda 502… - B, SA"`) is not split: its `<col>_id` lists every 
 catalog and `describe_table` describe each such column (see [The catalog](#the-catalog)); `cite as:`
 maps `<col>_id` to the source cell it comes from.
 
+**Union views.** Tables with the same layout on several sheets (one per state, per day, per
+month: the same column types in the same order and at least half of the names the same once
+dates are dropped) get one view over all of them, `U<k>` (data rows) and `U<k>_all` (with the
+total rows and `_row_type`, like `T<n>_all`). Columns: `_table` (`T8`), `sheet` (the source sheet),
+`title`, `part` (the part of the title that differs between the tables, when the titles differ:
+`'Tirol'` from "Ankünfte und Übernachtungen in Tirol – nach Herkunftsland Juli 2026"),
+`variant` (the header words that differ, when the tables name a column differently:
+`'Day-Ahead'` | `'Real-Time Transactions'`), the columns, and `_src_row`. The union's column
+names are the tables' names with dates and periods dropped (`2001-05-09 / Day-Ahead / Qty` →
+`Day-Ahead / Qty`); where the tables still differ, the shared trailing part (`Qty`), or the first
+table's name. A catalog line per family names it:
+`SQL union view U1 = T1..T10 (10 tables with the same columns; adds _table, sheet, title, part = 'Österreich' | 'Burgenland' | …)`.
+So the state with the most overnight stays is one query:
+`SELECT part, "Nächtigungen / Absolut" FROM U1_all WHERE "Herkunftsland oder -region" = 'Insgesamt' ORDER BY 2 DESC`.
+(A name that collides with a column gets a leading `_`: `_sheet`.)
+
+**Several files.** Every file opened in a session gets a number in the order it was opened, and
+`f<k>.T1` names table T1 of file k, so one query joins tables of different files (`f2.T1_all`,
+`f2.T1_long`, `f2.U1` work too). Plain `T1` stays the file in `path`, which can be any open
+file. With two or more files open, the catalog ends with the session's files and the columns
+that join them (same name in tables of different files, overlapping values, one side unique):
+
+```text
+FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = northwind/orders.csv (T1), f2 = northwind/order_details.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.orderID = b.orderID
+JOIN KEYS f1.T1.orderID = f2.T1.orderID (830 shared values; unique in f1.T1)
+```
+
+`SELECT o.employeeID, ROUND(SUM(d.unitPrice * d.quantity * (1 - d.discount)), 2) AS revenue FROM T1 o JOIN f2.T1 d ON o.orderID = d.orderID WHERE o.orderDate LIKE '1997%' GROUP BY 1 ORDER BY 2 DESC LIMIT 1`
+on `path` = `northwind/orders.csv` gives `4,128809.79`. The query runs on a connection with the
+files' databases attached read-only by the server (a user's `ATTACH` is still refused); the
+number of a file stays the same for the session, and a second name of the same content is the
+same file. In-process hosts list the files with `Session::open_files()` (Node:
+`HedgehogSession.openFiles()`).
+
 ### Example
 
 `eu_at_opendata/003_pen_02_02.xlsx` (Austrian pension supplements, one sheet):
@@ -230,6 +264,11 @@ SQL error: no such function: MONTH (at character 7) — SQLite has no MONTH(); d
 SQL error: near "5": syntax error (at character 11) — SQLite has no TOP n; put LIMIT n at the end: SELECT … ORDER BY x DESC LIMIT 5
 ```
 
+A "no such column" for `_row_type` on `T1` says that `T1` has the data rows only and the total
+rows (and `_row_type`) are in `T1_all`. A column the outer query takes from a subquery or CTE that
+does not select it (an outer `SUM("price")` over `(SELECT buyer, SUM("price") AS total … GROUP BY buyer)`)
+names the subquery's columns (`buyer, total`) instead of suggesting `T1."price"`.
+
 A "no such column" whose name is the label of a total row (or a total word: Total, Gesamt, Summe,
 Totale, Ukupno, Subtotal, …) says where the total rows are; one that is a value of a text column
 says which column to filter. Both also run that query and return its rows (at most 10, ~3,000
@@ -242,6 +281,29 @@ of its label that every data row of the block shares (`col_B = 'Receipts HH'`), 
 (`YEAR`, `MONTH`, `DAY`, `DATE_FORMAT`, `TO_CHAR`, `EXTRACT(… FROM …)`, `DATEDIFF`, `DATE_ADD`, `NOW`,
 `CONCAT`, `ISNULL`, `LEN`, `STRING_AGG`, `MEDIAN`/`PERCENTILE_CONT`, `STDDEV`, `TOP n`, `ILIKE`,
 `::type`, `FETCH FIRST`, `INTERVAL`, …) get the SQLite replacement.
+
+**Empty results explain themselves.** A result that reads as "nothing" (no rows, one row of
+NULLs such as `SUM(…)` over no rows, or a count of 0) of a query with a filter `col = 'x'`,
+`col IN (…)`, `col LIKE …` or `col = <number>` gets a `note:` per filter value, from small probe
+queries:
+
+```text
+note: T1."Country Name" = 'European Union' is only on 1 total row (_row_type 'total'), which is in T1_all, not in T1
+The same query on T1_all (the total rows included):
+2024
+43313.7668204
+note: T1."Country Name" has no 'Somalia' — 0 rows here means the file has no such rows, not a value of 0; values that contain it: 'Somalia, Fed. Rep.' (1 row)
+note: T1.agency_name has no 'NYPD' — 0 rows here means the file has no such rows, not a value of 0; its 2 values: 'ADMIN FOR CHILDREN''S SVCS' (95,179 rows), 'ADMIN TRIALS AND HEARINGS' (4,821 rows)
+note: T1.fiscal_year has no 2030 — …; its values run from 2014 to 2025
+note: T1.Returned has no 'TRUE' — …; Returned is a yes/no column stored as 1/0: use Returned = 1 (or = 0)
+```
+
+A value that is only on total rows also gets the rows of the same query run on `T<n>_all` (at
+most 5). A value the column does not have gets the values that contain it (or that it contains as
+a word, any case), else all the column's values (up to 20) or the closest / most frequent ones. A
+non-empty result over `T<n>` whose filter value also labels total rows (only in `T<n>_all`) says
+so in one line. A result with empty values from `a + b` over columns that are sometimes empty gets
+`note: … a + b is NULL when any part is empty ("bonus" empty in 10 rows); use COALESCE(col, 0) …`.
 
 ### The catalog
 

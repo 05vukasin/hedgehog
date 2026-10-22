@@ -8,6 +8,25 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Added
 
+- **SQL joins across files** (B76). Every file opened in an agent session gets a number in the
+  order it was opened; `f<k>.T1` (and `f<k>.T1_all`, `_long`, `U1`) names a table of file k in
+  `query`, so one statement joins orders with order lines kept in two files. Plain `T1` stays the
+  file in `path`. With two or more files open, the catalog ends with `FILES` (prefix = file) and
+  `JOIN KEYS` (same-named columns with overlapping values, one side unique). The server attaches
+  the databases read-only; users still cannot `ATTACH`. `Session::open_files()`, Node
+  `HedgehogSession.openFiles()`, `eval/agents/sql.py --open`. See
+  [docs/mcp.md](docs/mcp.md#sql-tables).
+- **Union views of same-layout tables** (B79): tables with the same column types in the same order
+  and mostly the same names (dates dropped) get `U<k>` / `U<k>_all` with `_table`, `sheet`,
+  `title`, `part` (the part of the title that differs, e.g. the state) and `variant` columns, and a
+  catalog line per family.
+- **Empty query results explain themselves** (B75): a result with no rows, a NULL aggregate or a
+  zero count of a filtered query gets notes — the value is only on total rows in `T<n>_all` (with
+  that query's rows there), the column has no such value (values containing it, its values or the
+  most frequent ones; "not a value of 0"), or a quoted value meets a 1/0 or number column. A filter
+  value that also labels total rows only in `T<n>_all` gets a note on a non-empty result; `a + b`
+  over sparse columns with NULL results suggests `COALESCE` / `total()` (B88).
+
 - **Robustness for untrusted files** (P4). Per-file limits, checked before and while a file is
   read (`hh_core::reader::Limits` in `ReadOptions`): parts of a zip package decompressing to more
   than 2 GB (zip bombs), more than 10 million cells (an ODS file's repeated rows and columns are
@@ -245,6 +264,11 @@ All notable changes to hedgehog are listed here. The format follows
   views agree with the manifest.
 
 ### Changed
+
+- SQL errors (B88): `_row_type` on `T<n>` says it is only in `T<n>_all`; a column the outer query
+  takes from a subquery or CTE lists that subquery's columns instead of suggesting `T1."col"`.
+  In-memory databases of an agent session are named shared-cache memory databases (so a
+  multi-file query can attach them).
 
 - **Faster, leaner model path, same output** (P7 "exact wins"; every output byte unchanged). The
   row model's input is streamed instead of materialized: a first pass holds the sheet-wide counts,
