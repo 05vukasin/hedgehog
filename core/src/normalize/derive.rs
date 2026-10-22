@@ -3,6 +3,8 @@
 //! column without a source column or header cells ([`Column::is_derived`]); the manifest names
 //! the column it comes from.
 
+use std::collections::HashMap;
+
 use super::coverage::{column_label_periods, span_label};
 use super::extract::UniqueNames;
 use super::{ColRole, Column, Dtype, Out, T, Table};
@@ -10,6 +12,93 @@ use super::{ColRole, Column, Dtype, Out, T, Table};
 /// Adds the derived columns of one table.
 pub(super) fn add_columns(t: &mut Table) {
     add_period_columns(t);
+    add_key_columns(t);
+}
+
+/// A spelling's grouping key: lowercase, diacritics folded, without spaces and punctuation
+/// (`Mc Kay`, `McKay`, `MCKAY` and `Mc-Kay` share `mckay`).
+fn fold(s: &str) -> String {
+    crate::values::norm_key(s).chars().filter(|c| c.is_alphanumeric()).collect()
+}
+
+/// Columns of at most this many distinct values are checked for spelling variants.
+const KEY_MAX_DISTINCT: usize = 5000;
+/// Variant groups named in the table warning.
+const KEY_WARN_GROUPS: usize = 3;
+
+/// B78: a text column of names or categories in which some values differ only in case, spaces,
+/// punctuation or diacritics ('Mc Kay' / 'McKay') gets `<name>_key`, every value replaced by the
+/// most frequent spelling of its group, so `GROUP BY "<name>_key"` counts them together; a table
+/// warning names the groups. Not for long free text (more than 60 characters on average) or
+/// columns where most values are distinct (registers of descriptions).
+fn add_key_columns(t: &mut Table) {
+    let mut adds: Vec<(usize, Column, String)> = Vec::new();
+    for (i, c) in t.columns.iter().enumerate() {
+        if !matches!(c.role, ColRole::Data | ColRole::Group) || c.dtype != Dtype::Text || c.is_derived() {
+            continue;
+        }
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        let (mut n, mut chars) = (0usize, 0usize);
+        for v in &c.values {
+            if let Out::Text(s) = v {
+                *counts.entry(s.as_str()).or_default() += 1;
+                n += 1;
+                chars += s.chars().count();
+                if counts.len() > KEY_MAX_DISTINCT {
+                    break;
+                }
+            }
+        }
+        if counts.len() < 2 || counts.len() > KEY_MAX_DISTINCT || chars > 60 * n || counts.len() * 10 > n * 9 {
+            continue;
+        }
+        // Spellings per key, most frequent first (ties: alphabetical, for determinism).
+        let mut groups: HashMap<String, Vec<(&str, usize)>> = HashMap::new();
+        for (&s, &k) in &counts {
+            let key = fold(s);
+            if !key.is_empty() {
+                groups.entry(key).or_default().push((s, k));
+            }
+        }
+        let mut variants: Vec<Vec<(&str, usize)>> = groups.into_values().filter(|g| g.len() >= 2).collect();
+        if variants.is_empty() {
+            continue;
+        }
+        for g in &mut variants {
+            g.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        }
+        variants.sort_by(|a, b| b.iter().map(|x| x.1).sum::<usize>().cmp(&a.iter().map(|x| x.1).sum()).then(a[0].0.cmp(b[0].0)));
+        let canon: HashMap<&str, &str> = variants.iter().flat_map(|g| g.iter().map(move |x| (x.0, g[0].0))).collect();
+        let values = c
+            .values
+            .iter()
+            .map(|v| match v {
+                Out::Text(s) => Out::Text(canon.get(s.as_str()).copied().unwrap_or(s).to_string()),
+                other => other.clone(),
+            })
+            .collect();
+        let name = derived_name(&c.name, "key");
+        let shown: Vec<String> = variants
+            .iter()
+            .take(KEY_WARN_GROUPS)
+            .map(|g| g.iter().map(|x| format!("'{}'", x.0)).collect::<Vec<_>>().join(" / "))
+            .collect();
+        let more = if variants.len() > KEY_WARN_GROUPS { format!(" and {} more", variants.len() - KEY_WARN_GROUPS) } else { String::new() };
+        let warning =
+            format!("\"{}\" has spellings of the same value ({}{}): \"{{key}}\" holds one spelling per group, group by it", c.name, shown.join(", "), more);
+        adds.push((i + 1, derived_column(name, values), warning));
+    }
+    if adds.is_empty() {
+        return;
+    }
+    let mut names = UniqueNames::taken(t.columns.iter().map(|c| c.name.as_str()));
+    t.transforms.add(T::KeyColumnsAdded, adds.len());
+    for (at, mut c, warning) in adds.into_iter().rev() {
+        let unique = names.make(std::mem::take(&mut c.name), &mut t.transforms);
+        t.warnings.push(warning.replace("{key}", &unique));
+        c.name = unique;
+        t.columns.insert(at, c);
+    }
 }
 
 /// Name of a derived column: `<base>_<suffix>`, or just `<suffix>` for an unnamed base (`col_A`).
@@ -115,13 +204,37 @@ mod tests {
         assert_eq!(labels(&["Apr.201", "Mai.201", "Jun.201"]), None);
     }
 
-    #[test]
-    fn adds_a_period_column_after_its_label_column() {
-        let col = |name: &str, values: Vec<Out>, src: u32| Column {
+    fn data_col(name: &str, values: Vec<Out>, src: u32) -> Column {
+        Column {
             source_col: Some(src),
             original_header: vec![(name.to_string(), (0, src))],
             ..derived_column(name.into(), values)
-        };
+        }
+    }
+
+    fn table(columns: Vec<Column>) -> Table {
+        let n = columns[0].values.len();
+        Table {
+            n: 1,
+            sheet: "T1".into(),
+            source_sheet: "S".into(),
+            rect: crate::model::Rect { top: 0, left: 0, bottom: n as u32, right: 1 },
+            header_top: 0,
+            header_rows: 1,
+            title: None,
+            notes: Vec::new(),
+            confidence: 1.0,
+            columns,
+            src_rows: (1..=n as u32).collect(),
+            row_types: vec![super::super::RowType::Data; n],
+            transforms: Default::default(),
+            warnings: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn adds_a_period_column_after_its_label_column() {
+        let col = data_col;
         let mut t = Table {
             n: 1,
             sheet: "T1".into(),
@@ -149,5 +262,24 @@ mod tests {
         assert_eq!(t.columns[1].derived_kind(), Some("period"));
         assert_eq!(t.transforms.get(T::PeriodColumnsAdded), 1);
         assert_eq!(derived_name("col_A", "period"), "period");
+    }
+
+    #[test]
+    fn spelling_variants_get_a_key_column() {
+        let mut t = table(vec![
+            data_col("Trader", text(&["McKay", "Mc Kay", "McKay", "Smith", "SMITH", "Jones", "Smith"]), 0),
+            data_col("Desk", text(&["East", "West", "East", "West", "East", "West", "East"]), 1),
+        ]);
+        add_columns(&mut t);
+        let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["Trader", "Trader_key", "Desk"]);
+        let keys: Vec<&str> = t.columns[1].values.iter().map(|v| if let Out::Text(s) = v { s.as_str() } else { "" }).collect();
+        assert_eq!(keys, ["McKay", "McKay", "McKay", "Smith", "Smith", "Jones", "Smith"]);
+        assert_eq!(t.columns[1].derived_kind(), Some("key"));
+        assert!(t.warnings[0].contains("'Smith' / 'SMITH'") && t.warnings[0].contains("\"Trader_key\""), "{:?}", t.warnings);
+        // Mostly distinct values (a register of descriptions): no key column.
+        let mut t = table(vec![data_col("Text", text(&["a b", "A B", "c", "d", "e", "f", "g", "h", "i", "j", "k"]), 0)]);
+        add_columns(&mut t);
+        assert_eq!(t.columns.len(), 1);
     }
 }
