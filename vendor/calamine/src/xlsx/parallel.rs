@@ -212,13 +212,13 @@ pub(crate) enum Flow {
 pub(crate) fn run_chunks<O, E>(
     next_chunk: &mut dyn FnMut() -> Result<Option<(Vec<u8>, bool)>, ()>,
     threads: usize,
-    work: &(dyn Fn(usize, Vec<u8>) -> O + Sync),
+    work: &(dyn Fn(usize, Vec<u8>, bool) -> O + Sync),
     merge: &mut dyn FnMut(O, bool) -> Result<Flow, E>,
 ) -> Result<bool, E>
 where
     O: Send,
 {
-    let (job_tx, job_rx) = mpsc::sync_channel::<(usize, Vec<u8>)>(threads);
+    let (job_tx, job_rx) = mpsc::sync_channel::<(usize, Vec<u8>, bool)>(threads);
     let job_rx = Mutex::new(job_rx);
     let (res_tx, res_rx) = mpsc::channel::<(usize, O)>();
     let stop = std::sync::atomic::AtomicBool::new(false);
@@ -231,8 +231,8 @@ where
                     Ok(rx) => rx.recv(),
                     Err(_) => break,
                 };
-                let Ok((i, bytes)) = job else { break };
-                if stop.load(Relaxed) || res_tx.send((i, work(i, bytes))).is_err() {
+                let Ok((i, bytes, last)) = job else { break };
+                if stop.load(Relaxed) || res_tx.send((i, work(i, bytes, last))).is_err() {
                     break;
                 }
             });
@@ -280,7 +280,7 @@ where
                     Err(()) => return Ok(false),
                     Ok(None) => finished = true,
                     Ok(Some((bytes, last))) => {
-                        if job_tx.send((lasts.len(), bytes)).is_err() {
+                        if job_tx.send((lasts.len(), bytes, last)).is_err() {
                             return Ok(false);
                         }
                         lasts.push(last);
@@ -325,11 +325,18 @@ struct SheetChunk<'s, T> {
 
 /// Reads one chunk; `start`: the row index and shared formulas the chunks before it leave (the
 /// chunk is then read in order, as the one-thread read would), `None` to read it on its own.
+///
+/// The XML reader rejects an end tag without an open element. A chunk is read with no element
+/// open, so an end tag that closes something opened before the chunk is an error (and the part
+/// is read on one thread), even where the one-thread read, deeper at that point, accepts it.
+/// Only the last chunk gets one open element, for the end tag of `sheetData` (the one-thread read
+/// has at least that one open, since no chunk before it closed more than it opened).
 fn read_sheet_chunk<'s, T, C>(
     bytes: Vec<u8>,
     ctx: &WorkbookContext<'s>,
     convert: &C,
     start: Option<(u32, Vec<Option<SharedFormula>>)>,
+    last: bool,
 ) -> Result<SheetChunk<'s, T>, XlsxError>
 where
     C: for<'x> Fn(XlsxCellFormula<'x>) -> Option<T>,
@@ -348,8 +355,9 @@ where
     let mut cells = Vec::with_capacity(bytes.len() / 48);
     let mut unresolved = Vec::new();
     {
-        // The end tag of `sheetData` must have a start tag to match.
-        let mut xml = XmlReader::from_reader(Read::chain(&b"<sheetData>"[..], bytes.as_slice()));
+        // The space keeps the reader from taking the chunk's first bytes for a byte order mark.
+        let open: &[u8] = if last { b" <sheetData>" } else { b" " };
+        let mut xml = XmlReader::from_reader(Read::chain(open, bytes.as_slice()));
         configure(&mut xml);
         while let Some(rec) = next_cell_formula_record(&mut xml, &mut st, ctx, true)? {
             match rec.unresolved_shared().filter(|_| !in_order) {
@@ -382,10 +390,11 @@ where
 }
 
 /// One chunk of a shared string table, read: its strings, whether it reached `</sst>`, and
-/// whether it ended right after a string otherwise.
-fn read_strings_chunk(bytes: &[u8]) -> Result<(Vec<String>, bool, bool), XlsxError> {
-    // The end tag of `sst` must have a start tag to match.
-    let mut xml = XmlReader::from_reader(Read::chain(&b"<sst>"[..], bytes));
+/// whether it ended right after a string otherwise. Open elements as in [`read_sheet_chunk`]:
+/// only the last chunk has one, for the end tag of `sst`.
+fn read_strings_chunk(bytes: &[u8], last: bool) -> Result<(Vec<String>, bool, bool), XlsxError> {
+    let open: &[u8] = if last { b" <sst>" } else { b" " }; // space: as in read_sheet_chunk
+    let mut xml = XmlReader::from_reader(Read::chain(open, bytes));
     configure(&mut xml);
     let mut buf = Vec::with_capacity(1024);
     let mut str_buf = Vec::with_capacity(1024);
@@ -478,8 +487,8 @@ impl<RS: Read + std::io::Seek> Xlsx<RS> {
         let mut split = Splitter::new(part, rest, b"</row>", chunk);
         GAVE_UP.fetch_add(1, Relaxed); // until it is done
 
-        let work = |i: usize, bytes: Vec<u8>| {
-            read_sheet_chunk(bytes, &ctx, &convert, (i == 0).then(|| (0, Vec::new())))
+        let work = |i: usize, bytes: Vec<u8>, last: bool| {
+            read_sheet_chunk(bytes, &ctx, &convert, (i == 0).then(|| (0, Vec::new())), last)
         };
         // In order: the state each chunk leaves, chunks read again where they need it.
         let mut formulas: Vec<Option<SharedFormula>> = Vec::new();
@@ -489,7 +498,7 @@ impl<RS: Read + std::io::Seek> Xlsx<RS> {
             if let Some(bytes) = c.bytes.take() {
                 AGAIN.fetch_add(1, Relaxed);
                 let start = Some((row_index, std::mem::take(&mut formulas)));
-                c = match read_sheet_chunk(bytes, &ctx, &convert, start) {
+                c = match read_sheet_chunk(bytes, &ctx, &convert, start, last) {
                     Ok(c) => c,
                     Err(_) => return Ok(Flow::GiveUp),
                 };
@@ -605,7 +614,7 @@ impl<RS: Read + std::io::Seek> Xlsx<RS> {
         drop(head);
         let mut split = Splitter::new(part, rest, b"</si>", chunk);
         GAVE_UP.fetch_add(1, Relaxed); // until it is done
-        let work = |_: usize, bytes: Vec<u8>| read_strings_chunk(&bytes);
+        let work = |_: usize, bytes: Vec<u8>, last: bool| read_strings_chunk(&bytes, last);
         let mut chunks = Vec::new();
         let mut merge = |r: Result<(Vec<String>, bool, bool), XlsxError>, last: bool| {
             let Ok((strings, ended, after_string)) = r else {

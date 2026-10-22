@@ -507,6 +507,7 @@ dependencies = [
 name = "hh_fuzz"
 version = "0.4.0"
 dependencies = [
+ "calamine",
  "hh_agent",
  "hh_core",
  "rust_xlsxwriter",

@@ -854,8 +854,6 @@ fn read_pictures<RS: Read + Seek>(
 
 /// `content.xml` parts smaller than this (uncompressed) are parsed on one thread.
 const PARALLEL_MIN_CONTENT: u64 = 2 << 20;
-/// Start tags a chunk may close without opening them (rows inside `table-header-rows`, ...).
-const CHUNK_PREFIX: &[u8] = b"<x><x><x><x><x><x><x><x>";
 
 /// hedgehog: [`parse_content`] with the rows of every table read on `threads` threads: the outer
 /// loop is calamine's, and a table's rows are cut into chunks at `</table:table-row>` and read
@@ -1024,9 +1022,12 @@ struct RowsChunk {
     after_row: bool,
 }
 
-/// Reads the rows of one chunk exactly as `read_table` reads them.
+/// Reads the rows of one chunk exactly as `read_table` reads them. No element is open: an end
+/// tag that closes an element opened before the chunk is an error, and the table is read on one
+/// thread (the one-thread read, deeper at that point, may accept it).
 fn read_rows_chunk(bytes: &[u8]) -> Result<RowsChunk, OdsError> {
-    let mut reader = XmlReader::from_reader(Read::chain(CHUNK_PREFIX, bytes));
+    // The space keeps the reader from taking the chunk's first bytes for a byte order mark.
+    let mut reader = XmlReader::from_reader(Read::chain(&b" "[..], bytes));
     let config = reader.config_mut();
     config.check_end_names = false;
     config.trim_text(false);
@@ -1152,7 +1153,7 @@ fn read_table_parallel<R: Read>(
             }
         }
     };
-    let work = |_: usize, bytes: Vec<u8>| read_rows_chunk(&bytes);
+    let work = |_: usize, bytes: Vec<u8>, _: bool| read_rows_chunk(&bytes);
     let mut cells = Vec::new();
     let mut formulas = Vec::new();
     let mut rows_repeats = Vec::new();

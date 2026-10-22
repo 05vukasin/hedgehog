@@ -55,8 +55,21 @@ fn parallel_read_matches_one_thread() {
                     calamine::set_parallel_read_for_tests(Some((4, chunk, 0)));
                     let got = read(path, formats);
                     calamine::set_parallel_read_for_tests(None);
-                    if got != want {
-                        diffs.lock().unwrap().push(format!("{} (formats {formats})", path.display()));
+                    // as text: NaN equals NaN, -0 differs from 0
+                    if format!("{got:?}") != format!("{want:?}") {
+                        let detail = match (&want, &got) {
+                            (Ok(a), Ok(b)) => a
+                                .iter()
+                                .zip(b)
+                                .find(|(x, y)| x != y)
+                                .map(|(x, y)| {
+                                    let cell = x.1.iter().zip(&y.1).find(|(c, d)| c != d);
+                                    format!("sheet {:?}: {} vs {} cells, first differing {:?}, merges {}, formats {}", x.0, x.1.len(), y.1.len(), cell, x.2 == y.2, x.3 == y.3)
+                                })
+                                .unwrap_or_else(|| format!("{} vs {} sheets", a.len(), b.len())),
+                            (a, b) => format!("{:?} vs {:?}", a.as_ref().err(), b.as_ref().err()),
+                        };
+                        diffs.lock().unwrap().push(format!("{} (formats {formats}): {detail}", path.display()));
                     }
                 }
                 checked.fetch_add(1, Ordering::Relaxed);
