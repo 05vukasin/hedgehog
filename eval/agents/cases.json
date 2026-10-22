@@ -1869,10 +1869,10 @@
       },
       {
         "id": "research-councils",
-        "desc": "research councils £342.57 M (6 councils)",
-        "num": 342566107.25,
+        "desc": "research councils £398.25 M (the 7 councils, STFC included)",
+        "num": 398248107.25,
         "tol": 0.001,
-        "ref_sql": "SELECT SUM(Amount) FROM T1_all WHERE UPPER(Supplier) LIKE '%RESEARCH COUNCIL%'"
+        "ref_sql": "SELECT SUM(Amount) FROM T1_all WHERE UPPER(Supplier) LIKE '%RESEARCH COUNCIL%' OR UPPER(Supplier) = 'SCIENCE AND TECHNOLOGY FACILITIES COUNCIL'"
       },
       {
         "id": "top-day",

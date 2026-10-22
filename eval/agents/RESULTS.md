@@ -34,13 +34,13 @@ general harness, on a frontier model, reading the file with its own Python. Same
 | fr-insee-pop | 7.0/7 (7) | 7.0/7 | 15 s / 21 s | $0.0096 / $0.41 | 59k / 244k |
 | at-tourism-2months | 3.3/6 (1) | 6.0/6 | 22 s / 33 s | $0.0152 / $0.37 | 95k / 258k |
 | rs-geodetic-licenses | 6.7/7 (6) | 7.0/7 | 8 s / 32 s | $0.0032 / $0.34 | 19k / 250k |
-| uk-beis-spending | 6.7/7 (6) | 6.0/7 | 9 s / 46 s | $0.0040 / $0.36 | 26k / 251k |
+| uk-beis-spending | 6.0/7 (6) | 7.0/7 | 9 s / 46 s | $0.0040 / $0.36 | 26k / 251k |
 | de-berlin-grants | 5.0/5 (5) | 5.0/5 | 9 s / 57 s | $0.0038 / $0.38 | 24k / 296k |
 | pt-tax-benefits | 5.0/5 (5) | 5.0/5 | 8 s / 106 s | $0.0032 / $0.46 | 10k / 329k |
 | owid-energy | 4.0/5 (4) | 5.0/5 | 9 s / 13 s | $0.0050 / $0.24 | 31k / 115k |
-| **all cases** | **143.7/180 (130)** | **175.0/180** | 328 s / 971 s | $0.19 / $10.45 | 1099k / 6551k |
+| **all cases** | **143.0/180 (130)** | **176.0/180** | 328 s / 971 s | $0.19 / $10.45 | 1099k / 6551k |
 
-Models: Claude Code: claude-opus-5-5[1m], hedgehog-cli: gpt-4.1-mini. hedgehog-cli is 3.0× faster and 55× cheaper; it passes 80 % of the checks vs 97 % for Claude Code.
+Models: Claude Code: claude-opus-5-5[1m], hedgehog-cli: gpt-4.1-mini. hedgehog-cli is 3.0× faster and 55× cheaper; it passes 79 % of the checks vs 98 % for Claude Code.
 `claude-hh` (Claude Code plus hedgehog's plugin) is in the table below: the same tool in the best harness.
 
 ## Tool swap: same loop, same model, only the tools change
@@ -51,9 +51,9 @@ checks are left out). Mean = mean over the runs, worst = each case's worst run, 
 
 | Tool set | Model | Cases | Checks mean | Checks worst | Time | Input / output tokens | Cost | $ / pass | Tokens / pass | Tool calls (errors) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| hedgehog-cli (reference) | gpt-4.1-mini | 30 | 143.7/168 (86 %) | 130/168 | 328 s | 1,099k / 24.7k | $0.189 | $0.0013 | 7.8k | 229 (20) |
-| Claude Code (reference) | claude-opus-5-5[1m] | 30 | 163.0/168 (97 %) | 163/168 | 971 s | 6,551k / 68.6k | $10.452 | $0.0641 | 40.6k | – |
-| **hedgehog MCP** | gpt-4.1-mini-2025-04-14 | 30 | 143.3/168 (85 %) | 133/168 | 329 s | 602k / 23.6k | $0.139 | $0.0010 | 4.4k | 230 (19) |
+| hedgehog-cli (reference) | gpt-4.1-mini | 30 | 143.0/168 (85 %) | 130/168 | 328 s | 1,099k / 24.7k | $0.189 | $0.0013 | 7.9k | 229 (20) |
+| Claude Code (reference) | claude-opus-5-5[1m] | 30 | 164.0/168 (98 %) | 164/168 | 971 s | 6,551k / 68.6k | $10.452 | $0.0637 | 40.4k | – |
+| **hedgehog MCP** | gpt-4.1-mini-2025-04-14 | 30 | 142.7/168 (85 %) | 133/168 | 329 s | 602k / 23.6k | $0.139 | $0.0010 | 4.4k | 230 (19) |
 
 Per case, automatic checks: mean (worst) / n.
 
@@ -85,7 +85,7 @@ Per case, automatic checks: mean (worst) / n.
 | fr-insee-pop | 7.0 (7) / 7 | 7.0 (7) / 7 | 7.0 (7) / 7 |
 | at-tourism-2months | 3.3 (1) / 6 | 6.0 (6) / 6 | 2.0 (1) / 6 |
 | rs-geodetic-licenses | 6.7 (6) / 7 | 7.0 (7) / 7 | 6.3 (6) / 7 |
-| uk-beis-spending | 6.7 (6) / 7 | 6.0 (6) / 7 | 6.7 (6) / 7 |
+| uk-beis-spending | 6.0 (6) / 7 | 7.0 (7) / 7 | 6.0 (6) / 7 |
 | de-berlin-grants | 5.0 (5) / 5 | 5.0 (5) / 5 | 5.0 (5) / 5 |
 | pt-tax-benefits | 5.0 (5) / 5 | 5.0 (5) / 5 | 5.0 (5) / 5 |
 | owid-energy | 4.0 (4) / 5 | 5.0 (5) / 5 | 5.0 (5) / 5 |
@@ -117,12 +117,15 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | de-truck-toll | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 7 s | 13,873 / 435 | 0.0031 | 4 (0) | 4.0/5 (4) |
 | enron-om-2plants | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 7 s | 14,192 / 670 | 0.0029 | 7 (0) | 5.0/5 (5) |
 | enron-om-2plants | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 133,049 / 1,699 | 0.38 | – | 3/5 |
+| enron-om-2plants | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 15 s | 172,571 / 1,567 | 0.25 | – | 5/5 |
 | enron-om-2plants | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 10 s | 13,146 / 1,161 | 0.0043 | 13 (0) | 5.0/5 (5) |
 | enron-newco-cashflow | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 13 s | 52,768 / 835 | 0.0096 | 10 (2) | 4.3/5 (4) |
 | enron-newco-cashflow | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 14 s | 130,475 / 964 | 0.33 | – | 5/5 |
+| enron-newco-cashflow | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 21 s | 244,714 / 1,515 | 0.26 | – | 5/5 |
 | enron-newco-cashflow | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 12 s | 23,401 / 887 | 0.0047 | 9 (0) | 3.3/5 (2) |
 | enron-deals-pl | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 8 s | 36,566 / 478 | 0.0066 | 5 (0) | 3.7/6 (3) |
 | enron-deals-pl | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 21 s | 207,502 / 2,004 | 0.31 | – | 6/6 |
+| enron-deals-pl | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 20 s | 207,101 / 1,656 | 0.25 | – | 5/6 |
 | enron-deals-pl | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 10,415 / 674 | 0.0033 | 9 (4) | 4.0/6 (4) |
 | enron-mdea-pl | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 7 s | 16,135 / 492 | 0.0032 | 4 (0) | 2.0/4 (1) |
 | enron-mdea-pl | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 42 s | 261,995 / 2,976 | 0.39 | – | 4/4 |
@@ -130,30 +133,39 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | enron-mdea-pl | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 31 s | 105,450 / 1,938 | 0.0167 | 17 (0) | 0.0/4 (0) |
 | enron-storage-inventory | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 24 s | 131,176 / 1,844 | 0.0199 | 13 (2) | 2.7/6 (2) |
 | enron-storage-inventory | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 21 s | 122,461 / 1,886 | 0.29 | – | 6/6 |
+| enron-storage-inventory | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 25 s | 174,144 / 1,495 | 0.25 | – | 6/6 |
 | enron-storage-inventory | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 12 s | 25,669 / 1,147 | 0.0062 | 10 (1) | 2.7/6 (2) |
 | at-salzburg-budget | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 8 s | 22,385 / 559 | 0.0037 | 4 (0) | 7.0/7 (7) |
 | at-salzburg-budget | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 43 s | 248,022 / 2,895 | 0.35 | – | 5/7 |
+| at-salzburg-budget | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 55 s | 285,967 / 3,481 | 0.32 | – | 7/7 |
 | at-salzburg-budget | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 12 s | 19,677 / 751 | 0.0048 | 7 (0) | 7.0/7 (7) |
 | rs-pancevo-budget | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 8 s | 21,467 / 690 | 0.0040 | 8 (0) | 6.0/7 (6) |
 | rs-pancevo-budget | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 26 s | 255,282 / 2,455 | 0.36 | – | 7/7 |
+| rs-pancevo-budget | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 34 s | 210,661 / 2,306 | 0.29 | – | 6/7 |
 | rs-pancevo-budget | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 11 s | 23,194 / 902 | 0.0052 | 9 (0) | 6.0/7 (6) |
 | us-superstore | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 11 s | 34,153 / 658 | 0.0055 | 7 (0) | 5.0/6 (5) |
 | us-superstore | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 37 s | 247,386 / 2,385 | 0.33 | – | 6/6 |
+| us-superstore | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 15 s | 138,035 / 1,559 | 0.23 | – | 6/6 |
 | us-superstore | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 7 s | 8,345 / 642 | 0.0028 | 7 (1) | 4.3/6 (4) |
 | ms-financial-sample | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 28,964 / 527 | 0.0044 | 6 (0) | 4.0/5 (4) |
 | ms-financial-sample | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 20 s | 202,736 / 1,805 | 0.29 | – | 5/5 |
+| ms-financial-sample | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 14 s | 167,178 / 1,122 | 0.22 | – | 4/5 |
 | ms-financial-sample | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 5 s | 6,263 / 452 | 0.0020 | 7 (0) | 4.0/5 (4) |
 | nw-orders | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 10 s | 29,438 / 500 | 0.0049 | 7 (1) | 4.0/4 (4) |
 | nw-orders | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 161,418 / 1,560 | 0.27 | – | 4/4 |
+| nw-orders | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 15 s | 168,432 / 1,293 | 0.23 | – | 4/4 |
 | nw-orders | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 14,139 / 488 | 0.0034 | 6 (1) | 3.3/4 (3) |
 | us-chicago-salaries | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 6 s | 16,237 / 462 | 0.0030 | 6 (0) | 5.0/7 (5) |
 | us-chicago-salaries | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 25 s | 166,513 / 2,538 | 0.32 | – | 7/7 |
+| us-chicago-salaries | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 30 s | 168,735 / 1,766 | 0.24 | – | 6/7 |
 | us-chicago-salaries | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 5 s | 5,181 / 406 | 0.0021 | 6 (0) | 5.0/7 (5) |
 | us-nyc-payroll | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 10 s | 26,044 / 905 | 0.0050 | 9 (3) | 4.0/6 (2) |
 | us-nyc-payroll | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 30 s | 246,822 / 2,521 | 0.32 | – | 6/6 |
+| us-nyc-payroll | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 18 s | 204,737 / 1,508 | 0.24 | – | 5/6 |
 | us-nyc-payroll | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 13 s | 15,099 / 621 | 0.0040 | 7 (1) | 5.0/6 (5) |
 | uk-gender-pay-gap | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 11 s | 33,563 / 638 | 0.0055 | 7 (1) | 5.0/5 (5) |
 | uk-gender-pay-gap | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 31 s | 205,520 / 2,255 | 0.30 | – | 5/5 |
+| uk-gender-pay-gap | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 31 s | 204,709 / 2,100 | 0.25 | – | 5/5 |
 | uk-gender-pay-gap | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 8 s | 8,626 / 619 | 0.0029 | 8 (1) | 4.3/5 (4) |
 | pt-social-report | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 11 s | 30,652 / 662 | 0.0057 | 9 (0) | 4.5/7 (4) |
 | pt-social-report | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 20 s | 217,181 / 2,025 | 0.41 | – | 7/7 |
@@ -161,15 +173,19 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | pt-social-report | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 26,586 / 677 | 0.0059 | 8 (1) | 5.7/7 (5) |
 | at-cpi | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 17 s | 73,744 / 1,094 | 0.0108 | 11 (0) | 3.0/6 (2) |
 | at-cpi | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 23 s | 209,246 / 1,821 | 0.32 | – | 6/6 |
+| at-cpi | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 22 s | 206,339 / 1,708 | 0.25 | – | 5/6 |
 | at-cpi | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 8 s | 11,575 / 680 | 0.0032 | 6 (0) | 3.7/6 (3) |
 | wb-gdp-wide | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 19 s | 48,692 / 1,862 | 0.0088 | 10 (0) | 5.3/6 (4) |
 | wb-gdp-wide | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 20 s | 121,449 / 1,351 | 0.26 | – | 6/6 |
+| wb-gdp-wide | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 14 s | 168,289 / 1,339 | 0.23 | – | 6/6 |
 | wb-gdp-wide | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 10,436 / 888 | 0.0035 | 7 (0) | 5.7/6 (5) |
 | eu-electricity-prices | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 22,450 / 880 | 0.0041 | 4 (0) | 3.0/4 (2) |
 | eu-electricity-prices | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 22 s | 165,007 / 1,522 | 0.29 | – | 4/4 |
+| eu-electricity-prices | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 28 s | 168,871 / 1,241 | 0.23 | – | 4/4 |
 | eu-electricity-prices | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 10 s | 11,338 / 814 | 0.0037 | 6 (0) | 4.0/4 (4) |
 | de-gdp | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 23 s | 128,855 / 1,792 | 0.0214 | 21 (7) | 5.3/6 (5) |
 | de-gdp | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 30 s | 216,493 / 1,944 | 0.36 | – | 6/6 |
+| de-gdp | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 23 s | 255,347 / 2,209 | 0.30 | – | 6/6 |
 | de-gdp | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 13 s | 44,427 / 1,165 | 0.0097 | 13 (6) | 5.3/6 (4) |
 | uk-ons-labour | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 6 s | 8,882 / 479 | 0.0026 | 3 (0) | 2.5/6 (2) |
 | uk-ons-labour | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 39 s | 301,107 / 2,245 | 0.38 | – | 6/6 |
@@ -177,18 +193,23 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | uk-ons-labour | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 26,508 / 597 | 0.0051 | 5 (1) | 4.7/6 (4) |
 | fr-insee-pop | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 15 s | 59,460 / 1,171 | 0.0096 | 10 (0) | 7.0/7 (7) |
 | fr-insee-pop | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 21 s | 244,094 / 1,953 | 0.41 | – | 7/7 |
+| fr-insee-pop | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 32 s | 206,763 / 1,488 | 0.25 | – | 7/7 |
 | fr-insee-pop | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 18 s | 43,052 / 1,379 | 0.0093 | 12 (0) | 7.0/7 (7) |
 | at-tourism-2months | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 22 s | 95,002 / 2,025 | 0.0152 | 21 (1) | 3.3/6 (1) |
 | at-tourism-2months | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 33 s | 257,701 / 2,324 | 0.37 | – | 6/6 |
+| at-tourism-2months | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 16 s | 183,047 / 1,685 | 0.27 | – | 6/6 |
 | at-tourism-2months | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 14 s | 48,123 / 1,254 | 0.0094 | 13 (1) | 2.0/6 (1) |
 | rs-geodetic-licenses | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 8 s | 19,414 / 554 | 0.0032 | 5 (0) | 6.7/7 (6) |
 | rs-geodetic-licenses | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 32 s | 249,953 / 2,094 | 0.34 | – | 7/7 |
+| rs-geodetic-licenses | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 17 s | 204,214 / 1,579 | 0.24 | – | 7/7 |
 | rs-geodetic-licenses | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 10,857 / 619 | 0.0032 | 6 (0) | 6.3/7 (6) |
-| uk-beis-spending | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 26,318 / 455 | 0.0040 | 6 (0) | 6.7/7 (6) |
-| uk-beis-spending | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 46 s | 250,912 / 3,070 | 0.36 | – | 6/7 |
-| uk-beis-spending | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 6 s | 5,465 / 480 | 0.0017 | 5 (0) | 6.7/7 (6) |
+| uk-beis-spending | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 26,318 / 455 | 0.0040 | 6 (0) | 6.0/7 (6) |
+| uk-beis-spending | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 46 s | 250,912 / 3,070 | 0.36 | – | 7/7 |
+| uk-beis-spending | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 27 s | 206,485 / 2,080 | 0.27 | – | 7/7 |
+| uk-beis-spending | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 6 s | 5,465 / 480 | 0.0017 | 5 (0) | 6.0/7 (6) |
 | de-berlin-grants | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 24,366 / 529 | 0.0038 | 5 (0) | 5.0/5 (5) |
 | de-berlin-grants | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 57 s | 296,433 / 3,792 | 0.38 | – | 5/5 |
+| de-berlin-grants | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 37 s | 204,664 / 2,098 | 0.26 | – | 5/5 |
 | de-berlin-grants | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 7 s | 5,407 / 433 | 0.0020 | 5 (0) | 5.0/5 (5) |
 | pt-tax-benefits | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 8 s | 10,022 / 682 | 0.0032 | 6 (0) | 5.0/5 (5) |
 | pt-tax-benefits | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 106 s | 329,381 / 3,172 | 0.46 | – | 5/5 |
@@ -196,6 +217,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | pt-tax-benefits | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 18 s | 11,342 / 674 | 0.0031 | 6 (0) | 5.0/5 (5) |
 | owid-energy | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 30,599 / 505 | 0.0050 | 5 (1) | 4.0/5 (4) |
 | owid-energy | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 13 s | 114,647 / 1,304 | 0.24 | – | 5/5 |
+| owid-energy | claude-hh | 2026-10-22 | claude-opus-5-5[1m] | 1 | 17 s | 170,338 / 1,339 | 0.24 | – | 5/5 |
 | owid-energy | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 8 s | 9,723 / 487 | 0.0024 | 6 (0) | 5.0/5 (5) |
 
 ## pt-contracts: Portugal's 2020 procurement register (176k contracts, 4.5M cells)
@@ -291,15 +313,15 @@ Files: `enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx`, `enron/benjami
 > Which plant budgets more for variable O&M, and how much?
 > In which month is Gleason's total expense budget highest, and how much is it?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| Gleason total expenses 2001: $2,869,475.84 | 3/3 | ✗ | 3/3 |
-| Wheatland total expenses 2001: $4,452,830 | 3/3 | ✗ | 3/3 |
-| both plants: $7,322,305.84 | 3/3 | ✓ | 3/3 |
-| Wheatland variable O&M $2,200,688 (Gleason $901,100) | 3/3 | ✓ | 3/3 |
-| Gleason's highest month: May 2001, $260,734.24 | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| Gleason total expenses 2001: $2,869,475.84 | 3/3 | ✗ | ✓ | 3/3 |
+| Wheatland total expenses 2001: $4,452,830 | 3/3 | ✗ | ✓ | 3/3 |
+| both plants: $7,322,305.84 | 3/3 | ✓ | ✓ | 3/3 |
+| Wheatland variable O&M $2,200,688 (Gleason $901,100) | 3/3 | ✓ | ✓ | 3/3 |
+| Gleason's highest month: May 2001, $260,734.24 | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/enron-om-2plants.hedgehog.md), [claude](answers/enron-om-2plants.claude.md), [swap-hedgehog](answers/enron-om-2plants.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/enron-om-2plants.hedgehog.md), [claude](answers/enron-om-2plants.claude.md), [claude-hh](answers/enron-om-2plants.claude-hh.md), [swap-hedgehog](answers/enron-om-2plants.swap-hedgehog.md)
 
 ## enron-newco-cashflow: Enron 'Newco' development cash-flow summary (values in $000s, wide year columns, label-less second sheet)
 
@@ -310,15 +332,15 @@ File: `enron/benjamin_rogers__1058__newco development cash flow.xlsx`
 > What is the total aftertax cash in 2010, in dollars?
 > For the generic 500 MW combined-cycle unit, what are the NPV at 14% (in dollars) and the IRR?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| net income 2005: $259.96 M (259,957.9 in $000s) | 3/3 | ✓ | 2/3 |
-| net income 2020: $1.024 bn | 3/3 | ✓ | 1/3 |
-| aftertax cash 2010: $362.13 M | 3/3 | ✓ | 1/3 |
-| NPV @ 14%: $4.25 M (4,254.7 in $000s) | 1/3 | ✓ | 3/3 |
-| IRR 14.5 % | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| net income 2005: $259.96 M (259,957.9 in $000s) | 3/3 | ✓ | ✓ | 2/3 |
+| net income 2020: $1.024 bn | 3/3 | ✓ | ✓ | 1/3 |
+| aftertax cash 2010: $362.13 M | 3/3 | ✓ | ✓ | 1/3 |
+| NPV @ 14%: $4.25 M (4,254.7 in $000s) | 1/3 | ✓ | ✓ | 3/3 |
+| IRR 14.5 % | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/enron-newco-cashflow.hedgehog.md), [claude](answers/enron-newco-cashflow.claude.md), [swap-hedgehog](answers/enron-newco-cashflow.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/enron-newco-cashflow.hedgehog.md), [claude](answers/enron-newco-cashflow.claude.md), [claude-hh](answers/enron-newco-cashflow.claude-hh.md), [swap-hedgehog](answers/enron-newco-cashflow.swap-hedgehog.md)
 
 ## enron-deals-pl: Enron gas desk deal log (18 deals; trader name variants; catalog wrongly calls the 'Sumas' rows totals)
 
@@ -330,18 +352,18 @@ File: `enron/barry_tycholiz__889__June 1 P&L.xlsx`
 > How much origination came from physical deals and how much from financial deals?
 > Which delivery location brought the most origination, and how much?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| total origination $135,666.48 (all 18 rows, including the 'Sumas' ones) | 3/3 | ✓ | 3/3 |
-| McKay $78,653.38 ('Mc Kay' + 'McKay' merged) | 0/3 | ✓ | 0/3 |
-| physical $66,089.60 | 3/3 | ✓ | 3/3 |
-| financial $69,576.88 | 3/3 | ✓ | 3/3 |
-| Sumas $77,603.38 | 2/3 | ✓ | 3/3 |
-| treats 'Mc Kay' and 'McKay' as one trader | ? | (✓) | ? |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| total origination $135,666.48 (all 18 rows, including the 'Sumas' ones) | 3/3 | ✓ | ✓ | 3/3 |
+| McKay $78,653.38 ('Mc Kay' + 'McKay' merged) | 0/3 | ✓ | ✓ | 0/3 |
+| physical $66,089.60 | 3/3 | ✓ | ✓ | 3/3 |
+| financial $69,576.88 | 3/3 | ✓ | ✓ | 3/3 |
+| Sumas $77,603.38 | 2/3 | ✓ | ✓ | 3/3 |
+| treats 'Mc Kay' and 'McKay' as one trader | ? | (✓) | ? | ? |
 
 - **claude** (`20261021T231721Z-enron-deals-pl-claude`): merged 'Mc Kay' + 'McKay' = $78,653.38 and says so
 
-Answers (latest run): [hedgehog](answers/enron-deals-pl.hedgehog.md), [claude](answers/enron-deals-pl.claude.md), [swap-hedgehog](answers/enron-deals-pl.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/enron-deals-pl.hedgehog.md), [claude](answers/enron-deals-pl.claude.md), [claude-hh](answers/enron-deals-pl.claude-hh.md), [swap-hedgehog](answers/enron-deals-pl.swap-hedgehog.md)
 
 ## enron-mdea-pl: Enron/MDEA profit-sharing report (14 daily sheets, stacked day-ahead and real-time blocks; layout shifts from May 10, catalog loses the May 12–14 profit columns)
 
@@ -369,16 +391,16 @@ File: `enron/barry_tycholiz__846__NPC Inventory Valuation.xlsx`
 > At the end of October 2001, how much is held in Columbia Gas (COH) pipeline storage in total, and how much in LDC storage?
 > What is the end-of-October inventory worth at the current NYMEX price and at the winter NYMEX price?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| peak total volumes 12,427,743 | 0/3 | ✓ | 1/3 |
-| end of October 2001 | 3/3 | ✓ | 3/3 |
-| COH pipeline storage end of October: 8,285,615 (COH + COH (AES)) | 0/3 | ✓ | 1/3 |
-| LDC storage end of October: 2,340,524 | 0/3 | ✓ | 1/3 |
-| value at current NYMEX ($3.42): $42,502,881 | 2/3 | ✓ | 1/3 |
-| value at winter NYMEX ($3.745): $46,541,528 | 3/3 | ✓ | 1/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| peak total volumes 12,427,743 | 0/3 | ✓ | ✓ | 1/3 |
+| end of October 2001 | 3/3 | ✓ | ✓ | 3/3 |
+| COH pipeline storage end of October: 8,285,615 (COH + COH (AES)) | 0/3 | ✓ | ✓ | 1/3 |
+| LDC storage end of October: 2,340,524 | 0/3 | ✓ | ✓ | 1/3 |
+| value at current NYMEX ($3.42): $42,502,881 | 2/3 | ✓ | ✓ | 1/3 |
+| value at winter NYMEX ($3.745): $46,541,528 | 3/3 | ✓ | ✓ | 1/3 |
 
-Answers (latest run): [hedgehog](answers/enron-storage-inventory.hedgehog.md), [claude](answers/enron-storage-inventory.claude.md), [swap-hedgehog](answers/enron-storage-inventory.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/enron-storage-inventory.hedgehog.md), [claude](answers/enron-storage-inventory.claude.md), [claude-hh](answers/enron-storage-inventory.claude-hh.md), [swap-hedgehog](answers/enron-storage-inventory.swap-hedgehog.md)
 
 ## at-salzburg-budget: State of Salzburg 2019 operating budget (3,206 budget lines, expenses and revenues in one amount column)
 
@@ -389,17 +411,17 @@ File: `eu_at_opendata/013_budget-Operating-statement-szg-position-2019.xls`
 > Which function area (Haushaltsgruppe) has the largest expenses, how much, and what share of all expenses is that?
 > How much is planned for personnel expenses?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| expenses €2,641.70 M | 3/3 | ✓ | 3/3 |
-| revenues €2,771.27 M | 3/3 | ✓ | 3/3 |
-| surplus €129.57 M | 3/3 | ✓ | 3/3 |
-| calls it a surplus | 3/3 | ✓ | 3/3 |
-| Gesundheit (health) €775.41 M | 3/3 | ✗ | 3/3 |
-| health ≈ 29.4 % of expenses | 3/3 | ✗ | 3/3 |
-| personnel expenses €894.67 M | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| expenses €2,641.70 M | 3/3 | ✓ | ✓ | 3/3 |
+| revenues €2,771.27 M | 3/3 | ✓ | ✓ | 3/3 |
+| surplus €129.57 M | 3/3 | ✓ | ✓ | 3/3 |
+| calls it a surplus | 3/3 | ✓ | ✓ | 3/3 |
+| Gesundheit (health) €775.41 M | 3/3 | ✗ | ✓ | 3/3 |
+| health ≈ 29.4 % of expenses | 3/3 | ✗ | ✓ | 3/3 |
+| personnel expenses €894.67 M | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/at-salzburg-budget.hedgehog.md), [claude](answers/at-salzburg-budget.claude.md), [swap-hedgehog](answers/at-salzburg-budget.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/at-salzburg-budget.hedgehog.md), [claude](answers/at-salzburg-budget.claude.md), [claude-hh](answers/at-salzburg-budget.claude-hh.md), [swap-hedgehog](answers/at-salzburg-budget.swap-hedgehog.md)
 
 ## rs-pancevo-budget: Pančevo 2020 budget: revenues file + expenditures file (multi-file, Cyrillic headers, several funding sources)
 
@@ -411,19 +433,19 @@ Files: `data_gov_rs/pancevo_budzet_2020_prihodi.xlsx`, `data_gov_rs/pancevo_budz
 > How much of the revenue side is unallocated surplus carried over from earlier years?
 > Which function gets the most money (all sources), and how much?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| revenues and receipts RSD 5,804,251,672 | 3/3 | ✓ | 3/3 |
-| expenditures all sources RSD 5,804,251,672 (budget 4.81 bn + other 0.99 bn) | 3/3 | ✓ | 3/3 |
-| says revenues and expenditures are equal (balanced), using all sources | ? | (✓) | ? |
-| taxes RSD 3,888,600,000 | 3/3 | ✓ | 3/3 |
-| taxes ≈ 67.0 % of revenues | 3/3 | ✓ | 3/3 |
-| carried-over surplus RSD 946,971,409 | 3/3 | ✓ | 3/3 |
-| road transport (Друмски саобраћај) RSD 1,071,519,412 | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| revenues and receipts RSD 5,804,251,672 | 3/3 | ✓ | ✓ | 3/3 |
+| expenditures all sources RSD 5,804,251,672 (budget 4.81 bn + other 0.99 bn) | 3/3 | ✓ | ✓ | 3/3 |
+| says revenues and expenditures are equal (balanced), using all sources | ? | (✓) | ? | ? |
+| taxes RSD 3,888,600,000 | 3/3 | ✓ | ✓ | 3/3 |
+| taxes ≈ 67.0 % of revenues | 3/3 | ✓ | ✓ | 3/3 |
+| carried-over surplus RSD 946,971,409 | 3/3 | ✓ | ✓ | 3/3 |
+| road transport (Друмски саобраћај) RSD 1,071,519,412 | 3/3 | ✓ | ✓ | 3/3 |
 
 - **claude** (`20261021T231940Z-rs-pancevo-budget-claude`): equal to the dinar; notes the balance relies on the carried-over surplus
 
-Answers (latest run): [hedgehog](answers/rs-pancevo-budget.hedgehog.md), [claude](answers/rs-pancevo-budget.claude.md), [swap-hedgehog](answers/rs-pancevo-budget.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/rs-pancevo-budget.hedgehog.md), [claude](answers/rs-pancevo-budget.claude.md), [claude-hh](answers/rs-pancevo-budget.claude-hh.md), [swap-hedgehog](answers/rs-pancevo-budget.swap-hedgehog.md)
 
 ## us-superstore: Superstore orders 2021–2024 (10k order lines, US formats, Returns on a second sheet)
 
@@ -435,16 +457,16 @@ File: `superstore/sample_superstore.xls` (under `clean/`)
 > Which sub-category lost the most money, and how much?
 > What share of orders was returned, and how much in sales did those returned orders represent?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| total sales $2,326,534.36 | 3/3 | ✓ | 3/3 |
-| West $739,813.61 | 3/3 | ✓ | 3/3 |
-| 2024 vs 2023: +21.4 % | 3/3 | ✓ | 3/3 |
-| Tables lost $17,753.21 | 3/3 | ✓ | 3/3 |
-| 296 of 5,111 orders returned = 5.8 % | 3/3 | ✓ | 1/3 |
-| sales of returned orders $180,504.28 | 0/3 | ✓ | 0/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| total sales $2,326,534.36 | 3/3 | ✓ | ✓ | 3/3 |
+| West $739,813.61 | 3/3 | ✓ | ✓ | 3/3 |
+| 2024 vs 2023: +21.4 % | 3/3 | ✓ | ✓ | 3/3 |
+| Tables lost $17,753.21 | 3/3 | ✓ | ✓ | 3/3 |
+| 296 of 5,111 orders returned = 5.8 % | 3/3 | ✓ | ✓ | 1/3 |
+| sales of returned orders $180,504.28 | 0/3 | ✓ | ✓ | 0/3 |
 
-Answers (latest run): [hedgehog](answers/us-superstore.hedgehog.md), [claude](answers/us-superstore.claude.md), [swap-hedgehog](answers/us-superstore.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/us-superstore.hedgehog.md), [claude](answers/us-superstore.claude.md), [claude-hh](answers/us-superstore.claude-hh.md), [swap-hedgehog](answers/us-superstore.swap-hedgehog.md)
 
 ## ms-financial-sample: Microsoft financial sample (700 sales rows; 2013 covers only Sep–Dec)
 
@@ -457,17 +479,17 @@ File: `microsoft/financial_sample.xlsx` (under `clean/`)
 > Which product sold the most units, and how many?
 > Did profit grow from 2013 to 2014?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| France $3,781,020.78 | 3/3 | ✓ | 3/3 |
-| Enterprise −$614,545.63 | 3/3 | ✓ | 3/3 |
-| margin 14.2 % | 3/3 | ✓ | 3/3 |
-| Paseo 338,239.5 units | 3/3 | ✓ | 3/3 |
-| notes that 2013 covers only September–December, so the yearly totals are not comparable (same months: $3.88 M → $5.44 M) | ? | (✓) | ? |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| France $3,781,020.78 | 3/3 | ✓ | ✓ | 3/3 |
+| Enterprise −$614,545.63 | 3/3 | ✓ | ✓ | 3/3 |
+| margin 14.2 % | 3/3 | ✓ | ✓ | 3/3 |
+| Paseo 338,239.5 units | 3/3 | ✓ | ✓ | 3/3 |
+| notes that 2013 covers only September–December, so the yearly totals are not comparable (same months: $3.88 M → $5.44 M) | ? | (✓) | ? | ? |
 
 - **claude** (`20261021T232042Z-ms-financial-sample-claude`): 2013 covers only Sep–Dec; same months $3.88 M → $5.44 M (+40 %)
 
-Answers (latest run): [hedgehog](answers/ms-financial-sample.hedgehog.md), [claude](answers/ms-financial-sample.claude.md), [swap-hedgehog](answers/ms-financial-sample.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/ms-financial-sample.hedgehog.md), [claude](answers/ms-financial-sample.claude.md), [claude-hh](answers/ms-financial-sample.claude-hh.md), [swap-hedgehog](answers/ms-financial-sample.swap-hedgehog.md)
 
 ## nw-orders: Northwind orders + order lines (multi-file CSV; revenue needs a join across the two files)
 
@@ -478,14 +500,14 @@ Files: `northwind/orders.csv`, `northwind/order_details.csv` (under `clean/`)
 > Which employee (employee ID) brought in the most 1997 revenue, and how much?
 > How many orders were shipped after their required date?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| 408 orders | 3/3 | ✓ | 3/3 |
-| net revenue $617,085.20 (orderID 10400–10807 = the 1997 orders) | 3/3 | ✓ | 1/3 |
-| employee 4: $128,809.79 | 3/3 | ✓ | 3/3 |
-| 37 orders shipped late | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| 408 orders | 3/3 | ✓ | ✓ | 3/3 |
+| net revenue $617,085.20 (orderID 10400–10807 = the 1997 orders) | 3/3 | ✓ | ✓ | 1/3 |
+| employee 4: $128,809.79 | 3/3 | ✓ | ✓ | 3/3 |
+| 37 orders shipped late | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/nw-orders.hedgehog.md), [claude](answers/nw-orders.claude.md), [swap-hedgehog](answers/nw-orders.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/nw-orders.hedgehog.md), [claude](answers/nw-orders.claude.md), [claude-hh](answers/nw-orders.claude-hh.md), [swap-hedgehog](answers/nw-orders.swap-hedgehog.md)
 
 ## us-chicago-salaries: City of Chicago employees and salaries (32k rows; hourly staff have no annual salary)
 
@@ -498,19 +520,19 @@ File: `chicago_open_data/employee_salaries.csv` (under `clean/`)
 > Who is the highest-paid employee, and what is the salary?
 > What is the total annual salary bill, and what does that figure leave out?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| Chicago Police Department 12,221 | 3/3 | ✓ | 3/3 |
-| 7,129 hourly | 3/3 | ✓ | 3/3 |
-| 24,893 salaried | 3/3 | ✓ | 3/3 |
-| Police Officer average $110,466.50 | 0/3 | ✓ | 0/3 |
-| Michael J. McMurray (Commissioner of Aviation) | 3/3 | ✓ | 3/3 |
-| $360,504 | 3/3 | ✓ | 3/3 |
-| total $2.89 bn covers salaried staff only; hourly workers (7,129) have only an hourly rate | ? | (✓) | ? |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| Chicago Police Department 12,221 | 3/3 | ✓ | ✓ | 3/3 |
+| 7,129 hourly | 3/3 | ✓ | ✓ | 3/3 |
+| 24,893 salaried | 3/3 | ✓ | ✓ | 3/3 |
+| Police Officer average $110,466.50 | 0/3 | ✓ | ✓ | 0/3 |
+| Michael J. McMurray (Commissioner of Aviation) | 3/3 | ✓ | ✓ | 3/3 |
+| $360,504 | 3/3 | ✓ | ✓ | 3/3 |
+| total $2.89 bn covers salaried staff only; hourly workers (7,129) have only an hourly rate | ? | (✓) | ? | ? |
 
 - **claude** (`20261021T232130Z-us-chicago-salaries-claude`): leaves out all 7,129 hourly workers (rate only; ~$0.69 bn more), plus overtime/benefits
 
-Answers (latest run): [hedgehog](answers/us-chicago-salaries.hedgehog.md), [claude](answers/us-chicago-salaries.claude.md), [swap-hedgehog](answers/us-chicago-salaries.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/us-chicago-salaries.hedgehog.md), [claude](answers/us-chicago-salaries.claude.md), [claude-hh](answers/us-chicago-salaries.claude-hh.md), [swap-hedgehog](answers/us-chicago-salaries.swap-hedgehog.md)
 
 ## us-nyc-payroll: NYC citywide payroll extract, FY2014–2025 (100k person-year rows, 2 agencies; NYPD question not answerable)
 
@@ -521,18 +543,18 @@ File: `nyc_open_data/citywide_payroll_100k.csv` (under `clean/`)
 > What was the average base salary of a Child Protective Specialist in FY2015 and in FY2025, and by what percentage did it rise?
 > How much overtime did the NYPD pay in FY2025?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| ACS overtime FY2025 $52.45 M | 3/3 | ✓ | 3/3 |
-| highest: FY2019, $61.34 M | 3/3 | ✓ | 3/3 |
-| CPS FY2015 $50,800.58 | 2/3 | ✓ | 3/3 |
-| CPS FY2025 $66,449.96 | 2/3 | ✓ | 3/3 |
-| +30.8 % | 2/3 | ✓ | 3/3 |
-| says the file has no NYPD rows (only ACS and the Office of Administrative Trials and Hearings), so it cannot answer | ? | (✓) | ? |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| ACS overtime FY2025 $52.45 M | 3/3 | ✓ | ✓ | 3/3 |
+| highest: FY2019, $61.34 M | 3/3 | ✓ | ✓ | 3/3 |
+| CPS FY2015 $50,800.58 | 2/3 | ✓ | ✓ | 3/3 |
+| CPS FY2025 $66,449.96 | 2/3 | ✓ | ✓ | 3/3 |
+| +30.8 % | 2/3 | ✓ | ✓ | 3/3 |
+| says the file has no NYPD rows (only ACS and the Office of Administrative Trials and Hearings), so it cannot answer | ? | (✓) | ? | ? |
 
 - **claude** (`20261021T232201Z-us-nyc-payroll-claude`): file has no NYPD rows (only ACS and Admin Trials and Hearings), cannot answer
 
-Answers (latest run): [hedgehog](answers/us-nyc-payroll.hedgehog.md), [claude](answers/us-nyc-payroll.claude.md), [swap-hedgehog](answers/us-nyc-payroll.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/us-nyc-payroll.hedgehog.md), [claude](answers/us-nyc-payroll.claude.md), [claude-hh](answers/us-nyc-payroll.claude-hh.md), [swap-hedgehog](answers/us-nyc-payroll.swap-hedgehog.md)
 
 ## uk-gender-pay-gap: UK gender pay gap reports 2024/25 (11k employers; catalog flags 3 'TOTAL …' company names as totals and reads 25 values like 40.805 as 40805)
 
@@ -545,15 +567,15 @@ File: `uk_gov/gender_pay_gap_2024_25.csv` (under `clean/`)
 > By employer size band, what is the average median hourly gap, and which band has the highest?
 > How many reports were submitted after the deadline?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| 11,314 employers (none of them is a total row) | 3/3 | ✓ | 3/3 |
-| median of medians 8.4 % | 3/3 | ✓ | 3/3 |
-| 8,770 of 11,314 = 77.5 % | 3/3 | ✓ | 1/3 |
-| highest band: 500 to 999, average 12.06 % (hedgehog's misread values give 42.06) | 3/3 | ✓ | 3/3 |
-| 764 late reports | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| 11,314 employers (none of them is a total row) | 3/3 | ✓ | ✓ | 3/3 |
+| median of medians 8.4 % | 3/3 | ✓ | ✓ | 3/3 |
+| 8,770 of 11,314 = 77.5 % | 3/3 | ✓ | ✓ | 1/3 |
+| highest band: 500 to 999, average 12.06 % (hedgehog's misread values give 42.06) | 3/3 | ✓ | ✓ | 3/3 |
+| 764 late reports | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/uk-gender-pay-gap.hedgehog.md), [claude](answers/uk-gender-pay-gap.claude.md), [swap-hedgehog](answers/uk-gender-pay-gap.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/uk-gender-pay-gap.hedgehog.md), [claude](answers/uk-gender-pay-gap.claude.md), [claude-hh](answers/uk-gender-pay-gap.claude-hh.md), [swap-hedgehog](answers/uk-gender-pay-gap.swap-hedgehog.md)
 
 ## pt-social-report: Portuguese municipality's 2016 social report (one sheet, 26 stacked tables, M/F/T rows, merged headers)
 
@@ -587,18 +609,18 @@ File: `eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods`
 > By how much did the index (base 2020 = 100) rise from the 2020 annual average to the 2025 annual average?
 > What was the annual inflation rate for 2026?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| 2022: 8.6 % (the official annual average, not the 8.53 mean of monthly rates) | 2/3 | ✓ | 1/3 |
-| 2023: 7.8 % | 1/3 | ✓ | 1/3 |
-| peak 11.2 % | 2/3 | ✓ | 3/3 |
-| January 2023 | 1/3 | ✓ | 3/3 |
-| +28.2 points = +28.2 % (100 → 128.2; base 2020 = 100, so points and percent coincide) | 3/3 | ✓ | 3/3 |
-| says there is no annual 2026 figure yet (monthly data only to September 2026); may quote the latest month (3.6 %) or the year-to-date average | ? | (✓) | ? |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| 2022: 8.6 % (the official annual average, not the 8.53 mean of monthly rates) | 2/3 | ✓ | ✓ | 1/3 |
+| 2023: 7.8 % | 1/3 | ✓ | ✓ | 1/3 |
+| peak 11.2 % | 2/3 | ✓ | ✓ | 3/3 |
+| January 2023 | 1/3 | ✓ | ✓ | 3/3 |
+| +28.2 points = +28.2 % (100 → 128.2; base 2020 = 100, so points and percent coincide) | 3/3 | ✓ | ✓ | 3/3 |
+| says there is no annual 2026 figure yet (monthly data only to September 2026); may quote the latest month (3.6 %) or the year-to-date average | ? | (✓) | ? | ? |
 
 - **claude** (`20261021T232322Z-at-cpi-claude`): no annual 2026 figure yet; data to September 2026 (3.6 %), partial-year mean ~3.0 % flagged as not official
 
-Answers (latest run): [hedgehog](answers/at-cpi.hedgehog.md), [claude](answers/at-cpi.claude.md), [swap-hedgehog](answers/at-cpi.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/at-cpi.hedgehog.md), [claude](answers/at-cpi.claude.md), [claude-hh](answers/at-cpi.claude-hh.md), [swap-hedgehog](answers/at-cpi.swap-hedgehog.md)
 
 ## wb-gdp-wide: World Bank GDP per capita, 1960–2025 wide years (countries mixed with aggregates; catalog invents a 'group' column and calls Somalia a total)
 
@@ -610,16 +632,16 @@ File: `world_bank/wdi_gdp_per_capita_wide_years.csv` (under `clean/`)
 > What was Poland's GDP per capita in 2024 as a percentage of the European Union average?
 > What was Somalia's GDP per capita in 2024?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| Monaco $288,001.57 | 3/3 | ✓ | 3/3 |
-| Serbia 2010 $5,970.93 | 3/3 | ✓ | 3/3 |
-| Serbia 2024 $13,677.78 | 3/3 | ✓ | 3/3 |
-| +129.1 % | 3/3 | ✓ | 3/3 |
-| Poland = 58.0 % of the EU | 2/3 | ✓ | 2/3 |
-| Somalia $629.54 | 2/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| Monaco $288,001.57 | 3/3 | ✓ | ✓ | 3/3 |
+| Serbia 2010 $5,970.93 | 3/3 | ✓ | ✓ | 3/3 |
+| Serbia 2024 $13,677.78 | 3/3 | ✓ | ✓ | 3/3 |
+| +129.1 % | 3/3 | ✓ | ✓ | 3/3 |
+| Poland = 58.0 % of the EU | 2/3 | ✓ | ✓ | 2/3 |
+| Somalia $629.54 | 2/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/wb-gdp-wide.hedgehog.md), [claude](answers/wb-gdp-wide.claude.md), [swap-hedgehog](answers/wb-gdp-wide.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/wb-gdp-wide.hedgehog.md), [claude](answers/wb-gdp-wide.claude.md), [claude-hh](answers/wb-gdp-wide.claude-hh.md), [swap-hedgehog](answers/wb-gdp-wide.swap-hedgehog.md)
 
 ## eu-electricity-prices: Eurostat household electricity prices (SDMX long format, codes for band/tax/currency, half-years 2019–2026)
 
@@ -631,14 +653,14 @@ File: `eurostat/nrg_pc_204_electricity_prices_households.csv` (under `clean/`)
 > What was Germany's price then, and how much did it change compared with the second half of 2022 (in %)?
 > What was the EU average in the second half of 2025?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| Ireland 0.3871 EUR/kWh (2026-S1) | 3/3 | ✓ | 3/3 |
-| Germany 0.3618 EUR/kWh | 3/3 | ✓ | 3/3 |
-| +7.8 % vs 2022-S2 (0.3357) | 2/3 | ✓ | 3/3 |
-| EU27 2025-S2: 0.2896 EUR/kWh | 1/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| Ireland 0.3871 EUR/kWh (2026-S1) | 3/3 | ✓ | ✓ | 3/3 |
+| Germany 0.3618 EUR/kWh | 3/3 | ✓ | ✓ | 3/3 |
+| +7.8 % vs 2022-S2 (0.3357) | 2/3 | ✓ | ✓ | 3/3 |
+| EU27 2025-S2: 0.2896 EUR/kWh | 1/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/eu-electricity-prices.hedgehog.md), [claude](answers/eu-electricity-prices.claude.md), [swap-hedgehog](answers/eu-electricity-prices.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/eu-electricity-prices.hedgehog.md), [claude](answers/eu-electricity-prices.claude.md), [claude-hh](answers/eu-electricity-prices.claude-hh.md), [swap-hedgehog](answers/eu-electricity-prices.swap-hedgehog.md)
 
 ## de-gdp: Destatis national accounts, first results (56 sheets, 154 tables: each sheet stacks levels, % changes and index; units in a dropped header row)
 
@@ -649,16 +671,16 @@ File: `eu_de_destatis/inlandsprodukt-erste-ergebnisse-xlsx-2180110.xlsx`
 > What was the general government deficit in 2025, in euros and as a percentage of GDP?
 > How many people lived in Germany in 2025, and what was the unemployment rate?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| €4,470.48 bn | 3/3 | ✓ | 3/3 |
-| real growth +0.2 % (calendar-adjusted +0.3 %) | 3/3 | ✓ | 2/3 |
-| deficit €107.42 bn | 3/3 | ✓ | 3/3 |
-| 2.4 % of GDP | 1/3 | ✓ | 2/3 |
-| 83.53 million (83,531 thousand) | 3/3 | ✓ | 3/3 |
-| unemployment rate 3.5 % | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| €4,470.48 bn | 3/3 | ✓ | ✓ | 3/3 |
+| real growth +0.2 % (calendar-adjusted +0.3 %) | 3/3 | ✓ | ✓ | 2/3 |
+| deficit €107.42 bn | 3/3 | ✓ | ✓ | 3/3 |
+| 2.4 % of GDP | 1/3 | ✓ | ✓ | 2/3 |
+| 83.53 million (83,531 thousand) | 3/3 | ✓ | ✓ | 3/3 |
+| unemployment rate 3.5 % | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/de-gdp.hedgehog.md), [claude](answers/de-gdp.claude.md), [swap-hedgehog](answers/de-gdp.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/de-gdp.hedgehog.md), [claude](answers/de-gdp.claude.md), [claude-hh](answers/de-gdp.claude-hh.md), [swap-hedgehog](answers/de-gdp.swap-hedgehog.md)
 
 ## uk-ons-labour: ONS labour market summary (27 sheets, notes-heavy; headline rates defined in footnotes; catalog uses 'Date of publication' as a column name)
 
@@ -692,17 +714,17 @@ File: `eu_fr_insee/002_estim-pop-dep-sexe-gca-1975-2023.xls`
 > What was the population of the Somme département in 2023?
 > What share of metropolitan France's 2023 population was aged 75 or over?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| metropolitan France 65,834,837 | 3/3 | ✓ | 3/3 |
-| with DOM 68,042,591 | 3/3 | ✓ | 3/3 |
-| Paris 2023: 2,102,650 | 3/3 | ✓ | 3/3 |
-| Paris 1990: 2,150,147 | 3/3 | ✓ | 3/3 |
-| −47,497 = −2.2 % | 3/3 | ✓ | 3/3 |
-| Somme 564,067 | 3/3 | ✓ | 3/3 |
-| 75+ = 10.2 % | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| metropolitan France 65,834,837 | 3/3 | ✓ | ✓ | 3/3 |
+| with DOM 68,042,591 | 3/3 | ✓ | ✓ | 3/3 |
+| Paris 2023: 2,102,650 | 3/3 | ✓ | ✓ | 3/3 |
+| Paris 1990: 2,150,147 | 3/3 | ✓ | ✓ | 3/3 |
+| −47,497 = −2.2 % | 3/3 | ✓ | ✓ | 3/3 |
+| Somme 564,067 | 3/3 | ✓ | ✓ | 3/3 |
+| 75+ = 10.2 % | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/fr-insee-pop.hedgehog.md), [claude](answers/fr-insee-pop.claude.md), [swap-hedgehog](answers/fr-insee-pop.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/fr-insee-pop.hedgehog.md), [claude](answers/fr-insee-pop.claude.md), [claude-hh](answers/fr-insee-pop.claude-hh.md), [swap-hedgehog](answers/fr-insee-pop.swap-hedgehog.md)
 
 ## at-tourism-2months: Austrian tourism by country of origin, July and August 2026 (multi-file; 10 sheets per file; Germany total above its 7 regions)
 
@@ -714,16 +736,16 @@ Files: `eu_at_statistik_austria/012_TourismusJuli2026HerkunftEndg.ods`, `eu_at_s
 > Which federal state had the most overnight stays in August, and how many?
 > In which month did guests stay longer on average?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| July 19,564,196 | 2/3 | ✓ | 1/3 |
-| August 21,442,710 | 2/3 | ✓ | 1/3 |
-| both months 41,006,906 | 1/3 | ✓ | 0/3 |
-| German guests in August 8,530,796 (the 'Deutschland gesamt' row, not one region) | 3/3 | ✓ | 3/3 |
-| Tirol 6,473,672 | 0/3 | ✓ | 0/3 |
-| August: 3.4 nights (July 3.3) | 2/3 | ✓ | 1/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| July 19,564,196 | 2/3 | ✓ | ✓ | 1/3 |
+| August 21,442,710 | 2/3 | ✓ | ✓ | 1/3 |
+| both months 41,006,906 | 1/3 | ✓ | ✓ | 0/3 |
+| German guests in August 8,530,796 (the 'Deutschland gesamt' row, not one region) | 3/3 | ✓ | ✓ | 3/3 |
+| Tirol 6,473,672 | 0/3 | ✓ | ✓ | 0/3 |
+| August: 3.4 nights (July 3.3) | 2/3 | ✓ | ✓ | 1/3 |
 
-Answers (latest run): [hedgehog](answers/at-tourism-2months.hedgehog.md), [claude](answers/at-tourism-2months.claude.md), [swap-hedgehog](answers/at-tourism-2months.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/at-tourism-2months.hedgehog.md), [claude](answers/at-tourism-2months.claude.md), [claude-hh](answers/at-tourism-2months.claude-hh.md), [swap-hedgehog](answers/at-tourism-2months.swap-hedgehog.md)
 
 ## rs-geodetic-licenses: Serbian register of geodetic licences (3.6k people, Cyrillic, empty employer cells)
 
@@ -735,17 +757,17 @@ File: `data_gov_rs/rgz_registar_geodetskih_licenci.ods` (under `clean/`)
 > Which company employs the most registered people, and how many?
 > How many registered people have no employer listed?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| 3,605 people | 3/3 | ✓ | 3/3 |
-| first-order 875 | 3/3 | ✓ | 3/3 |
-| second-order 655 | 3/3 | ✓ | 3/3 |
-| no licence 2,075 | 3/3 | ✓ | 3/3 |
-| 42.4 % licensed | 3/3 | ✓ | 3/3 |
-| PREMER SAVKOVIĆ DOO Lazarevac: 46 | 2/3 | ✓ | 1/3 |
-| 1,261 without an employer | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| 3,605 people | 3/3 | ✓ | ✓ | 3/3 |
+| first-order 875 | 3/3 | ✓ | ✓ | 3/3 |
+| second-order 655 | 3/3 | ✓ | ✓ | 3/3 |
+| no licence 2,075 | 3/3 | ✓ | ✓ | 3/3 |
+| 42.4 % licensed | 3/3 | ✓ | ✓ | 3/3 |
+| PREMER SAVKOVIĆ DOO Lazarevac: 46 | 2/3 | ✓ | ✓ | 1/3 |
+| 1,261 without an employer | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/rs-geodetic-licenses.hedgehog.md), [claude](answers/rs-geodetic-licenses.claude.md), [swap-hedgehog](answers/rs-geodetic-licenses.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/rs-geodetic-licenses.hedgehog.md), [claude](answers/rs-geodetic-licenses.claude.md), [claude-hh](answers/rs-geodetic-licenses.claude-hh.md), [swap-hedgehog](answers/rs-geodetic-licenses.swap-hedgehog.md)
 
 ## uk-beis-spending: UK BEIS payments over £25k, March 2018 (4.3k transactions, DD/MM/YYYY dates, refunds as negatives)
 
@@ -757,17 +779,17 @@ File: `uk_gov/beis_spending_over_25k_2018_03.csv` (under `clean/`)
 > How much went to the research councils in total?
 > On which day was the most paid, and how much?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| £1,930,341,058.77 | 3/3 | ✓ | 3/3 |
-| 49 negative lines | 3/3 | ✓ | 3/3 |
-| Post Office Ltd £699.82 M | 3/3 | ✓ | 3/3 |
-| 36.3 % of the total | 3/3 | ✓ | 3/3 |
-| research councils £342.57 M (6 councils) | 2/3 | ✗ | 2/3 |
-| 7 March 2018 | 3/3 | ✓ | 3/3 |
-| £401.11 M on 7 March | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| £1,930,341,058.77 | 3/3 | ✓ | ✓ | 3/3 |
+| 49 negative lines | 3/3 | ✓ | ✓ | 3/3 |
+| Post Office Ltd £699.82 M | 3/3 | ✓ | ✓ | 3/3 |
+| 36.3 % of the total | 3/3 | ✓ | ✓ | 3/3 |
+| research councils £398.25 M (the 7 councils, STFC included) | 0/3 | ✓ | ✓ | 0/3 |
+| 7 March 2018 | 3/3 | ✓ | ✓ | 3/3 |
+| £401.11 M on 7 March | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/uk-beis-spending.hedgehog.md), [claude](answers/uk-beis-spending.claude.md), [swap-hedgehog](answers/uk-beis-spending.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/uk-beis-spending.hedgehog.md), [claude](answers/uk-beis-spending.claude.md), [claude-hh](answers/uk-beis-spending.claude-hh.md), [swap-hedgehog](answers/uk-beis-spending.swap-hedgehog.md)
 
 ## de-berlin-grants: Berlin grants database 2021–2025 (55k grants, ';' CSV, recipient spelling variants with an ID; catalog takes 'Zusammen …'/'SUMA …' recipients for totals)
 
@@ -779,15 +801,15 @@ File: `govdata_de/berlin_zuwendungsdatenbank.csv` (under `clean/`)
 > Which recipient received the most in 2024 (count all spellings of the same recipient together), and how much?
 > Which year had the highest total, and how much?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| €2,644,310,862 | 3/3 | ✓ | 3/3 |
-| 9,810 grants | 3/3 | ✓ | 3/3 |
-| 22.9 % institutional (both spellings of 'institutionelle Förderung') | 3/3 | ✓ | 3/3 |
-| Forschungsverbund Berlin €113.08 M (5 spellings, one empfaengerid) | 3/3 | ✓ | 3/3 |
-| 2025: €3.695 bn | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| €2,644,310,862 | 3/3 | ✓ | ✓ | 3/3 |
+| 9,810 grants | 3/3 | ✓ | ✓ | 3/3 |
+| 22.9 % institutional (both spellings of 'institutionelle Förderung') | 3/3 | ✓ | ✓ | 3/3 |
+| Forschungsverbund Berlin €113.08 M (5 spellings, one empfaengerid) | 3/3 | ✓ | ✓ | 3/3 |
+| 2025: €3.695 bn | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/de-berlin-grants.hedgehog.md), [claude](answers/de-berlin-grants.claude.md), [swap-hedgehog](answers/de-berlin-grants.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/de-berlin-grants.hedgehog.md), [claude](answers/de-berlin-grants.claude.md), [claude-hh](answers/de-berlin-grants.claude-hh.md), [swap-hedgehog](answers/de-berlin-grants.swap-hedgehog.md)
 
 ## pt-tax-benefits: Portugal's 2023 tax-benefit beneficiaries (8 sheets, one per tax; IRC sheet 63k × 87 = 5.5M-cell range; long legal column names)
 
@@ -818,12 +840,12 @@ File: `owid/owid_energy_data.csv` (under `clean/`)
 > Which country generated the most solar electricity in 2024, how many TWh, and what share of world solar generation is that?
 > By what percentage did world wind generation grow from 2015 to 2024?
 
-| Check | hedgehog | claude | swap-hedgehog |
-|---|---|---|---|
-| Germany 2015: 29.4 % | 3/3 | ✓ | 3/3 |
-| Germany 2024: 58.6 % | 3/3 | ✓ | 3/3 |
-| China 839.04 TWh | 3/3 | ✓ | 3/3 |
-| 39.2 % of world solar (2,142.65 TWh) | 0/3 | ✓ | 3/3 |
-| world wind +202 % (829.6 → 2,509.5 TWh) | 3/3 | ✓ | 3/3 |
+| Check | hedgehog | claude | claude-hh | swap-hedgehog |
+|---|---|---|---|---|
+| Germany 2015: 29.4 % | 3/3 | ✓ | ✓ | 3/3 |
+| Germany 2024: 58.6 % | 3/3 | ✓ | ✓ | 3/3 |
+| China 839.04 TWh | 3/3 | ✓ | ✓ | 3/3 |
+| 39.2 % of world solar (2,142.65 TWh) | 0/3 | ✓ | ✓ | 3/3 |
+| world wind +202 % (829.6 → 2,509.5 TWh) | 3/3 | ✓ | ✓ | 3/3 |
 
-Answers (latest run): [hedgehog](answers/owid-energy.hedgehog.md), [claude](answers/owid-energy.claude.md), [swap-hedgehog](answers/owid-energy.swap-hedgehog.md)
+Answers (latest run): [hedgehog](answers/owid-energy.hedgehog.md), [claude](answers/owid-energy.claude.md), [claude-hh](answers/owid-energy.claude-hh.md), [swap-hedgehog](answers/owid-energy.swap-hedgehog.md)
