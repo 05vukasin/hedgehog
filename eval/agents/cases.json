@@ -143,7 +143,7 @@
         "desc": "average 2025, married: €594.20",
         "num": 594.2,
         "tol": 0.0005,
-        "ref_sql": "SELECT \"2025\" FROM T1_all WHERE \"group\" = 'Durchschnittshöhe in Euro' AND Richtsatz = 'Verheiratet ***'"
+        "ref_sql": "SELECT \"2025\" FROM T1_all WHERE \"group\" = 'Durchschnittshöhe in Euro' AND Richtsatz = 'Verheiratet'"
       }
     ],
     "backlog": [
