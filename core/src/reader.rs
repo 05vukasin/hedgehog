@@ -170,7 +170,9 @@ pub fn open_with(path: impl AsRef<Path>, opts: ReadOptions) -> Result<Workbook, 
     let path = path.as_ref();
     let limits = &opts.limits;
     if is_delimited_text(path) {
+        let t = std::time::Instant::now();
         let wb = csv::open(path, limits.max_cells)?;
+        trace("read.csv", t);
         limits.check_cells(wb.sheets.iter().map(|s| s.cells.len() as u64).sum())?;
         return Ok(wb);
     }
@@ -246,6 +248,7 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
     };
     // Cells read so far, against `limits.max_cells`.
     let mut total: u64 = 0;
+    let t = std::time::Instant::now();
     for name in names {
         limits.check_time()?;
         // xls / xlsb: sparse cells too; their dense ranges (calamine's `worksheet_range`) span
@@ -264,7 +267,6 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
         }
         // xlsx: values and formulas in one streaming pass, straight into sparse cells. When the
         // merge scan needs no cells (no formats), it reads its own view of the part meanwhile.
-        let t = std::time::Instant::now();
         let read_cells = |wb: &mut Sheets<RS>| -> Result<Option<(Vec<Cell>, Dimensions)>, Error> {
             Ok(match wb {
                 Sheets::Xlsx(x) => match read_xlsx_parallel(x, &name, limits, total)? {
@@ -288,8 +290,6 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
             _ => (read_cells(&mut wb), None),
         };
         let cells = cells?;
-        trace("read.cells", t);
-        let t = std::time::Instant::now();
         let sheet = match cells {
             Some((cells, dims)) => {
                 // Merged areas sit after the cells; a byte scan finds them (and every cell's
@@ -339,11 +339,11 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
                 build_sheet(name, &values, &formulas, merges)
             }
         };
-        trace("read.rest", t);
         total += sheet.cells.len() as u64;
         limits.check_cells(total)?;
         sheets.push(sheet);
     }
+    trace("read.sheets", t);
     for s in &mut sheets {
         ordered_corners(&mut s.merges);
     }
