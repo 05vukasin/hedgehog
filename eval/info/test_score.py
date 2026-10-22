@@ -108,6 +108,38 @@ class Catalog(unittest.TestCase):
         self.assertTrue(idx.has_column("solar_electricity", False) and idx.has_column("solar_share_elec", False))
         self.assertFalse(idx.has_column("solar_x", False))
 
+    def test_grouped_header_levels(self):
+        line = ('T1  \'1.1\' ← \'1.1\' · 35 rows · 5 cols: Jahr "In jeweiligen Preisen / {Ursprungswerte / {Mrd. EUR, %}, '
+                'X13 / Mrd. EUR}" "Preisbereinigt, verkettet / {Ursprungswerte / {2020 = 100, %}; Werte / x}"')
+        idx = S.CatalogIndex(line)
+        for name in ("Jahr", "In jeweiligen Preisen / Ursprungswerte / Mrd. EUR", "In jeweiligen Preisen / X13 / Mrd. EUR",
+                     "Preisbereinigt, verkettet / Ursprungswerte / %", "Preisbereinigt, verkettet / Werte / x"):
+            self.assertTrue(idx.has_column(name, True), name)
+        self.assertEqual(S.expand_braces("{a, b / {c, d}} / % des BIP"), ["a / % des BIP", "b / c / % des BIP", "b / d / % des BIP"])
+
+    def test_columns_by_reference_and_table_runs(self):
+        text = ('T27 \'1.10\' ← \'1.10\' · 35 rows · 4 cols: "group" Jahr "Einnahmen / {insgesamt, Steuern}" Saldo\n'
+                'T29 · 35 rows · 4 cols: Jahr + T27\'s "Einnahmen / insgesamt".."Saldo", each + " / % des BIP"\n'
+                "T30..T33 same columns as T27 · 35 rows each · sheets: T30 a, T31 b, T32 c, T33 d")
+        idx = S.CatalogIndex(text)
+        self.assertTrue(idx.has_column("Einnahmen / Steuern / % des BIP", True))
+        self.assertTrue(idx.has_column("Saldo / % des BIP", True))
+        self.assertFalse(idx.has_column("group / % des BIP", True))
+        self.assertTrue(idx.has_table("T32") and not idx.has_table("T34"))
+        self.assertEqual(S.line_kinds(text), ["table", "table", "table"])
+
+    def test_trap_facts(self):
+        text = ("T1  'x' ← A!A1:C9 · 7 rows (+1 total row only in T1_all) · 1 total row stays in T1 — exclude it before summing\n"
+                '    columns (3): Region "VPI {2025[index], 2020}" Rate[rate 1..2]\n'
+                "    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in Region: grand total 'Insgesamt'@4\n"
+                "T2..T4 same columns as T1 · 7 rows each · 1 total row stays in each — exclude it before summing")
+        facts = S.trap_facts(text)
+        for f in ("kept:T1", "kept:T3", "grand:T1:Insgesamt", "nosum-col:VPI 2025", "nosum-col:Rate"):
+            self.assertIn(f, facts)
+        self.assertNotIn("nosum-col:VPI 2020", facts)
+        ok = S.trap_checks("at-tourism-2months", "grand total 'Insgesamt'@4 · 'Österreich gesamt' each total one group of x, not the table")
+        self.assertTrue(all(x["ok"] for x in ok))
+
     def test_literal_rules(self):
         idx = S.CatalogIndex(CATALOG)
         self.assertEqual(S.literal_ok(idx, "Richtsatz", "=", "Gesamt", "", set()), "in the catalog")

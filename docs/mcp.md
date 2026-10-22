@@ -217,22 +217,26 @@ same file. In-process hosts list the files with `Session::open_files()` (Node:
 `eu_at_opendata/003_pen_02_02.xlsx` (Austrian pension supplements, one sheet):
 
 ```text
-FILE eu_at_opendata/003_pen_02_02.xlsx · 1 sheet · 244 cells (97% in tables) · 1 table · roles: model
+FILE eu_at_opendata/003_pen_02_02.xlsx · 1 sheet · 244 cells (97% in tables) · 1 table
 TIME 2011–2025 (year, from column headers in T1)
-T1  'AUSGLEICHSZULAGEN - alleinstehend/verheiratet' ← '2_2'!A1:R18 · 11 rows (+1 total row: 'Gesamt'@9 — only in T1_all) · 1 total row stays in T1 ('Gesamt'@15) — exclude it before summing
-    columns (19): "group"[text group] Richtsatz[text · dim] "2011".."2025"[15 × number · mixed] "2020/ 2025"[number · rate — don't sum] "2024/ 2025"[number · rate — don't sum]
-    "group" values: "Anzahl Bezieher:innen" | "Durchschnittshöhe in Euro" | "Richtsätze in Euro"
-    Richtsatz values: "Alleinstehend" | "davon Männer" | "davon Frauen" | "Verheiratet ***" | "Gesamt"
+T1  'jeweils Dezember' ← '2_2'!A3:R18 · 7 rows (+5 total rows only in T1_all) · 1 total row stays in T1 — exclude it before summing
+    columns (19): "group"[group] Richtsatz "2011".."2025"[15 cols] "2020/ 2025" "2024/ 2025"
     rows mix measures by "group" — filter before aggregating
-    T1_long: one row per ("group", Richtsatz, period) — 15 columns "2011".."2025" as rows: period '2011'..'2025', value; use for trends/filters by year · rows mix measures: filter "group" first · total rows only in T1_long_all (_row_type)
-    do not sum: "2020/ 2025" (rate), "2024/ 2025" (rate), rows "group" = 'Durchschnittshöhe in Euro' (avg EUR) — use AVG, a weighted mean or the file's own total
-    group column: "group" · totals: 0 ok, 0 mismatch, 30 unknown
-TOTALS 0 ok, 0 mismatch, 30 unknown (call totals for details)
-NOTES 7 cells (note 5, title 2); e.g. '2_2'!A1: "AUSGLEICHSZULAGEN - alleinstehend/verheiratet"
-WARNINGS none
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
-SQL long view T1_long (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)
-(normalized in 0.0 s)
+    T1_long: the 15 year columns "2011".."2025" as rows ("group", Richtsatz, period '2011'..'2025', value) · rows mix measures: filter "group" first · total rows only in T1_long_all
+    do not sum: rows "group" = 'Durchschnittshöhe in Euro' (avg EUR) — use AVG or the file's figure
+    group column: "group"
+    total rows: SELECT … FROM T1_all WHERE _row_type IN ('total', 'of_which') — labels in Richtsatz: totals 'Gesamt'@9 (= rows 5–8), 'Gesamt'@15 [stays in T1]; of-which rows 'davon Männer'@6 (= rows 5), 'davon Frauen'@7 (= rows 5), 'davon Männer'@12 (= rows 11), 'davon Frauen'@13 (= rows 11)
+    all 12 rows (CSV, as in T1_all; rows with _row_type other than data are not in T1):
+    group,Richtsatz,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2020/ 2025,2024/ 2025,_row_type
+    Anzahl Bezieher:innen,Alleinstehend,196489,192124,192524,188226,181418,178539,181292,179250,177133,168872,165943,162833,165364,163230,162375,-0.0384729,-0.00523801,data
+    Anzahl Bezieher:innen,davon Männer,43628,43682,44709,43727,42306,42278,43796,43711,43766,42248,41872,41506,42453,42628,43488,0.0293505,0.0201745,of_which
+    Anzahl Bezieher:innen,davon Frauen,152861,148442,147815,144499,139112,136261,137496,135539,133367,126624,124071,121327,122911,120602,118887,-0.0611022,-0.0142203,of_which
+    …
+TOTALS 51 ok, 0 mismatch, 47 unknown (details: totals)
+NOTES 7 cells; e.g. '2_2'!A1: "AUSGLEICHSZULAGEN - alleinstehend/verheiratet"
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
+SQL long view T1_long (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
+(normalized in 0.1 s)
 ```
 
 The trend of one series from the long view, with the cell of every value:
@@ -309,49 +313,57 @@ so in one line. A result with empty values from `a + b` over columns that are so
 
 Per table (when the whole catalog fits in ~12,000 characters):
 
-- **Head line**: id, title, source range, data rows; total rows taken out of the data (only in
-  `T<n>_all`); total rows the totals check found that stay in the data (an "Insgesamt" row of a long
+- **Head line**: id, title, source range, data rows; how many total rows are taken out of the data
+  (only in `T<n>_all`; their labels are on the table's `total rows:` line, or here when that line
+  has none); total rows the totals check found that stay in the data (an "Insgesamt" row of a long
   table: exclude them before summing); the table's period when the file has several tables.
-- **Columns**: every column, every name in full. Up to 14 columns with their value range (numbers,
-  dates) or an example; more as `name[dtype unit]`; runs of 4+ columns named by consecutive periods
-  are written as one item without hiding any (`"2011".."2025"[15 × number]`, `"Thu /
-  2002-01-31".."Tue / 2002-01-01"[31 × integer]`). A table wider than 40 columns whose list runs
-  past ~2,500 characters groups 3+ neighbouring names by their prefix, every member named, a member
-  of another type marked (`solar_{cons_change_pct[number · rate — don't sum], consumption,
-  electricity}[3 × number]`; the line says `a_{b, c} = a_b, a_c`). Past 6,000 characters the line
-  gives names only, then a count.
-- **Booleans** are shown as SQL stores them: `Returned[bool · dim 1/0 in SQL (TRUE/yes = 1,
-  FALSE/no = 0; filter = 1, not 'TRUE')]`, and `1` / `0` in inlined rows.
+- **Columns**: every column, every name in full, with only what changes an answer in brackets: a
+  currency or unit, `id` (not a quantity), `rate` / `avg` / `index` (do not add up; see *Do not
+  sum*), `percent` (stored as a fraction), dates with their range. Up to 14 columns also get their
+  value range (measures and dates, 4 significant digits; not IDs) or an example (text):
+  `"Ankünfte / Absolut"[1169..6009964] "Ankünfte / Veränderung in %"[rate -28.75..73.98]`; a plain
+  text or number column is just its name. Runs of 4+ columns named by consecutive periods or numbers
+  are written as one item without hiding any (`"2011".."2025"[15 cols]`, `"Thu /
+  2002-01-31".."Tue / 2002-01-01"[31 cols]`, `"1".."20"[20 cols]`). Wider tables group 3+
+  neighbouring names by their prefix (the first header level, else the first word or `_` part)
+  when that is a tenth shorter, every member named, a member of another type marked
+  (`solar_{cons_change_pct[rate], consumption, electricity}`; the line says `a_{b, c} = a_b, a_c`).
+  Past 6,000 characters the line gives names only, then a count.
+- **Booleans** are shown as SQL stores them: `Returned[bool 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0;
+  filter = 1, not 'TRUE')]`, and `1` / `0` in inlined rows.
 - **Units**: a scale in the table's title or a note above it (`(All values in 000s)`, `in Tausend`,
-  `Mio. €`, `en milliers`, `(in millions)`): `units: amounts in thousands (× 1,000), says "(All
+  `Mio. €`, `en milliers`, `(in millions)`, `in 1 000 EUR`): `units: amounts in thousands (× 1,000), says "(All
   values in 000s)" — multiply by 1,000 for full figures`.
 - **Column notes**: a footnote of the table or its sheet that names a column's series code
   (`LF24`), or defines a quantity whose words are all in one column's header and match it best
   (`The headline employment rate is the number of people aged 16 to 64 …`): `column notes: "All
   aged 16 to 64 / Employment / rate (%) / LF24" ← "The headline employment rate is …" (A681)`.
 - **Values**: text columns with at most 12 distinct values list all of them, so a model filters by
-  the exact label.
-- **Column types**: each item says what the column is after its storage type:
-  `id`, `name` (a label per row), `dim` (a small category), `period`, a measure (`amount` with its
-  currency when known from the values, the header or the title, `count`, `rate`, `avg`, `index`),
-  `free text`, or `mixed` (numbers of a table whose rows mix measures). Averages, rates and indexes
-  say `— don't sum`: `"2025"[number EUR · amount]`, `"gleitender 7-Tage-Durchschnitt KSB"[number ·
-  avg — don't sum 68..106.5]`, `Indexwert[number · index — don't sum]`. Numbers whose header,
-  unit, currency and title say nothing are left untagged (plain quantities). Types come from header
+  the exact label. When room is left: a code column of a large table with at most 60 distinct short
+  codes (2–12 capitals, digits, `_.-`; not period codes, not an ID with a name column) lists them all
+  (Eurostat `geo values: "AL" | "AT" | …`), and a table of at most 30 rows that is too wide to
+  inline lists every row label of its first text column (`Year values: "Equity" | … | "NPV @ 14%" |
+  "IRR"`).
+- **Column types**: each column gets a semantic type: `id`, `name` (a label per row), `dim` (a small
+  category), `period`, a measure (`amount` with its currency when known from the values, the header
+  or the title, `count`, `rate`, `avg`, `index`), `free text`, or `mixed` (numbers of a table whose
+  rows mix measures). The catalog shows the ones that change an answer: the currency, `id`, and
+  `rate` / `avg` / `index` (`"gleitender 7-Tage-Durchschnitt KSB"[avg 68..106.5]`,
+  `Indexwert[index]`); `describe_table` shows every type (`number · avg — don't sum`). Numbers whose
+  header, unit, currency and title say nothing are left untagged (plain quantities). Types come from header
   words in English, German, French, Spanish, Portuguese, Italian, Dutch and Serbian (`Anzahl`,
   `Durchschnitt`, `Prozent`, `taxa`, `moyenne`, `aantal`, `prosečna` …), the currency / unit
   normalization found, the table title for bare period headers (`"2025"` in an index table), a
   header naming two years (`"2020/ 2025"`: a change, so a rate) and value statistics (distinct
   values, text length, running numbers). A column the file itself adds up (a vertical total that
-  checks out) is never flagged `don't sum`. `describe_table` shows the type in its dtype field
-  (`number · avg — don't sum`).
+  checks out) is never flagged `don't sum`.
 - **Do not sum**: `do not sum: unbereinigt (index), "gleitender 7-Tage-Durchschnitt KSB" (avg), …
   — use AVG, a weighted mean or the file's own total`; for a table whose rows mix measures, the
   labels whose rows are averages / rates / indexes: `do not sum: rows "group" = 'Durchschnittshöhe
   in Euro' (avg EUR)`.
-- **Long view**: `T1_long: one row per ("group", Richtsatz, period) — 15 columns "2011".."2025" as
-  rows: period '2011'..'2025', value; use for trends/filters by year · rows mix measures: filter
-  "group" first · total rows only in T1_long_all (_row_type)` (see [SQL tables](#sql-tables)); tables listed
+- **Long view**: `T1_long: the 15 year columns "2011".."2025" as rows ("group", Richtsatz, period
+  '2011'..'2025', value) · rows mix measures: filter "group" first · total rows only in
+  T1_long_all` (see [SQL tables](#sql-tables)); tables listed
   briefly or as "same layout as" get ` · T4_long (by day)`, and the SQL line at the end lists the
   long views.
 - **Mixed measures**: `rows mix measures by "group" — filter before aggregating` when one label
@@ -370,7 +382,8 @@ Per table (when the whole catalog fits in ~12,000 characters):
   a column whose header says name, recipient, customer …: `empfaengerid is the ID of name: 9,873
   IDs, 1,506 with several spellings (e.g. hra_031152: 2 names) — group by empfaengerid, not by the
   name, and show a name: SELECT "empfaengerid", MAX("name") AS "name", count(*) FROM T1 GROUP BY
-  "empfaengerid"`.
+  "empfaengerid"`; a table's further pairs without the query (`… — group by "Функција_класе" like
+  "Програм" above`).
 - **Shares** (tables with ≥ 30 data rows and an additive amount column: money or a count, not a
   unit price with few values, a rate or an average, and not when a unit / currency column has
   several values): a ready query for a share of the total, ranked by the first entity column, an
@@ -389,7 +402,14 @@ Per table (when the whole catalog fits in ~12,000 characters):
   47); subtotals (_row_type 'subtotal', not 'total') 'Subtotal Fixed O&M'@41 (= rows 10–39), …`.
   The grand total is the one total no other total includes (or, with several on top, the one the
   check calls the grand total); a total that stays in the data says `[stays in T1]`. A later table
-  with the same labels says `labels as in T1`. Without a label column: their `_src_row` and sign
+  with the same labels says `labels as in T1`. Rows of one label without a scope of their own are
+  listed once (`'T'@13/16/19`); many rows with few labels (one per period or measure) give each label
+  once (`1080 rows labelled 'EU27_2020', 'EA20', …`). When the label column is constant (a dataset
+  code), the labels come from the column whose values on the total rows are never a data row's
+  (`geo`). With a grand total, totals whose label names a group next to the total word say that
+  they total one group, not the table (`'Österreich gesamt', 'Deutschland gesamt' each total one
+  group of "Herkunftsland oder -region" (e.g. Österreich), not the table`: guests from Austria, not
+  Austria's total). Without a label column: their `_src_row` and sign
   (`_src_row 51 positive, 65 negative`).
 - **Signs**: `signs: col_B 'Deliveries HH' rows are all negative (outflows?) — a net figure is the
   SUM over all rows, not a difference` when a block of rows holds only negative numbers next to
@@ -399,25 +419,28 @@ Per table (when the whole catalog fits in ~12,000 characters):
   columns; scattered negative values are counted on the quality line instead.
 - **Small tables** (≤ 400 cells as rows × columns of `T<n>_all` with `_row_type`, ≤ 30 rows):
   every row as CSV under the table, total rows included and marked in a `_row_type` column (the
-  values lines are then left out).
+  values lines are then left out); fractions to 6 significant digits (every digit before the point,
+  amounts with up to 2 decimals as they are); at most 3,500 characters of rows per catalog, the
+  first tables first.
 - **Amount columns** (tables with ≥ 30 data rows; not IDs, codes, years, period columns,
-  percentages, averages or indexes): `numbers:` with sum (money and count columns), fill rate, share
-  of zeros and range (when the columns line has no range); look-alike amount columns (both money, or
-  similar names) whose sums differ get one line, e.g. `precoContratual (sum 11.16 bn, 100 % filled)
-  vs PrecoTotalEfetivo (sum 4.28 bn, 100 % filled, 55 % zero) — different measures; pick
-  deliberately`.
+  percentages, averages or indexes): `numbers:` with sum (money and count columns), the fill rate
+  when cells are missing, and the range (when the columns line has none), for columns with a sum or
+  under 90 % filled; look-alike amount columns (both money, or similar names) whose sums differ get
+  one line, e.g. `precoContratual (sum 11.16 bn) vs PrecoTotalEfetivo (sum 4.28 bn) — different
+  measures; pick deliberately`.
 - **Quality** (tables with ≥ 20 data rows): `quality:` with duplicates in an ID column that is
   otherwise unique (≤ 5 % repeats); an ID written on several lines (`"Order ID": 800 rows, 296
   distinct — count them with COUNT(DISTINCT "Order ID")`, up to two); empty cells of any column and
   the label that explains them (`annual_salary empty in 7,129 rows (22 %): salary_or_hourly =
   'HOURLY' (all its 7,129 rows)`, `dataCelebracaoContrato empty in 26,722 rows (15 %):
   tipoprocedimento = 'Ajuste direto simplificado' (all its 26,261 rows) … — counts by this date
-  leave them out`), up to two text columns with ≥ 5 % empty cells and no such label (`"Запослен у
-  ГО" empty in 1,261 rows (35 %) — one NULL group when grouping by it; filter IS NOT NULL to
-  rank`); a first or last year of the period column with missing months (`Date: 2013 has Sep–Dec
-  only (4 of 12 months)`); negative amounts (cells naming several entities are on the entity line)
-  and formula cells saved without a value (`12 formula cells without a saved value (NULL, not
-  evaluated)`, any table size).
+  leave them out`; columns empty in the same rows for the same reason once: `nAnuncio, TipoAnuncio
+  empty in …`), up to two text columns with ≥ 5 % empty cells and no such label (`"Запослен у ГО"
+  empty in 1,261 rows (35 %) (a NULL group when grouping)`; not a block label with one value); a
+  first or last year of the period column with missing months (`Date: 2013 has Sep–Dec only (4 of
+  12 months)`); negative amounts except in columns of changes or differences (cells naming several
+  entities are on the entity line) and formula cells saved without a value (`12 formula cells
+  without a saved value (NULL, not evaluated)`, any table size).
 - **Formulas without values** (whole file): `FORMULAS 1,479 cells without a saved value (e.g.
   May1!H13): NULL in the tables, not evaluated; cells shows the formula`, before `TOTALS`, when the
   file was saved by a tool that did not calculate. hedgehog never evaluates formulas.
@@ -426,12 +449,28 @@ The table lines come first; the optional parts are added while the catalog stays
 total-row and sign lines first, then small tables' rows, then amount and quality lines, each in
 table order. They are computed in one pass per column (about 0.2 s on a 176k-row register).
 
-When the full catalog is too long it lists every table on one line: its total rows by level (a set
-repeated from an earlier table as `total rows as in T1`), the scale of its numbers, and its column
-names in full, the first two and the total columns first, the rest while the table's share of the
-room lasts (`+7 more (describe_table)`; a table with the same names says `20 cols, same as T1`);
-column notes follow on their own line. With very many tables each line keeps one name and the last
-line says which tables were cut.
+**Runs of tables.** Three or more consecutive tables with an earlier table's columns and the same
+facts (rows, total rows, period) get one line, with what tells them apart (the words their titles
+do not share, else their sheets):
+`T2..T10 same columns as T1 · 72 rows each (+3 total rows only in T<n>_all) · 1 total row stays in
+each — exclude it before summing · total rows labelled as in T1 · titles 'Ankünfte und
+Übernachtungen … – nach Herkunftsland Juli 2026': T2 Burgenland, T3 Kärnten, …, T8 Tirol, …`.
+
+**Brief catalogs.** When the full catalog is too long (or the file has more than 40 tables) every
+table gets one line, within 8,500 characters plus 25 per table (at most the ~12,000 cap): the
+sheet (not repeated for the tables under it), data rows, the period when it is outside the TIME
+line's span, total rows by level (a set repeated from an earlier table as `total rows as in T1`),
+the scale of its numbers, and column notes on their own line. The column names come in order of
+importance while room lasts: the first table of each sheet (its main table), then the others, then
+tables of one or two rows; each gets every name if it fits, else its title and first names
+(`Jahr +8 more`), else only its line. Shared header levels are written once (`"In jeweiligen
+Preisen / {Ursprungswerte / {Mrd. EUR, %}, …}"`, `"{Einnahmen, Ausgaben} / % des BIP"`; members
+separated by `; ` when one has a comma; the legend is on the first line). A table whose columns
+are an earlier table's with one more header level says so by reference: `Jahr + T27's "Einnahmen /
+insgesamt".."Finanzierungs-saldo", each + " / % des Bruttoinlandsprodukts"`. A table with an
+earlier table's names says `same columns as T1`, and runs of them get one line as above. Union views
+after the first share one line. If the lines still do not fit, the last line says which tables were
+cut.
 
 The totals summary, total-row labels and rows, and the time coverage are the ones the
 [manifest](normalized-output.md) has (`tables[].totals`, `time_coverage`), from the same functions

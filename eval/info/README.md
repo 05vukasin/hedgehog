@@ -33,13 +33,17 @@ word right after an expression or a table) are not columns. String arguments of 
 (`strftime('%m', …)`, `REPLACE(col, ' ', '')`) are not filter values, and neither are literals
 compared with `strftime(…)`, because they follow from the SQL, not the data.
 
-- **Tables**: `T<n>` needs its head line. `T<n>_all` needs either the name itself or the SQL tail
-  range (`T1_all..T7_all`). `T<n>_long` and `U<n>` need their names. `f<k>.T<n>` also needs the
+- **Tables**: `T<n>` needs its head line, or a run line that covers it (`T2..T10 same columns as
+  T1 · …`). `T<n>_all` needs either the name itself or the SQL tail range (`T1_all..T7_all`). `T<n>_long` and `U<n>` need their names. `f<k>.T<n>` also needs the
   `FILES` line of a multi-file session.
 - **Columns**: a quoted name in the catalog, a `name[type]` item of a columns line, an item of a
   brief `N cols:` list, a field of an inline CSV header, a `<col> values:` line, a name inside a
   range `"2011".."2025"` or `"Thu / 2002-01-31".."Tue / 2002-01-01"` (same shape, inside the
-  range), or a shared-prefix group `solar_{electricity, share_elec}`. View columns (`_row_type`,
+  range), a shared-prefix group `solar_{electricity, share_elec}`, a group of header levels
+  (`"In jeweiligen Preisen / {Ursprungswerte / {Mrd. EUR, %}, …}"`, `"{a, b} / % des BIP"`, members
+  separated by `; ` when one has a comma: `expand_braces`), or a reference to an earlier table's
+  listed columns (`Jahr + T27's "Einnahmen / insgesamt".."Finanzierungs-saldo", each + " / % des
+  Bruttoinlandsprodukts"`). View columns (`_row_type`,
   `_src_row`, `period`, `value`, `sheet`, `variant`, …) count when the catalog mentions them.
   Unquoted names are matched case-insensitively, as SQLite does.
 - **String literals** (`col = 'x'`, `IN (…)`, `LIKE`), in this order:
@@ -75,6 +79,19 @@ like a reference:
 
 Every probe was written once against the case's question and is kept in the script, so a rerun is
 deterministic.
+
+## Traps
+
+The checks measure naming; they cannot see a line whose job is to prevent a wrong answer.
+`trap_facts` lists those warnings per catalog as facts (`kind:table[:detail]`): columns not to add
+up (`do not sum:` items and `[rate]` / `[avg]` / `[index]` column items, also inside brace groups),
+total rows that stay in the data (exclude before summing), grand totals by label, signs, mixed and
+look-alike measures, scales, COUNT(DISTINCT …) keys, empty dates, duplicates, formulas without a
+value and boolean filters. A run line (`T2..T10 …`) counts for each of its tables. results.json
+keeps them per case, so a change to the catalog can be checked for lost traps by comparing two
+runs. `TRAP_CHECKS` holds case-specific patterns the catalog must show; the report lists them. The
+first one is B105: at-tourism-2months must name `'Insgesamt'` as the grand total and flag
+`'Österreich gesamt'` (guests from Austria) as the total of one group, not of the table.
 
 ## Tokens
 
@@ -145,6 +162,14 @@ of trap (B105).
 Command (run under `scripts/run_capped.sh 4G …`, with `SWAP_DIR` on disk):
 `HH_HIDE_KINDS=types,table_totals,quality python3 -I eval/agents/run.py --arms swap-hedgehog --repeat 3
 --cases … --hedgehog <bin> --out-dir <dir>`.
+
+### After B100–B105 (2026-10-22)
+
+The catalog changes that followed (shorter column items, total-row labels once, brief catalogs by
+detail levels, runs of repeated tables, B102/B103/B105, inline cap; see the CHANGELOG) moved the
+scoreboard from 159/168 (95 %) at 53,867 tokens to 168/168 (100 %) at 42,360 tokens (−21 %, 3.97
+sufficient checks per 1k tokens), with no case lower and no trap fact lost against the v0.4.0
+catalogs (compared with `trap_facts` on both runs' cached sessions).
 
 ## Running
 
