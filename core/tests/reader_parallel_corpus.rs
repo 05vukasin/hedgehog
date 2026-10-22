@@ -1,5 +1,6 @@
-//! Large xlsx sheets and shared string tables are read on several threads (calamine's
-//! `worksheet_cells_parallel`, vendor/calamine/src/xlsx/parallel.rs); this checks that every file
+//! Large xlsx sheets and shared string tables, and the tables of a large ODS `content.xml`, are
+//! read on several threads (vendor/calamine/src/xlsx/parallel.rs, `parallel_content` in
+//! vendor/calamine/src/ods.rs); this checks that every file
 //! of a list reads to exactly the same workbook (cells, merged areas, formats, or the same error)
 //! on one thread and in parallel with tiny chunks, so that every sheet is cut at many rows.
 //! Ignored by default:

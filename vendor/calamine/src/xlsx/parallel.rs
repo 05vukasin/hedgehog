@@ -55,6 +55,11 @@ pub fn parallel_read_stats() -> (usize, usize, usize) {
     (PARTS.load(Relaxed), GAVE_UP.load(Relaxed), AGAIN.load(Relaxed))
 }
 
+/// Counts a part another reader (ODS tables) read in parallel, or gave up on after starting.
+pub(crate) fn count_part(done: bool) {
+    if done { PARTS.fetch_add(1, Relaxed); } else { GAVE_UP.fetch_add(1, Relaxed); }
+}
+
 thread_local! {
     /// Test settings of this thread's reads: (threads, chunk bytes, smallest part read in
     /// parallel).
@@ -79,11 +84,11 @@ pub fn parallel_read_threads() -> usize {
         .min(4)
 }
 
-fn chunk_bytes() -> usize {
+pub(crate) fn chunk_bytes() -> usize {
     SETTINGS.with(|s| s.get()).map_or(CHUNK, |(_, c, _)| c.max(1))
 }
 
-fn min_part(default: u64) -> u64 {
+pub(crate) fn min_part(default: u64) -> u64 {
     SETTINGS.with(|s| s.get()).map_or(default, |(_, _, m)| m)
 }
 
@@ -189,24 +194,24 @@ impl<R: Read> Splitter<R> {
 }
 
 /// What the in-order step decides after a chunk.
-enum Flow {
+pub(crate) enum Flow {
     Continue,
     /// The part is read (its end tag was in this chunk).
     Done,
     GiveUp,
 }
 
-/// Runs `work` on `threads` threads over the chunks of `split` and hands each result to `merge`
+/// Runs `work` on `threads` threads over the chunks `next` gives (with whether each is the last;
+/// `Err` to give up) and hands each result to `merge`
 /// in chunk order, with whether it was the last chunk. At most `2 × threads` chunks are ahead of
 /// `merge`. `Ok(true)`: `merge` said [`Flow::Done`]; `Ok(false)`: give up.
-fn run_chunks<R, O, E>(
-    split: &mut Splitter<R>,
+pub(crate) fn run_chunks<O, E>(
+    next_chunk: &mut dyn FnMut() -> Result<Option<(Vec<u8>, bool)>, ()>,
     threads: usize,
     work: &(dyn Fn(usize, Vec<u8>) -> O + Sync),
     merge: &mut dyn FnMut(O, bool) -> Result<Flow, E>,
 ) -> Result<bool, E>
 where
-    R: Read,
     O: Send,
 {
     let (job_tx, job_rx) = mpsc::sync_channel::<(usize, Vec<u8>)>(threads);
@@ -267,7 +272,7 @@ where
                         return Ok(done);
                     }
                 }
-                match split.next_chunk() {
+                match next_chunk() {
                     Err(()) => return Ok(false),
                     Ok(None) => finished = true,
                     Ok(Some((bytes, last))) => {
@@ -532,7 +537,7 @@ impl<RS: Read + std::io::Seek> Xlsx<RS> {
             sink(c.cells)?;
             Ok(if ended { Flow::Done } else { Flow::Continue })
         };
-        if !run_chunks(&mut split, threads, &work, &mut merge)? {
+        if !run_chunks(&mut || split.next_chunk(), threads, &work, &mut merge)? {
             return Ok(None);
         }
         GAVE_UP.fetch_sub(1, Relaxed);
@@ -608,7 +613,7 @@ impl<RS: Read + std::io::Seek> Xlsx<RS> {
             chunks.push(strings);
             Ok(if ended { Flow::Done } else { Flow::Continue })
         };
-        if run_chunks(&mut split, threads, &work, &mut merge) != Ok(true) {
+        if run_chunks(&mut || split.next_chunk(), threads, &work, &mut merge) != Ok(true) {
             return false;
         }
         if let Some(n) = reserve {

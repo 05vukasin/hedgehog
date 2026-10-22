@@ -183,6 +183,9 @@ pub fn open_with(path: impl AsRef<Path>, opts: ReadOptions) -> Result<Workbook, 
     trace("read.limits", t);
     let t = std::time::Instant::now();
     let opened = open_sheets(path);
+    // ODS content and large shared string tables are parsed on several threads: what they
+    // freed goes back to the system before the sheets are read.
+    crate::normalize::release_free_memory();
     trace("read.workbook", t);
     match opened {
         Ok(wb) => {

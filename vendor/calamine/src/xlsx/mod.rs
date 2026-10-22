@@ -5,7 +5,7 @@
 #![warn(missing_docs)]
 
 mod cells_reader;
-mod parallel; // hedgehog: large sheets and shared string tables read on several threads
+pub(crate) mod parallel; // hedgehog: large sheets and shared string tables read on several threads
 
 use std::collections::HashMap;
 #[cfg(feature = "picture")]
