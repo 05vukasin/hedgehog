@@ -1,5 +1,7 @@
-# enron-mdea-pl · hedgehog · 2026-10-22T06:19:25+00:00 · gpt-4.1-mini
+# enron-mdea-pl · hedgehog · 2026-10-22T12:43:01+00:00 · gpt-4.1-mini
 
-Run `20261022T061925Z-enron-mdea-pl-hedgehog`
+Run `20261022T124301Z-enron-mdea-pl-hedgehog`
 
-EPMI's total net profit over the 14 days of day-ahead transactions was 38,205.48 (sum of daily totals), and MDEA's total net savings was 101,547.55 (sum of daily totals). The day with the largest MDEA day-ahead savings was May 7, with savings of 1,039.25. These figures come from the "Net Profit/Savings Summary / EPMI / (Profit)" and "Net Profit/Savings Summary / MDEA / (Savings)" columns in the day-ahead transaction rows of the report (U1 view, filtered by variant 'Day-Ahead%').
+EPMI's total net profit over the 14 days of day-ahead transactions is approximately 39,306.89, and MDEA's total net savings over the same period is approximately 109,890.55 (units as in the file).
+
+MDEA's largest day-ahead savings occurred on May 5, with savings of about 15,056.52.
