@@ -101,7 +101,7 @@ fn footnote_marks_json(c: &Column) -> Json {
     )
 }
 
-fn column_json(c: &Column, index: usize) -> Json {
+fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
     let mut nulls = 0usize;
     let mut distinct: HashSet<String> = HashSet::new();
     let (mut min, mut max): (Option<f64>, Option<f64>) = (None, None);
@@ -153,6 +153,11 @@ fn column_json(c: &Column, index: usize) -> Json {
             }),
         )
         .with("ambiguous", c.ambiguous);
+    // A column computed from the one on its left (`<name>_period`, `<name>_key`).
+    let derived = match (c.derived_kind(), left) {
+        (Some(kind), Some(base)) => Json::obj().with("from", base.name.as_str()).with("kind", kind),
+        _ => Json::Null,
+    };
     Json::obj()
         .with("name", c.name.as_str())
         .with("index", index)
@@ -162,6 +167,7 @@ fn column_json(c: &Column, index: usize) -> Json {
         .with("number_format", c.dtype.num_format())
         .with("source_column", c.source_col.map(letter))
         .with("original_header", Json::Arr(header))
+        .with("derived", derived)
         .with("unit", c.unit.clone())
         .with("currency", c.currency.clone())
         .with("locale", locale)
@@ -181,7 +187,7 @@ fn table_totals(t: &Table, totals: &[TotalItem]) -> Json {
         .rows
         .into_iter()
         .map(|r| {
-            Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data)
+            Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data).with("period", r.period).with("sources_outside", r.sources_outside)
         })
         .collect();
     Json::obj()
@@ -224,7 +230,7 @@ fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>)
         .with("rows", t.rows())
         .with("confidence", t.confidence)
         .with("time_coverage", cov.map_or(Json::Null, |c| c.json(false)))
-        .with("columns", Json::Arr(t.columns.iter().enumerate().map(|(i, c)| column_json(c, i)).collect()))
+        .with("columns", Json::Arr(t.columns.iter().enumerate().map(|(i, c)| column_json(c, i, i.checked_sub(1).map(|j| &t.columns[j]))).collect()))
         .with("group_column", group)
         .with("source_row_column", SRC_ROW)
         .with("row_type_column", row_type)

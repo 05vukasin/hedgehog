@@ -26,6 +26,34 @@ All notable changes to hedgehog are listed here. The format follows
   most frequent ones; "not a value of 0"), or a quoted value meets a 1/0 or number column. A filter
   value that also labels total rows only in `T<n>_all` gets a note on a non-empty result; `a + b`
   over sparse columns with NULL results suggests `COALESCE` / `total()` (B88).
+- **Structure fixes from the 30-case agent run** (B70, B72, B78, B81, B84, B86, B87):
+  - *Period labels* (B70): a text column whose labels name periods (`Jän.21`, `Ø 22`,
+    `Mar-May 1971`, `2025 Q1`, `Jan-24`, stored dates among them) gets a derived
+    `<name>_period` column right after it with a form that sorts as text (`2022`, `2022-01`,
+    `2025-11/2026-01`); time coverage reads these labels; the label of a header row of series
+    codes (ONS "Dataset identifier code") no longer names the period column. `Ø 22` average rows
+    carry their year in `totals.rows[].period`.
+  - *Sex breakdowns* (B72): blocks of M/F/T rows (H/M/HM, Männer/Frauen/Insgesamt,
+    Masculino/Feminino/Total, ...) keep M and F as data with the block's label on every row, the
+    both-sexes row as a subtotal, and a block labelled `Total` as total rows. A fuller header row
+    under sparse title lines becomes the header; a numbered caption ("Quadro 1 …", "Table 3: …")
+    is the table's title, also when it ends up as the last row of the table above.
+  - *Spelling variants* (B78): a name or category column whose values differ only in case,
+    spaces, punctuation or diacritics ('Mc Kay' / 'McKay') gets `<name>_key` (one spelling per
+    group) and a table warning.
+  - *Month headers* (B84) that step back from December to January of the same year are read as
+    the next year; `totals.rows[].sources_outside` lists source cells in other tables (a grand
+    total under stacked blocks that adds the block above).
+  - *Names starting with a total word* (B81: 'TOTAL RECRUIT LTD', 'Zusammen unterwegs') in a
+    register's name column (1,000+ distinct names, or a legal form) stay data and are not listed
+    on Totals unless their numbers add up; a "Table N" caption above a table is preferred as its title.
+  - *Stacked blocks without a header* (B86: Destatis "% change", "% of GDP") take the header of
+    the block above with the same columns, plus their unit or title.
+  - *Known aggregates* (B87): Eurostat `EU27_2020` / `EA20` / `EFTA` geo rows and OWID `World`,
+    continents, income groups and `(EI)` / `(Ember)` regions are aggregates (total rows).
+  - Manifest: `columns[].derived` (`{"from", "kind"}` for `_period` / `_key` columns),
+    `totals.rows[].period` and `.sources_outside`, transformations `period_columns_added` and
+    `key_columns_added`.
 
 - **Robustness for untrusted files** (P4). Per-file limits, checked before and while a file is
   read (`hh_core::reader::Limits` in `ReadOptions`): parts of a zip package decompressing to more

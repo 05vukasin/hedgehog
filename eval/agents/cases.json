@@ -1429,7 +1429,7 @@
         "near": [
           "EU"
         ],
-        "ref_sql": "SELECT OBS_VALUE FROM T1 WHERE geo = 'EU27_2020' AND TIME_PERIOD = '2025-S2' AND nrg_cons = 'KWH2500-4999' AND tax = 'I_TAX' AND currency = 'EUR'"
+        "ref_sql": "SELECT OBS_VALUE FROM T1_all WHERE geo = 'EU27_2020' AND TIME_PERIOD = '2025-S2' AND nrg_cons = 'KWH2500-4999' AND tax = 'I_TAX' AND currency = 'EUR'"
       }
     ],
     "backlog": []
@@ -1474,7 +1474,7 @@
           2.45
         ],
         "abs": true,
-        "ref_sql": "SELECT -col_M FROM T29 WHERE col_A = 2025"
+        "ref_sql": "SELECT -\"Finanzierungs-saldo / % des Bruttoinlandsprodukts\" FROM T29 WHERE Jahr = 2025"
       },
       {
         "id": "population",
@@ -2049,7 +2049,7 @@
           39.0,
           39.3
         ],
-        "ref_sql": "SELECT 100.0 * (SELECT solar_electricity FROM T1 WHERE country = 'China' AND year = 2024) / solar_electricity FROM T1 WHERE country = 'World' AND year = 2024"
+        "ref_sql": "SELECT 100.0 * (SELECT solar_electricity FROM T1 WHERE country = 'China' AND year = 2024) / solar_electricity FROM T1_all WHERE country = 'World' AND year = 2024"
       },
       {
         "id": "wind-growth",
@@ -2058,7 +2058,7 @@
           202.0,
           203.0
         ],
-        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN year = 2024 THEN wind_electricity END) / SUM(CASE WHEN year = 2015 THEN wind_electricity END) - 100 FROM T1 WHERE country = 'World'"
+        "ref_sql": "SELECT 100.0 * SUM(CASE WHEN year = 2024 THEN wind_electricity END) / SUM(CASE WHEN year = 2015 THEN wind_electricity END) - 100 FROM T1_all WHERE country = 'World'"
       }
     ],
     "backlog": []

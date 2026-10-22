@@ -236,6 +236,12 @@ fn month_word(w: &str) -> Option<u8> {
     })
 }
 
+/// Month number of a month name or abbreviation in any of the parser's languages (`März`,
+/// `Jän`, `févr.`, `Sept`), or `None`.
+pub fn month_number(word: &str) -> Option<u8> {
+    month_word(norm_key(word).trim_end_matches('.'))
+}
+
 fn weekday_word(w: &str) -> bool {
     matches!(
         w,

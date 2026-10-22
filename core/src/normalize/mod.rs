@@ -11,6 +11,7 @@
 //! The source file is only read, never modified.
 
 mod coverage;
+mod derive;
 mod extract;
 mod headers;
 pub mod json;
@@ -155,6 +156,29 @@ pub struct Column {
     pub values: Vec<Out>,
 }
 
+impl Column {
+    /// A column computed from the column on its left (`<name>_period`, `<name>_key`): a data
+    /// column with no source column and no header cells.
+    pub fn is_derived(&self) -> bool {
+        self.role == ColRole::Data && self.source_col.is_none() && self.original_header.is_empty()
+    }
+
+    /// What a derived column holds (`period` or `key`), from its name; `None` for other columns.
+    pub fn derived_kind(&self) -> Option<&'static str> {
+        if !self.is_derived() {
+            return None;
+        }
+        let base = self.name.split(" (").next().unwrap_or(&self.name);
+        if base == "period" || base.ends_with("_period") {
+            Some("period")
+        } else if base.ends_with("_key") {
+            Some("key")
+        } else {
+            None
+        }
+    }
+}
+
 /// Row kind inside a normalized table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RowType {
@@ -216,10 +240,12 @@ pub enum T {
     TitleRowsMoved,
     EmptyColumnsRemoved,
     RowLabelsCopied,
+    PeriodColumnsAdded,
+    KeyColumnsAdded,
 }
 
 impl T {
-    pub const ALL: [T; 34] = [
+    pub const ALL: [T; 36] = [
         T::NumbersFromText,
         T::PercentFromText,
         T::CurrencyStripped,
@@ -254,6 +280,8 @@ impl T {
         T::TitleRowsMoved,
         T::EmptyColumnsRemoved,
         T::RowLabelsCopied,
+        T::PeriodColumnsAdded,
+        T::KeyColumnsAdded,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -292,6 +320,8 @@ impl T {
             T::TitleRowsMoved => "title_rows_moved",
             T::EmptyColumnsRemoved => "empty_columns_removed",
             T::RowLabelsCopied => "row_labels_copied",
+            T::PeriodColumnsAdded => "period_columns_added",
+            T::KeyColumnsAdded => "key_columns_added",
         }
     }
 }
@@ -490,6 +520,12 @@ pub struct TableTotalRow {
     /// total | subtotal | grand_total | average | of_which
     pub level: &'static str,
     pub kept_in_data: bool,
+    /// The row's period from the table's `<name>_period` column (B70: `Ø 22` → `2022`, the
+    /// year's figure), when the row is in the table data (`keep_totals`).
+    pub period: Option<String>,
+    /// Source cells of the total outside its own table (B84: a grand total under the last of
+    /// stacked blocks that adds the subtotal of a block above, `D10`), in source order.
+    pub sources_outside: Vec<String>,
 }
 
 /// A table's totals (the manifest's `tables[].totals`): counts by status and one entry per total
@@ -503,6 +539,13 @@ pub struct TableTotals {
     pub rows: Vec<TableTotalRow>,
 }
 
+/// First and last 0-based row of an A1 cell or range (`D10`, `D14:D25`).
+fn a1_rows(s: &str) -> Option<(u32, u32)> {
+    let row = |c: &str| c.trim_start_matches(|ch: char| ch.is_ascii_alphabetic() || ch == '$').trim_start_matches('$').parse::<u32>().ok().filter(|&r| r > 0).map(|r| r - 1);
+    let (a, b) = s.split_once(':').unwrap_or((s, s));
+    Some((row(a)?, row(b)?))
+}
+
 /// The totals of table `t` among `totals` (usually [`Normalized::totals`]).
 pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
     let mut out = TableTotals::default();
@@ -514,15 +557,31 @@ pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
             _ => out.unknown += x.count,
         }
         if x.direction == "vertical" {
-            let e = rows.entry(x.row).or_insert(TableTotalRow { row: x.row + 1, label: None, level: x.level, kept_in_data: false });
+            let first = !rows.contains_key(&x.row);
+            let e = rows.entry(x.row).or_insert(TableTotalRow { row: x.row + 1, label: None, level: x.level, kept_in_data: false, period: None, sources_outside: Vec::new() });
             if e.label.is_none() {
                 e.label = x.label.clone();
             }
             e.kept_in_data |= x.kept_in_data;
+            for s in x.sources.iter().filter(|_| first) {
+                if a1_rows(s).is_some_and(|(a, b)| a < t.rect.top || b > t.rect.bottom) && !e.sources_outside.contains(s) {
+                    e.sources_outside.push(s.clone());
+                }
+            }
         }
     }
     out.count = out.ok + out.mismatch + out.unknown;
     out.rows = rows.into_values().collect();
+    if let Some(pc) = t.columns.iter().find(|c| c.derived_kind() == Some("period"))
+        && out.rows.iter().any(|r| r.kept_in_data)
+    {
+        let at: std::collections::HashMap<u32, usize> = t.src_rows.iter().enumerate().map(|(i, &r)| (r + 1, i)).collect();
+        for r in out.rows.iter_mut().filter(|r| r.kept_in_data) {
+            if let Some(Out::Text(p)) = at.get(&r.row).and_then(|&i| pc.values.get(i)) {
+                r.period = Some(p.clone());
+            }
+        }
+    }
     out
 }
 
@@ -561,6 +620,9 @@ pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
             break;
         }
         extract::process_sheet(sheet, opts, lay, &mut out);
+    }
+    for t in &mut out.tables {
+        derive::add_columns(t);
     }
     out
 }

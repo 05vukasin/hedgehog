@@ -113,6 +113,76 @@ fn label_words(t: &str) -> usize {
     if words.len() >= 3 && words.iter().all(|w| w.chars().count() == 1) { 1 } else { words.len() }
 }
 
+/// A series identifier code: 3–8 uppercase letters and digits with at least two letters
+/// (`MGSL`, `LF24`, `G7AU`, `YBWF`).
+fn is_series_code(t: &str) -> bool {
+    let t = t.trim();
+    (3..=8).contains(&t.len())
+        && t.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        && t.bytes().filter(u8::is_ascii_uppercase).count() >= 2
+}
+
+/// B81: a register record whose name starts with a total word ("TOTAL RECRUIT LTD", "Zusammen
+/// unterwegs", "Total Energies SE") and that stayed a data row: its keyword candidate is no total
+/// unless its numbers add up, so it is not listed on Totals (where an agent would be told to
+/// exclude it). A name: the total word followed by words that are no total word or year, in a
+/// column of many distinct values (names, purposes), not of categories ("Summe der bezogenen
+/// Rohstoffe" once per industry, "Total liabilities" in long-format data), on a row where no
+/// number adds up (`arith_rows`).
+fn record_named_like_a_total(grid: &Grid, cand: &TotalCandidate, t: &Table, arith_rows: &HashSet<u32>) -> bool {
+    let Some(i) = t.src_rows.iter().position(|&r| r == cand.row) else { return false };
+    t.row_types[i] == RowType::Data && !arith_rows.contains(&cand.row) && named_like_a_total(grid, cand)
+}
+
+/// The keyword candidate of a register record named with a leading total word, without
+/// arithmetic behind it ([`record_named_like_a_total`]).
+fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
+    let sheet = grid.sheet;
+    let register = match (sheet.cells.first(), sheet.cells.last()) {
+        (Some(a), Some(b)) => b.row - a.row + 1 >= totals::keywords::REGISTER_MIN_ROWS,
+        _ => false,
+    };
+    if !register
+        || cand.origin != TotalOrigin::Typed
+        || cand.evidence.iter().any(|e| matches!(e, Evidence::ArithmeticMatch | Evidence::Unlabelled | Evidence::SourceBelow))
+    {
+        return false;
+    }
+    let Some((lr, lc)) = cand.label else { return false };
+    let Some(Value::Text(label)) = grid.cell(lr, lc).and_then(|c| c.value.as_ref()) else {
+        return false;
+    };
+    let words: Vec<&str> = label.split_whitespace().collect();
+    let Some((first, rest)) = words.split_first() else { return false };
+    let name = !rest.is_empty()
+        && totals::total_keyword(first).is_some()
+        && rest.iter().all(|w| totals::total_keyword(w).is_none() && !w.trim_matches(|c: char| !c.is_alphanumeric()).bytes().all(|b| b.is_ascii_digit()));
+    if !name {
+        return false;
+    }
+    // A legal form makes it a company name ("TOTAL RECRUIT LTD", "Summa Holding GmbH").
+    const LEGAL: &[&str] = &[
+        "ltd", "limited", "plc", "llp", "llc", "inc", "corp", "co", "gmbh", "ggmbh", "ag", "ev", "kg", "ug", "sa", "sas", "sarl",
+        "srl", "spa", "bv", "nv", "ab", "as", "oy", "doo", "ad", "sp", "zoo", "cic",
+    ];
+    let legal = rest.iter().any(|w| LEGAL.contains(&w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).replace('.', "").as_str()));
+    // Otherwise a column of names or purposes: more than a third of its texts are distinct, and
+    // at least a thousand of them (a register of records, not a statement's line items such as
+    // "Total Assets" or "Total exports").
+    let mut texts: HashSet<&str> = HashSet::new();
+    let mut n = 0usize;
+    for &i in grid.col_cells(lc) {
+        if let Some(Value::Text(x)) = &sheet.cells[i as usize].value {
+            texts.insert(x.as_str());
+            n += 1;
+        }
+    }
+    texts.len() * 3 > n && (legal || texts.len() >= NAME_COLUMN_MIN_DISTINCT)
+}
+
+/// Distinct texts a column needs to count as a register's name column without a legal form (B81).
+const NAME_COLUMN_MIN_DISTINCT: usize = 1000;
+
 /// A total label recurring this often in its column is a category of long-format data.
 const LABEL_CATEGORY_REPEATS: usize = 3;
 /// A total label confirming a total row has at most this many words ("Grand Total", "Razem
@@ -145,6 +215,7 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
                 .count()
         }) >= LABEL_CATEGORY_REPEATS
     };
+    let mut named_rows: Vec<u32> = Vec::new();
     for c in &det.candidates {
         let label_text = c.label.and_then(|(lr, lc)| match grid.cell(lr, lc).and_then(|x| x.value.as_ref()) {
             Some(Value::Text(t)) => Some((lc, t.as_str())),
@@ -169,6 +240,14 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
             let mut cols = vec![c.col];
             cols.extend(c.label.map(|l| l.1));
             add(c.row, RowOverride::Total, cols);
+        } else if c.direction == Direction::Vertical && named_like_a_total(grid, c) {
+            named_rows.push(c.row);
+        }
+    }
+    // B81: "TOTAL RECRUIT LTD" in a register is a record unless some of its numbers add up.
+    for r in named_rows {
+        if !det.candidates.iter().any(|c| c.row == r && c.evidence.contains(&Evidence::ArithmeticMatch)) {
+            add(r, RowOverride::Data, Vec::new());
         }
     }
     for &(r, lc) in &det.aggregates {
@@ -299,7 +378,7 @@ fn clean_name(grid: &Grid, parts: &[(String, (u32, u32))]) -> String {
 
 /// Column names made unique (case-insensitive, like Excel) by appending ` (2)`, ` (3)`…
 #[derive(Default)]
-struct UniqueNames {
+pub(super) struct UniqueNames {
     seen: HashSet<String>,
     /// Lowercased name → the suffix to try first: every smaller one is taken. Without it,
     /// thousands of equal headers (a merged header across a wide table) took quadratic time.
@@ -307,11 +386,11 @@ struct UniqueNames {
 }
 
 impl UniqueNames {
-    fn taken<'a>(names: impl IntoIterator<Item = &'a str>) -> UniqueNames {
+    pub(super) fn taken<'a>(names: impl IntoIterator<Item = &'a str>) -> UniqueNames {
         UniqueNames { seen: names.into_iter().map(str::to_lowercase).collect(), next: HashMap::new() }
     }
 
-    fn make(&mut self, name: String, tr: &mut Transforms) -> String {
+    pub(super) fn make(&mut self, name: String, tr: &mut Transforms) -> String {
         let lower = name.to_lowercase();
         if self.seen.insert(lower.clone()) {
             return name;
@@ -346,6 +425,271 @@ type Head = Option<(String, (u32, u32))>;
 struct RowTotal {
     level: TotalLevel,
     top: Option<u32>,
+}
+
+/// A caption that starts with a table word: "Table 1: …", "Tabelle 3", "Quadro 1", "Cuadro 2.1".
+fn table_word(s: &str) -> bool {
+    let w = s.split(|c: char| !c.is_alphabetic()).next().unwrap_or("").to_lowercase();
+    [
+        "table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabulka", "tabell", "taulukko", "tabel", "tabl",
+        "tab", "quadro", "quadros", "cuadro", "cuadros",
+    ]
+    .contains(&w.as_str())
+}
+
+/// The title from caption cell `c`: its text, joined with the texts right of it on its row when
+/// it is only a number ("Quadro 1", "Table 3:").
+fn caption_title<'a>(c: &NoteItem, row_notes: impl Iterator<Item = &'a NoteItem>) -> (String, (u32, u32)) {
+    let mut text = c.text.trim().to_string();
+    if text.chars().count() <= 14 {
+        let mut rest: Vec<&NoteItem> = row_notes.filter(|x| x.row == c.row && x.col > c.col && !x.text.trim().is_empty()).collect();
+        rest.sort_by_key(|x| x.col);
+        for x in rest {
+            text.push(' ');
+            text.push_str(x.text.trim());
+        }
+    }
+    (text, (c.row, c.col))
+}
+
+/// Sex breakdown codes and words as (male, female, both) after `norm_key`.
+const SEX_TRIPLES: &[[&str; 3]] = &[
+    ["m", "f", "t"],
+    ["h", "m", "hm"],
+    ["m", "f", "mf"],
+    ["m", "w", "i"],
+    ["m", "z", "u"],
+    ["masculino", "feminino", "total"],
+    ["homens", "mulheres", "total"],
+    ["hombres", "mujeres", "total"],
+    ["male", "female", "total"],
+    ["males", "females", "total"],
+    ["men", "women", "total"],
+    ["manner", "frauen", "insgesamt"],
+    ["manner", "frauen", "zusammen"],
+    ["mannlich", "weiblich", "insgesamt"],
+    ["mannlich", "weiblich", "zusammen"],
+    ["hommes", "femmes", "ensemble"],
+    ["hommes", "femmes", "total"],
+    ["uomini", "donne", "totale"],
+    ["maschi", "femmine", "totale"],
+    ["muski", "zenski", "ukupno"],
+    ["muskarci", "zene", "ukupno"],
+    ["mannen", "vrouwen", "totaal"],
+    ["mezczyzni", "kobiety", "ogolem"],
+];
+
+/// B72: blocks of three rows that split a row label by sex (M / F / T, Männer / Frauen /
+/// Insgesamt, Masculino / Feminino / Total, …).
+struct SexBlocks {
+    /// Sheet column of the sex codes.
+    col: u32,
+    /// Row → its kind and total level: the both-sexes row of a block is a subtotal of the two
+    /// rows above it (when its numbers add up), and every row of a block labelled with a total
+    /// word ("Total") is a total; the others are data.
+    rows: HashMap<u32, (RowKind, Option<TotalLevel>)>,
+    /// (row, column) → the block's label in that column, written on every row of the block:
+    /// labels centred on the middle row or split over the rows ("CTFP / Por tempo /
+    /// indeterminado") are joined.
+    labels: HashMap<(u32, u32), Value>,
+}
+
+fn sex_blocks(rows: &[(u32, Vec<usize>)], cells: &[crate::model::Cell], r: Rect, body_top: u32) -> Option<SexBlocks> {
+    let body: Vec<&(u32, Vec<usize>)> = rows.iter().filter(|(row, _)| *row >= body_top).collect();
+    let text_at = |idxs: &[usize], col: u32| -> Option<String> {
+        idxs.iter().find(|&&i| cells[i].col == col).and_then(|&i| match &cells[i].value {
+            Some(Value::Text(t)) if !t.trim().is_empty() => Some(t.trim().to_string()),
+            _ => None,
+        })
+    };
+    let num_at = |idxs: &[usize], col: u32| -> Option<f64> {
+        idxs.iter().find(|&&i| cells[i].col == col).and_then(|&i| match &cells[i].value {
+            Some(Value::Number(x)) => Some(*x),
+            _ => None,
+        })
+    };
+    for col in r.left..=r.right.min(r.left + 3) {
+        let keys: Vec<Option<String>> = body.iter().map(|(_, idxs)| text_at(idxs, col).map(|t| norm_key(&t))).collect();
+        let mut blocks: Vec<(usize, [usize; 3])> = Vec::new(); // (first body index, triple positions m/f/t)
+        let mut i = 0;
+        while i + 2 < body.len() {
+            let three = [&keys[i], &keys[i + 1], &keys[i + 2]];
+            let contiguous = body[i + 1].0 == body[i].0 + 1 && body[i + 2].0 == body[i].0 + 2;
+            let hit = contiguous
+                .then(|| {
+                    SEX_TRIPLES.iter().find_map(|tr| {
+                        let pos = |w: &str| three.iter().position(|k| k.as_deref() == Some(w));
+                        let (m, f, t) = (pos(tr[0])?, pos(tr[1])?, pos(tr[2])?);
+                        (m != f && f != t && m != t).then_some([m, f, t])
+                    })
+                })
+                .flatten();
+            match hit {
+                Some(p) => {
+                    blocks.push((i, p));
+                    i += 3;
+                }
+                None => i += 1,
+            }
+        }
+        let coded = keys.iter().filter(|k| k.is_some()).count();
+        if blocks.len() < 2 || blocks.len() * 3 * 10 < coded * 6 {
+            continue;
+        }
+        let mut out = SexBlocks { col, rows: HashMap::new(), labels: HashMap::new() };
+        for &(i, [m, f, t]) in &blocks {
+            let idx = |k: usize| &body[i + k].1;
+            let row = |k: usize| body[i + k].0;
+            let mut label_first: Option<String> = None;
+            for lc in r.left..col {
+                let parts: Vec<String> = (0..3).filter_map(|k| text_at(idx(k), lc)).collect();
+                if parts.is_empty() {
+                    continue;
+                }
+                let joined = parts.join(" ");
+                label_first.get_or_insert_with(|| joined.clone());
+                for k in 0..3 {
+                    out.labels.insert((row(k), lc), Value::Text(joined.clone()));
+                }
+            }
+            // The both-sexes row adds the two others in the number columns right of the codes.
+            let (mut ok, mut bad) = (0, 0);
+            for c in col + 1..=r.right {
+                let (a, b, s) = (num_at(idx(m), c), num_at(idx(f), c), num_at(idx(t), c));
+                if a.is_none() && b.is_none() && s.is_none() {
+                    continue;
+                }
+                let sum = a.unwrap_or(0.0) + b.unwrap_or(0.0);
+                if (sum - s.unwrap_or(0.0)).abs() <= 0.5 + 1e-9 * sum.abs() {
+                    ok += 1;
+                } else {
+                    bad += 1;
+                }
+            }
+            let adds_up = ok >= 1 && bad * 3 <= ok;
+            let total_block = label_first.as_deref().is_some_and(|l| totals::total_keyword(l).is_some());
+            for k in 0..3 {
+                let kind = if total_block && adds_up {
+                    (RowKind::Total, Some(TotalLevel::Total))
+                } else if k == t && adds_up {
+                    (RowKind::Total, Some(TotalLevel::Subtotal))
+                } else {
+                    (RowKind::Data, None)
+                };
+                out.rows.insert(row(k), kind);
+            }
+        }
+        return Some(out);
+    }
+    None
+}
+
+/// B84: rolls a header row of dates over into the next year where a monthly sequence steps back
+/// from December to January of the same year. Returns (last date before the step, last date
+/// after the fix) when something changed; the header texts are rewritten in place.
+fn roll_over_header_dates(row_heads: &mut [Head], grid: &Grid) -> Option<(String, String)> {
+    use crate::values::{serial_to_ymd, ymd_to_serial};
+    let dated: Vec<(usize, (i32, u8, u8))> = row_heads
+        .iter()
+        .enumerate()
+        .filter_map(|(hc, h)| {
+            let (_, (row, col)) = h.as_ref()?;
+            match grid.cell(*row, *col)?.value {
+                Some(Value::DateTime(x)) => Some((hc, serial_to_ymd(x)?)),
+                _ => None,
+            }
+        })
+        .collect();
+    if dated.len() < 4 {
+        return None;
+    }
+    let day = |y: i32, m: u8, d: u8| ymd_to_serial(y, m, d.min(crate::values::date::days_in_month(y, m)));
+    let mut shift = 0;
+    let mut prev: Option<(f64, (i32, u8, u8))> = None;
+    let mut fixed: Vec<(usize, (i32, u8, u8))> = Vec::new();
+    let mut before = None;
+    for &(hc, (y, m, d)) in &dated {
+        let mut cur = (y + shift, m, d);
+        if let Some((p, pd)) = prev {
+            let mut s = day(cur.0, m, d);
+            if s < p {
+                let next = day(cur.0 + 1, m, d);
+                // Only the December → January step of a monthly sequence.
+                if !(pd.1 == 12 && m == 1 && next > p && next - p <= 62.0) {
+                    return None;
+                }
+                shift += 1;
+                before.get_or_insert(pd);
+                cur = (cur.0 + 1, m, d);
+                s = next;
+            } else if s - p > 62.0 {
+                return None;
+            }
+            prev = Some((s, cur));
+        } else {
+            prev = Some((day(y, m, d), cur));
+        }
+        if shift > 0 {
+            fixed.push((hc, cur));
+        }
+    }
+    let iso = |(y, m, d): (i32, u8, u8)| format!("{y:04}-{m:02}-{:02}", d.min(crate::values::date::days_in_month(y, m)));
+    let (from, last) = (before?, *fixed.last()?);
+    for (hc, ymd) in fixed {
+        if let Some(h) = row_heads[hc].as_mut() {
+            h.0 = iso(ymd);
+        }
+    }
+    Some((iso(from), iso(last.1)))
+}
+
+/// B72: the header rows the layout found, or a fuller header row below them. When every header
+/// row is sparse (a year label "Ano: 2016" over a numbered caption) and a row of header cells
+/// with at least three labels and twice as many as any header row comes before the first data
+/// row, the first such row (and header rows right under it) is the header; the rows above it are
+/// titles. Its labels must be distinct (not a unit row or a legend).
+fn promote_header(
+    rows: &[(u32, Vec<usize>)],
+    cells: &[crate::model::Cell],
+    roles: &[Role],
+    htop: u32,
+    header_rows: u32,
+    bottom: u32,
+) -> (u32, u32) {
+    let body_top = (htop + header_rows).min(bottom + 1);
+    let filled = |idxs: &[usize]| idxs.iter().filter(|&&i| cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty())).count();
+    let widest = rows.iter().filter(|(row, _)| (htop..body_top).contains(row)).map(|(_, idxs)| filled(idxs)).max().unwrap_or(0);
+    let is_header = |idxs: &[usize]| idxs.iter().all(|&i| matches!(roles[i], Role::Header | Role::Title | Role::Note) || filled(&[i]) == 0);
+    let mut found: Option<usize> = None;
+    for (k, (_, idxs)) in rows.iter().enumerate().filter(|(_, (row, _))| *row >= body_top) {
+        if idxs.iter().any(|&i| matches!(roles[i], Role::Data | Role::Total | Role::Other) && filled(&[i]) > 0) {
+            break;
+        }
+        let n = filled(idxs);
+        // Distinct labels (not a unit or legend row: "EURO EURO EURO", "nichts vorhanden" × 6).
+        let distinct: HashSet<String> = idxs.iter().filter_map(|&i| cells[i].value.as_ref().map(display)).filter(|s| !s.is_empty()).collect();
+        if is_header(idxs)
+            && n >= 3
+            && n >= 2 * widest.max(1)
+            && distinct.len() * 10 >= n * 8
+            // Words, not a legend of symbols ("– | = | nichts vorhanden").
+            && distinct.iter().filter(|t| t.chars().filter(|c| c.is_alphabetic()).count() >= 2).count() * 10 >= n * 8
+            && idxs.iter().any(|&i| roles[i] == Role::Header)
+        {
+            found = Some(k);
+            break;
+        }
+    }
+    let Some(k) = found else { return (htop, body_top) };
+    let top = rows[k].0;
+    let mut end = top + 1;
+    for (row, idxs) in &rows[k + 1..] {
+        if *row != end || !is_header(idxs) || !idxs.iter().any(|&i| roles[i] == Role::Header) {
+            break;
+        }
+        end += 1;
+    }
+    (top, end.min(bottom + 1))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -393,8 +737,7 @@ fn build_table(
             _ => rows.push((c.row, vec![i])),
         }
     }
-    let htop = t.header_top.clamp(r.top, r.bottom);
-    let body_top = (htop + t.header_rows).min(r.bottom + 1);
+    let (htop, body_top) = promote_header(&rows, cells, &lay.roles, t.header_top.clamp(r.top, r.bottom), t.header_rows, r.bottom);
     let nh = (body_top - htop) as usize;
 
     // Title rows inside the rect (above the header).
@@ -408,11 +751,16 @@ fn build_table(
             if is_nav_link(&it.text) {
                 // "zur Inhaltsübersicht": a link back to the contents, never the title.
                 it.kind = "other";
-            } else if title.is_none() && !it.text.is_empty() {
+            } else if title.is_none() && !it.text.is_empty() && !crate::layout::is_note_label(&it.text) {
                 title = Some((it.text.clone(), (it.row, it.col)));
             }
             notes.push(it);
         }
+    }
+    // B72: a numbered caption row ("Quadro 1 | Contagem dos trabalhadores …") under other title
+    // lines ("Ano: 2016") is the title, its short number joined with the text beside it.
+    if let Some(c) = notes.iter().find(|x| x.kind == "title" && table_word(&x.text)) {
+        title = Some(caption_title(c, notes.iter().filter(|x| x.kind == "title")));
     }
     tr.add(T::TitleRowsMoved, title_rows);
 
@@ -461,6 +809,16 @@ fn build_table(
                     }
                 }
             }
+        }
+    }
+    // B84: month-end dates across a header that step back from December to January of the same
+    // year (Jul … Dec 2001, Jan … Mar 2001) were typed without the year change: from the step on
+    // they are read one year later, when that continues the monthly sequence.
+    for row_heads in head.iter_mut() {
+        if let Some((from, to)) = roll_over_header_dates(row_heads, grid) {
+            warnings.push(format!(
+                "header dates after {from} that went back to the start of the year are read as the next year (to {to})"
+            ));
         }
     }
     // Parent labels centred over their children without a merge (B39): when blank parent cells
@@ -538,6 +896,25 @@ fn build_table(
             crate::layout::column_numbering(vals.into_iter())
         })
         .collect();
+    // B70: the row label of a header row of series codes ("Dataset identifier code | MGSL | MGSF
+    // …", ONS) labels that row, not the column below it (the periods): it stays in
+    // `original_header` but does not name the column. The label must say code / identifier /
+    // series, so "Country name | USA | GBR | FRA" keeps its name.
+    let code_row_labels: HashSet<(usize, usize)> = (0..nh)
+        .filter_map(|hr| {
+            let filled: Vec<(usize, &str)> =
+                head[hr].iter().enumerate().filter_map(|(hc, h)| h.as_ref().map(|h| (hc, h.0.as_str()))).collect();
+            let (&(hc0, label), rest) = filled.split_first()?;
+            let codes: HashSet<&str> = rest.iter().map(|(_, t)| *t).filter(|t| is_series_code(t)).collect();
+            (rest.len() >= 3
+                && codes.len() * 10 >= rest.len() * 9
+                && !is_series_code(label)
+                && label.split(|c: char| !c.is_alphanumeric()).any(|w| {
+                    matches!(w.to_lowercase().as_str(), "code" | "codes" | "identifier" | "series" | "cdid" | "id" | "kennung" | "kennziffer" | "código" | "codice")
+                }))
+            .then_some((hr, hc0))
+        })
+        .collect();
 
     // --- Body --------------------------------------------------------------------------------
     // Vertically merged body cells (e.g. a label over 3 rows): fill down in the label's column.
@@ -552,6 +929,23 @@ fn build_table(
             }
         }
     }
+    let sex = sex_blocks(&rows, cells, r, body_top);
+    // B72: the caption of the next table ("Quadros 1.1 | Contagem dos prestadores …") as the last
+    // row of this one, after a blank row and without numbers, is a loose title (attached to the
+    // table below it in `process_sheet`).
+    let next_caption: Option<u32> = rows.iter().rposition(|(row, _)| *row >= body_top).and_then(|k| {
+        let (row, idxs) = &rows[k];
+        let texts: Vec<&str> = idxs
+            .iter()
+            .filter_map(|&i| match &cells[i].value {
+                Some(Value::Text(t)) if !t.trim().is_empty() => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        let gap = k > 0 && rows[k - 1].0 + 1 < *row && rows[k - 1].0 >= body_top;
+        let numbers = idxs.iter().any(|&i| matches!(cells[i].value, Some(Value::Number(_))));
+        (gap && !numbers && (1..=3).contains(&texts.len()) && table_word(texts[0])).then_some(*row)
+    });
     let mut slots: Vec<Vec<Slot>> = vec![Vec::new(); ncols];
     let mut src_rows: Vec<u32> = Vec::new();
     let mut row_types: Vec<RowType> = Vec::new();
@@ -594,6 +988,15 @@ fn build_table(
     let mut block = 0u32;
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
+        if Some(*row) == next_caption {
+            tr.add(T::NoteRowsMoved, 1);
+            for &i in idxs {
+                owner[i] = OWN_NOTES;
+                // No table yet: `process_sheet` attaches it to the table below.
+                notes.push(NoteItem { table: None, ..note(i, "title") });
+            }
+            continue;
+        }
         let blank = |i: usize| cells[i].value.as_ref().is_none_or(|v| display(v).is_empty());
         if idxs.iter().any(|&i| rule_text(i)) && idxs.iter().all(|&i| rule_text(i) || blank(i)) {
             for &i in idxs {
@@ -634,6 +1037,13 @@ fn build_table(
                 None => kind,
             };
         }
+        // B72: rows of a sex breakdown block are data, their both-sexes row a subtotal.
+        let sex_row = sex.as_ref().and_then(|sb| sb.rows.get(row).copied());
+        if let Some((k, _)) = sex_row
+            && matches!(kind, RowKind::Data | RowKind::Total | RowKind::Group | RowKind::NonSum(_))
+        {
+            kind = k;
+        }
         match kind {
             RowKind::Group => {
                 let label = idxs
@@ -672,7 +1082,7 @@ fn build_table(
             RowKind::Total | RowKind::Data | RowKind::NonSum(_) => {}
         }
         let level = if kind == RowKind::Total {
-            row_total.get(row).map(|t| t.level).or_else(|| {
+            sex_row.and_then(|x| x.1).or_else(|| row_total.get(row).map(|t| t.level)).or_else(|| {
                 idxs.iter()
                     .filter_map(|&i| match &cells[i].value {
                         Some(Value::Text(s)) => totals::total_keyword(s),
@@ -708,6 +1118,7 @@ fn build_table(
         }
         let inline_label = idxs.iter().copied().find(|&i| {
             rt == RowType::Data
+                && sex_row.is_none()
                 && run.is_empty()
                 && lay.roles[i] == Role::GroupHeader
                 && Some(cells[i].col) == group_label_col
@@ -773,6 +1184,13 @@ fn build_table(
             {
                 *s = Slot::Val(v);
                 tr.add(T::MergedCellsFilled, 1);
+            }
+        }
+        if let Some(sb) = &sex {
+            for (k, s) in row_slots.iter_mut().enumerate() {
+                if let Some(v) = sb.labels.get(&(*row, r.left + k as u32)) {
+                    *s = Slot::Val(v);
+                }
             }
         }
         for (k, s) in row_slots.into_iter().enumerate() {
@@ -871,7 +1289,7 @@ fn build_table(
             if parts.last().is_none_or(|p| p.0 != h.0) {
                 parts.push(h.clone());
             }
-            if !numbering_rows[hr] && named.last().is_none_or(|p| p.0 != h.0) {
+            if !numbering_rows[hr] && !code_row_labels.contains(&(hr, k)) && named.last().is_none_or(|p| p.0 != h.0) {
                 named.push(h.clone());
             }
         }
@@ -883,7 +1301,13 @@ fn build_table(
         if name.chars().count() > MAX_HEADER_LEN {
             name = name.chars().take(MAX_HEADER_LEN).collect();
         }
-        let label = if name.is_empty() { format!("col_{}", col_letter(col)) } else { name.clone() };
+        let label = if !name.is_empty() {
+            name.clone()
+        } else if sex.as_ref().is_some_and(|sb| sb.col == col) {
+            "sex".to_string()
+        } else {
+            format!("col_{}", col_letter(col))
+        };
         let first = opts.locale.map(|l| l.hints()).unwrap_or_default();
         let mut refine = |sample: &[&str], ambiguous: bool, native: &NativeNumbers| -> ColumnHints {
             let inferred = infer_column_with(sample.iter().copied(), native);
@@ -1104,6 +1528,135 @@ fn is_sequence(values: &[Out]) -> bool {
     v.len() >= 2 && (v.windows(2).all(|w| w[0] < w[1]) || v.windows(2).all(|w| w[0] > w[1]))
 }
 
+/// `name` without the " (2)" that makes a duplicate unique.
+fn name_base(name: &str) -> &str {
+    name.rsplit_once(" (").filter(|(_, t)| t.trim_end_matches(')').bytes().all(|b| b.is_ascii_digit())).map_or(name, |(h, _)| h)
+}
+
+/// A column name that does not say what the column holds: `col_F`, or a phrase repeated over the
+/// block's columns ("Mrd. EUR", "Messzahl (1991 = 100) (2)").
+fn weak_name(name: &str, repeated: &HashSet<&str>) -> bool {
+    name.strip_prefix("col_").is_some_and(|l| l.bytes().all(|b| b.is_ascii_uppercase())) || repeated.contains(name_base(name))
+}
+
+/// Names (without the duplicate suffix) used by three or more source columns of `t` (a unit row).
+fn repeated_names(t: &Table) -> HashSet<&str> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for c in t.columns.iter().filter(|c| c.source_col.is_some()) {
+        *seen.entry(name_base(&c.name)).or_default() += 1;
+    }
+    seen.into_iter().filter(|&(_, n)| n >= 3).map(|(s, _)| s).collect()
+}
+
+/// B86: stacked blocks of one statistical table (levels, then "% change on the previous year",
+/// then "% of GDP" or an index) where only the first block has a header: a block below whose
+/// columns are unnamed (`col_D`, or a unit repeated over them) takes the header of the nearest
+/// block above with the same source columns, each name followed by the column's own unit or the
+/// block's phrase or short title (`Finanzierungs-saldo / % des Bruttoinlandsprodukts`). A block
+/// that borrowed passes on the header it borrowed, not its phrase. A table warning says where the
+/// names come from.
+fn borrow_headers(tables: &mut [Table]) {
+    // Per table: its header by source column (own strong names, or what it borrowed).
+    let mut headers: Vec<Option<HashMap<u32, String>>> = Vec::with_capacity(tables.len());
+    for low in 0..tables.len() {
+        let t = &tables[low];
+        let data: Vec<usize> =
+            (0..t.columns.len()).filter(|&i| t.columns[i].source_col.is_some() && t.columns[i].role == ColRole::Data).collect();
+        let rep = repeated_names(t);
+        let strong: HashMap<u32, String> = data
+            .iter()
+            .map(|&i| &t.columns[i])
+            .filter(|c| !weak_name(&c.name, &rep))
+            .filter_map(|c| Some((c.source_col?, c.name.clone())))
+            .collect();
+        let weak = data.len() - strong.len();
+        // Unnamed: (nearly) every column, or all but one (a unit written over the first one).
+        if data.len() < 3 || (weak * 10 < data.len() * 8 && weak + 1 < data.len()) {
+            headers.push((!strong.is_empty()).then_some(strong));
+            continue;
+        }
+        let cols: Vec<u32> = data.iter().filter_map(|&i| t.columns[i].source_col).collect();
+        // The nearest block above on the same sheet with a header for (nearly) all these columns.
+        let donor = (0..low).rev().find(|&up| {
+            let u = &tables[up];
+            u.source_sheet == t.source_sheet
+                && u.rect.bottom < t.rect.top
+                && headers[up].as_ref().is_some_and(|h| cols.iter().filter(|c| h.contains_key(c)).count() * 10 >= cols.len() * 8)
+        });
+        let Some(up) = donor else {
+            headers.push((!strong.is_empty()).then_some(strong));
+            continue;
+        };
+        let header = headers[up].clone().unwrap_or_default();
+        // Each column's phrase: its own name unless it is a column letter, else the block's one
+        // phrase (a unit centred over the block) or its short title.
+        // A column's own phrase is kept when it is a unit ("Mrd. EUR", "%", "Index (2020 = 100)",
+        // "1 000 Personen"); other names of a headerless block are often its first labels or
+        // footnote letters ("Belgio", "Sport", "z"). One phrase written once over the block
+        // ("% des Bruttoinlandsprodukts") is the block's phrase.
+        let unit = |n: &str| {
+            let l = n.to_lowercase();
+            n.contains('%')
+                || n.bytes().any(|b| b.is_ascii_digit())
+                || l.split(|c: char| !c.is_alphanumeric()).any(|w| {
+                    matches!(
+                        w,
+                        "eur" | "usd" | "chf" | "gbp" | "pln" | "czk" | "sek" | "nok" | "dkk" | "huf" | "rsd" | "mrd" | "mio" | "tsd"
+                            | "euro" | "index" | "indeks" | "indice" | "prozent" | "percent" | "personen" | "anzahl" | "tonnen"
+                            | "kwh" | "gwh" | "twh" | "mwh"
+                    )
+                })
+        };
+        let names: Vec<Option<String>> = data
+            .iter()
+            .map(|&i| Some(name_base(&t.columns[i].name).to_string()).filter(|n| !n.starts_with("col_")))
+            .collect();
+        let own: Vec<Option<String>> = names.iter().map(|n| n.clone().filter(|n| unit(n))).collect();
+        let phrases: HashSet<&String> = names.iter().flatten().collect();
+        let once = names.iter().flatten().count() == 1;
+        let block = match phrases.len() {
+            1 if once || phrases.iter().all(|p| unit(p)) => phrases.into_iter().next().cloned(),
+            0 => t.title.as_ref().map(|x| x.0.clone()).filter(|x| x.chars().count() <= 60),
+            _ => None,
+        };
+        let years = |c: &Column| {
+            c.values.iter().all(|v| match v {
+                Out::Num(x) => x.fract() == 0.0 && (1900.0..=2100.0).contains(x),
+                Out::Null => true,
+                _ => false,
+            })
+        };
+        let names: Vec<Option<String>> = data
+            .iter()
+            .zip(&own)
+            .map(|(&i, own)| {
+                let c = &t.columns[i];
+                let base = header.get(&c.source_col?)?;
+                let numeric = !matches!(c.dtype, Dtype::Text | Dtype::Empty) && !years(c);
+                Some(match own.as_ref().or(block.as_ref()) {
+                    Some(p) if numeric && !base.ends_with(&format!("/ {p}")) => format!("{base} / {p}"),
+                    _ => base.clone(),
+                })
+            })
+            .collect();
+        let donor_id = tables[up].id();
+        let t = &mut tables[low];
+        let keep: Vec<&str> = t.columns.iter().enumerate().filter(|(i, _)| !data.contains(i)).map(|(_, c)| c.name.as_str()).collect();
+        let mut seen = UniqueNames::taken(keep);
+        let mut tr = t.transforms;
+        for (&i, name) in data.iter().zip(names) {
+            let name = name.unwrap_or_else(|| std::mem::take(&mut t.columns[i].name));
+            t.columns[i].name = seen.make(name, &mut tr);
+        }
+        t.transforms = tr;
+        t.warnings.push(format!(
+            "column names taken from {donor_id} above (same columns): this block has no header of its own{}",
+            block.map_or(String::new(), |p| format!("; its values are \"{p}\""))
+        ));
+        headers.push(Some(header));
+    }
+}
+
 /// Row labels for tables that have none (side-by-side and stacked grids that share the row labels
 /// of a neighbouring table). A table of numbers only, whose body rows — data rows, total rows and
 /// the blank rows between them — repeat those of a table with label columns row for row, gets
@@ -1261,6 +1814,10 @@ pub(super) fn process_sheet(
         out.tables.push(b.table);
     }
     copy_row_labels(&mut out.tables[first..], &layouts);
+    // Captions a table moved out of its last row belong to the table below them (B72).
+    for x in notes.iter_mut().filter(|x| x.kind == "title" && x.table.is_none()) {
+        x.table = associate(&out.tables[first..], x.row, x.col, true).map(|k| first + k + 1);
+    }
     super::trace("build_tables", t0);
     super::trace_ms("build_tables.typing", super::typing::take_typing_time());
     let tables = &out.tables[first..];
@@ -1271,11 +1828,19 @@ pub(super) fn process_sheet(
     };
 
     // Totals: detected candidates with their verification.
+    let arith_rows: HashSet<u32> =
+        cands.iter().filter(|c| c.evidence.contains(&Evidence::ArithmeticMatch)).map(|c| c.row).collect();
     let mut items: Vec<TotalItem> = Vec::new();
     let mut listed: HashSet<(u32, u32)> = HashSet::new();
     for (cand, check) in cands.iter().zip(&checks) {
         let k = table_at(cand.row, cand.col);
         let kept_in_data = k.is_some_and(|k| kept[k].contains(&cand.row));
+        if let Some(k) = k
+            && kept_in_data
+            && record_named_like_a_total(&grid, cand, &tables[k], &arith_rows)
+        {
+            continue;
+        }
         if let Some(i) = grid.cell_index(cand.row, cand.col)
             && owner[i] != OWN_TABLE
         {
@@ -1391,11 +1956,15 @@ pub(super) fn process_sheet(
             });
         }
     }
-    let aggregate_rows: HashSet<u32> = det.aggregates.iter().map(|a| a.0).collect();
+    let aggregate_rows: HashMap<u32, u32> = det.aggregates.iter().copied().collect();
     // Removed total rows: numbers not found by `totals::detect` are listed unverified; the row's
     // label text is attached; other text goes to Notes.
     for (n, row, rt, idxs) in &removed {
-        let label_idx = idxs.iter().copied().find(|&i| matches!(cells[i].value, Some(Value::Text(_))));
+        // A known aggregate's label is its code or name (`geo` = 'EU27_2020', B87).
+        let label_idx = aggregate_rows
+            .get(row)
+            .and_then(|&lc| idxs.iter().copied().find(|&i| cells[i].col == lc && matches!(cells[i].value, Some(Value::Text(_)))))
+            .or_else(|| idxs.iter().copied().find(|&i| matches!(cells[i].value, Some(Value::Text(_)))));
         let label = label_idx.and_then(|i| cells[i].value.as_ref()).map(display);
         for &i in idxs {
             let c = &cells[i];
@@ -1428,7 +1997,7 @@ pub(super) fn process_sheet(
                         value: num,
                         recomputed: None,
                         status: "unknown",
-                        reason: if aggregate_rows.contains(row) {
+                        reason: if aggregate_rows.contains_key(row) {
                             "known_aggregate"
                         } else if rate {
                             "not_additive"
@@ -1470,6 +2039,8 @@ pub(super) fn process_sheet(
         let kind = match lay.roles[i] {
             _ if nav => "other",
             Role::Title => "title",
+            // A loose caption ("Quadro 1", "Table 3: …") is a title whatever its cell role (B72).
+            _ if table_word(&text) => "title",
             Role::Note => "note",
             Role::Total => "total",
             _ => "other",
@@ -1535,7 +2106,11 @@ pub(super) fn process_sheet(
             .iter()
             .filter(|x| x.table == Some(t.n) && x.kind != "repeated_header" && !x.text.is_empty())
             .collect();
-        if t.title.is_none() {
+        // A loose caption above ("Table 1: …", "TABL. 6 (157). …") is preferred to a title line
+        // inside the table's range that is no caption.
+        let caption_above = t.title.as_ref().is_some_and(|x| !table_word(&x.0))
+            && mine.iter().any(|x| x.kind == "title" && x.row < t.rect.top && table_word(&x.text));
+        if t.title.is_none() || caption_above {
             // Nearest loose title above the table; not a source line or key/value metadata
             // ("Source: …", "Date of publication:", B46), and a "Table 1: …" line first.
             let above: Vec<&&NoteItem> = mine.iter().filter(|x| x.kind == "title" && x.row < t.rect.top).collect();
@@ -1544,17 +2119,12 @@ pub(super) fn process_sheet(
             };
             let plain: Vec<&&&NoteItem> =
                 above.iter().filter(|x| !crate::layout::is_note_label(&x.text) && !keyed(x.row)).collect();
-            let table_word = |s: &str| {
-                let w = s.split(|c: char| !c.is_alphabetic()).next().unwrap_or("").to_lowercase();
-                ["table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabulka", "tabell", "taulukko", "tabel"]
-                    .contains(&w.as_str())
-            };
             let pick = plain
                 .iter()
                 .filter(|x| table_word(&x.text))
                 .max_by_key(|x| x.row)
-                .or_else(|| plain.iter().max_by_key(|x| x.row))
-                .map(|x| (x.text.clone(), (x.row, x.col)));
+                .map(|x| caption_title(x, notes.iter()))
+                .or_else(|| plain.iter().max_by_key(|x| x.row).map(|x| (x.text.clone(), (x.row, x.col))));
             t.title = pick.or_else(|| above.iter().max_by_key(|x| x.row).map(|x| (x.text.clone(), (x.row, x.col))));
         }
         let title_cell = t.title.as_ref().map(|x| x.1);
@@ -1570,6 +2140,8 @@ pub(super) fn process_sheet(
             .unwrap_or_else(|| "table".to_string());
         t.sheet = format!("{prefix}{base}");
     }
+    // After the titles: a block's title can be the phrase of its borrowed names.
+    borrow_headers(&mut out.tables[first..]);
 
     let mut counts = CellCounts { total: cells.len(), ..Default::default() };
     for o in &owner {

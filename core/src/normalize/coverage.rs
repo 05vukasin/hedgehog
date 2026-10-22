@@ -202,6 +202,128 @@ fn period_text(s: &str) -> Option<Period> {
         .then(|| from_parsed(p))
 }
 
+/// A year written with two digits (Excel's pivot: `00`–`29` → 2000s) or four.
+fn short_year(t: &str) -> Option<i32> {
+    let t = t.trim().trim_end_matches(['.', ':']);
+    if !t.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let y = match t.len() {
+        2 => t.parse::<i32>().ok().map(|v| if v < 30 { 2000 + v } else { 1900 + v })?,
+        4 => t.parse::<i32>().ok()?,
+        _ => return None,
+    };
+    (YEAR_MIN..=YEAR_MAX).contains(&y).then_some(y)
+}
+
+fn month_period(y: i32, m: u8) -> Period {
+    Period { y, m, d: 1, gran: Gran::Month }
+}
+
+fn year_period(y: i32) -> Period {
+    Period { y, m: 1, d: 1, gran: Gran::Year }
+}
+
+/// A rolling range of months, `Mar-May 1971`, `Nov–Jan 2026`, `Dec - Feb 26`: the year is the
+/// last month's (ONS labour-market style).
+fn month_range(s: &str) -> Option<(Period, Period)> {
+    let (head, year) = s.trim().rsplit_once(char::is_whitespace)?;
+    let y = short_year(year)?;
+    let (a, b) = head.split_once(['-', '–', '—'])?;
+    let (m1, m2) = (crate::values::date::month_number(a.trim())?, crate::values::date::month_number(b.trim())?);
+    let y1 = if m1 > m2 { y - 1 } else { y };
+    Some((month_period(y1, m1), month_period(y, m2)))
+}
+
+/// The period a row label names, as its first and last period: what [`period_text`] reads, plus
+/// an annual-average label `Ø 22` / `Ø 2012` (the year), a month range `Mar-May 1971` and a bare
+/// year among other labels.
+fn label_period(s: &str) -> Option<(Period, Period)> {
+    let t = s.trim();
+    if let Some(rest) = t.strip_prefix(['Ø', '⌀']) {
+        let p = year_period(short_year(rest)?);
+        return Some((p, p));
+    }
+    if let Some(r) = month_range(t) {
+        return Some(r);
+    }
+    if t.len() == 4
+        && let Some(y) = short_year(t)
+    {
+        return Some((year_period(y), year_period(y)));
+    }
+    period_text(t).map(|p| (p, p))
+}
+
+/// The sortable form of a label's period: `2022`, `2022-Q1`, `2022-01`, `2024-W05`, `2022-01-15`,
+/// or `2025-11/2026-01` for a range.
+pub(super) fn span_label(span: &(Period, Period)) -> String {
+    if span.0 == span.1 { span.0.label() } else { format!("{}/{}", span.0.label(), span.1.label()) }
+}
+
+/// The period of each value of a text label column (`None` for empty cells), when at least 90%
+/// of its distinct values name a period ([`label_period`]) and at least three do, not all of
+/// them bare years (those are left to the year-column rule). A label that reads as a period only
+/// without a trailing footnote digit (`Apr.201` = `Apr.20` + mark `1`) counts when it follows the
+/// period above it in the same or the next year. Day labels all on the 1st of a month among
+/// month labels (`2012-01-01T00:00:00` next to `Jän.21`) are months.
+pub(super) fn column_label_periods(values: &[Out]) -> Option<Vec<Option<(Period, Period)>>> {
+    let texts = values.iter().filter(|v| matches!(v, Out::Text(_))).count();
+    let mut out: Vec<Option<(Period, Period)>> = Vec::with_capacity(values.len());
+    let mut seen: HashSet<&str> = HashSet::new();
+    let (mut failed, mut parsed, mut non_year) = (0usize, 0usize, false);
+    let mut prev: Option<(Period, Period)> = None;
+    for v in values {
+        let Out::Text(s) = v else {
+            out.push(None);
+            continue;
+        };
+        let mut p = label_period(s);
+        if p.is_none()
+            && let Some(before) = prev
+            && s.trim_end().ends_with(|c: char| c.is_ascii_digit())
+        {
+            let t = s.trim_end();
+            p = label_period(&t[..t.len() - 1])
+                .filter(|q| q.0.start() >= before.0.start() && q.0.y <= before.1.y + 1);
+        }
+        let fresh = seen.insert(s.as_str());
+        match p {
+            Some(q) => {
+                if fresh {
+                    parsed += 1;
+                    non_year |= q.0.gran != Gran::Year || q.0 != q.1 || s.trim().len() != 4;
+                }
+                prev = Some(q);
+            }
+            None if fresh => {
+                failed += 1;
+                if failed * 10 > texts {
+                    return None;
+                }
+            }
+            None => {}
+        }
+        out.push(p);
+    }
+    if parsed == 0 || !non_year || failed * 10 > seen.len() {
+        return None;
+    }
+    // Days all on the 1st among months (or alone, two or more): months.
+    let days: Vec<&Period> = out.iter().flatten().flat_map(|(a, b)| [a, b]).filter(|p| p.gran == Gran::Day).collect();
+    let months = out.iter().flatten().any(|(a, _)| a.gran == Gran::Month);
+    if !days.is_empty() && days.iter().all(|p| p.d == 1) && (months || days.len() >= 2) {
+        for (a, b) in out.iter_mut().flatten() {
+            for p in [a, b] {
+                if p.gran == Gran::Day {
+                    p.gran = Gran::Month;
+                }
+            }
+        }
+    }
+    Some(out)
+}
+
 /// Periods of a date-typed column, with the granularity the values show (all on the first of a
 /// month → month; also all in January → year; all in Jan/Apr/Jul/Oct → quarter).
 fn date_column(values: &[Out]) -> Option<Vec<Period>> {
@@ -305,26 +427,10 @@ fn column_periods(name: &str, role: ColRole, dtype: Dtype, values: &[Out]) -> Op
             if role == ColRole::Group {
                 return None;
             }
-            // Period text: at least 90% of the distinct values parse. Stops as soon as more than
-            // a tenth of all values failed (then a tenth of the distinct ones fails too).
-            let mut seen: HashSet<&str> = HashSet::new();
-            let mut periods: Vec<Period> = Vec::new();
-            let mut failed = 0;
-            for s in &texts {
-                if !seen.insert(s) {
-                    continue;
-                }
-                match period_text(s) {
-                    Some(p) => periods.push(p),
-                    None => {
-                        failed += 1;
-                        if failed * 10 > texts.len() {
-                            return None;
-                        }
-                    }
-                }
-            }
-            (periods.len() * 10 >= seen.len() * 9).then_some(periods)
+            // Period labels: at least 90% of the distinct values name a period (B70: also `Ø 22`
+            // annual rows and `Mar-May 1971` ranges).
+            let spans = column_label_periods(values)?;
+            Some(spans.into_iter().flatten().flat_map(|(a, b)| [a, b]).collect())
         }
         _ => None,
     }
@@ -396,7 +502,7 @@ pub(super) fn table(t: &Table) -> Option<Coverage> {
     // the data covers; they count only when the table has no other date / period column.
     let mut attribute = (Vec::new(), Vec::new());
     for c in &t.columns {
-        if !matches!(c.role, ColRole::Data | ColRole::Group) {
+        if !matches!(c.role, ColRole::Data | ColRole::Group) || c.is_derived() {
             continue;
         }
         if let Some(p) = column_periods(&c.name, c.role, c.dtype, &c.values) {
@@ -411,6 +517,16 @@ pub(super) fn table(t: &Table) -> Option<Coverage> {
     }
     if periods.is_empty() {
         (periods, columns) = attribute;
+    }
+    // A derived `<name>_period` column (B70) is listed after the column it was read from.
+    let derived: Vec<(usize, String)> = t
+        .columns
+        .windows(2)
+        .filter(|w| w[1].derived_kind() == Some("period"))
+        .filter_map(|w| columns.iter().position(|n| *n == w[0].name).map(|k| (k + 1, w[1].name.clone())))
+        .collect();
+    for (k, name) in derived.into_iter().rev() {
+        columns.insert(k, name);
     }
     let mut source = "column";
     if periods.is_empty() {

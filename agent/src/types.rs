@@ -369,7 +369,8 @@ fn classify_col(
     period_cols: &[String],
 ) -> ColType {
     let ws = words(name);
-    if c.role == ColRole::Group {
+    // core B78 (marked call site): a `<name>_key` column groups spellings of names/categories.
+    if c.role == ColRole::Group || c.derived_kind() == Some("key") {
         return ColType::new(Sem::Dimension);
     }
     if is_date(c.dtype) || period_cols.iter().any(|p| p == &c.name) {

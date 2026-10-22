@@ -106,6 +106,21 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
 
   `headers_cleaned` counts the columns whose name changed this way.
 - A column without a header is named `col_<source letter>`, for example `col_F`.
+- The label of a header row of series codes (`Dataset identifier code | MGSL | MGSF | …`) stays in
+  `original_header` but does not name the column below it.
+- Month-end dates across a header that step back from December to January of the same year
+  (`2001-07-31` … `2001-12-31`, `2001-01-31` …) are read as the next year from the step on
+  (`2002-01-31`), with a table warning.
+- A block of a stacked statistical table without a header of its own (its columns `col_D` …, or
+  one unit over all of them), under a block with the same source columns, takes that block's
+  names followed by its own unit (`Mrd. EUR`, `%`), the one phrase written over the block, or
+  its short title (`Finanzierungs-saldo / % des Bruttoinlandsprodukts`,
+  `Bruttoinlandsprodukt / … / Veränderung gegenüber dem Vorjahr in %`); a table warning says so.
+- When the header rows the layout found are sparse (`Ano: 2016`) and a fuller row of distinct
+  header words follows before the first data row, that row is the header and the rows above are
+  title rows. A numbered caption (`Quadro 1`, `Table 3:`, `Tabelle 2`, `Cuadro 4`) is preferred as
+  the title, joined with the text beside it when it is only the number; a caption left as the
+  last row of the table above is the title of the table below.
 - Names longer than 255 characters are cut.
 
 ### Rows
@@ -122,11 +137,30 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
   If every label has the form `Prefix: value` with the same prefix, the column is named after the
   prefix (`Region: North` gives column `Region` with value `North`). Otherwise the column is named
   `group` and holds the full label. Nested group labels are joined with ` / `.
+- **Sex breakdowns.** Blocks of three rows that split a row label by sex (`M` / `F` / `T`,
+  `H` / `M` / `HM`, `Männer` / `Frauen` / `Insgesamt`, `Masculino` / `Feminino` / `Total`, ...) are
+  data: the block's label (centred on the middle row or split over the rows) is written on all three
+  rows, the both-sexes row is a `subtotal` of the two others when its numbers add up, and every row
+  of a block labelled with a total word (`Total`) is a `total`. An unnamed code column is named
+  `sex`.
 - **`_src_row`** is the 1-based row number in the source sheet. It is always the last column, or the
   one before `_row_type`. A value in output column `c` came from source cell
   `<columns[c].source_column><_src_row>` on `source.sheet` of the table's manifest entry. Row
   labels copied from a table beside or above (`source_column` `null`, named in the table's
   `warnings`) come from that table's label cells in the matching row.
+- **Derived columns** follow the column they are computed from; they have no source column
+  (`source_column` `null`, `original_header` empty, `derived` in the manifest):
+  - **`<name>_period`**: a text column whose labels name periods (at least three, 90% of the
+    distinct ones: `Jän.21`, `März 2022`, `Ø 22` (an annual average: the year), `2025 Q1`,
+    `Jan-24`, `Mar-May 1971` (a rolling range, the year is the last month's), stored dates among
+    them, and labels whose trailing footnote digit continues the period above, `Apr.201` = April
+    2020 + mark `1`) gets each label's period in a form that sorts and compares as text: `2022`,
+    `2022-Q1`, `2022-01`, `2024-W05`, `2022-01-15`, `2025-11/2026-01`. An unnamed label column
+    (`col_A`) gives `period`. Not added when every label is already written that way.
+  - **`<name>_key`**: a name or category column (at most half of its values distinct, at most 40
+    characters on average) whose values differ only in case, spaces, punctuation or diacritics
+    (`Mc Kay` / `McKay`, `On-system` / `On-System`) holds one spelling per group, the most frequent;
+    `GROUP BY "<name>_key"` counts the spellings together. The table's `warnings` name the groups.
 - **`_row_type`** (only with `keep_totals`): `data`, `subtotal`, `total`, `average` or `of_which`.
   Only `data` rows add up to the table's figures: a `total` or `subtotal` row sums data rows, an
   `average` row averages them, an `of_which` row is a part of the row above it.
@@ -331,7 +365,7 @@ Field reference:
 | `tables[].group_column` | string or null | Name of the column made from group-header rows. |
 | `tables[].source_row_column` | string | Always `_src_row`. |
 | `tables[].row_type_column` | string or null | `_row_type` with `keep_totals`, else `null`. |
-| `tables[].totals` | object | This table's totals: `count`, `ok`, `mismatch`, `unknown` (counted like the workbook `totals`), and `rows`: one entry per total row (row of a vertical total) with `row` (1-based source row), `label`, `level` and `kept_in_data` (`false`: the row is not in the table data; with `keep_totals` it is, marked in `_row_type`). |
+| `tables[].totals` | object | This table's totals: `count`, `ok`, `mismatch`, `unknown` (counted like the workbook `totals`), and `rows`: one entry per total row (row of a vertical total) with `row` (1-based source row), `label`, `level`, `kept_in_data` (`false`: the row is not in the table data; with `keep_totals` it is, marked in `_row_type`), `period` (the row's value in the table's `<name>_period` column when the row is in the data: `Ø 22` → `"2022"`, the year's figure; else `null`) and `sources_outside` (source cells of the total outside its own table, e.g. `["D10"]` for a grand total under stacked blocks that adds the block above's subtotal). |
 | `tables[].transformations` | object | Counts of every change made. See [Transformations](#transformations). |
 | `tables[].warnings` | list of strings | Values kept as text in a typed column, values read with a guessed locale, and similar. |
 | `totals` | object | Summary counts and one item per row of the `Totals` sheet (same fields plus `row`, the 1-based source row of `cell` (the first row of a run); `label_cell` and `formula` only on the sheet). |
@@ -349,7 +383,8 @@ Column fields:
 | `role` | `data` (from a source column), `group` (from group-header rows), `source_row` (`_src_row`), `row_type` (`_row_type`). |
 | `dtype` | See [Values and dtypes](#values-and-dtypes). Authoritative: trust it over pandas' guess. |
 | `number_format` | Excel number format written for the column, or `null`. |
-| `source_column` | Source column letter, or `null` for non-data roles and for row labels copied from another table (`row_labels_copied`; see [concepts](concepts.md#tables)). |
+| `source_column` | Source column letter, or `null` for non-data roles, derived columns and row labels copied from another table (`row_labels_copied`; see [concepts](concepts.md#tables)). |
+| `derived` | `null`, or `{"from": "<column>", "kind": "period" \| "key"}` for a [derived column](#rows). |
 | `original_header` | The header cells joined into `name`, top to bottom, with their addresses. |
 | `unit`, `currency` | Unit or ISO currency code carried by more than half of the numeric values (the most common one), or `null`. Mixed currencies are also listed in `warnings`. |
 | `locale` | `decimal` (`"."`, `","` or `null`), `date_order` (`"dmy"`, `"mdy"` or `null`), and `ambiguous`: how many values were read with a guess. `null` means no evidence. |
@@ -385,7 +420,9 @@ Found, in this order (header periods only when no column gives one):
   or a text / group column of bare years with such a name (or years as group-header rows).
 - **Period text columns**: at least 90% of the distinct values read as a period by the value parsers
   (`2024 Q1`, `Q3 2024`, `Jan 2024`, `März 2024`, `2024-03`, `2024-W05`, `KW 5/2024`; months in nine
-  languages).
+  languages), or as the labels a `<name>_period` column is made from (`Ø 22`, `Mar-May 1971`,
+  `Apr.201`). Days all on the 1st of a month count as months. The derived `<name>_period` column is
+  listed in `columns` after its label column.
 - **Period headers**: a header part that is a period (`Jan 2024`, `2024 Q1`), a month or quarter name
   with a year in another part (`Oktober / 2022`), or a year, alone or with one short word
   (`2019`, `RA 2023`, `2023 Ist`). Two or more such columns are needed when they are all bare years.
@@ -425,6 +462,7 @@ Every key below is present in every table's `transformations`, with a count (oft
 | `note_rows_moved`, `title_rows_moved` | Rows inside the table range moved to `Notes` |
 | `empty_columns_removed` | Columns with neither header nor values |
 | `row_labels_copied` | Label columns copied from a table beside or above whose rows this table repeats (a daily grid under a summary that names the rows once) |
+| `period_columns_added`, `key_columns_added` | Derived `<name>_period` and `<name>_key` columns |
 
 ## Repeatable output
 

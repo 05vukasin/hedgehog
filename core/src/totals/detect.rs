@@ -1799,10 +1799,14 @@ fn aggregate_rows(grid: &Grid) -> Vec<(u32, u32)> {
         }
     }
     let mut out = Vec::new();
-    for (col, (n, aggs, rows)) in per_col {
-        if n < COUNTRY_CODES_MIN || aggs.len() < AGGREGATE_CODES_MIN {
-            continue;
-        }
+    // (column, rows, the column itself is the label)
+    let mut found: Vec<(u32, Vec<u32>, bool)> = per_col
+        .into_iter()
+        .filter(|(_, (n, aggs, _))| *n >= COUNTRY_CODES_MIN && aggs.len() >= AGGREGATE_CODES_MIN)
+        .map(|(col, (_, _, rows))| (col, rows, false))
+        .collect();
+    found.extend(named_aggregate_rows(grid).into_iter().map(|(col, rows)| (col, rows, true)));
+    for (col, rows, own_label) in found {
         for row in rows {
             let line = grid.row_cells(row).iter().map(|&i| &cells[i as usize]);
             let mut label = None;
@@ -1815,12 +1819,84 @@ fn aggregate_rows(grid: &Grid) -> Vec<(u32, u32)> {
                 }
             }
             if has_number {
-                out.push((row, label.unwrap_or(col)));
+                out.push((row, if own_label { col } else { label.unwrap_or(col) }));
             }
         }
     }
     out.sort_unstable();
     out.dedup_by_key(|x| x.0);
+    out
+}
+
+/// Eurostat aggregate geo codes (B87): the EU and euro area in their compositions, EFTA, EEA.
+const EUROSTAT_AGGREGATES: &[&str] = &[
+    "EU27_2020", "EU28", "EU27_2007", "EU27", "EU25", "EU15", "EU", "EA", "EA11", "EA12", "EA13", "EA15", "EA16",
+    "EA17", "EA18", "EA19", "EA20", "EA21", "EEA", "EEA30_2007", "EFTA",
+];
+
+/// Our World in Data aggregate entities (B87): the world, continents, income groups and the
+/// source-specific regions (`(EI)`, `(Ember)`, `(EIA)`, `(BP)`, `(Shift)`, `(27)`).
+const OWID_AGGREGATES: &[&str] = &[
+    "world", "africa", "asia", "europe", "oceania", "north america", "south america", "european union",
+    "high-income countries", "low-income countries", "lower-middle-income countries", "upper-middle-income countries",
+    "oecd", "non-oecd", "opec", "g20", "g7", "asia pacific", "middle east", "cis", "latin america and caribbean",
+];
+
+fn owid_aggregate(name: &str) -> bool {
+    let n = name.trim().to_lowercase();
+    if let Some(open) = n.rfind(" (")
+        && n.ends_with(')')
+        && matches!(&n[open + 2..n.len() - 1], "ei" | "ember" | "eia" | "bp" | "shift" | "27" | "eu")
+    {
+        return true;
+    }
+    OWID_AGGREGATES.contains(&n.as_str())
+}
+
+/// Columns of country codes or names that hold known aggregates beside the countries (B87): a
+/// Eurostat `geo` column (two-letter codes, at least [`COUNTRY_CODES_MIN`] rows, with `EU27_2020`,
+/// `EA20`, ...) or an Our World in Data entity column (at least 30 distinct names among them
+/// `World` and two other aggregates). (column, rows of the aggregates).
+fn named_aggregate_rows(grid: &Grid) -> Vec<(u32, Vec<u32>)> {
+    // Per column: two-letter codes, rows of aggregates, OWID aggregate names, "World" seen.
+    type Seen<'a> = (usize, Vec<u32>, FxHashSet<&'a str>, bool);
+    let mut per_col: FxHashMap<u32, Seen> = FxHashMap::default();
+    for c in &grid.sheet.cells {
+        let Some(Value::Text(t)) = &c.value else { continue };
+        let t = t.trim();
+        let e = per_col.entry(c.col).or_default();
+        let geo = t.len() == 2 && t.bytes().all(|b| b.is_ascii_uppercase());
+        if geo {
+            e.0 += 1;
+        }
+        if EUROSTAT_AGGREGATES.contains(&t) {
+            e.1.push(c.row);
+        } else if owid_aggregate(t) {
+            e.3 |= t.eq_ignore_ascii_case("world");
+            e.1.push(c.row);
+            e.2.insert(t);
+        }
+    }
+    let mut out = Vec::new();
+    for (col, (codes, rows, owid, world)) in per_col {
+        if rows.is_empty() {
+            continue;
+        }
+        let distinct: FxHashSet<&str> = grid
+            .col_cells(col)
+            .iter()
+            .filter_map(|&i| match &grid.sheet.cells[i as usize].value {
+                Some(Value::Text(t)) => Some(t.trim()),
+                _ => None,
+            })
+            .collect();
+        let eurostat = codes >= COUNTRY_CODES_MIN && distinct.iter().filter(|t| t.len() == 2).count() >= 10;
+        let owid_names = world && owid.len() >= 3 && distinct.len() >= 30;
+        if eurostat || owid_names {
+            out.push((col, rows));
+        }
+    }
+    out.sort_unstable();
     out
 }
 
