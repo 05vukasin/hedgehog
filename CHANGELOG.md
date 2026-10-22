@@ -246,6 +246,27 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Changed
 
+- **Catalog content from the 30-case run** (`open_file`, `describe_table`; B71, B73, B74, B80,
+  B82, B83, B85, B89). Column names are never cut: wide tables list every name in full, grouped by
+  prefix when the plain list is long (`solar_{consumption, electricity, share_elec[number · rate —
+  don't sum]}[3 × number]`), and brief catalogs list each table's names in full (key and total
+  columns first, `+N more (describe_table)` for the rest) and say `same as T1` for repeated
+  layouts. Total rows are listed by level with the grand total named and the rows each adds up
+  (`grand total 'Total Expenses'@65 (= rows 7, 49, 57, 63); total 'Total O&M'@49 (= rows 41, 47);
+  subtotals (_row_type 'subtotal', not 'total') …`; up to 15, repeated sets once). The quality
+  line covers every column: empty cells tied to the category that explains them (`annual_salary
+  empty in 7,129 rows (22 %): salary_or_hourly = 'HOURLY' (all its 7,129 rows)`), text columns
+  with many empty cells, IDs written on several lines (`"Order ID": 800 rows, 296 distinct`) and
+  partial first / last years (`Date: 2013 has Sep–Dec only (4 of 12 months)`). New lines: an ID
+  column with its names in another column (`empfaengerid is the ID of name: … SELECT
+  "empfaengerid", MAX("name") …`), footnotes that define a column (`column notes: … LF24 ← "The
+  headline employment rate is …"`) and a scale from the title (`units: amounts in thousands (×
+  1,000), says "(All values in 000s)"`). Booleans show as SQL stores them (`1/0`). The share
+  example is only built on an additive amount (no unit prices, rates or rows of mixed units),
+  ranked by an entity, an ID with names or a breakdown of 10–1,000 values (not a name or a
+  period); the fill-down hint only on label columns; period codes written as text (`TIME_PERIOD`
+  '2019-S1') give the TIME line instead of an update stamp (`LAST UPDATE`). The 30 case catalogs
+  stay under the 11,700-character cap (largest 11,143).
 - **Faster, leaner model path, same output** (P7 "exact wins"; every output byte unchanged). The
   row model's input is streamed instead of materialized: a first pass holds the sheet-wide counts,
   sets and rectangles the features read, then the rows are walked with a three-row window (up to
