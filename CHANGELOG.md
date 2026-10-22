@@ -6,6 +6,8 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-22
+
 ### Added
 
 - **SQL joins across files** (B76). Every file opened in an agent session gets a number in the

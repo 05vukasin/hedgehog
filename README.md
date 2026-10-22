@@ -290,26 +290,35 @@ for the same answers. See [docs/mcp.md](docs/mcp.md#claude-code).
 Accuracy is measured, not guessed: hedgehog is scored against spreadsheets that people labelled by
 hand, cell by cell, on files it never saw while it was built.
 
-| Benchmark | What it is | Cell types, rules alone | **Cell types, hedgehog 0.3** |
+| Benchmark | What it is | Cell types, rules alone | **Cell types, hedgehog 0.4** |
 |---|---|---:|---:|
-| DECO | Enron business spreadsheets | 64.4 | **70.9** |
-| StatSheets | 14 statistics offices (US, France, Japan, Australia, OECD, WHO, ...), 6 languages | 65.6 | **89.6** |
-| Strudel | US government and scientific tables | 77.1 | **90.5** |
-| Synthetic | 2,000 generated messy workbooks with known answers | 91.5 | **98.0** |
+| DECO | Enron business spreadsheets | 65.5 | **71.5** |
+| StatSheets | 14 statistics offices (US, France, Japan, Australia, OECD, WHO, ...), 6 languages | 66.9 | **89.6** |
+| Strudel | US government and scientific tables | 78.5 | **90.8** |
+| Synthetic | 2,000 generated messy workbooks with known answers | 93.7 | **98.1** |
 
 Scores are F1 from 0 to 100 (finding the right things without false alarms), averaged per file over
-title, header, data and other. Table detection on DECO: 75.1 (a simple "connected cells" approach:
+title, header, data and other. Table detection on DECO: 75.0 (a simple "connected cells" approach:
 17.3). The learned model also beats the rules on each benchmark when that benchmark is left out of
 its training entirely, so the gain carries over to new kinds of files. A misplaced cell still ends
 up on the `Notes` sheet, so a mistake costs structure, never data. Details:
 [docs/learned-model.md](docs/learned-model.md), [docs/evaluation.md](docs/evaluation.md).
 
-**In practice:** on Portugal's 2020 procurement register (176,000 contracts, 4.5M cells), a chat
-agent using hedgehog's tools with gpt-4o-mini answered four analyst questions in 1 min 05 s, using
-13.9k input tokens (about $0.002). Claude Code needed 3 min 08 s writing its own pandas. hedgehog's
-numbers were exact, but the small model made judgement errors that the stronger model avoided.
-Full comparison and what we're fixing:
-[docs/case-study-contracts.md](docs/case-study-contracts.md).
+**Messy layouts.** An independent noise generator (21 kinds of mess: "of which" rows, average rows,
+footnote marks, locale formats, separators, side-by-side tables, ...) builds workbooks whose right
+answer is known. hedgehog recovers every value in its place in 100 % of the clean ones and 89–91 %
+at the highest noise level, with 0 crashes ([eval/noise/REPORT.md](eval/noise/REPORT.md)). A fuzzer
+and a sweep over 24,000 real files found 0 crashes; output is byte-identical from run to run.
+
+**With an AI agent: the tool does the work.** On 30 real analyst questions (finance, sales, HR,
+public statistics, registers; 200 cells to 4.5M cells; 4 questions that need two files), a simple
+chat loop on a small model with only hedgehog's tools passes **86 %** of the automatic checks; Claude
+Code (a frontier model writing its own Python) passes 97 %. hedgehog does it **2.9× faster and 51×
+cheaper** ($0.21 for all 30 cases vs $10.45) and reads 5× fewer tokens. With the same small model and
+the same minimal loop, hedgehog's tools score 85 % on the 30 cases; on the first 4 cases, the other
+tool sets scored 27 % (a generic Excel MCP server), 45 % (a pandas tool) and 55 % (the sheet as
+markdown in the prompt). Every run, answer and check: [eval/agents](eval/agents/RESULTS.md);
+an earlier walk-through: [docs/case-study-contracts.md](docs/case-study-contracts.md).
 
 ## Documentation
 

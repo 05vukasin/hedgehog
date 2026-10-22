@@ -1,6 +1,6 @@
 {
   "name": "hedgehog-sheets",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Understand messy spreadsheets and hand AI agents clean, traceable data (native Rust, prebuilt binaries).",
   "keywords": ["excel", "xlsx", "spreadsheet", "csv", "normalize", "ai", "agent", "llm", "napi-rs"],
   "license": "MIT",
