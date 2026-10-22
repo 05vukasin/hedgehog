@@ -344,6 +344,17 @@ pub(super) fn scan_sheet(
     xfs: Option<&[Format]>,
     cells: &[Cell],
 ) -> Option<(Vec<Rect>, Option<Vec<Format>>)> {
+    scan_sheet_declared(f, Some(dims), xfs, cells).map(|(_, m, f)| (m, f))
+}
+
+/// [`scan_sheet`] that also returns the part's declared dimension; with `dims` `None` it does
+/// not compare it (the caller does, B136: the scan then runs while the cells are read).
+pub(super) fn scan_sheet_declared(
+    f: &mut impl Read,
+    dims: Option<Dimensions>,
+    xfs: Option<&[Format]>,
+    cells: &[Cell],
+) -> Option<(Dimensions, Vec<Rect>, Option<Vec<Format>>)> {
     const CHUNK: usize = 256 * 1024;
     const TAIL: usize = 128;
     let default = xfs.map(|x| x.first().copied().unwrap_or(Format::pack(&FormatSpec::default())));
@@ -351,6 +362,7 @@ pub(super) fn scan_sheet(
     let mut buf: Vec<u8> = Vec::with_capacity(CHUNK + TAIL);
     let mut chunk = vec![0u8; CHUNK];
     let mut cell_tag: Option<Vec<u8>> = None; // `<c` or `<x:c`, known once the dimension is checked
+    let mut declared = Dimensions::default();
     let merge_finder = memmem::Finder::new(b"mergeCells");
     let mut cursor = 0usize;
     let key = |c: &Cell| (c.row, c.col);
@@ -360,7 +372,8 @@ pub(super) fn scan_sheet(
         let eof = n == 0;
         if cell_tag.is_none() {
             match declared_dimension(&buf) {
-                Some(d) if d.unwrap_or_default() == dims => {
+                Some(d) if dims.is_none_or(|x| d.unwrap_or_default() == x) => {
+                    declared = d.unwrap_or_default();
                     let mut pat = b"<".to_vec();
                     if let Some(root) = tags(&buf).find(|t| !t.closing && local(t.name) == b"worksheet") {
                         pat.extend_from_slice(&root.name[..root.name.len() - b"worksheet".len()]);
@@ -438,10 +451,10 @@ pub(super) fn scan_sheet(
         if let Some(start) = merge_at {
             let mut rest = buf.split_off(start);
             f.read_to_end(&mut rest).ok()?;
-            return Some((parse_merge_cells(&rest), formats));
+            return Some((declared, parse_merge_cells(&rest), formats));
         }
         if eof {
-            return Some((Vec::new(), formats));
+            return Some((declared, Vec::new(), formats));
         }
         // Keep the unprocessed part, at least the last TAIL bytes (a `mergeCells` match across
         // the chunk boundary needs its `<`); a cell tag seen twice gets the same format twice.

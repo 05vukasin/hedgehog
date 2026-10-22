@@ -114,6 +114,7 @@ pub use crate::ods::{Ods, OdsError};
 pub use crate::xls::{Xls, XlsError, XlsOptions};
 pub use crate::xlsb::{Xlsb, XlsbError};
 pub use crate::xlsx::{
+    parallel_read_stats, parallel_read_threads, set_parallel_read_for_tests, // hedgehog
     expand_shared_formula, expand_shared_formula_into, Hyperlink, Xlsx, XlsxCellFormula,
     XlsxCellFormulaMetadataRecord, XlsxCellReader, XlsxError, XlsxFormulaMetadata,
 };

@@ -58,6 +58,10 @@ def run_arm(arm: str, case: dict, prompt: str, root: Path, out: Path, run_id: st
         else:
             raise ValueError(arm)
         m = agent.run(key, model, INTRO[arm], user, ts, log)
+        if arm == "swap-hedgehog":
+            # What open_file really got (HH_QUESTION=host|off, unset = the model's own question).
+            extra["question_mode"] = tools.QUESTION_MODE or "model"
+            extra["opens"] = ts.opens
     finally:
         if hasattr(ts, "close"):
             ts.close()

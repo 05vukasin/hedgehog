@@ -112,6 +112,20 @@ impl<R: Read + Seek> Scanner<R> {
         let mut f = self.zip.by_name(path).ok()?;
         super::styles::scan_sheet(&mut f, dims, self.xfs.as_deref(), cells)
     }
+
+    /// Whether [`Scanner::scan`] looks at the cells (it resolves formats).
+    pub fn needs_cells(&self) -> bool {
+        self.xfs.is_some()
+    }
+
+    /// [`Scanner::scan`] before the cells are read, for a scanner that does not need them: the
+    /// part's declared dimension and its merged areas. The caller compares the dimension with
+    /// the one calamine read (equal: the result of `scan`; else `scan` gives `None`).
+    pub fn scan_merges(&mut self, name: &str) -> Option<(Dimensions, Vec<Rect>)> {
+        let path = self.parts.get(name)?;
+        let mut f = self.zip.by_name(path).ok()?;
+        super::styles::scan_sheet_declared(&mut f, None, None, &[]).map(|(d, m, _)| (d, m))
+    }
 }
 
 pub(super) fn read_full(r: &mut impl Read, buf: &mut [u8]) -> Option<usize> {
@@ -327,21 +341,16 @@ impl<'a> Iterator for Tags<'a> {
                 self.pos = lt + memmem::find(rest, b"]]>")? + 3;
                 continue;
             }
-            // End of tag, respecting quoted attribute values.
+            // End of tag, respecting quoted attribute values (B136: by memchr, not byte by byte).
             let mut i = 1;
-            let mut quote = 0u8;
             loop {
-                let b = *rest.get(i)?;
-                if quote != 0 {
-                    if b == quote {
-                        quote = 0;
-                    }
-                } else if b == b'"' || b == b'\'' {
-                    quote = b;
-                } else if b == b'>' {
+                i += memchr::memchr3(b'>', b'"', b'\'', rest.get(i..)?)?;
+                let b = rest[i];
+                if b == b'>' {
                     break;
                 }
                 i += 1;
+                i += memchr::memchr(b, rest.get(i..)?)? + 1;
             }
             self.pos = lt + i + 1;
             if rest[1] == b'?' || rest[1] == b'!' {

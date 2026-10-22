@@ -696,7 +696,7 @@ fn sheet_layout(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::S
 /// Returns memory freed by a large sheet's analysis to the system: its threads freed it in
 /// several allocator arenas, where it would otherwise stay resident while the next sheet
 /// allocates elsewhere (glibc only; no effect on results).
-fn release_free_memory() {
+pub(crate) fn release_free_memory() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
     // SAFETY: `malloc_trim` only returns free heap pages to the system.
     unsafe {

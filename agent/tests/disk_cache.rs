@@ -30,10 +30,6 @@ fn session(root: &Path, cache: Option<&Path>) -> Session {
 }
 
 /// The catalog without its last line (the timing line differs between a fresh and a cached open).
-fn body(cat: &str) -> &str {
-    cat.rsplit_once('\n').map_or(cat, |x| x.0)
-}
-
 fn entries(cache: &Path) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(cache.join("v1")) else { return Vec::new() };
     rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()
@@ -57,29 +53,30 @@ fn reopen_from_cache_matches() {
 
     let mut cold = session(&root, Some(&cache));
     let cat1 = cold.open_file("sales.csv").unwrap();
-    assert!(cat1.ends_with(" s)"), "{cat1}");
+    assert!(!cold.from_cache("sales.csv"));
     assert_eq!(cold.query("sales.csv", Q, None).unwrap(), q0);
     assert_eq!(entries(&cache).len(), 1, "the entry is written once the database is built");
 
     let mut warm = session(&root, Some(&cache));
     let cat2 = warm.open_file("sales.csv").unwrap();
-    assert!(cat2.ends_with("\n(cached)"), "{cat2}");
-    assert_eq!(body(&cat0), body(&cat1));
-    assert_eq!(body(&cat0), body(&cat2));
+    assert!(warm.from_cache("sales.csv"));
+    assert_eq!(cat0, cat1);
+    assert_eq!(cat0, cat2);
     assert_eq!(warm.query("sales.csv", Q, None).unwrap(), q0);
     assert_eq!(warm.describe_table("sales.csv", "T1").unwrap(), desc0);
     assert_eq!(warm.totals("sales.csv", None, None).unwrap(), plain.totals("sales.csv", None, None).unwrap());
     // Same content under another name: one entry, the catalog made for that name.
     let copy2 = warm.open_file("sub/sales copy.csv").unwrap();
-    assert_eq!(body(&copy2), body(&copy0));
+    assert_eq!(copy2, copy0);
     assert_eq!(entries(&cache).len(), 1);
     let mut again = session(&root, Some(&cache));
-    assert_eq!(body(&again.open_file("sub/sales copy.csv").unwrap()), body(&copy0));
+    assert_eq!(again.open_file("sub/sales copy.csv").unwrap(), copy0);
 
     // A changed file is a new entry.
     std::fs::write(root.join("sales.csv"), csv().replace("R1,", "R9,")).unwrap();
     let mut changed = session(&root, Some(&cache));
-    assert!(!changed.open_file("sales.csv").unwrap().ends_with("(cached)"));
+    changed.open_file("sales.csv").unwrap();
+    assert!(!changed.from_cache("sales.csv"));
     assert!(changed.query("sales.csv", "SELECT count(*) FROM T1 WHERE Region = 'R9'", None).unwrap().starts_with("count(*)\n80"));
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -98,7 +95,8 @@ fn damaged_entries_are_rebuilt() {
     let n = std::fs::metadata(entry.join("norm.bin")).unwrap().len() as usize;
     std::fs::write(entry.join("norm.bin"), vec![7u8; n]).unwrap();
     let mut s = session(&root, Some(&cache));
-    assert!(s.open_file("sales.csv").unwrap().ends_with("(cached)"));
+    s.open_file("sales.csv").unwrap();
+    assert!(s.from_cache("sales.csv"));
     assert_eq!(s.query("sales.csv", Q, None).unwrap(), q0);
 
     // db.sqlite damaged (same size): not a database, so the file is normalized again.
@@ -106,14 +104,16 @@ fn damaged_entries_are_rebuilt() {
     let n = std::fs::metadata(entry.join("db.sqlite")).unwrap().len() as usize;
     std::fs::write(entry.join("db.sqlite"), vec![0u8; n]).unwrap();
     let mut s = session(&root, Some(&cache));
-    assert!(!s.open_file("sales.csv").unwrap().ends_with("(cached)"));
+    s.open_file("sales.csv").unwrap();
+    assert!(!s.from_cache("sales.csv"));
     assert_eq!(s.query("sales.csv", Q, None).unwrap(), q0);
 
     // A partial entry (no meta.json) is ignored and replaced.
     let entry = entries(&cache).pop().unwrap();
     std::fs::remove_file(entry.join("meta.json")).unwrap();
     let mut s = session(&root, Some(&cache));
-    assert!(!s.open_file("sales.csv").unwrap().ends_with("(cached)"));
+    s.open_file("sales.csv").unwrap();
+    assert!(!s.from_cache("sales.csv"));
     assert_eq!(s.query("sales.csv", Q, None).unwrap(), q0);
     let _ = std::fs::remove_dir_all(&d);
 }

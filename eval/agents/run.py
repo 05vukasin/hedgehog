@@ -458,7 +458,10 @@ def main() -> None:
                 f"# {case['id']} · {arm} · {rec['date']} · {m['model']}\n\nRun `{run}`\n\n{m['answer']}\n")
             ok = sum(1 for v in rec["checks"].values() if v)
             print(f"{run}: {m['seconds']} s, {m['input_tokens']:,}/{m['output_tokens']:,} tokens, "
-                  f"cost {m['cost_usd']}, checks {ok}/{len(rec['checks'])}")
+                  f"cost {m['cost_usd']}, checks {ok}/{len(rec['checks'])}"
+                  + (f", question {m['question_mode']}: catalog " + "/".join(
+                      f"{o['chars']:,}{'q' if o['question'] else ''}" for o in m["opens"]) + " chars"
+                     if "opens" in m else ""))
     report(cases)
 
 

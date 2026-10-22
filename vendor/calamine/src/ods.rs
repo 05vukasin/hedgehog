@@ -11,13 +11,13 @@
 /// [ODF 1.2]: http://docs.oasis-open.org/office/v1.2/OpenDocument-v1.2.pdf
 ///
 use std::collections::{BTreeMap, HashMap};
-use std::io::{BufReader, Read, Seek};
+use std::io::{BufRead, BufReader, Read, Seek};
 
 use log::warn;
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::name::QName;
 use quick_xml::Reader as XmlReader;
-use zip::read::{ZipArchive, ZipFile};
+use zip::read::ZipArchive;
 use zip::result::ZipError;
 
 use crate::attrs::{decode_attr, RawAttributes};
@@ -37,7 +37,6 @@ const MAX_COLUMNS: u32 = 16_384;
 /// Maximum number of cells to prevent memory exhaustion from malicious files.
 const MAX_CELLS: usize = 100_000_000;
 
-type OdsReader<'a, RS> = XmlReader<BufReader<ZipFile<'a, RS>>>;
 
 /// An enum for ods specific errors
 #[derive(Debug)]
@@ -171,6 +170,18 @@ pub struct Ods<RS> {
     options: OdsOptions,
 }
 
+impl<RS> Ods<RS> {
+    /// hedgehog: moves sheet `name`'s values and formulas out of the reader (what
+    /// `worksheet_range` and `worksheet_formula` return as copies, with the default header row);
+    /// `None` if there is no such sheet.
+    pub fn take_sheet(&mut self, name: &str) -> Option<(Range<Data>, Range<String>)> {
+        if !matches!(self.options.header_row, HeaderRow::FirstNonEmptyRow) {
+            return None;
+        }
+        self.sheets.remove(name)
+    }
+}
+
 impl<RS> Reader<RS> for Ods<RS>
 where
     RS: Read + Seek,
@@ -198,11 +209,16 @@ where
         #[cfg(feature = "picture")]
         let pictures = read_pictures(&mut zip)?;
 
+        // hedgehog: large tables on several threads, with the same result (`parallel_content`)
+        let content = match parallel_content(&mut zip, crate::xlsx::parallel::parallel_read_threads()) {
+            Some(c) => c,
+            None => parse_content(zip)?,
+        };
         let Content {
             sheets,
             sheets_metadata,
             defined_names,
-        } = parse_content(zip)?;
+        } = content;
         let metadata = Metadata {
             sheets: sheets_metadata,
             names: defined_names,
@@ -415,10 +431,7 @@ fn parse_content<RS: Read + Seek>(mut zip: ZipArchive<RS>) -> Result<Content, Od
     })
 }
 
-fn read_table<RS>(reader: &mut OdsReader<'_, RS>) -> Result<(Range<Data>, Range<String>), OdsError>
-where
-    RS: Read + Seek,
-{
+fn read_table<R: BufRead>(reader: &mut XmlReader<R>) -> Result<(Range<Data>, Range<String>), OdsError> {
     let mut cells = Vec::new();
     let mut rows_repeats = Vec::new();
     let mut formulas = Vec::new();
@@ -587,16 +600,13 @@ fn get_range<T: Default + Clone + PartialEq>(
     })
 }
 
-fn read_row<RS>(
-    reader: &mut OdsReader<'_, RS>,
+fn read_row<R: BufRead>(
+    reader: &mut XmlReader<R>,
     row_buf: &mut Vec<u8>,
     cell_buf: &mut Vec<u8>,
     cells: &mut Vec<Data>,
     formulas: &mut Vec<String>,
-) -> Result<(), OdsError>
-where
-    RS: Read + Seek,
-{
+) -> Result<(), OdsError> {
     let mut empty_col_repeats = 0;
     let row_start = cells.len();
     loop {
@@ -667,14 +677,11 @@ where
 /// Converts table-cell element into a `Data`
 ///
 /// ODF 1.2-19.385
-fn get_datatype<RS>(
-    reader: &mut OdsReader<'_, RS>,
+fn get_datatype<R: BufRead>(
+    reader: &mut XmlReader<R>,
     e: &BytesStart<'_>,
     buf: &mut Vec<u8>,
-) -> Result<(Data, String, bool), OdsError>
-where
-    RS: Read + Seek,
-{
+) -> Result<(Data, String, bool), OdsError> {
     let mut is_string = false;
     let mut is_value_set = false;
     let mut val = Data::Empty;
@@ -765,12 +772,9 @@ where
     }
 }
 
-fn read_named_expressions<RS>(
-    reader: &mut OdsReader<'_, RS>,
-) -> Result<Vec<(String, String)>, OdsError>
-where
-    RS: Read + Seek,
-{
+fn read_named_expressions<R: BufRead>(
+    reader: &mut XmlReader<R>,
+) -> Result<Vec<(String, String)>, OdsError> {
     let mut defined_names = Vec::new();
     let mut buf = Vec::with_capacity(512);
     loop {
@@ -844,4 +848,344 @@ fn read_pictures<RS: Read + Seek>(
     } else {
         Ok(Some(pics))
     }
+}
+
+// hedgehog: everything below is not part of calamine 0.37.0.
+
+/// `content.xml` parts smaller than this (uncompressed) are parsed on one thread.
+const PARALLEL_MIN_CONTENT: u64 = 2 << 20;
+
+/// hedgehog: [`parse_content`] with the rows of every table read on `threads` threads: the outer
+/// loop is calamine's, and a table's rows are cut into chunks at `</table:table-row>` and read
+/// with `read_row` in parallel, then joined in order (row repeats capped in order, as
+/// `read_table` does). `None` gives up (anything unusual: comments, CDATA or processing
+/// instructions in a table, a nested table, a declared encoding other than UTF-8, any error,
+/// which the one-thread parse then reports); the caller parses `content.xml` again on one
+/// thread.
+fn parallel_content<RS: Read + Seek>(zip: &mut ZipArchive<RS>, threads: usize) -> Option<Content> {
+    if threads < 2 {
+        return None;
+    }
+    let f = zip.by_name("content.xml").ok()?;
+    if f.size() < crate::xlsx::parallel::min_part(PARALLEL_MIN_CONTENT) {
+        return None;
+    }
+    let mut reader = XmlReader::from_reader(Rewind::new(f));
+    let config = reader.config_mut();
+    config.check_end_names = false;
+    config.trim_text(false);
+    config.check_comments = false;
+    config.expand_empty_elements = true;
+    let mut buf = Vec::with_capacity(1024);
+    let mut sheets = BTreeMap::new();
+    let mut defined_names = Vec::new();
+    let mut sheets_metadata = Vec::new();
+    let mut styles = HashMap::new();
+    let mut style_name: Option<String> = None;
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if e.name() == QName("style:style") => {
+                style_name = e.raw_attr("style:name").ok()?.map(decode_attr).transpose().ok()?;
+            }
+            Ok(Event::Start(e))
+                if style_name.is_some() && e.name() == QName("style:table-properties") =>
+            {
+                let visible = match e.raw_attr("table:display").ok()? {
+                    Some(v) => {
+                        if decode_attr(v).ok()?.parse().ok()? {
+                            SheetVisible::Visible
+                        } else {
+                            SheetVisible::Hidden
+                        }
+                    }
+                    None => SheetVisible::Visible,
+                };
+                styles.insert(style_name.clone(), visible);
+            }
+            Ok(Event::Start(e)) if e.name() == QName("table:table") => {
+                let visible = styles
+                    .get(
+                        &e.raw_attr("table:style-name")
+                            .ok()?
+                            .map(decode_attr)
+                            .transpose()
+                            .ok()?,
+                    )
+                    .cloned()
+                    .unwrap_or(SheetVisible::Visible);
+                if let Some(v) = e.raw_attr("table:name").ok()? {
+                    let name = decode_attr(v).ok()?;
+                    if reader.encoding() != encoding_rs::UTF_8 {
+                        return None;
+                    }
+                    let (range, formulas) = read_table_parallel(&mut reader, threads)?;
+                    sheets_metadata.push(Sheet {
+                        name: name.clone(),
+                        typ: SheetType::WorkSheet,
+                        visible,
+                    });
+                    sheets.insert(name, (range, formulas));
+                }
+            }
+            Ok(Event::Start(e)) if e.name() == QName("table:named-expressions") => {
+                defined_names = read_named_expressions(&mut reader).ok()?;
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => return None,
+            _ => (),
+        }
+        buf.clear();
+    }
+    Some(Content {
+        sheets,
+        sheets_metadata,
+        defined_names,
+    })
+}
+
+/// A buffered reader whose unread bytes can be taken out and put back (the table bodies are
+/// read past the XML reader, and what follows a table goes back to it).
+struct Rewind<R> {
+    inner: R,
+    buf: Vec<u8>,
+    pos: usize,
+}
+
+impl<R: Read> Rewind<R> {
+    fn new(inner: R) -> Self {
+        Rewind {
+            inner,
+            buf: Vec::new(),
+            pos: 0,
+        }
+    }
+
+    /// The buffered bytes not read yet.
+    fn take_buffered(&mut self) -> Vec<u8> {
+        let rest = self.buf[self.pos..].to_vec();
+        self.buf.clear();
+        self.pos = 0;
+        rest
+    }
+
+    /// Bytes to read before the rest of the input (the buffer is empty).
+    fn put_back(&mut self, bytes: Vec<u8>) {
+        self.buf = bytes;
+        self.pos = 0;
+    }
+}
+
+impl<R: Read> Read for Rewind<R> {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        let avail = self.fill_buf()?;
+        let n = avail.len().min(out.len());
+        out[..n].copy_from_slice(&avail[..n]);
+        self.consume(n);
+        Ok(n)
+    }
+}
+
+impl<R: Read> BufRead for Rewind<R> {
+    fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+        if self.pos == self.buf.len() {
+            self.buf.resize(64 << 10, 0);
+            self.pos = 0;
+            let n = loop {
+                match self.inner.read(&mut self.buf) {
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    r => break r,
+                }
+            };
+            match n {
+                Ok(n) => self.buf.truncate(n),
+                Err(e) => {
+                    self.buf.clear();
+                    return Err(e);
+                }
+            }
+        }
+        Ok(&self.buf[self.pos..])
+    }
+
+    fn consume(&mut self, n: usize) {
+        self.pos = (self.pos + n).min(self.buf.len());
+    }
+}
+
+/// One chunk of a table's rows: the cells and formulas of its rows back to back, and per row
+/// where its cells end and its declared repeat count.
+struct RowsChunk {
+    cells: Vec<Data>,
+    formulas: Vec<String>,
+    rows: Vec<(usize, usize)>,
+    /// The chunk ended right after a row.
+    after_row: bool,
+}
+
+/// Reads the rows of one chunk exactly as `read_table` reads them. No element is open: an end
+/// tag that closes an element opened before the chunk is an error, and the table is read on one
+/// thread (the one-thread read, deeper at that point, may accept it).
+fn read_rows_chunk(bytes: &[u8]) -> Result<RowsChunk, OdsError> {
+    // The space keeps the reader from taking the chunk's first bytes for a byte order mark.
+    let mut reader = XmlReader::from_reader(Read::chain(&b" "[..], bytes));
+    let config = reader.config_mut();
+    config.check_end_names = false;
+    config.trim_text(false);
+    config.check_comments = false;
+    config.expand_empty_elements = true;
+    let mut out = RowsChunk {
+        cells: Vec::new(),
+        formulas: Vec::new(),
+        rows: Vec::new(),
+        after_row: false,
+    };
+    let mut buf = Vec::with_capacity(1024);
+    let mut row_buf = Vec::with_capacity(1024);
+    let mut cell_buf = Vec::with_capacity(1024);
+    loop {
+        let mut after_row = false;
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if e.name() == QName("table:table-row") => {
+                let row_repeats = match e.raw_attr("table:number-rows-repeated")? {
+                    Some(v) => decode_attr(v)?.parse()?,
+                    None => 1,
+                };
+                read_row(
+                    &mut reader,
+                    &mut row_buf,
+                    &mut cell_buf,
+                    &mut out.cells,
+                    &mut out.formulas,
+                )?;
+                out.rows.push((out.cells.len(), row_repeats));
+                after_row = true;
+            }
+            // The table's end tag is not in any chunk.
+            Ok(Event::End(e)) if e.name() == QName("table:table") => {
+                return Err(OdsError::Mismatch {
+                    expected: "table-row",
+                    found: "table end".into(),
+                })
+            }
+            Ok(Event::Eof) => return Ok(out),
+            Err(e) => return Err(OdsError::Xml(e)),
+            Ok(_) => (),
+        }
+        out.after_row = after_row;
+        buf.clear();
+    }
+}
+
+/// `read_table` for the table whose start tag `reader` has just read, on `threads` threads.
+/// The bytes after the table's end tag (the tag included) go back to `reader`.
+fn read_table_parallel<R: Read>(
+    reader: &mut XmlReader<Rewind<R>>,
+    threads: usize,
+) -> Option<(Range<Data>, Range<String>)> {
+    use crate::xlsx::parallel::{run_chunks, Flow};
+    use memchr::memmem;
+
+    let src = reader.get_mut();
+    let mut pending = src.take_buffered();
+    let mut scanned = 0usize; // bytes of `pending` checked for markup that could hide a boundary
+    let mut leftover: Option<Vec<u8>> = None;
+    let mut eof = false;
+    let mut failed = false;
+    let end_finder = memmem::Finder::new(b"</table:table>");
+    let row_end = memmem::FinderRev::new(b"</table:table-row>");
+    // Bytes of table XML per chunk (512 kB).
+    let chunk = crate::xlsx::parallel::chunk_bytes();
+    let mut next_chunk = || -> Result<Option<(Vec<u8>, bool)>, ()> {
+        if leftover.is_some() {
+            return Ok(None);
+        }
+        let mut target = chunk;
+        loop {
+            while pending.len() < target && !eof {
+                let old = pending.len();
+                pending.resize(old + chunk, 0);
+                let mut n = 0;
+                while old + n < pending.len() {
+                    match src.inner.read(&mut pending[old + n..]) {
+                        Ok(0) => break,
+                        Ok(k) => n += k,
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                        Err(_) => {
+                            failed = true;
+                            return Err(());
+                        }
+                    }
+                }
+                pending.truncate(old + n);
+                eof = n < chunk;
+            }
+            // Markup in the table that could hide a boundary or start a nested table: give up.
+            let end = end_finder.find(&pending);
+            let from = scanned.saturating_sub(16);
+            let fresh = &pending[from.min(end.unwrap_or(usize::MAX))..end.unwrap_or(pending.len())];
+            if memmem::find(fresh, b"<!").is_some() || memmem::find(fresh, b"<?").is_some() {
+                return Err(());
+            }
+            for i in memmem::find_iter(fresh, b"<table:table") {
+                match fresh.get(i + b"<table:table".len()) {
+                    Some(b) if b.is_ascii_whitespace() || *b == b'>' || *b == b'/' => return Err(()),
+                    None if !eof => {} // decided once more bytes are there
+                    _ => {}
+                }
+            }
+            scanned = pending.len();
+            if let Some(end) = end {
+                leftover = Some(pending.split_off(end));
+                return Ok(Some((std::mem::take(&mut pending), true)));
+            }
+            if eof {
+                return Err(()); // the part ends inside the table
+            }
+            match row_end.rfind(&pending) {
+                Some(i) => {
+                    let cut = i + b"</table:table-row>".len();
+                    let bytes = pending[..cut].to_vec();
+                    pending.drain(..cut);
+                    scanned = scanned.saturating_sub(cut);
+                    return Ok(Some((bytes, false)));
+                }
+                None => target = pending.len() + chunk,
+            }
+        }
+    };
+    let work = |_: usize, bytes: Vec<u8>, _: bool| read_rows_chunk(&bytes);
+    let mut cells = Vec::new();
+    let mut formulas = Vec::new();
+    let mut rows_repeats = Vec::new();
+    let mut cols = vec![0];
+    let mut total_rows = 0usize;
+    let mut merge = |r: Result<RowsChunk, OdsError>, last: bool| {
+        let Ok(c) = r else {
+            return Ok::<_, ()>(Flow::GiveUp);
+        };
+        if !last && !c.after_row {
+            return Ok(Flow::GiveUp);
+        }
+        let base = cells.len();
+        for (end, row_repeats) in c.rows {
+            let remaining_rows = (MAX_ROWS as usize).saturating_sub(total_rows);
+            let capped_repeats = row_repeats.min(remaining_rows);
+            total_rows = total_rows.saturating_add(capped_repeats);
+            cols.push(base + end);
+            rows_repeats.push(capped_repeats);
+        }
+        cells.extend(c.cells);
+        formulas.extend(c.formulas);
+        Ok(if last { Flow::Done } else { Flow::Continue })
+    };
+    let done = run_chunks(&mut next_chunk, threads, &work, &mut merge) == Ok(true) && !failed;
+    crate::xlsx::parallel::count_part(done);
+    if !done {
+        return None;
+    }
+    src.put_back(leftover?);
+    Some((
+        get_range(cells, &cols, &rows_repeats).ok()?,
+        get_range(formulas, &cols, &rows_repeats).ok()?,
+    ))
 }
