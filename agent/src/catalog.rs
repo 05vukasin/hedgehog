@@ -966,10 +966,41 @@ fn len_of(lines: &[String]) -> usize {
 /// The `open_file` catalog: one header line, the time coverage, the tables (full or one line each)
 /// with columns, label values, group column and totals check, small tables' rows, notes and
 /// warnings; at most `budget` characters, cut with an explicit `… cut:` line.
+/// Time per catalog step on this thread, for `HEDGEHOG_TRACE` (`cat.*` lines).
+const STEPS: [&str; 9] =
+    ["cat.time", "cat.row_info", "cat.types", "cat.entities", "cat.id_pairs", "cat.share", "cat.values", "cat.numbers", "cat.quality"];
+
+thread_local! {
+    static STEP_TIME: std::cell::RefCell<[std::time::Duration; STEPS.len()]> = const { std::cell::RefCell::new([std::time::Duration::ZERO; STEPS.len()]) };
+}
+
+fn tm<R>(k: usize, f: impl FnOnce() -> R) -> R {
+    let t = std::time::Instant::now();
+    let r = f();
+    STEP_TIME.with(|s| s.borrow_mut()[k] += t.elapsed());
+    r
+}
+
+/// Prints and resets the step times of this thread.
+fn trace_steps(total: std::time::Duration) {
+    let steps = STEP_TIME.with(|s| std::mem::take(&mut *s.borrow_mut()));
+    for (name, d) in STEPS.iter().zip(steps) {
+        crate::cache::trace_ms(name, d);
+    }
+    crate::cache::trace_ms("cat.total", total);
+}
+
 pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
+    let t = std::time::Instant::now();
+    let text = catalog_inner(norm, display_name, budget);
+    trace_steps(t.elapsed());
+    text
+}
+
+fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize) -> String {
     let budget = budget.min(MAX_CHARS);
     let file_name = display_name.rsplit(['/', '\\']).next().unwrap_or(display_name);
-    let (mut covs, mut wb_cov) = time_coverages(norm);
+    let (mut covs, mut wb_cov) = tm(0, || time_coverages(norm));
     crate::views::fix_stamp_coverage(norm, &mut covs, &mut wb_cov); // B89
     let with_cov: Vec<(String, TimeCoverage)> =
         norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
@@ -998,7 +1029,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         head.push(s);
     }
 
-    let infos: Vec<RowInfo> = norm.tables.iter().map(|t| row_info(norm, t)).collect();
+    let infos: Vec<RowInfo> = tm(1, || norm.tables.iter().map(|t| row_info(norm, t)).collect());
     let full = || -> Vec<Block> {
         let mut out = Vec::new();
         let mut layouts: HashMap<Vec<(String, &'static str)>, String> = HashMap::new();
@@ -1047,27 +1078,31 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             layouts.insert(cols.clone(), t.id());
             shapes.insert(shape, (t.id(), cols.iter().map(|c| c.0.clone()).collect()));
             let data = data_rows(t);
-            let mixed = mixed_measures_by(t, &data);
-            let tys = types::classify(t, &names, mixed, &types::summed_cols(norm, t)); // B21
+            let (mixed, tys) = tm(2, || {
+                let mixed = mixed_measures_by(t, &data);
+                (mixed, types::classify(t, &names, mixed, &types::summed_cols(norm, t))) // B21
+            });
             let mut lines = vec![line, columns_line(t, &names, inline.is_none(), &tys)];
             lines.extend(facts::scale_line(t)); // B85: "(All values in 000s)"
             lines.extend(facts::column_notes_line(norm, t, &names)); // B83: footnotes defining columns
             // B2/B18: "<id> - <name>" columns and how to group them, right under the columns.
-            let ents = crate::entity::detect(t);
+            let ents = tm(3, || crate::entity::detect(t));
             lines.extend(ents.iter().map(|e| crate::entity::line(e, &t.id())));
             // B80: an ID column with its names in another column.
-            let pairs = crate::entity::id_name_pairs(t, &data);
+            let pairs = tm(4, || crate::entity::id_name_pairs(t, &data));
             lines.extend(pairs.iter().map(|p| crate::entity::id_name_line(p, &t.id())));
             // B19: a share of the total, with the entity (or label) column to rank by.
             let key = ents.first().map(crate::entity::group_key).or_else(|| pairs.first().map(|p| crate::text::quote_ident(&p.id)));
-            lines.extend(facts::share_line(t, &names, &data, key, &tys));
+            lines.extend(tm(5, || facts::share_line(t, &names, &data, key, &tys)));
             // The values to filter on; a small inlined table shows them in its rows.
             if inline.is_none() {
-                for (i, c) in data_cols(t) {
-                    if let Some(vals) = label_values(c, &data) {
-                        lines.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
+                tm(6, || {
+                    for (i, c) in data_cols(t) {
+                        if let Some(vals) = label_values(c, &data) {
+                            lines.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
+                        }
                     }
-                }
+                });
             }
             if let Some(i) = mixed {
                 lines.push(format!("    rows mix measures by {} — filter before aggregating", ident(&names[i])));
@@ -1095,8 +1130,8 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             let mut b = Block::new(lines, t, &names, info, inline);
             if !small && mixed.is_none() {
                 let ranges_shown = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).count() <= DETAIL_COLS;
-                let mut f = facts::numbers_lines(t, &names, &data, ranges_shown);
-                f.extend(facts::quality_line(t, &names, &data, b.has_signs()));
+                let mut f = tm(7, || facts::numbers_lines(t, &names, &data, ranges_shown));
+                f.extend(tm(8, || facts::quality_line(t, &names, &data, b.has_signs())));
                 b.add_facts(f);
             }
             out.push(b);

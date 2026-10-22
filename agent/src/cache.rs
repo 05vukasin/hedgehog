@@ -191,6 +191,19 @@ impl Cache {
         name: &str,
         catalog: Option<&str>,
     ) -> Result<(Entry, crate::sql::Plan), String> {
+        self.put_with(key, norm, seconds, name, || catalog.map(str::to_string))
+    }
+
+    /// [`Cache::put`] with the catalog asked for only after the database and the normalized form
+    /// are written, so the catalog can be written on another thread meanwhile.
+    pub fn put_with(
+        &self,
+        key: &str,
+        norm: &Normalized,
+        seconds: f64,
+        name: &str,
+        catalog: impl FnOnce() -> Option<String>,
+    ) -> Result<(Entry, crate::sql::Plan), String> {
         let t0 = Instant::now();
         let root = self.ensure_root().map_err(|e| format!("cache folder {}: {e}", self.root().display()))?;
         let tmp = root.join(format!(".tmp-{key}-{}-{}", std::process::id(), nanos(SystemTime::now()).unwrap_or(0)));
@@ -204,8 +217,8 @@ impl Cache {
             write_norm(norm, &nb).map_err(|e| format!("cache norm.bin: {e}"))?;
             trace("cache: norm.bin", t0);
             let mut catalogs = serde_json::Map::new();
-            if let Some(c) = catalog {
-                catalogs.insert(name.to_string(), Value::String(c.to_string()));
+            if let Some(c) = catalog() {
+                catalogs.insert(name.to_string(), Value::String(c));
             }
             let meta = json!({
                 "format": FORMAT,
@@ -348,9 +361,20 @@ fn write_atomic(dir: &Path, p: &Path, bytes: &[u8]) -> io::Result<()> {
 
 /// Development aid: with `HEDGEHOG_TRACE=1`, elapsed time per stage to stderr.
 pub(crate) fn trace(stage: &str, since: Instant) {
+    if tracing() {
+        trace_ms(stage, since.elapsed());
+    }
+}
+
+fn tracing() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    if *ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0")) {
-        eprintln!("[trace] {stage:<24} {:>9.1} ms", since.elapsed().as_secs_f64() * 1000.0);
+    *ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0"))
+}
+
+/// [`trace`] with a measured duration (sub-steps such as `sql.rows`, `cat.facts`).
+pub(crate) fn trace_ms(stage: &str, took: std::time::Duration) {
+    if tracing() {
+        eprintln!("[trace] {stage:<24} {:>9.1} ms", took.as_secs_f64() * 1000.0);
     }
 }
 

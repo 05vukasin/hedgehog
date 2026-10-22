@@ -22,7 +22,7 @@ use hh_core::normalize::{iso, ColRole, Dtype, Normalized, Out, Table};
 use rusqlite::config::DbConfig;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use rusqlite::limits::Limit;
-use rusqlite::types::{Value, ValueRef};
+use rusqlite::types::{Null, Value, ValueRef};
 use rusqlite::{Connection, OpenFlags};
 
 use crate::catalog::sql_names;
@@ -101,6 +101,16 @@ fn sql_value(v: &Out, d: Dtype) -> Value {
         Out::Date(x) => Value::Text(iso(*x)),
         Out::Bool(b) => Value::Integer(i64::from(*b)),
         Out::Text(s) => Value::Text(s.clone()),
+    }
+}
+
+/// Binds `v` as [`sql_value`] converts it, without building a [`Value`] for text.
+fn bind_value(ins: &mut rusqlite::Statement<'_>, at: usize, v: &Out, d: Dtype) -> rusqlite::Result<()> {
+    match v {
+        Out::Text(s) => ins.raw_bind_parameter(at, s.as_str()),
+        Out::Null => ins.raw_bind_parameter(at, Null),
+        Out::Bool(b) => ins.raw_bind_parameter(at, i64::from(*b)),
+        _ => ins.raw_bind_parameter(at, sql_value(v, d)),
     }
 }
 
@@ -240,9 +250,12 @@ fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
     let mut skipped_columns = Vec::new();
     let mut entities = Vec::new();
     let tx = conn.unchecked_transaction()?;
+    let (mut plan_time, mut rows_time) = (Duration::ZERO, Duration::ZERO);
     for t in &norm.tables {
+        let t_plan = Instant::now();
         let names = sql_names(t);
         let (keep, skipped, ents) = table_plan(t);
+        plan_time += t_plan.elapsed();
         if skipped > 0 {
             skipped_columns.push((t.id(), skipped));
         }
@@ -271,34 +284,39 @@ fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
             .collect();
         let base = if has_type { all.clone() } else { id.clone() };
         tx.execute_batch(&format!("CREATE TABLE {} ({})", quote_ident(&base), defs.join(", ")))?;
+        let t_rows = Instant::now();
         {
             let marks = vec!["?"; slots.len()].join(",");
             let mut ins = tx.prepare(&format!("INSERT INTO {} VALUES ({marks})", quote_ident(&base)))?;
-            let mut row: Vec<Value> = Vec::with_capacity(slots.len());
             let mut parts: Vec<(Option<String>, Option<String>)> = vec![(None, None); ents.len()];
             // B18: one name per ID in `<col>_name`, so grouping by the name does not split an entity.
             let canon: Vec<_> = ents.iter().map(|e| entity::canonical_names(&t.columns[e.col])).collect();
+            // Values are bound in place (text borrowed, not copied into a row of `Value`s first).
             for r in 0..t.rows() {
-                row.clear();
                 for (k, e) in ents.iter().enumerate() {
                     parts[k] = match t.columns[e.col].values.get(r) {
                         Some(Out::Text(s)) => entity::derived_canonical(s, &canon[k]),
                         _ => (None, None),
                     };
                 }
-                for s in &slots {
-                    row.push(match *s {
+                for (j, s) in slots.iter().enumerate() {
+                    let at = j + 1;
+                    match *s {
                         Slot::Col(i) => {
                             let c = &t.columns[i];
-                            c.values.get(r).map_or(Value::Null, |v| sql_value(v, c.dtype))
+                            match c.values.get(r) {
+                                Some(v) => bind_value(&mut ins, at, v, c.dtype)?,
+                                None => ins.raw_bind_parameter(at, Null)?,
+                            }
                         }
-                        Slot::Id(k) => parts[k].0.take().map_or(Value::Null, Value::Text),
-                        Slot::Name(k) => parts[k].1.take().map_or(Value::Null, Value::Text),
-                    });
+                        Slot::Id(k) => ins.raw_bind_parameter(at, parts[k].0.as_deref())?,
+                        Slot::Name(k) => ins.raw_bind_parameter(at, parts[k].1.as_deref())?,
+                    }
                 }
-                ins.execute(rusqlite::params_from_iter(row.iter()))?;
+                ins.raw_execute()?;
             }
         }
+        rows_time += t_rows.elapsed();
         if has_type {
             let cols: Vec<String> = slots
                 .iter()
@@ -322,9 +340,17 @@ fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
             entities.push((t.n, ents));
         }
     }
+    crate::cache::trace_ms("sql.plan", plan_time);
+    crate::cache::trace_ms("sql.rows", rows_time);
+    let t = Instant::now();
     crate::views::create_all(&tx, norm)?; // B20: T<n>_long views (views.rs)
+    crate::cache::trace("sql.long_views", t);
+    let t = Instant::now();
     crate::unions::create_all(&tx, norm)?; // B79: U<k> union views of same-layout tables (unions.rs)
+    crate::cache::trace("sql.unions", t);
+    let t = Instant::now();
     tx.commit()?;
+    crate::cache::trace("sql.commit", t);
     Ok((skipped_columns, entities))
 }
 

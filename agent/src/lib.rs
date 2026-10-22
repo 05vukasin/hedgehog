@@ -392,6 +392,7 @@ impl Session {
             let max_seconds = self.opts.max_seconds.as_secs();
             Pending::spawn(move || {
                 let wb = hh_core::reader::open_with(&path, read).map_err(|e| format!("{display}: cannot read: {}", limit_hint(&e)))?;
+                cache::trace("read", t0);
                 let opts = hh_core::NormalizeOptions { deadline: read.limits.deadline, ..normalize_options() };
                 let norm = hh_core::try_normalize_workbook(&wb, &opts)
                     .map_err(|e| format!("{display}: {e} ({max_seconds} s; the server's --max-seconds)"))?;
@@ -421,16 +422,16 @@ impl Session {
         let cells: usize = wb.sheets.iter().map(|s| s.cells.len()).sum();
         self.book = (cells <= KEEP_BOOK_CELLS).then(|| (path.clone(), meta.len(), mtime, wb));
         let norm = Arc::new(norm);
-        // The catalog first; the SQL database is built on another thread meanwhile.
         let name = self.bounds.display(&path);
-        let text = catalog_text(&norm, &name, &sql::skipped_columns(&norm));
-        cache::trace("catalog", t0);
+        // The SQL database is built on another thread while the catalog is written here (B120);
+        // the disk cache entry takes the catalog once it is there.
+        let (catalog_tx, catalog_rx) = mpsc::channel::<String>();
         let db = {
-            let (norm, text, name, shown) = (norm.clone(), text.clone(), name.clone(), self.bounds.display(&path));
+            let (norm, name, shown) = (norm.clone(), name.clone(), self.bounds.display(&path));
             Pending::spawn(move || {
                 let t = Instant::now();
                 if let Some(c) = cache {
-                    match c.put(&key, &norm, seconds, &name, Some(&text)) {
+                    match c.put_with(&key, &norm, seconds, &name, || catalog_rx.recv().ok()) {
                         Ok((entry, (skipped, entities))) => match sql::Db::open_file(&entry.db_path()) {
                             Ok(mut db) => {
                                 db.skipped_columns = skipped;
@@ -448,6 +449,9 @@ impl Session {
                 Ok((db, None))
             })
         };
+        let text = catalog_text(&norm, &name, &sql::skipped_columns(&norm));
+        cache::trace("catalog", t0);
+        let _ = catalog_tx.send(text.clone());
         let mut catalogs = HashMap::new();
         catalogs.insert(name, text);
         self.insert(sha.clone(), Opened {
