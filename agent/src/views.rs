@@ -322,11 +322,9 @@ pub fn fix_stamp_coverage(
                 tables: vec![t.id()],
             });
             changed = true;
-        } else if stamped {
-            // A publication stamp is no period of the data.
-            *cov = None;
-            changed = true;
         }
+        // Without period codes the stamp stays: a header can name a column of real dates wrongly
+        // ("Date of publication:" over the months of an ONS table).
     }
     if !changed {
         return;

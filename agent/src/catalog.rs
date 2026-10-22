@@ -1176,7 +1176,9 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         let fixed: usize = out.iter().chain(rows.iter().map(|r| &r.0)).map(|l| l.len() + 1).sum::<usize>()
             + rows.iter().map(|r| r.3.len() + 20).sum::<usize>();
         let needing = rows.iter().filter(|r| r.1.is_some()).count().max(1);
-        let share = (avail.saturating_sub(fixed) / needing).max(120);
+        // When the lines alone overflow (many tables, cut anyway), one name each, so the cut
+        // comes as late as before.
+        let share = (avail.saturating_sub(fixed) / needing).max(if fixed > avail { 0 } else { 120 });
         for (mut line, items, n, view) in rows {
             if let Some(items) = items {
                 let mut used = 0;
