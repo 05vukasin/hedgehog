@@ -45,9 +45,9 @@
       },
       {
         "id": "top10-share",
-        "desc": "gives the top-10 suppliers' share of total value (≈ 9–13 %)",
+        "desc": "gives the top-10 suppliers' share of total value: ≈ 3.6–3.9 % for the top 10 by number of contracts (the question's reading) or ≈ 9–13 % for the top 10 by value",
         "pct_range": [
-          8,
+          3.5,
           14
         ],
         "ref_sql": "SELECT 100.0 * SUM(v) / (SELECT SUM(precoContratual) FROM T1) FROM (SELECT SUM(precoContratual) v FROM T1 GROUP BY COALESCE(adjudicatarios_id, adjudicatarios_name) ORDER BY v DESC LIMIT 10)"
@@ -96,7 +96,7 @@
       },
       {
         "id": "covid",
-        "desc": "no overall jump in March (fall in April–May); COVID purchases rose",
+        "desc": "says there was no overall jump in March (counts fell in April–May); noting that COVID-related purchases rose is a plus, not required (the question does not ask for it)",
         "judge": true
       }
     ],
@@ -1016,9 +1016,6 @@
         "desc": "7,129 hourly",
         "num": 7129,
         "tol": 0,
-        "near": [
-          "hourly"
-        ],
         "ref_sql": "SELECT COUNT(*) FROM T1 WHERE salary_or_hourly = 'HOURLY'"
       },
       {
@@ -1026,9 +1023,6 @@
         "desc": "24,893 salaried",
         "num": 24893,
         "tol": 0,
-        "near": [
-          "salar"
-        ],
         "ref_sql": "SELECT COUNT(*) FROM T1 WHERE salary_or_hourly = 'SALARY'"
       },
       {
@@ -1273,7 +1267,8 @@
         "num": 8.6,
         "tol": 0.001,
         "near": [
-          "2022"
+          "2022",
+          "inflation rate"
         ],
         "ref_sql": "SELECT \"% zu Vorjahr\" FROM T1_all WHERE \"Jahr / Monat\" = 'Ø 22'"
       },
@@ -1309,11 +1304,9 @@
       },
       {
         "id": "rise",
-        "desc": "+28.2 % (100 → 128.2)",
-        "pct_range": [
-          28.1,
-          28.3
-        ],
+        "desc": "+28.2 points = +28.2 % (100 → 128.2; base 2020 = 100, so points and percent coincide)",
+        "num": 28.2,
+        "tol": 0.002,
         "ref_sql": "SELECT \"VPI 2020\" - 100 FROM T1_all WHERE \"Jahr / Monat\" = 'Ø 25'"
       },
       {
@@ -1771,7 +1764,9 @@
         "near": [
           "first",
           "првог",
-          "prvog"
+          "prvog",
+          "register",
+          "регистр"
         ],
         "ref_sql": "SELECT COUNT(*) FROM T1 WHERE \"Лиценца\" = 'Лиценца првог реда'"
       },
@@ -1783,7 +1778,9 @@
         "near": [
           "second",
           "другог",
-          "drugog"
+          "drugog",
+          "register",
+          "регистр"
         ],
         "ref_sql": "SELECT COUNT(*) FROM T1 WHERE \"Лиценца\" = 'Лиценца другог реда'"
       },
@@ -1847,11 +1844,6 @@
         "desc": "49 negative lines",
         "num": 49,
         "tol": 0,
-        "near": [
-          "negative",
-          "credit",
-          "refund"
-        ],
         "ref_sql": "SELECT COUNT(*) FROM T1_all WHERE Amount < 0"
       },
       {
