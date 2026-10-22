@@ -355,6 +355,14 @@ impl Db {
     }
 }
 
+impl Db {
+    /// The column names `sql` would return (prepared, not run); None when it does not prepare.
+    pub fn columns(&self, sql: &str) -> Option<Vec<String>> {
+        let stmt = self.conn.prepare(sql).ok()?;
+        stmt.readonly().then(|| stmt.column_names().iter().map(|s| s.to_string()).collect())
+    }
+}
+
 fn is_interrupt(e: &rusqlite::Error) -> bool {
     matches!(e, rusqlite::Error::SqliteFailure(f, _) if f.code == rusqlite::ErrorCode::OperationInterrupted)
 }

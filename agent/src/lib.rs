@@ -22,7 +22,9 @@ pub mod dialect;
 pub mod entity;
 pub mod facts;
 pub mod files;
+pub mod notes;
 pub mod sql;
+pub mod sqlscan;
 pub mod text;
 pub mod tools;
 pub mod types;
@@ -587,7 +589,9 @@ impl Session {
             lines.push(line);
             shown += 1;
         }
-        if res.total == 0 {
+        // B75/B88: why a result is empty, values only in T<n>_all, NULL from a + b (notes.rs).
+        let notes = notes::result_notes(db, sql, &res, timeout);
+        if res.total == 0 && notes.is_empty() {
             for t in &used {
                 let info = catalog::row_info(norm, t);
                 if !info.total_rows.is_empty() && !sql_mentions(sql, &format!("{}_all", t.id())) {
@@ -601,6 +605,7 @@ impl Session {
                 }
             }
         }
+        lines.extend(notes);
         if let Some(hint) = cite_hint(db, &used, &res.header) {
             lines.push(hint);
         }
@@ -738,6 +743,18 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
     if let Some(rest) = low.find("no such column:").map(|i| &err[i + "no such column:".len()..]) {
         let wanted = missing_column(rest);
         let wanted = wanted.as_str();
+        // B88: `_row_type` is only in the _all views.
+        if wanted.eq_ignore_ascii_case("_row_type") {
+            let id = used
+                .iter()
+                .find(|t| !sql_mentions(sql, &format!("{}_all", t.id())))
+                .or(used.first())
+                .map_or_else(|| "T1".to_string(), |t| t.id());
+            msg.push_str(&format!(
+                " — {id} has the data rows only and no _row_type; the total and subtotal rows and _row_type are in {id}_all: SELECT … FROM {id}_all WHERE _row_type = 'total'"
+            ));
+            return msg;
+        }
         let scope: Vec<&Table> = if used.is_empty() { norm.tables.iter().collect() } else { used.to_vec() };
         let mut names: Vec<(String, String)> = Vec::new();
         for t in &scope {
@@ -758,7 +775,9 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
             .take(6)
             .map(|(t, n)| format!("{t}.{}", quote_ident(n)))
             .collect();
-        if let Some((h, rows_sql)) = row_label_hint(norm, &scope, wanted) {
+        if let Some(h) = derived_hint(db, sql, wanted, &names) {
+            msg.push_str(&h); // B88
+        } else if let Some((h, rows_sql)) = row_label_hint(norm, &scope, wanted) {
             msg.push_str(&format!(" — {h}"));
             if !hits.is_empty() {
                 msg.push_str(&format!(" (columns with similar names: {})", hits.join(", ")));
@@ -808,6 +827,50 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
         msg.push_str(&format!(" — {d}"));
     }
     msg
+}
+
+/// B88: a column the outer query takes from a subquery or CTE that does not select it (an outer
+/// `SUM("price")` over `(SELECT buyer, SUM("price") AS total …)`): the columns it does have.
+fn derived_hint(db: &sql::Db, sql: &str, wanted: &str, base: &[(String, String)]) -> Option<String> {
+    let toks = sqlscan::tokens(sql);
+    let ds = sqlscan::derived(sql, &toks);
+    if ds.is_empty() {
+        return None;
+    }
+    let cols: Vec<(String, Vec<String>)> = ds
+        .iter()
+        .filter_map(|d| {
+            let c = db.columns(&d.columns_sql)?;
+            let name = d.name.as_ref().map_or_else(|| "the subquery".to_string(), |n| format!("{} ({})", ident(n), if d.cte { "CTE" } else { "subquery" }));
+            Some((name, c))
+        })
+        .collect();
+    if cols.is_empty() || cols.iter().any(|(_, c)| c.iter().any(|x| x.eq_ignore_ascii_case(wanted))) {
+        return None;
+    }
+    let listed: Vec<String> = cols
+        .iter()
+        .map(|(n, c)| format!("{n}: {}", short(&c.iter().map(|x| ident(x)).collect::<Vec<_>>().join(", "), 300)))
+        .collect();
+    let near = closest(wanted, base.iter().map(|(_, n)| n.as_str()), 1);
+    let exact = base.iter().find(|(_, n)| n.eq_ignore_ascii_case(wanted));
+    if let Some((t, n)) = exact.or_else(|| base.iter().find(|(_, n)| near.first() == Some(&n.as_str()))) {
+        let what = if exact.is_some() { format!("{} is a column of {t}", ident(n)) } else { format!("the closest column is {t}.{}", quote_ident(n)) };
+        return Some(format!(
+            " — {what}, but this part of the query reads from a subquery or CTE that does not select it ({}); select {} inside it, with an alias, and use that name outside",
+            listed.join("; "),
+            ident(n)
+        ));
+    }
+    let all: Vec<&str> = cols.iter().flat_map(|(_, c)| c.iter().map(String::as_str)).collect();
+    let close = closest(wanted, all, 3);
+    (!close.is_empty()).then(|| {
+        format!(
+            " — did you mean {}? (columns of the subquery or CTE: {})",
+            close.iter().map(|c| ident(c)).collect::<Vec<_>>().join(", "),
+            listed.join("; ")
+        )
+    })
 }
 
 /// Words that name a total row ("Total", "Gesamt", …), compared without case.
