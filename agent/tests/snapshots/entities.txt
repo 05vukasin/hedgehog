@@ -1,0 +1,110 @@
+# snapshot: entities
+
+## open_file contracts.csv
+FILE contracts.csv · 1 sheet · 124 cells (100% in tables) · 1 table · roles: model
+TIME 2020-01-15–2020-12-15 (day, from columns T1.signed)
+T1  ← contracts!A1:D31 · 30 rows
+    columns (4): buyer[text · dim] supplier[text · dim] price[integer · amount 1000..1290] signed[date · period 2020-01-15..2020-12-15, 12 distinct]
+    buyer = "<id> - <name>" (e.g. "503933813 - IP - Infraestruturas de Portugal, S.A."): 3 IDs, 1 with several spellings (e.g. 503933813: 3 names) — group by buyer_id, not by the text: SELECT "buyer_id", "buyer_name", count(*) FROM T1 GROUP BY "buyer_id"; buyer_name holds one name per ID (its most frequent spelling)
+    share of the total (e.g. top 10 by "buyer_id"): SELECT 100.0 * SUM(v) / (SELECT SUM("price") FROM T1) AS pct FROM (SELECT SUM("price") AS v FROM T1 GROUP BY "buyer_id" ORDER BY v DESC LIMIT 10)
+    all 30 rows (CSV):
+    buyer,supplier,price,signed
+    "503933813 - IP - Infraestruturas de Portugal, S.A.",Supplier 0,1000,2020-01-15
+    "503933813 - Infraestruturas de Portugal, S. A.",Supplier 1,1010,2020-02-15
+    503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 2,1020,2020-03-15
+    "503278602 - Metro do Porto, S. A.",Supplier 3,1030,2020-04-15
+    600012662 - Ministério da Defesa Nacional - Marinha,Supplier 0,1040,2020-05-15
+    "503933813 - IP - Infraestruturas de Portugal, S.A.",Supplier 1,1050,2020-06-15
+    "503933813 - Infraestruturas de Portugal, S. A.",Supplier 2,1060,2020-07-15
+    503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 3,1070,2020-08-15
+    "503278602 - Metro do Porto, S. A.",Supplier 0,1080,2020-09-15
+    600012662 - Ministério da Defesa Nacional - Marinha,Supplier 1,1090,2020-10-15
+    "503933813 - IP - Infraestruturas de Portugal, S.A.",Supplier 2,1100,2020-11-15
+    "503933813 - Infraestruturas de Portugal, S. A.",Supplier 3,1110,2020-12-15
+    503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 0,1120,2020-01-15
+    "503278602 - Metro do Porto, S. A.",Supplier 1,1130,2020-02-15
+    600012662 - Ministério da Defesa Nacional - Marinha,Supplier 2,1140,2020-03-15
+    "503933813 - IP - Infraestruturas de Portugal, S.A.",Supplier 3,1150,2020-04-15
+    "503933813 - Infraestruturas de Portugal, S. A.",Supplier 0,1160,2020-05-15
+    503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 1,1170,2020-06-15
+    "503278602 - Metro do Porto, S. A.",Supplier 2,1180,2020-07-15
+    600012662 - Ministério da Defesa Nacional - Marinha,Supplier 3,1190,2020-08-15
+    "503933813 - IP - Infraestruturas de Portugal, S.A.",Supplier 0,1200,2020-09-15
+    "503933813 - Infraestruturas de Portugal, S. A.",Supplier 1,1210,2020-10-15
+    503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 2,1220,2020-11-15
+    "503278602 - Metro do Porto, S. A.",Supplier 3,1230,2020-12-15
+    600012662 - Ministério da Defesa Nacional - Marinha,Supplier 0,1240,2020-01-15
+    "503933813 - IP - Infraestruturas de Portugal, S.A.",Supplier 1,1250,2020-02-15
+    "503933813 - Infraestruturas de Portugal, S. A.",Supplier 2,1260,2020-03-15
+    503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 3,1270,2020-04-15
+    "503278602 - Metro do Porto, S. A.",Supplier 0,1280,2020-05-15
+    600012662 - Ministério da Defesa Nacional - Marinha,Supplier 1,1290,2020-06-15
+NOTES none
+WARNINGS none
+SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## query contracts.csv: SELECT buyer_id, count(DISTINCT buyer_name) AS names, count(*) AS n FROM T1 GROUP BY buyer_id ORDER BY n DESC, buyer_id
+buyer_id,names,n
+503933813,1,18
+503278602,1,6
+600012662,1,6
+(3 rows)
+
+## query contracts.csv: SELECT buyer, count(*) AS n FROM T1 GROUP BY buyer ORDER BY buyer
+buyer,n
+"503278602 - Metro do Porto, S. A.",6
+503933813 - INFRAESTRUTURAS DE PORTUGAL SA,6
+"503933813 - IP - Infraestruturas de Portugal, S.A.",6
+"503933813 - Infraestruturas de Portugal, S. A.",6
+600012662 - Ministério da Defesa Nacional - Marinha,6
+note: rows 2 and 3 are one buyer (ID 503933813) under different spellings — group by buyer_id instead, e.g. SELECT "buyer_id", "buyer_name", count(*) FROM T1 GROUP BY "buyer_id"
+(5 rows)
+
+## open_file customers.csv
+FILE customers.csv · 1 sheet · 78 cells (100% in tables) · 1 table · roles: model
+TIME no dates or periods found
+T1  ← customers!A1:C26 · 25 rows
+    columns (4): customer_id[text · id] customer_name[text · dim] customer_name_key[text · dim] amount[integer · amount 50..218]
+    warnings: 1 (e.g. "customer_name" has spellings of the same value ('Acme GmbH' / 'Acme Gmbh.'): "customer_n…)
+    all 25 rows (CSV):
+    customer_id,customer_name,customer_name_key,amount
+    DE100,Acme GmbH,Acme GmbH,50
+    DE100,Acme Gmbh.,Acme GmbH,57
+    DE200,Beta AG,Beta AG,64
+    DE300,Gamma KG,Gamma KG,71
+    DE400,Delta SE,Delta SE,78
+    DE100,Acme GmbH,Acme GmbH,85
+    DE100,Acme Gmbh.,Acme GmbH,92
+    DE200,Beta AG,Beta AG,99
+    DE300,Gamma KG,Gamma KG,106
+    DE400,Delta SE,Delta SE,113
+    DE100,Acme GmbH,Acme GmbH,120
+    DE100,Acme Gmbh.,Acme GmbH,127
+    DE200,Beta AG,Beta AG,134
+    DE300,Gamma KG,Gamma KG,141
+    DE400,Delta SE,Delta SE,148
+    DE100,Acme GmbH,Acme GmbH,155
+    DE100,Acme Gmbh.,Acme GmbH,162
+    DE200,Beta AG,Beta AG,169
+    DE300,Gamma KG,Gamma KG,176
+    DE400,Delta SE,Delta SE,183
+    DE100,Acme GmbH,Acme GmbH,190
+    DE100,Acme Gmbh.,Acme GmbH,197
+    DE200,Beta AG,Beta AG,204
+    DE300,Gamma KG,Gamma KG,211
+    DE400,Delta SE,Delta SE,218
+NOTES none
+WARNINGS none
+SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = contracts.csv (T1), f2 = customers.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
+(normalized in <t> s)
+
+## query customers.csv: SELECT customer_name, SUM(amount) AS a FROM T1 GROUP BY customer_name ORDER BY customer_name
+customer_name,a
+Acme GmbH,600
+Acme Gmbh.,635
+Beta AG,670
+Delta SE,740
+Gamma KG,705
+(5 rows)

@@ -1,0 +1,22 @@
+# family	rules	model   (noise_eval --seeds 1 --intensities 0.5)
+multirow_header	ok	ok
+side_by_side	ok	ok
+stacked	ok	ok
+label_blocks	ok	ok
+labels_once	ok	ok
+subtotals	ok	ok
+of_which	ok	ok
+average_rows	ok	ok
+unit_scale	ok	ok
+footnotes	ok	ok
+locale	ok	ok
+notes	ok	ok
+spacers	ok	ok
+separators	ok	ok
+transposed	ok	ok
+long_register	ok	ok
+wide_periods	ok	ok
+mixed_types	ok	ok
+total_labels	ok	ok
+multilingual	ok	ok
+combo	ok	ok

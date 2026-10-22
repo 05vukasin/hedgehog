@@ -1,0 +1,45 @@
+# snapshot: union_views
+
+## open_file states.xlsx
+FILE states.xlsx · 3 sheets · 66 cells (95% in tables) · 3 tables · roles: model
+TIME 2026 (only mentioned in titles/notes/sheet or file names; no date or period columns)
+T1  'Nächtigungen in Burgenland – nach Herkunftsland Juli 2026' ← Bur!A3:C9 · 6 rows
+    columns (3): Herkunftsland[text · dim] "Ankünfte"[integer 100..135] "Nächtigungen"[integer 300..410]
+    all 6 rows (CSV):
+    Herkunftsland,Ankünfte,Nächtigungen
+    Deutschland,100,300
+    Italien,107,322
+    Niederlande,114,344
+    Schweiz,121,366
+    Ungarn,128,388
+    Polen,135,410
+T2  'Nächtigungen in Tirol – nach Herkunftsland Juli 2026' ← Tir!A3:C9 · 6 rows · same columns as T1
+    all 6 rows (CSV):
+    Herkunftsland,Ankünfte,Nächtigungen
+    Deutschland,200,600
+    Italien,207,622
+    Niederlande,214,644
+    Schweiz,221,666
+    Ungarn,228,688
+    Polen,235,710
+T3  'Nächtigungen in Wien – nach Herkunftsland Juli 2026' ← Wie!A3:C9 · 6 rows · same columns as T1
+    all 6 rows (CSV):
+    Herkunftsland,Ankünfte,Nächtigungen
+    Deutschland,300,900
+    Italien,307,922
+    Niederlande,314,944
+    Schweiz,321,966
+    Ungarn,328,988
+    Polen,335,1010
+NOTES 3 cells (title 3); e.g. Bur!A1: "Nächtigungen in Burgenland – nach Herkunftsland Juli 2026"
+WARNINGS none
+SQL views T1..T3 (data rows) and T1_all..T3_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+SQL union view U1 = T1..T3 (3 tables with the same columns; adds _table, sheet, title, part = 'Burgenland' | 'Tirol' | 'Wien'): compare them in one query, e.g. SELECT part, SUM(…) FROM U1 GROUP BY part; U1_all also has the total rows (_row_type)
+(normalized in <t> s)
+
+## query states.xlsx: SELECT * FROM U1 WHERE Herkunftsland = 'Italien' ORDER BY 1
+_table,sheet,title,part,Herkunftsland,Ankünfte,Nächtigungen,_src_row
+T1,Bur,Nächtigungen in Burgenland – nach Herkunftsland Juli 2026,Burgenland,Italien,107,322,5
+T2,Tir,Nächtigungen in Tirol – nach Herkunftsland Juli 2026,Tirol,Italien,207,622,5
+T3,Wie,Nächtigungen in Wien – nach Herkunftsland Juli 2026,Wien,Italien,307,922,5
+(3 rows)

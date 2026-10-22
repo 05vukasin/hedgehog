@@ -1,0 +1,35 @@
+# snapshot: booleans
+
+## open_file staff.xlsx
+FILE staff.xlsx · 1 sheet · 36 cells (100% in tables) · 1 table · roles: model
+TIME no dates or periods found
+T1  ← Staff!A1:D9 · 8 rows
+    columns (4): Employee[text · dim] Remote[bool · dim 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')] Certified[bool · dim 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')] Salary[integer · amount 3000..4750]
+    all 8 rows (CSV):
+    Employee,Remote,Certified,Salary
+    Ana,1,1,3000
+    Ben,0,0,3250
+    Cleo,1,0,3500
+    Dan,0,1,3750
+    Eva,1,0,4000
+    Finn,0,0,4250
+    Gus,1,1,4500
+    Hana,0,0,4750
+NOTES none
+WARNINGS none
+SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## query staff.xlsx: SELECT count(*) AS n FROM T1 WHERE Remote = 'TRUE'
+n
+0
+note: T1.Remote has no 'TRUE' — 0 rows here means the file has no such rows, not a value of 0; Remote is a yes/no column stored as 1/0: use Remote = 1 (or = 0)
+(1 row)
+
+## query staff.xlsx: SELECT Remote, Certified, count(*) AS n FROM T1 GROUP BY 1, 2 ORDER BY 1, 2
+Remote,Certified,n
+0,0,3
+0,1,1
+1,0,2
+1,1,2
+(4 rows)

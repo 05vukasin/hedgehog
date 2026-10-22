@@ -1,0 +1,79 @@
+# snapshot: total_rows
+
+## open_file totals.xlsx
+FILE totals.xlsx · 2 sheets · 54 cells (100% in tables) · 2 tables · roles: model
+TIME no dates or periods found
+T1  ← Sales!A1:C9 · 4 rows (+4 total rows: 'davon Inland'@3, 'of which: exports'@5, 'Average'@8 +1 more — only in T1_all)
+    columns (3): Region[text · dim] Sales[integer · amount 80..1000] Units[integer 4..80]
+    totals: 8 ok, 0 mismatch, 0 unknown
+    total rows: SELECT … FROM T1_all WHERE _row_type IN ('total', 'average', 'of_which') — labels in Region: grand total 'Total'@9 (= rows 2–8); average 'Average'@8 (= rows 2–7); of-which rows 'davon Inland'@3 (= rows 2), 'of which: exports'@5 (= rows 4)
+    all 8 rows (CSV, as in T1_all; rows with _row_type other than data are not in T1):
+    Region,Sales,Units,_row_type
+    North,500,50,data
+    davon Inland,300,20,of_which
+    South,200,10,data
+    of which: exports,80,4,of_which
+    West,100,5,data
+    East,200,15,data
+    Average,250,20,average
+    Total,1000,80,total
+T2  ← Nights!A1:C9 · 5 rows (+3 total rows: 'Insgesamt'@2, 'Österreich gesamt'@3, 'Deutschland gesamt'@6 — only in T2_all) · same layout as T1; headers here: Herkunft[text] "Nächte"[integer] "Ankünfte"[integer]
+    total rows: SELECT … FROM T2_all WHERE _row_type IN ('subtotal', 'total') — labels in Herkunft: grand total 'Insgesamt'@2 (= rows 3–9); subtotals (_row_type 'subtotal', not 'total') 'Österreich gesamt'@3 (= rows 4–5), 'Deutschland gesamt'@6 (= rows 7–8)
+    all 8 rows (CSV, as in T2_all; rows with _row_type total/subtotal are not in T2):
+    Herkunft,Nächte,Ankünfte,_row_type
+    Insgesamt,1000,310,total
+    Österreich gesamt,600,200,subtotal
+    Wien,400,120,data
+    Tirol,200,80,data
+    Deutschland gesamt,300,100,subtotal
+    Bayern,250,70,data
+    Berlin,50,30,data
+    Ausland sonst,100,10,data
+TOTALS 14 ok, 0 mismatch, 0 unknown (call totals for details)
+NOTES none
+WARNINGS none
+SQL views T1..T2 (data rows) and T1_all..T2_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## query totals.xlsx: SELECT Region, Sales FROM T1 ORDER BY Sales DESC
+Region,Sales
+North,500
+South,200
+East,200
+West,100
+(4 rows)
+
+## query totals.xlsx: SELECT Region, Sales, _row_type FROM T1_all ORDER BY _src_row
+Region,Sales,_row_type
+North,500,data
+davon Inland,300,of_which
+South,200,data
+of which: exports,80,of_which
+West,100,data
+East,200,data
+Average,250,average
+Total,1000,total
+(8 rows)
+
+## query totals.xlsx: SELECT SUM("Nächte") AS n FROM T2
+n
+1000
+(1 row)
+
+## totals totals.xlsx
+TOTALS: 14 ok, 0 mismatch, 0 unknown
+status,table,cell,label,level,value,recomputed,sources,reason
+ok,T2,Nights!B2,Insgesamt,grand_total,1000,1000,B3:B9,match
+ok,T2,Nights!C2,Insgesamt,grand_total,310,310,C3:C9,match
+ok,T1,Sales!B9,Total,total,1000,1000,B2:B8,match
+ok,T1,Sales!C9,Total,total,80,80,C2:C8,match
+ok,T1,Sales!B3,davon Inland,of_which,300,500,B2,within_parent
+ok,T1,Sales!C3,davon Inland,of_which,20,50,C2,within_parent
+ok,T1,Sales!B5,of which: exports,of_which,80,200,B4,within_parent
+ok,T1,Sales!C5,of which: exports,of_which,4,10,C4,within_parent
+ok,T1,Sales!B8,Average,average,250,250,B2:B7,matches_mean
+ok,T1,Sales!C8,Average,average,20,20,C2:C7,matches_mean
+ok,T2,Nights!B3,Österreich gesamt,subtotal,600,600,B4:B5,match
+ok,T2,Nights!C3,Österreich gesamt,subtotal,200,200,C4:C5,match
+ok,T2,Nights!B6,Deutschland gesamt,subtotal,300,300,B7:B8,match
+ok,T2,Nights!C6,Deutschland gesamt,subtotal,100,100,C7:C8,match

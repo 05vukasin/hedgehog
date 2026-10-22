@@ -1,0 +1,47 @@
+# snapshot: units_from_titles
+
+## open_file budget.xlsx
+FILE budget.xlsx · 2 sheets · 35 cells (94% in tables) · 2 tables · roles: model
+TIME 2024 (only mentioned in titles/notes/sheet or file names; no date or period columns)
+T1  'Municipal budget 2024, in 1 000 EUR' ← Budget!A3:C8 · 5 rows
+    columns (3): Department[text · dim] Planned[integer 650..5400] Spent[integer 700..5120]
+    all 5 rows (CSV):
+    Department,Planned,Spent
+    Education,5400,5120
+    Health,3100,3310
+    Roads,2200,1980
+    Culture,800,760
+    Parks,650,700
+T2  'Population by district (thousands)' ← People!A3:C7 · 4 rows
+    columns (3): District[text · dim] Men[number 19.9..41.2] Women[number 20.4..44.8]
+    units: amounts in thousands (× 1,000), says "Population by district (thousands)" — multiply by 1,000 for full figures; percentages and rates are as shown
+    all 4 rows (CSV):
+    District,Men,Women
+    Centre,41.2,44.8
+    North,30.5,31.9
+    South,27.1,28.3
+    East,19.9,20.4
+NOTES 2 cells (title 2); e.g. Budget!A1: "Municipal budget 2024, in 1 000 EUR"
+WARNINGS none
+SQL views T1..T2 (data rows) and T1_all..T2_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## describe_table budget.xlsx T1
+T1 = Budget!A3:C8 · 5 data rows · confidence 0.93 · title "Municipal budget 2024, in 1 000 EUR" (A1)
+header: Budget!A3:C3 (1 row; names below are flattened from it)
+columns (name | dtype · type | unit | nulls | distinct | min..max, example or all values | source column ← header cells):
+  Department | text · dim |  | 0 | 5 | "Education" | "Health" | "Roads" | "Culture" | "Parks" | A ← A3 "Department"
+  Planned | integer · amount |  | 0 | 5 | 650..5400 | B ← B3 "Planned"
+  Spent | integer · amount |  | 0 | 5 | 700..5120 | C ← C3 "Spent"
+first 5 rows:
+Department,Planned,Spent,_src_row
+Education,5400,5120,4
+Health,3100,3310,5
+Roads,2200,1980,6
+Culture,800,760,7
+Parks,650,700,8
+
+## query budget.xlsx: SELECT SUM(Spent) FROM T1
+SUM(Spent)
+11870
+(1 row)

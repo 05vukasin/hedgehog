@@ -50,17 +50,50 @@ cargo clippy --workspace -- -D warnings     # lints, warnings are errors (as in 
 
 ### Testing in tiers
 
-The full gate takes 1–2 hours. Don't run it for every small change; test what the change can
-affect, and run the full gate once at the end of a batch.
+The full gate takes 1–2 hours. Don't run it for every small change: run tier 0 after every edit,
+test what the change can affect, and run the full gate once at the end of a batch. Every tier has a
+`make` target.
 
 | Tier | When | What | Time |
 |---|---|---|---|
-| 1. Targeted | after each small change | `cargo test -p <crate> <filter>` for the touched module; the specific files, eval cases (`check_cases.py --cases …`) or noise family (`noise_eval --family …`, `--repro`) the change is about | seconds to ~2 min |
-| 2. Merge | when merging a branch | tests of the affected crates; clippy; golden check; only the benchmarks/noise families the changed area can affect (layout/totals/values → both benchmark analyzers; agent/ → agent tests + Node; docs/eval only → nothing heavy) | ~5–10 min |
-| 3. Full verify | once per batch, before a release or a published comparison | everything: `cargo test --workspace`, clippy, golden, both benchmark analyzers on all corpora, all noise families, the file sweep, `check_cases.py`, Node, Python, then the agent eval | ~1–2 h |
+| 0. Quick — `make quick` | after every edit | feature snapshots, mini golden on 22 real files, noise smoke (below); no LLM, no network, same output on every run | ~5 s with nothing to rebuild, ~15 s after an edit in `core/` (up to ~30 s on a busy machine), ~2–3 min cold |
+| 1. Targeted | after each small change | `cargo test -p <crate> <filter>` for the touched module; the specific files, eval cases (`check_cases.py --cases …`) or noise family (`noise_eval --families …`, `--repro`) the change is about | seconds to ~2 min |
+| 2. Merge — `make merge-check AREA=core\|agent\|docs` | when merging a branch | tests of the affected crates; clippy; golden check; only the benchmarks/noise families the changed area can affect (layout/totals/values → both benchmark analyzers; agent/ → agent tests + Node; docs/eval only → nothing heavy) | ~5–10 min |
+| 3. Full verify — `make full` | once per batch, before a release or a published comparison | everything: `cargo test --workspace`, clippy, golden, both benchmark analyzers on all corpora, all noise families, the file sweep, `check_cases.py`, Node, Python, then the agent eval (by hand) | ~1–2 h |
 
 If tier 2 turns up a surprise, widen the test for that area only. Heavy jobs go through
-`scripts/run_capped.sh` (see the memory notes in the repo's parent folder).
+`scripts/run_capped.sh` (see the memory notes in the repo's parent folder); the `make` targets do
+that for every step and keep each step's output in `target-logs/<step>.log`.
+
+#### Tier 0: `make quick`
+
+`scripts/quick.sh` runs four parts and prints one result line each (timings go to stderr, so the
+rest of the output is identical on every run):
+
+| Part | What it checks | Stored result | Needs |
+|---|---|---|---|
+| snapshots | `agent/tests/snapshots.rs`: one small workbook per agent-facing feature, built in the test (total, of-which and average rows, subtotals above groups; wide years and text periods; `<id> - <name>` and ID + name columns; several files with `f1`/`f2` and JOIN KEYS; union views; the quality line; signs; units from titles; booleans; notes on empty results; SQL dialect and total-label hints; footnote marks; EU/US/Latin-1 CSV numbers; side-by-side and stacked tables) — its `open_file` catalog and 1–3 query results | `agent/tests/snapshots/<feature>.txt` | nothing (also runs in CI) |
+| golden | the `open_file` catalog (one `hedgehog mcp` session) and the `hedgehog normalize` manifest of 22 small real files: finance, statistics offices, registers, xlsx/xls/ods/CSV, EU and US | `eval/quick/files.txt`, `golden.tsv` (table count, catalog and manifest hashes) | `$HEDGEHOG_DATA` |
+| noise | `noise_eval --seeds 1 --intensities 0.5`: one workbook per noise family (21), rules and model path; fails on a crash or a family that passed before | `eval/quick/noise.tsv` | `$HEDGEHOG_DATA` (its `clean/` tables) |
+| info | quick mode of the info scoreboard (`eval/info/`), once that exists | — | — |
+
+A difference fails with a readable line diff: the snapshot lines that changed, or for the golden
+files the catalog lines (against the texts in `eval/quick/catalogs/`, kept locally and gitignored
+because they are derived from the private test data). If the change is intended, accept it and
+review what changed:
+
+```sh
+make quick-update                 # = scripts/quick.sh --update; or UPDATE_SNAPSHOTS=1 cargo test -p hh_agent --test snapshots
+git diff agent/tests/snapshots/ eval/quick/
+scripts/quick.sh --only snapshots # one part; --only golden,noise for several
+```
+
+Builds use the `quick` Cargo profile in `target-quick/`: dependencies optimized once, hedgehog's
+own crates unoptimized and incremental, so a rebuild after an edit takes seconds and does not touch
+the release builds in `target-master/`. Without `$HEDGEHOG_DATA` (or `../testdata`) the golden and
+noise parts are skipped. To add a feature snapshot, add a `#[test]` to `snapshots.rs` that writes
+its workbook, calls `s.open(…)` / `s.query(…)`, ends with `s.check()`, and run `make quick-update`;
+to add a real file, add it to `eval/quick/files.txt` (small, < 1 MB) and run `make quick-update`.
 
 ## Fuzzing
 
@@ -146,9 +179,11 @@ benchmark does not drop. Metrics and current scores: [evaluation.md](evaluation.
 
 `.github/workflows/ci.yml` runs on pushes to `master` and on pull requests:
 
-1. `cargo test --workspace --exclude hh_py`
-2. `cargo clippy --workspace -- -D warnings`
-3. build a wheel with `maturin build --profile dev`, install it, run `pytest`
+1. the tier 0 feature snapshots, `cargo test -p hh_agent --test snapshots` (the parts of
+   `make quick` that need the private test data run only locally)
+2. `cargo test --workspace --exclude hh_py`
+3. `cargo clippy --workspace -- -D warnings`
+4. build a wheel with `maturin build --profile dev`, install it, run `pytest`
 
 It is tuned for the GitHub Actions free tier:
 

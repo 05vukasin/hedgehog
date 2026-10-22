@@ -1,0 +1,21 @@
+# snapshot: quality_line
+
+## open_file orders.csv
+FILE orders.csv · 1 sheet · 122 cells (100% in tables) · 1 table · roles: model
+TIME no dates or periods found
+T1  ← orders!A1:D33 · 32 rows
+    columns (4): id[integer · id 100..129] category[text · dim] amount[integer · amount -87..212] discount[integer 0..4]
+    category values: "Retail" | "Wholesale" | "Online"
+    numbers: amount (sum 4,261, 100 % filled)
+    quality: id: 32 rows, 30 distinct — count them with COUNT(DISTINCT "id") · discount empty in 10 rows (31 %): category = 'Online' (all its 10 rows) · 3 negative amount
+NOTES none
+WARNINGS none
+SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+(normalized in <t> s)
+
+## query orders.csv: SELECT category, count(*) AS n, count(discount) AS with_discount FROM T1 GROUP BY 1 ORDER BY 1
+category,n,with_discount
+Online,10,0
+Retail,10,10
+Wholesale,12,12
+(3 rows)
