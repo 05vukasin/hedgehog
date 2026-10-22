@@ -4,9 +4,9 @@
 FILE gemeinden.csv · 1 sheet · 32 cells (100% in tables) · 1 table
 TIME 2024-03-01–2024-03-07 (day, from columns T1.Datum)
 T1  ← gemeinden!A1:D8 · 7 rows
-    columns (4): Gemeinde Einwohner[12345..618405] "Fläche km"[40.05..82.71] Datum[date 2024-03-01..2024-03-07, 7 distinct]
+    columns (4): Gemeinde Einwohner[12345..618405] "Fläche km²"[40.05..82.71] Datum[date 2024-03-01..2024-03-07, 7 distinct]
     all 7 rows (CSV):
-    Gemeinde,Einwohner,Fläche km,Datum
+    Gemeinde,Einwohner,Fläche km²,Datum
     Aachen,12345,40.05,2024-03-01
     Bonn,113355,47.16,2024-03-02
     Celle,214365,54.27,2024-03-03

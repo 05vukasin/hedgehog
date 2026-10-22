@@ -150,14 +150,22 @@ pub fn check(cv: &Canvas, norm_out: &Normalized) -> BTreeMap<&'static str, Inv> 
         let t = &norm_out.tables[ti];
         let col = &t.columns[ci];
         let got = &col.values[k];
+        // A text label whose footnote mark was stripped and recorded on its column (B142):
+        // `KLM*` → `KLM` with `*` in the column's `footnote_marks` for this cell.
+        let same_text = |s: &str, y: &str| {
+            ws(s) == ws(y)
+                || col.footnote_marks.iter().any(|(m, cells)| {
+                    cells.contains(&(d.r, d.c)) && s.trim_end().strip_suffix(m.as_str()).is_some_and(|b| ws(b) == ws(y))
+                })
+        };
         let ok = match (&d.exp, got) {
             (Expect::Num(x), Out::Num(y)) => close(*y, *x) || d.scale.is_some_and(|f| close(*y, *x * f)),
             (Expect::Date(x), Out::Date(y)) => close(*y, *x),
-            (Expect::Text(s), Out::Text(y)) => ws(s) == ws(y),
+            (Expect::Text(s), Out::Text(y)) => same_text(s, y),
             (Expect::Text(s), v @ (Out::Num(_) | Out::Date(_))) => out_text(v).is_some_and(|y| norm(&y) == norm(s)),
             (Expect::Null, Out::Null) => true,
             (Expect::TextOrNull(_), Out::Null) => true,
-            (Expect::TextOrNull(s), Out::Text(y)) => ws(s) == ws(y),
+            (Expect::TextOrNull(s), Out::Text(y)) => same_text(s, y),
             _ => false,
         };
         res.get_mut("value").unwrap().add(ok, || format!("{} expected {:?}, got {} (column '{}' {})", a1(d.r, d.c), d.exp, show(got), col.name, col.dtype.as_str()));
