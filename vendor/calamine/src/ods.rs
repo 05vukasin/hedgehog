@@ -171,6 +171,18 @@ pub struct Ods<RS> {
     options: OdsOptions,
 }
 
+impl<RS> Ods<RS> {
+    /// hedgehog: moves sheet `name`'s values and formulas out of the reader (what
+    /// `worksheet_range` and `worksheet_formula` return as copies, with the default header row);
+    /// `None` if there is no such sheet.
+    pub fn take_sheet(&mut self, name: &str) -> Option<(Range<Data>, Range<String>)> {
+        if !matches!(self.options.header_row, HeaderRow::FirstNonEmptyRow) {
+            return None;
+        }
+        self.sheets.remove(name)
+    }
+}
+
 impl<RS> Reader<RS> for Ods<RS>
 where
     RS: Read + Seek,

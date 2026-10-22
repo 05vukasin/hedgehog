@@ -229,12 +229,13 @@ fn trace(step: &str, since: std::time::Instant) {
 
 /// `scanner` opens a second, lightweight view of the same xlsx package for [`merges::Scanner`];
 /// it is only called for xlsx files.
-fn read_all<RS: Read + Seek, R: Read + Seek>(
+fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
     mut wb: Sheets<RS>,
     scanner: impl FnOnce() -> Option<merges::Scanner<R>>,
     limits: &Limits,
 ) -> Result<Workbook, Error> {
     let names = wb.sheet_names();
+    let sheet_names = names.clone();
     let mut sheets = Vec::with_capacity(names.len());
     let mut scanner = match &wb {
         Sheets::Xlsx(_) => scanner(),
@@ -258,19 +259,32 @@ fn read_all<RS: Read + Seek, R: Read + Seek>(
             sheets.push(Sheet { name, cells, merges, formats: Vec::new() });
             continue;
         }
-        // xlsx: values and formulas in one streaming pass, straight into sparse cells.
+        // xlsx: values and formulas in one streaming pass, straight into sparse cells. When the
+        // merge scan needs no cells (no formats), it reads its own view of the part meanwhile.
         let t = std::time::Instant::now();
-        let cells = match &mut wb {
-            Sheets::Xlsx(x) => match read_xlsx_parallel(x, &name, limits, total)? {
-                Some(c) => Some(c),
-                None => match read_xlsx_cells(x, &name, limits, total) {
-                    Ok(c) => Some(c),
-                    Err(ReadErr::Limit(e)) => return Err(e),
-                    Err(ReadErr::Xlsx) => None,
+        let read_cells = |wb: &mut Sheets<RS>| -> Result<Option<(Vec<Cell>, Dimensions)>, Error> {
+            Ok(match wb {
+                Sheets::Xlsx(x) => match read_xlsx_parallel(x, &name, limits, total)? {
+                    Some(c) => Some(c),
+                    None => match read_xlsx_cells(x, &name, limits, total) {
+                        Ok(c) => Some(c),
+                        Err(ReadErr::Limit(e)) => return Err(e),
+                        Err(ReadErr::Xlsx) => None,
+                    },
                 },
-            },
-            _ => None,
+                _ => None,
+            })
         };
+        let (cells, early_scan) = match scanner.as_mut() {
+            Some(s) if !s.needs_cells() && matches!(wb, Sheets::Xlsx(_)) => std::thread::scope(|sc| {
+                let scan = sc.spawn(|| s.scan_merges(&name));
+                let cells = read_cells(&mut wb);
+                let scanned = scan.join().unwrap_or_else(|e| std::panic::resume_unwind(e));
+                (cells, Some(scanned))
+            }),
+            _ => (read_cells(&mut wb), None),
+        };
+        let cells = cells?;
         trace("read.cells", t);
         let t = std::time::Instant::now();
         let sheet = match cells {
@@ -278,7 +292,11 @@ fn read_all<RS: Read + Seek, R: Read + Seek>(
                 // Merged areas sit after the cells; a byte scan finds them (and every cell's
                 // format) much faster than a second full XML parse. Anything unexpected →
                 // calamine's parse of the merges, and no formats.
-                let (merges, formats) = match scanner.as_mut().and_then(|s| s.scan(&name, dims, &cells)) {
+                let scanned = match early_scan {
+                    Some(early) => early.filter(|(declared, _)| *declared == dims).map(|(_, m)| (m, None)),
+                    None => scanner.as_mut().and_then(|s| s.scan(&name, dims, &cells)),
+                };
+                let (merges, formats) = match scanned {
                     Some((m, f)) => {
                         merges::SCANNED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         (m, f.unwrap_or_default())
@@ -300,10 +318,20 @@ fn read_all<RS: Read + Seek, R: Read + Seek>(
                 Sheet { name, cells, merges, formats: Vec::new() }
             }
             None => {
-                // ods: its cell count was checked before calamine parsed it.
-                let values = wb.worksheet_range(&name).map_err(err)?;
-                // Some formats can't report formulas; values alone are still useful.
-                let formulas = wb.worksheet_formula(&name).unwrap_or_default();
+                // ods: its cell count was checked before calamine parsed it. A sheet name that
+                // occurs once is moved out of the reader rather than copied.
+                let taken = match &mut wb {
+                    Sheets::Ods(o) if sheet_names.iter().filter(|n| **n == name).count() == 1 => o.take_sheet(&name),
+                    _ => None,
+                };
+                let (values, formulas) = match taken {
+                    Some(t) => t,
+                    None => {
+                        let values = wb.worksheet_range(&name).map_err(err)?;
+                        // Some formats can't report formulas; values alone are still useful.
+                        (values, wb.worksheet_formula(&name).unwrap_or_default())
+                    }
+                };
                 let merges = merge_cells(&mut wb, &name);
                 build_sheet(name, &values, &formulas, merges)
             }
@@ -644,27 +672,42 @@ fn merge_cells<RS: Read + Seek>(wb: &mut Sheets<RS>, name: &str) -> Vec<Rect> {
         .collect()
 }
 
+/// The cells of a dense value range and a dense formula range: values that convert, with the
+/// non-empty formula of the same position, and formulas alone. Both ranges are walked in row
+/// order, so the cells come out sorted by position (B136: a merge instead of a sorted map).
 fn build_sheet(name: String, values: &Range<Data>, formulas: &Range<String>, merges: Vec<Rect>) -> Sheet {
-    let mut cells: BTreeMap<(u32, u32), Cell> = BTreeMap::new();
     let (vr, vc) = values.start().unwrap_or((0, 0));
-    for (r, c, d) in values.used_cells() {
-        if let Some(value) = convert(d) {
-            let (row, col) = (vr + r as u32, vc + c as u32);
-            cells.insert((row, col), Cell { row, col, value: Some(value), formula: None });
-        }
-    }
+    let mut vals = values
+        .used_cells()
+        .filter_map(|(r, c, d)| convert(d).map(|v| ((vr + r as u32, vc + c as u32), v)))
+        .peekable();
     let (fr, fc) = formulas.start().unwrap_or((0, 0));
-    for (r, c, f) in formulas.used_cells() {
-        if f.is_empty() {
-            continue;
-        }
-        let (row, col) = (fr + r as u32, fc + c as u32);
-        cells
-            .entry((row, col))
-            .or_insert(Cell { row, col, value: None, formula: None })
-            .formula = Some(f.trim_start_matches('=').to_string());
+    let mut forms = formulas
+        .used_cells()
+        .filter(|(_, _, f)| !f.is_empty())
+        .map(|(r, c, f)| ((fr + r as u32, fc + c as u32), f))
+        .peekable();
+    let mut cells = Vec::new();
+    loop {
+        let cell = match (vals.peek(), forms.peek()) {
+            (None, None) => break,
+            (Some(&(v, _)), Some(&(f, _))) if v == f => {
+                let ((row, col), value) = vals.next().unwrap();
+                let (_, f) = forms.next().unwrap();
+                Cell { row, col, value: Some(value), formula: Some(f.trim_start_matches('=').to_string()) }
+            }
+            (Some(&(v, _)), f) if f.is_none_or(|&(f, _)| v < f) => {
+                let ((row, col), value) = vals.next().unwrap();
+                Cell { row, col, value: Some(value), formula: None }
+            }
+            _ => {
+                let ((row, col), f) = forms.next().unwrap();
+                Cell { row, col, value: None, formula: Some(f.trim_start_matches('=').to_string()) }
+            }
+        };
+        cells.push(cell);
     }
-    Sheet { name, cells: cells.into_values().collect(), merges, formats: Vec::new() }
+    Sheet { name, cells, merges, formats: Vec::new() }
 }
 
 /// [`convert`] for a borrowed xlsx value (shared strings are copied once, not twice).
