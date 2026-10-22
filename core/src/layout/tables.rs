@@ -311,12 +311,18 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             // Up to two parent rows stack (`2011 | 2015` over `Starost | Starost` over the
             // measures).
             let k = start + d;
+            // Right edge of the two rows under row `k` (needs `k + 2 < end`).
+            let below = |k: usize| rows[k + 1].right().max(rows[k + 2].right());
             let parent_of = |k: usize| {
                 PARENT_HEADER_ROWS
                     && k + 2 < end
                     // two labels or more, or one merged over a group of columns (`2019` over
-                    // `Population | Area | Births`, B39)
-                    && (rows[k].n() >= 2 || rows[k].filled().next().is_some_and(|e| e.right > e.left))
+                    // `Population | Area | Births`, B39), none starting right of the columns of
+                    // the two rows below and a lone merged label not reaching past them (a title
+                    // merged over the whole row, `A2:XFD2`, or a copyright line right of a
+                    // six-column header is no group label, B90)
+                    && (rows[k].n() >= 2 || rows[k].filled().next().is_some_and(|e| e.right > e.left && e.right <= below(k)))
+                    && rows[k].filled().all(|e| e.left <= below(k))
                     && rows[k].n_measure() == 0
                     && rows[k].n_text() + (rows[k].n_num() - rows[k].n_measure()) == rows[k].n()
                     && rows[k + 1].row == rows[k].row + 1

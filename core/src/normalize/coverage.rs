@@ -3,7 +3,8 @@
 //! manifest per table and for the workbook, so an agent can tell "the file has 2015–2017" before
 //! it queries anything.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::hash_map::Entry;
+use std::collections::{BTreeSet, HashMap};
 
 use super::json::Json;
 use super::{ColRole, Dtype, Out, Table};
@@ -270,7 +271,9 @@ pub(super) fn span_label(span: &(Period, Period)) -> String {
 pub(super) fn column_label_periods(values: &[Out]) -> Option<Vec<Option<(Period, Period)>>> {
     let texts = values.iter().filter(|v| matches!(v, Out::Text(_))).count();
     let mut out: Vec<Option<(Period, Period)>> = Vec::with_capacity(values.len());
-    let mut seen: HashSet<&str> = HashSet::new();
+    // Each distinct label is read once (a label column of 600k records repeats a few hundred
+    // values, B90); the footnote-digit reading below depends on the row above, so it is not kept.
+    let mut seen: HashMap<&str, Option<(Period, Period)>> = HashMap::new();
     let (mut failed, mut parsed, mut non_year) = (0usize, 0usize, false);
     let mut prev: Option<(Period, Period)> = None;
     for v in values {
@@ -278,7 +281,10 @@ pub(super) fn column_label_periods(values: &[Out]) -> Option<Vec<Option<(Period,
             out.push(None);
             continue;
         };
-        let mut p = label_period(s);
+        let (fresh, mut p) = match seen.entry(s.as_str()) {
+            Entry::Occupied(e) => (false, *e.get()),
+            Entry::Vacant(e) => (true, *e.insert(label_period(s))),
+        };
         if p.is_none()
             && let Some(before) = prev
             && s.trim_end().ends_with(|c: char| c.is_ascii_digit())
@@ -287,7 +293,6 @@ pub(super) fn column_label_periods(values: &[Out]) -> Option<Vec<Option<(Period,
             p = label_period(&t[..t.len() - 1])
                 .filter(|q| q.0.start() >= before.0.start() && q.0.y <= before.1.y + 1);
         }
-        let fresh = seen.insert(s.as_str());
         match p {
             Some(q) => {
                 if fresh {

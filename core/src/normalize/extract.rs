@@ -129,14 +129,25 @@ fn is_series_code(t: &str) -> bool {
 /// column of many distinct values (names, purposes), not of categories ("Summe der bezogenen
 /// Rohstoffe" once per industry, "Total liabilities" in long-format data), on a row where no
 /// number adds up (`arith_rows`).
-fn record_named_like_a_total(grid: &Grid, cand: &TotalCandidate, t: &Table, arith_rows: &HashSet<u32>) -> bool {
-    let Some(i) = t.src_rows.iter().position(|&r| r == cand.row) else { return false };
-    t.row_types[i] == RowType::Data && !arith_rows.contains(&cand.row) && named_like_a_total(grid, cand)
+fn record_named_like_a_total(
+    grid: &Grid,
+    cand: &TotalCandidate,
+    t: &Table,
+    arith_rows: &HashSet<u32>,
+    columns: &mut NameColumns,
+) -> bool {
+    // `src_rows` rise down the table.
+    let Ok(i) = t.src_rows.binary_search(&cand.row) else { return false };
+    t.row_types[i] == RowType::Data && !arith_rows.contains(&cand.row) && named_like_a_total(grid, cand, columns)
 }
+
+/// Per label column: (distinct texts, texts), counted once per sheet (a sheet has thousands of
+/// keyword candidates in a few columns; counting the column per candidate took seconds, B90).
+type NameColumns = HashMap<u32, (usize, usize)>;
 
 /// The keyword candidate of a register record named with a leading total word, without
 /// arithmetic behind it ([`record_named_like_a_total`]).
-fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
+fn named_like_a_total(grid: &Grid, cand: &TotalCandidate, columns: &mut NameColumns) -> bool {
     let sheet = grid.sheet;
     let register = match (sheet.cells.first(), sheet.cells.last()) {
         (Some(a), Some(b)) => b.row - a.row + 1 >= totals::keywords::REGISTER_MIN_ROWS,
@@ -169,15 +180,18 @@ fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
     // Otherwise a column of names or purposes: more than a third of its texts are distinct, and
     // at least a thousand of them (a register of records, not a statement's line items such as
     // "Total Assets" or "Total exports").
-    let mut texts: HashSet<&str> = HashSet::new();
-    let mut n = 0usize;
-    for &i in grid.col_cells(lc) {
-        if let Some(Value::Text(x)) = &sheet.cells[i as usize].value {
-            texts.insert(x.as_str());
-            n += 1;
+    let (distinct, n) = *columns.entry(lc).or_insert_with(|| {
+        let mut texts: HashSet<&str> = HashSet::new();
+        let mut n = 0usize;
+        for &i in grid.col_cells(lc) {
+            if let Some(Value::Text(x)) = &sheet.cells[i as usize].value {
+                texts.insert(x.as_str());
+                n += 1;
+            }
         }
-    }
-    texts.len() * 3 > n && (legal || texts.len() >= NAME_COLUMN_MIN_DISTINCT)
+        (texts.len(), n)
+    });
+    distinct * 3 > n && (legal || distinct >= NAME_COLUMN_MIN_DISTINCT)
 }
 
 /// Distinct texts a column needs to count as a register's name column without a legal form (B81).
@@ -216,6 +230,7 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
         }) >= LABEL_CATEGORY_REPEATS
     };
     let mut named_rows: Vec<u32> = Vec::new();
+    let mut name_columns = NameColumns::new();
     for c in &det.candidates {
         let label_text = c.label.and_then(|(lr, lc)| match grid.cell(lr, lc).and_then(|x| x.value.as_ref()) {
             Some(Value::Text(t)) => Some((lc, t.as_str())),
@@ -240,7 +255,7 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
             let mut cols = vec![c.col];
             cols.extend(c.label.map(|l| l.1));
             add(c.row, RowOverride::Total, cols);
-        } else if c.direction == Direction::Vertical && named_like_a_total(grid, c) {
+        } else if c.direction == Direction::Vertical && named_like_a_total(grid, c, &mut name_columns) {
             named_rows.push(c.row);
         }
     }
@@ -509,16 +524,39 @@ fn sex_blocks(rows: &[(u32, Vec<usize>)], cells: &[crate::model::Cell], r: Rect,
         })
     };
     for col in r.left..=r.right.min(r.left + 3) {
-        let keys: Vec<Option<String>> = body.iter().map(|(_, idxs)| text_at(idxs, col).map(|t| norm_key(&t))).collect();
+        // Each distinct text is keyed once (a column of 600k records repeats a few hundred
+        // values, B90); `keys` holds an index into `distinct`, whose flag says whether the key
+        // is a word of some triple at all.
+        let mut ids: HashMap<&str, u32> = HashMap::new();
+        let mut distinct: Vec<(String, bool)> = Vec::new();
+        let keys: Vec<Option<u32>> = body
+            .iter()
+            .map(|(_, idxs)| {
+                let i = *idxs.iter().find(|&&i| cells[i].col == col)?;
+                let Some(Value::Text(t)) = &cells[i].value else { return None };
+                let t = t.trim();
+                if t.is_empty() {
+                    return None;
+                }
+                Some(*ids.entry(t).or_insert_with(|| {
+                    let k = norm_key(t);
+                    let word = SEX_TRIPLES.iter().any(|tr| tr.contains(&k.as_str()));
+                    distinct.push((k, word));
+                    (distinct.len() - 1) as u32
+                }))
+            })
+            .collect();
+        let word = |k: &Option<u32>| k.is_some_and(|id| distinct[id as usize].1);
         let mut blocks: Vec<(usize, [usize; 3])> = Vec::new(); // (first body index, triple positions m/f/t)
         let mut i = 0;
         while i + 2 < body.len() {
             let three = [&keys[i], &keys[i + 1], &keys[i + 2]];
             let contiguous = body[i + 1].0 == body[i].0 + 1 && body[i + 2].0 == body[i].0 + 2;
-            let hit = contiguous
+            // A triple needs a word on each of the three rows.
+            let hit = (contiguous && three.iter().all(|k| word(k)))
                 .then(|| {
                     SEX_TRIPLES.iter().find_map(|tr| {
-                        let pos = |w: &str| three.iter().position(|k| k.as_deref() == Some(w));
+                        let pos = |w: &str| three.iter().position(|k| k.is_some_and(|id| distinct[id as usize].0 == w));
                         let (m, f, t) = (pos(tr[0])?, pos(tr[1])?, pos(tr[2])?);
                         (m != f && f != t && m != t).then_some([m, f, t])
                     })
@@ -706,8 +744,7 @@ fn build_table(
 ) -> Built {
     let sheet = grid.sheet;
     let cells = &sheet.cells;
-    let r = t.rect;
-    let ncols = (r.right - r.left + 1) as usize;
+    let mut r = t.rect;
     let mut tr = Transforms::default();
     let mut notes: Vec<NoteItem> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
@@ -739,6 +776,19 @@ fn build_table(
     }
     let (htop, body_top) = promote_header(&rows, cells, &lay.roles, t.header_top.clamp(r.top, r.bottom), t.header_rows, r.bottom);
     let nh = (body_top - htop) as usize;
+    // Columns of the rect left and right of every cell of the header and body hold nothing but
+    // a merged area reaching past the data (a full-row merge `A2:XFD2` over six columns, B90):
+    // they are left out, so the table costs its cells, not its rows × the width of a merge.
+    let (first_col, last_col) = rows
+        .iter()
+        .filter(|(row, _)| *row >= htop)
+        .flat_map(|(_, idxs)| idxs.iter().map(|&i| cells[i].col))
+        .fold((u32::MAX, 0), |(a, b), c| (a.min(c), b.max(c)));
+    if first_col <= last_col && (first_col > r.left || last_col < r.right) {
+        tr.add(T::EmptyColumnsRemoved, ((first_col - r.left) + (r.right - last_col)) as usize);
+        (r.left, r.right) = (first_col, last_col);
+    }
+    let ncols = (r.right - r.left + 1) as usize;
 
     // Title rows inside the rect (above the header).
     let mut title: Option<(String, (u32, u32))> = None;
@@ -929,7 +979,8 @@ fn build_table(
             }
         }
     }
-    let sex = sex_blocks(&rows, cells, r, body_top);
+    // The rect's own left edge: the codes are looked for in its first four columns.
+    let sex = sex_blocks(&rows, cells, Rect { left: t.rect.left, ..r }, body_top);
     // B72: the caption of the next table ("Quadros 1.1 | Contagem dos prestadores …") as the last
     // row of this one, after a blank row and without numbers, is a loose title (attached to the
     // table below it in `process_sheet`).
@@ -1436,7 +1487,7 @@ fn build_table(
             n,
             sheet: String::new(),
             source_sheet: sheet.name.clone(),
-            rect: r,
+            rect: t.rect,
             header_top: htop,
             header_rows: t.header_rows,
             title,
@@ -1780,6 +1831,7 @@ pub(super) fn process_sheet(
     let sheet_hints = OnceCell::new();
     let det = totals::detection(&grid);
     let cands = &det.candidates;
+    super::trace("totals_detect.detection", t0);
     let overrides = row_overrides(&grid, det);
     super::trace("totals_detect", t0);
     let checks: Vec<_> = cands.iter().map(|c| totals::verify(&grid, c)).collect();
@@ -1832,12 +1884,13 @@ pub(super) fn process_sheet(
         cands.iter().filter(|c| c.evidence.contains(&Evidence::ArithmeticMatch)).map(|c| c.row).collect();
     let mut items: Vec<TotalItem> = Vec::new();
     let mut listed: HashSet<(u32, u32)> = HashSet::new();
+    let mut name_columns = NameColumns::new();
     for (cand, check) in cands.iter().zip(&checks) {
         let k = table_at(cand.row, cand.col);
         let kept_in_data = k.is_some_and(|k| kept[k].contains(&cand.row));
         if let Some(k) = k
             && kept_in_data
-            && record_named_like_a_total(&grid, cand, &tables[k], &arith_rows)
+            && record_named_like_a_total(&grid, cand, &tables[k], &arith_rows, &mut name_columns)
         {
             continue;
         }

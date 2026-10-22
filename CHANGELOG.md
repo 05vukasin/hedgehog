@@ -388,6 +388,20 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Fixed
 
+- **Out of memory on a sheet with a title merged over the whole row** (B90). `EQ08__13.xlsx` (an
+  ABS data cube, 4.07M cells) was killed at a 4 GB cap in `build_tables`: since the parent header
+  rows (B39/B53), its title merged over `A2:XFD2` and its release line (with the copyright beside
+  it) were read as parent labels over the six-column header, so the table spanned 16,384 columns
+  and every one of its 655,865 rows got 16,384 slots. A parent label row may no longer start right
+  of the two rows below it, nor (a lone merged label) reach past them; and `build_table` leaves
+  out the columns of a table's range left and right of all its header and body cells (a merge past
+  the data, counted as empty columns removed), so a table costs its cells, not rows × the width
+  of a merge. EQ08: out of memory → 1.2–1.26 GB peak, 16.0–16.3 s (before the regression 1.23 GB, 16.1 s),
+  with the same table and columns as before it. Same-size work, less time: the B81 register-name
+  check counted the whole label column once per keyword candidate (nl019 21.8 → 12.0 s, uk069
+  17.4 → 12.2 s, pt008 16.6 → 13.5 s), and the sex-block and period-label checks now read each
+  distinct text once. Both benchmark analyzers and the golden check are unchanged;
+  `core/tests/memory_per_cell.rs` bounds the heap per cell of generated sheets with such merges.
 - **Bit-for-bit repeatable output** (B68). The same file and options now give the same bytes in
   every run, on any thread count: the normalized xlsx carried the current time in its document
   properties (`docProps/core.xml` created / modified; now fixed at 1980-01-01, like the zip
