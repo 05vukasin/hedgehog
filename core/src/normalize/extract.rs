@@ -129,14 +129,25 @@ fn is_series_code(t: &str) -> bool {
 /// column of many distinct values (names, purposes), not of categories ("Summe der bezogenen
 /// Rohstoffe" once per industry, "Total liabilities" in long-format data), on a row where no
 /// number adds up (`arith_rows`).
-fn record_named_like_a_total(grid: &Grid, cand: &TotalCandidate, t: &Table, arith_rows: &HashSet<u32>) -> bool {
-    let Some(i) = t.src_rows.iter().position(|&r| r == cand.row) else { return false };
-    t.row_types[i] == RowType::Data && !arith_rows.contains(&cand.row) && named_like_a_total(grid, cand)
+fn record_named_like_a_total(
+    grid: &Grid,
+    cand: &TotalCandidate,
+    t: &Table,
+    arith_rows: &HashSet<u32>,
+    columns: &mut NameColumns,
+) -> bool {
+    // `src_rows` rise down the table.
+    let Ok(i) = t.src_rows.binary_search(&cand.row) else { return false };
+    t.row_types[i] == RowType::Data && !arith_rows.contains(&cand.row) && named_like_a_total(grid, cand, columns)
 }
+
+/// Per label column: (distinct texts, texts), counted once per sheet (a sheet has thousands of
+/// keyword candidates in a few columns; counting the column per candidate took seconds, B90).
+type NameColumns = HashMap<u32, (usize, usize)>;
 
 /// The keyword candidate of a register record named with a leading total word, without
 /// arithmetic behind it ([`record_named_like_a_total`]).
-fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
+fn named_like_a_total(grid: &Grid, cand: &TotalCandidate, columns: &mut NameColumns) -> bool {
     let sheet = grid.sheet;
     let register = match (sheet.cells.first(), sheet.cells.last()) {
         (Some(a), Some(b)) => b.row - a.row + 1 >= totals::keywords::REGISTER_MIN_ROWS,
@@ -169,15 +180,18 @@ fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
     // Otherwise a column of names or purposes: more than a third of its texts are distinct, and
     // at least a thousand of them (a register of records, not a statement's line items such as
     // "Total Assets" or "Total exports").
-    let mut texts: HashSet<&str> = HashSet::new();
-    let mut n = 0usize;
-    for &i in grid.col_cells(lc) {
-        if let Some(Value::Text(x)) = &sheet.cells[i as usize].value {
-            texts.insert(x.as_str());
-            n += 1;
+    let (distinct, n) = *columns.entry(lc).or_insert_with(|| {
+        let mut texts: HashSet<&str> = HashSet::new();
+        let mut n = 0usize;
+        for &i in grid.col_cells(lc) {
+            if let Some(Value::Text(x)) = &sheet.cells[i as usize].value {
+                texts.insert(x.as_str());
+                n += 1;
+            }
         }
-    }
-    texts.len() * 3 > n && (legal || texts.len() >= NAME_COLUMN_MIN_DISTINCT)
+        (texts.len(), n)
+    });
+    distinct * 3 > n && (legal || distinct >= NAME_COLUMN_MIN_DISTINCT)
 }
 
 /// Distinct texts a column needs to count as a register's name column without a legal form (B81).
@@ -216,6 +230,7 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
         }) >= LABEL_CATEGORY_REPEATS
     };
     let mut named_rows: Vec<u32> = Vec::new();
+    let mut name_columns = NameColumns::new();
     for c in &det.candidates {
         let label_text = c.label.and_then(|(lr, lc)| match grid.cell(lr, lc).and_then(|x| x.value.as_ref()) {
             Some(Value::Text(t)) => Some((lc, t.as_str())),
@@ -240,7 +255,7 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
             let mut cols = vec![c.col];
             cols.extend(c.label.map(|l| l.1));
             add(c.row, RowOverride::Total, cols);
-        } else if c.direction == Direction::Vertical && named_like_a_total(grid, c) {
+        } else if c.direction == Direction::Vertical && named_like_a_total(grid, c, &mut name_columns) {
             named_rows.push(c.row);
         }
     }
@@ -1816,6 +1831,7 @@ pub(super) fn process_sheet(
     let sheet_hints = OnceCell::new();
     let det = totals::detection(&grid);
     let cands = &det.candidates;
+    super::trace("totals_detect.detection", t0);
     let overrides = row_overrides(&grid, det);
     super::trace("totals_detect", t0);
     let checks: Vec<_> = cands.iter().map(|c| totals::verify(&grid, c)).collect();
@@ -1868,12 +1884,13 @@ pub(super) fn process_sheet(
         cands.iter().filter(|c| c.evidence.contains(&Evidence::ArithmeticMatch)).map(|c| c.row).collect();
     let mut items: Vec<TotalItem> = Vec::new();
     let mut listed: HashSet<(u32, u32)> = HashSet::new();
+    let mut name_columns = NameColumns::new();
     for (cand, check) in cands.iter().zip(&checks) {
         let k = table_at(cand.row, cand.col);
         let kept_in_data = k.is_some_and(|k| kept[k].contains(&cand.row));
         if let Some(k) = k
             && kept_in_data
-            && record_named_like_a_total(&grid, cand, &tables[k], &arith_rows)
+            && record_named_like_a_total(&grid, cand, &tables[k], &arith_rows, &mut name_columns)
         {
             continue;
         }
