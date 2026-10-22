@@ -85,6 +85,13 @@ PROBES: dict[str, dict[str, dict]] = {
                                   "FROM T1_all WHERE \"Country Name\" = 'European Union'"}},
         "somalia": {"alt": {"sql": "SELECT \"2024\" FROM T1 WHERE \"Country Name\" = 'Somalia'"}},
     },
+    "fr-insee-pop": {  # the references filter on département codes; the question names them
+        "paris-2023": {"alt": {"sql": "SELECT \"Ensemble / Total\" FROM T1 WHERE \"Départements (2)\" = 'Paris'"}},
+        "paris-1990": {"alt": {"sql": "SELECT \"Ensemble / Total\" FROM T34 WHERE \"Départements (2)\" = 'Paris'"}},
+        "paris-change": {"alt": {"sql": "SELECT 100.0 * (SELECT \"Ensemble / Total\" FROM T1 WHERE \"Départements (2)\" = 'Paris') "
+                                        "/ \"Ensemble / Total\" - 100 FROM T34 WHERE \"Départements (2)\" = 'Paris'"}},
+        "somme": {"alt": {"sql": "SELECT \"Ensemble / Total\" FROM T1 WHERE \"Départements (2)\" = 'Somme'"}},
+    },
     "nw-orders": {  # the references list the 1997 order IDs; the natural query joins the two files
         "revenue-1997": {"alt": {"file": "northwind/order_details.csv", "sql":
                          "SELECT SUM(b.unitPrice * b.quantity * (1 - b.discount)) FROM f1.T1 AS a JOIN f2.T1 AS b "
@@ -177,10 +184,41 @@ def line_kinds(text: str) -> list[str]:
     return kinds
 
 
+# Parts of a line, ablated like kinds: (the line kind they live in, the pattern removed).
+SEGMENTS = {
+    "types": ("columns", re.compile(r"\[[^\]]*\]")),  # [text · dim], [15 × number · amount 2..9]
+    "table_cols": ("table", re.compile(r" · \d+ cols(?:: .*?(?= · T\d+_long|$)|, same as T\d+)")),  # brief column lists
+    "table_totals": ("table", re.compile(r" · \d+ total rows? \(only in [^)]*\): .*?(?= · \d+ cols| · amounts in|$)"
+                                         r"| \(\+\d+ total rows?: .*?— only in T\d+_all\)")),
+}
+
+
 def strip_kinds(text: str, drop: set[str]) -> str:
+    """The catalog without the lines of the dropped kinds (and without the dropped SEGMENTS)."""
     if not drop:
         return text
-    return "\n".join(l for l, k in zip(text.split("\n"), line_kinds(text)) if k not in drop)
+    out = []
+    for line, kind in zip(text.split("\n"), line_kinds(text)):
+        if kind in drop:
+            continue
+        for seg in drop & SEGMENTS.keys():
+            k, rx = SEGMENTS[seg]
+            if kind == k:
+                line = rx.sub("", line)
+        out.append(line)
+    return "\n".join(out)
+
+
+def segment_tokens(text: str) -> dict[str, int]:
+    """Tokens each SEGMENTS kind costs in a catalog."""
+    out = {}
+    for seg, (k, rx) in SEGMENTS.items():
+        n = 0
+        for line, kind in zip(text.split("\n"), line_kinds(text)):
+            if kind == k:
+                n += count_tokens(line) - count_tokens(rx.sub("", line))
+        out[seg] = n
+    return out
 
 
 # ---------------------------------------------------------------------------------------------
@@ -368,6 +406,7 @@ class CatalogIndex:
         self.quoted = set(re.findall(r'"([^"\n]*)"', text))
         self.quoted |= set(re.findall(r"'([^'\n]*)'", text))
         self.cols = set(self.quoted)
+        self.values = set(self.quoted)  # values shown as values: quoted, or a field of an inline row
         self.templates: list[tuple[re.Pattern, str, str]] = []
         self.described: set[str] = set()
         self.views_all: list[tuple[int, int]] = []
@@ -382,10 +421,17 @@ class CatalogIndex:
                 self.cols |= set(re.findall(r'(?:^|\s)([^\s\[\]"]+)\[', s))
             if kind == "columns":
                 self.cols |= set(re.findall(r'(?:^|\s)([^\s\[\]"]+)\[', s))
+                bare = re.sub(r"\[[^\]]*\]|\{[^}]*\}", " ", s.split("): ", 1)[-1])
+                self.cols |= {x.strip('"') for x in re.findall(r'"[^"]*"|[^\s"]+', bare)}
+                # shared prefixes: "a_{b, c[type]}" stands for a_b, a_c
+                for pre, items in re.findall(r'(?:^|\s)([^\s\[\]"{}]+?)_\{([^}]*)\}', s):
+                    self.cols |= {pre + "_" + re.sub(r"\[.*", "", x).strip() for x in items.split(", ")}
             if kind == "values":
                 self.cols.add(s.split(" values: ")[0].strip('"'))
-            if kind == "inline" and "," in s and not re.match(r"(all|first) ", s):
-                self.cols |= {f.strip() for f in next(csv.reader([s]))}
+            if kind == "inline" and not re.match(r"(all|first) ", s):
+                fields = {f.strip() for f in next(csv.reader([s]), [])}
+                self.cols |= fields
+                self.values |= fields
             if kind == "sql":
                 for a, b in re.findall(r"\bT(\d+)\.\.T(\d+)\b", s):
                     self.views.append((int(a), int(b)))
@@ -432,6 +478,12 @@ class CatalogIndex:
             if not (before.isalnum() and needle[:1].isalnum()) and not (after.isalnum() and needle[-1:].isalnum()):
                 return True
         return False
+
+    def has_value(self, lit: str) -> bool:
+        """A filter value the catalog shows: quoted or as an inline-row field; a longer word anywhere."""
+        if lit in self.values:
+            return True
+        return len(lit) >= 4 and not re.fullmatch(r"[\d.,\s-]+", lit) and self.has_text(lit)
 
     def year_covered(self, y: int) -> bool:
         return any(a <= y <= b for a, b in self.years)
@@ -489,9 +541,9 @@ def literal_ok(idx: CatalogIndex, col: str | None, op: str, lit: str, prompt: st
         if any(rx.fullmatch(v) for v in top):
             return "matches a value in the first 5 rows of a ranking query on its column"
         return None
-    if idx.has_text(lit):
+    if idx.has_value(lit):
         return "in the catalog"
-    if len(lit) >= 2 and re.search(rf"(?<!\w){re.escape(lit)}(?!\w)", prompt, re.I):
+    if len(lit) >= 2 and not re.fullmatch(r"[\d.,\s-]+", lit) and re.search(rf"(?<!\w){re.escape(lit)}(?!\w)", prompt, re.I):
         return "in the question"
     m = re.fullmatch(r"((?:19|20)\d\d)(-[\w]+)*", lit)
     if m and idx.year_covered(int(m.group(1))) and (lit == m.group(1) or re.sub(r"\d", "9", lit) in idx.shapes):
@@ -915,8 +967,12 @@ def main() -> None:
         by_kind: dict[str, int] = {}
         for l, k in zip(lines, kinds):
             by_kind[k] = by_kind.get(k, 0) + count_tokens(l + "\n")
+        by_seg: dict[str, int] = {}
+        for cat in catalogs:
+            for k, v in segment_tokens(cat).items():
+                by_seg[k] = by_seg.get(k, 0) + v
         results.append({"case": c["id"], "files": case_files(c), "tokens": count_tokens(text), "chars": len(text),
-                        "tokens_by_kind": by_kind, "checks": checks,
+                        "tokens_by_kind": by_kind, "tokens_by_segment": by_seg, "checks": checks,
                         "other_lines": [l for l, k in zip(lines, kinds) if k == "other" and l.strip()][:5]})
         n_ok = sum(x["cat"] in "ab" for x in checks)
         print(f"{c['id']}: {n_ok}/{len(checks)} sufficient, {results[-1]['tokens']} tokens", flush=True)
@@ -924,8 +980,8 @@ def main() -> None:
     if not args.no_ablation:
         sessions = {r["case"]: json.loads((args.cache / f"{r['case']}.json").read_text()) for r in results}
         base = {(r["case"], x["check"]): x["cat"] for r in results for x in r["checks"]}
-        for kind in KINDS:
-            tokens = sum(r["tokens_by_kind"].get(kind, 0) for r in results)
+        for kind in KINDS + tuple(SEGMENTS):
+            tokens = sum(r["tokens_by_kind"].get(kind, r["tokens_by_segment"].get(kind, 0)) for r in results)
             if not tokens:
                 continue
             lost, moved = [], {}
@@ -945,6 +1001,8 @@ def main() -> None:
 KIND_DESC = {
     "file": "FILE line (sheets, cells, tables)", "time": "TIME line", "sheets": "SHEETS without tables",
     "brief": "'tables listed briefly' note", "table": "table head line (T<n> ← range · rows · totals; brief: cols)",
+    "types": "part: [type · role · range] after each column name", "table_cols": "part: brief 'N cols: …' list on table lines",
+    "table_totals": "part: total-row labels on table lines",
     "columns": "columns line (names, types, roles, ranges)", "units": "units: amounts in thousands …",
     "column_notes": "column notes (footnotes defining columns)", "entity": "entity / ID–name lines (B2/B18/B80)",
     "share": "share-of-total SQL template (B19)", "values": "<col> values: …", "mixed": "rows mix measures",
@@ -999,7 +1057,7 @@ def write(out: Path, results: list[dict], ablation: list[dict], partial: bool) -
         L += ["", "## Ablation: what each kind of catalog line is worth", "",
               "Each kind's lines are removed from every catalog and all checks re-scored (no model). *Lost* = checks",
               "that were a/b and are not any more. Tokens are summed per line over the 30 catalogs.", "",
-              "| Kind | Lines | Tokens | Share | Checks lost | Tokens per lost check | Moves | Lost checks |",
+              "| Kind | What | Tokens | Share | Checks lost | Tokens per lost check | Moves | Lost checks |",
               "|---|---|---:|---:|---:|---:|---|---|"]
         for a in sorted(ablation, key=lambda a: (-len(a["lost"]), -a["tokens"])):
             per = f"{a['tokens'] / len(a['lost']):,.0f}" if a["lost"] else "∞"

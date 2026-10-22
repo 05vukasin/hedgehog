@@ -1,0 +1,2488 @@
+{
+ "summary": {
+  "tokenizer": "tiktoken o200k_base",
+  "cases": 30,
+  "checks": 168,
+  "counts": {
+   "a": 22,
+   "b": 137,
+   "c": 9,
+   "d": 0
+  },
+  "sufficiency": 0.9464,
+  "catalog_tokens": 53867,
+  "sufficient_per_1k_tokens": 2.952
+ },
+ "cases": [
+  {
+   "case": "pt-contracts",
+   "files": [
+    "eu_pt_opendata/001_contratos2020.xlsx"
+   ],
+   "tokens": 2124,
+   "chars": 6795,
+   "tokens_by_kind": {
+    "file": 41,
+    "time": 54,
+    "table": 20,
+    "columns": 367,
+    "entity": 685,
+    "share": 98,
+    "values": 337,
+    "table_status": 37,
+    "numbers": 121,
+    "quality": 287,
+    "notes": 4,
+    "warnings": 32,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 219,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "top-body",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('503933813': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "second-body",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('503278602': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "top10-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "ad-rg-count",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "ad-rg-value",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "cp-count",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "cp-value",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "jan",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "apr",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "at-pension",
+   "files": [
+    "eu_at_opendata/003_pen_02_02.xlsx"
+   ],
+   "tokens": 1726,
+   "chars": 4182,
+   "tokens_by_kind": {
+    "file": 37,
+    "time": 17,
+    "table": 84,
+    "columns": 56,
+    "mixed": 14,
+    "long": 74,
+    "no_sum": 33,
+    "table_status": 22,
+    "total_rows": 109,
+    "inline": 1113,
+    "totals": 19,
+    "notes": 44,
+    "warnings": 4,
+    "sql": 38,
+    "sql_long": 59,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 21,
+    "table_cols": 0,
+    "table_totals": 37
+   },
+   "checks": [
+    {
+     "check": "total-2024",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: Anzahl Bezieher:innen,Gesamt,234671,229186,229366,224209,215609,211237,212377,208739,205306,198378,194753,190749,193386,190423,189537,-0.0445664337779,-0.004652"
+    },
+    {
+     "check": "total-2025",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: Anzahl Bezieher:innen,Gesamt,234671,229186,229366,224209,215609,211237,212377,208739,205306,198378,194753,190749,193386,190423,189537,-0.0445664337779,-0.004652"
+    },
+    {
+     "check": "avg-single",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: Durchschnittshöhe in Euro,Alleinstehend,264.3,268.98,277.13,283.86,287.27,289.84,292.22,296.23,302.01,311.92,320.64,329.87,355.48,386.9,403.19,0.292607078738,0."
+    },
+    {
+     "check": "avg-married",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: Durchschnittshöhe in Euro,Verheiratet ***,372.97,382.51,395.92,405.13,409.79,415.32,416.53,423.46,433.99,478.99,486.08,500.48,528.44,572.73,594.2,0.240526942107"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "enron-henry-hub",
+   "files": [
+    "enron/andrea_ring__3__HHmonthlyavg.xlsx"
+   ],
+   "tokens": 4444,
+   "chars": 11143,
+   "tokens_by_kind": {
+    "file": 39,
+    "time": 43,
+    "table": 571,
+    "columns": 534,
+    "table_status": 223,
+    "total_rows": 339,
+    "inline": 1947,
+    "long": 356,
+    "signs": 33,
+    "values": 75,
+    "quality": 129,
+    "totals": 19,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 46,
+    "sql_long": 79,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 225,
+    "table_cols": 0,
+    "table_totals": 181
+   },
+   "checks": [
+    {
+     "check": "sea-robin",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,Receipts HH,SEA ROBIN,250000,0,123367,84474,64111,109748.5,89020.5483871,157262.666667,data"
+    },
+    {
+     "check": "ngpl",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,Receipts HH,NGPL,300000,0,105538,148195,115806,156906.633333,81239.483871,61301.2333333,data"
+    },
+    {
+     "check": "mainline",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,Receipts HH,MAINLINE,180000,0,100733,116563,148324,139742.433333,117176.806452,120093.166667,data"
+    },
+    {
+     "check": "receipts",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,Receipts HH,Total,-1175000,0,424772,522086,471202,600359.566667,506303.290323,510664.2,total"
+    },
+    {
+     "check": "deliveries",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,Deliveries HH,Total,0,0,-214246,-352525,-272996,-346614.7,-303753.612903,-335452.9,total"
+    },
+    {
+     "check": "net",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "jan-max",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "jan-day",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "de-truck-toll",
+   "files": [
+    "eu_de_destatis/statistischer-bericht-lkw-maut-fahrleistungsindex-5421901.xlsx"
+   ],
+   "tokens": 1635,
+   "chars": 5090,
+   "tokens_by_kind": {
+    "file": 49,
+    "time": 30,
+    "sheets": 31,
+    "table": 255,
+    "columns": 308,
+    "table_status": 46,
+    "inline": 466,
+    "values": 136,
+    "no_sum": 99,
+    "long": 72,
+    "quality": 58,
+    "notes": 32,
+    "warnings": 4,
+    "sql": 46,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 173,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "max-2023",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "max-date",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "ksb-2023",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "ksb-2024",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "enron-om-2plants",
+   "files": [
+    "enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx",
+    "enron/benjamin_rogers__1117__Wheatland 01 O&M Budget.xlsx"
+   ],
+   "tokens": 1695,
+   "chars": 4848,
+   "tokens_by_kind": {
+    "file": 90,
+    "time": 50,
+    "table": 146,
+    "columns": 328,
+    "values": 94,
+    "long": 158,
+    "table_status": 44,
+    "total_rows": 276,
+    "numbers": 43,
+    "totals": 38,
+    "notes": 78,
+    "warnings": 8,
+    "sql": 76,
+    "sql_long": 118,
+    "timing": 6,
+    "files": 142
+   },
+   "tokens_by_segment": {
+    "types": 114,
+    "table_cols": 0,
+    "table_totals": 80
+   },
+   "checks": [
+    {
+     "check": "gleason-total",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "wheatland-total",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "both",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "wheatland-variable",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "gleason-peak",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "enron-newco-cashflow",
+   "files": [
+    "enron/benjamin_rogers__1058__newco development cash flow.xlsx"
+   ],
+   "tokens": 978,
+   "chars": 2974,
+   "tokens_by_kind": {
+    "file": 42,
+    "time": 17,
+    "sheets": 11,
+    "table": 129,
+    "columns": 195,
+    "units": 40,
+    "values": 113,
+    "long": 63,
+    "table_status": 44,
+    "total_rows": 143,
+    "mixed": 14,
+    "totals": 19,
+    "notes": 36,
+    "warnings": 4,
+    "sql": 46,
+    "sql_long": 59,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 104,
+    "table_cols": 0,
+    "table_totals": 66
+   },
+   "checks": [
+    {
+     "check": "ni-2005",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "ni-2020",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "atc-2010",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "npv",
+     "kind": "num",
+     "cat": "c",
+     "reason": "the query needs value 'NPV @ 14%' of Year"
+    },
+    {
+     "check": "irr",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('IRR': in the question)"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "enron-deals-pl",
+   "files": [
+    "enron/barry_tycholiz__889__June 1 P&L.xlsx"
+   ],
+   "tokens": 1269,
+   "chars": 2730,
+   "tokens_by_kind": {
+    "file": 42,
+    "time": 24,
+    "table": 28,
+    "columns": 141,
+    "table_status": 37,
+    "inline": 902,
+    "totals": 19,
+    "notes": 31,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 98,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "total",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "mckay",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "phys",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "fin",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "sumas",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "enron-mdea-pl",
+   "files": [
+    "enron/craig_dean__4381__MDEA P&L Report.xlsx"
+   ],
+   "tokens": 3469,
+   "chars": 10298,
+   "tokens_by_kind": {
+    "file": 44,
+    "time": 39,
+    "brief": 11,
+    "table": 3137,
+    "formulas": 35,
+    "totals": 19,
+    "notes": 28,
+    "warnings": 4,
+    "sql": 46,
+    "union": 103,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 0,
+    "table_cols": 2128,
+    "table_totals": 90
+   },
+   "checks": [
+    {
+     "check": "epmi",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "mdea",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "best-day",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "best-value",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "enron-storage-inventory",
+   "files": [
+    "enron/barry_tycholiz__846__NPC Inventory Valuation.xlsx"
+   ],
+   "tokens": 2760,
+   "chars": 7304,
+   "tokens_by_kind": {
+    "file": 40,
+    "time": 28,
+    "table": 131,
+    "columns": 535,
+    "mixed": 38,
+    "long": 260,
+    "table_status": 98,
+    "total_rows": 123,
+    "inline": 1345,
+    "totals": 19,
+    "notes": 27,
+    "warnings": 4,
+    "sql": 46,
+    "sql_long": 63,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 216,
+    "table_cols": 0,
+    "table_totals": 55
+   },
+   "checks": [
+    {
+     "check": "peak",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,Total Volumes,,,8469805,10117013,11775475,12427743,11020625,7686145,3963788,1481134,100595,total"
+    },
+    {
+     "check": "peak-month",
+     "kind": "text_any",
+     "cat": "a",
+     "reason": "the phrase is in the catalog and peak is in the catalog"
+    },
+    {
+     "check": "coh",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "ldc",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,,Sub-Total,Sub-Total,1648112,1957265,2248271,2340524,2087589,1509813,916099,384166,100595,subtotal"
+    },
+    {
+     "check": "value-current",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: ,,Value,Value,,31767420.82,37563765.25,42502881.06,40776312.5,29361073.9,14903842.88,5406139.1,,total"
+    },
+    {
+     "check": "value-winter",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: columns (13): \"LDC / Virtual Storage / LDC\"[text · dim] \"LDC / Virtual Storage / Description\"[text · dim] \"LDC / Virtual Storage / Type\"[text · dim] \"LDC / Virt"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "at-salzburg-budget",
+   "files": [
+    "eu_at_opendata/013_budget-Operating-statement-szg-position-2019.xls"
+   ],
+   "tokens": 888,
+   "chars": 2740,
+   "tokens_by_kind": {
+    "file": 45,
+    "time": 17,
+    "table": 23,
+    "columns": 198,
+    "entity": 65,
+    "values": 345,
+    "table_status": 36,
+    "numbers": 110,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 82,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "expenses",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "revenues",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "surplus",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "surplus-word",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "follows from surplus: the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "health",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "health-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "personnel",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "rs-pancevo-budget",
+   "files": [
+    "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
+    "data_gov_rs/pancevo_budzet_2020_rashodi.xlsx"
+   ],
+   "tokens": 1662,
+   "chars": 4211,
+   "tokens_by_kind": {
+    "file": 84,
+    "time": 46,
+    "table": 43,
+    "columns": 422,
+    "values": 365,
+    "notes": 8,
+    "warnings": 8,
+    "sql": 76,
+    "timing": 6,
+    "entity": 280,
+    "table_status": 15,
+    "numbers": 149,
+    "quality": 34,
+    "totals": 19,
+    "files": 107
+   },
+   "tokens_by_segment": {
+    "types": 147,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "revenues",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "expenditures",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "taxes",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "tax-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "surplus",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "road",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('Друмски саобраћај': in the first 5 rows of a ranking query on its column)"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "us-superstore",
+   "files": [
+    "superstore/sample_superstore.xls"
+   ],
+   "tokens": 978,
+   "chars": 3087,
+   "tokens_by_kind": {
+    "file": 32,
+    "time": 32,
+    "table": 67,
+    "columns": 264,
+    "entity": 148,
+    "share": 65,
+    "values": 93,
+    "table_status": 31,
+    "numbers": 57,
+    "quality": 90,
+    "inline": 42,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 46,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 171,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "total",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "west",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "growth",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "tables",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('Tables': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "return-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "returned-sales",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "ms-financial-sample",
+   "files": [
+    "microsoft/financial_sample.xlsx"
+   ],
+   "tokens": 585,
+   "chars": 1842,
+   "tokens_by_kind": {
+    "file": 31,
+    "time": 22,
+    "table": 16,
+    "columns": 119,
+    "values": 160,
+    "numbers": 126,
+    "quality": 62,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 74,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "france",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "enterprise",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "margin",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "paseo",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "nw-orders",
+   "files": [
+    "northwind/orders.csv",
+    "northwind/order_details.csv"
+   ],
+   "tokens": 812,
+   "chars": 2528,
+   "tokens_by_kind": {
+    "file": 61,
+    "time": 43,
+    "table": 34,
+    "columns": 200,
+    "table_status": 40,
+    "numbers": 39,
+    "quality": 188,
+    "notes": 8,
+    "warnings": 8,
+    "sql": 76,
+    "timing": 6,
+    "files": 109
+   },
+   "tokens_by_segment": {
+    "types": 151,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "orders-1997",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "revenue-1997",
+     "kind": "num",
+     "cat": "b",
+     "reason": "a natural alternative query (names from the question and the catalog) reproduces it; the reference needs number 10400 for orderID, number 10807 for orderID"
+    },
+    {
+     "check": "employee-4",
+     "kind": "num",
+     "cat": "b",
+     "reason": "a natural alternative query (names from the question and the catalog) reproduces it; the reference needs number 10403 for orderID, number 10417 for orderID, number 10418 for orderID, number 10419 for orderID, number 10426 for orderID, number 10427 for orderID, number 10430 for orderID, number 10431 for orderID, number 10440 for orderID, number 10447 for orderID, number 10448 for orderID, number 10451 for orderID, number 10454 for orderID, number 10459 for orderID, number 10464 for orderID, number 10466 for orderID, number 10470 for orderID, number 10485 for orderID, number 10493 for orderID, number 10494 for orderID, number 10499 for orderID, number 10504 for orderID, number 10509 for orderID, number 10511 for orderID, number 10518 for orderID, number 10522 for orderID, number 10526 for orderID, number 10535 for orderID, number 10544 for orderID, number 10551 for orderID, number 10554 for orderID, number 10564 for orderID, number 10574 for orderID, number 10578 for orderID, number 10580 for orderID, number 10584 for orderID, number 10590 for orderID, number 10600 for orderID, number 10606 for orderID, number 10608 for orderID, number 10613 for orderID, number 10617 for orderID, number 10621 for orderID, number 10622 for orderID, number 10624 for orderID, number 10628 for orderID, number 10629 for orderID, number 10634 for orderID, number 10636 for orderID, number 10640 for orderID, number 10641 for orderID, number 10645 for orderID, number 10647 for orderID, number 10652 for orderID, number 10658 for orderID, number 10670 for orderID, number 10674 for orderID, number 10685 for orderID, number 10688 for orderID, number 10692 for orderID, number 10698 for orderID, number 10702 for orderID, number 10707 for orderID, number 10716 for orderID, number 10725 for orderID, number 10726 for orderID, number 10728 for orderID, number 10740 for orderID, number 10741 for orderID, number 10749 for orderID, number 10755 for orderID, number 10760 for orderID, number 10766 for orderID, number 10767 for orderID, number 10774 for orderID, number 10783 for orderID, number 10784 for orderID, number 10801 for orderID, number 10802 for orderID, number 10803 for orderID, number 10807 for orderID"
+    },
+    {
+     "check": "late",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "us-chicago-salaries",
+   "files": [
+    "chicago_open_data/employee_salaries.csv"
+   ],
+   "tokens": 456,
+   "chars": 1423,
+   "tokens_by_kind": {
+    "file": 35,
+    "time": 7,
+    "table": 21,
+    "columns": 107,
+    "share": 65,
+    "values": 31,
+    "no_sum": 24,
+    "numbers": 18,
+    "quality": 99,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 84,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "police-dept",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('CHICAGO POLICE DEPARTMENT': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "hourly",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: quality: typical_hours empty in 24,893 rows (78 %): salary_or_hourly = 'SALARY' (all its 24,893 rows) · annual_salary empty in 7,129 rows (22 %): salary_or_hour"
+    },
+    {
+     "check": "salaried",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: quality: typical_hours empty in 24,893 rows (78 %): salary_or_hourly = 'SALARY' (all its 24,893 rows) · annual_salary empty in 7,129 rows (22 %): salary_or_hour"
+    },
+    {
+     "check": "po-avg",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('POLICE OFFICER': in the question)"
+    },
+    {
+     "check": "top-name",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "top-salary",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: columns (8): name[text · name e.g. \"AARON, JEFFERY M\"] job_titles[text · name e.g. \"LIEUTENANT\"] department[text · dim e.g. \"CHICAGO POLICE DEPARTME…\"] full_or_"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "us-nyc-payroll",
+   "files": [
+    "nyc_open_data/citywide_payroll_100k.csv"
+   ],
+   "tokens": 738,
+   "chars": 2343,
+   "tokens_by_kind": {
+    "file": 41,
+    "time": 18,
+    "table": 25,
+    "columns": 134,
+    "share": 67,
+    "values": 118,
+    "table_status": 37,
+    "numbers": 129,
+    "quality": 88,
+    "notes": 4,
+    "warnings": 36,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 79,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "ot-2025",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "ot-peak",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "cps-2015",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('CHILD PROTECTIVE SPECIALIST': in the question)"
+    },
+    {
+     "check": "cps-2025",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('CHILD PROTECTIVE SPECIALIST': in the question)"
+    },
+    {
+     "check": "cps-rise",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('CHILD PROTECTIVE SPECIALIST': in the question)"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "uk-gender-pay-gap",
+   "files": [
+    "uk_gov/gender_pay_gap_2024_25.csv"
+   ],
+   "tokens": 749,
+   "chars": 2526,
+   "tokens_by_kind": {
+    "file": 39,
+    "time": 31,
+    "table": 26,
+    "columns": 252,
+    "values": 52,
+    "no_sum": 59,
+    "table_status": 32,
+    "numbers": 112,
+    "quality": 97,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 158,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "employers",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: T1  ← gender_pay_gap_2024_25!A1:AA11315 · 11,314 rows"
+    },
+    {
+     "check": "median",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "men-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "band-500",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "late",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "pt-social-report",
+   "files": [
+    "eu_pt_opendata/012_balanco-social-2016.xls"
+   ],
+   "tokens": 3833,
+   "chars": 10587,
+   "tokens_by_kind": {
+    "file": 40,
+    "time": 23,
+    "brief": 11,
+    "table": 3327,
+    "totals": 19,
+    "notes": 45,
+    "warnings": 4,
+    "sql": 46,
+    "union": 315,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 0,
+    "table_cols": 804,
+    "table_totals": 1552
+   },
+   "checks": [
+    {
+     "check": "workers",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "women",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "women-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "tecnico",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "costs",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "base-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows ('Remuneração base': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "providers",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "at-cpi",
+   "files": [
+    "eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods"
+   ],
+   "tokens": 933,
+   "chars": 2383,
+   "tokens_by_kind": {
+    "file": 49,
+    "time": 51,
+    "table": 73,
+    "columns": 192,
+    "column_notes": 68,
+    "no_sum": 29,
+    "table_status": 15,
+    "total_rows": 225,
+    "numbers": 126,
+    "totals": 19,
+    "notes": 41,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 77,
+    "table_cols": 0,
+    "table_totals": 39
+   },
+   "checks": [
+    {
+     "check": "y2022",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "y2023",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "peak",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "peak-month",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "rise",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "wb-gdp-wide",
+   "files": [
+    "world_bank/wdi_gdp_per_capita_wide_years.csv"
+   ],
+   "tokens": 589,
+   "chars": 1867,
+   "tokens_by_kind": {
+    "file": 40,
+    "time": 17,
+    "table": 64,
+    "columns": 49,
+    "values": 32,
+    "long": 73,
+    "table_status": 15,
+    "total_rows": 172,
+    "totals": 19,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "sql_long": 59,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 20,
+    "table_cols": 0,
+    "table_totals": 39
+   },
+   "checks": [
+    {
+     "check": "monaco",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('MCO': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "srb-2010",
+     "kind": "num",
+     "cat": "b",
+     "reason": "a natural alternative query (names from the question and the catalog) reproduces it; the reference needs value 'SRB' of Country Code"
+    },
+    {
+     "check": "srb-2024",
+     "kind": "num",
+     "cat": "b",
+     "reason": "a natural alternative query (names from the question and the catalog) reproduces it; the reference needs value 'SRB' of Country Code"
+    },
+    {
+     "check": "srb-growth",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "a natural alternative query (names from the question and the catalog) reproduces it; the reference needs value 'SRB' of Country Code"
+    },
+    {
+     "check": "pol-eu",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "a natural alternative query (names from the question and the catalog) reproduces it; the reference needs value 'POL' of Country Code, value 'EUU' of Country Code"
+    },
+    {
+     "check": "somalia",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('SOM': in the first 5 rows of a ranking query on its column)"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "eu-electricity-prices",
+   "files": [
+    "eurostat/nrg_pc_204_electricity_prices_households.csv"
+   ],
+   "tokens": 841,
+   "chars": 2031,
+   "tokens_by_kind": {
+    "file": 40,
+    "time": 22,
+    "table": 94,
+    "columns": 141,
+    "values": 155,
+    "total_rows": 284,
+    "numbers": 19,
+    "quality": 37,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 108,
+    "table_cols": 0,
+    "table_totals": 67
+   },
+   "checks": [
+    {
+     "check": "ireland",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('IE': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "germany",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('DE': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "de-change",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('2022-S2': a date in the catalog's range and format; 'DE': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "eu-2025s2",
+     "kind": "num",
+     "cat": "c",
+     "reason": "the query needs value 'EU27_2020' of geo"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "de-gdp",
+   "files": [
+    "eu_de_destatis/inlandsprodukt-erste-ergebnisse-xlsx-2180110.xlsx"
+   ],
+   "tokens": 4132,
+   "chars": 10961,
+   "tokens_by_kind": {
+    "file": 44,
+    "time": 42,
+    "sheets": 21,
+    "brief": 11,
+    "table": 2794,
+    "notes": 44,
+    "warnings": 4,
+    "sql": 46,
+    "sql_long": 59,
+    "union": 1037,
+    "cut": 31
+   },
+   "tokens_by_segment": {
+    "types": 0,
+    "table_cols": 782,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "gdp",
+     "kind": "num",
+     "cat": "c",
+     "reason": "the query needs column \"In jeweiligen Preisen / Ursprungswerte / Mrd. EUR\""
+    },
+    {
+     "check": "real-growth",
+     "kind": "pct_range",
+     "cat": "c",
+     "reason": "the query needs column \"Preisbereinigt, verkettet / Ursprungswerte / %\""
+    },
+    {
+     "check": "deficit",
+     "kind": "num",
+     "cat": "c",
+     "reason": "the query needs column \"Finanzierungs-saldo\""
+    },
+    {
+     "check": "deficit-pct",
+     "kind": "pct_range",
+     "cat": "c",
+     "reason": "the query needs column \"Finanzierungs-saldo / % des Bruttoinlandsprodukts\""
+    },
+    {
+     "check": "population",
+     "kind": "num",
+     "cat": "c",
+     "reason": "the query needs column \"Bevölkerung (Einwohner) / 1 000 Personen\""
+    },
+    {
+     "check": "unemployment",
+     "kind": "pct_range",
+     "cat": "c",
+     "reason": "the query needs column \"Erwerbslose in % der Erwerbspersonen (Erwerbslosenquote) / %\""
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "uk-ons-labour",
+   "files": [
+    "uk_ons/a01_labour_market_summary_sep2026.xls"
+   ],
+   "tokens": 3307,
+   "chars": 9574,
+   "tokens_by_kind": {
+    "file": 39,
+    "time": 81,
+    "sheets": 19,
+    "brief": 11,
+    "table": 2783,
+    "column_notes": 221,
+    "notes": 39,
+    "warnings": 4,
+    "sql": 46,
+    "union": 61,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 0,
+    "table_cols": 1549,
+    "table_totals": 44
+   },
+   "checks": [
+    {
+     "check": "period",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "employment-rate",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "unemployment-rate",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "employed",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "unemployed",
+     "kind": "num",
+     "cat": "c",
+     "reason": "the query needs column \"All aged 16 & over / Unemployed / level / MGSC\""
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "fr-insee-pop",
+   "files": [
+    "eu_fr_insee/002_estim-pop-dep-sexe-gca-1975-2023.xls"
+   ],
+   "tokens": 2553,
+   "chars": 6054,
+   "tokens_by_kind": {
+    "file": 47,
+    "time": 26,
+    "sheets": 10,
+    "brief": 11,
+    "table": 2261,
+    "totals": 20,
+    "notes": 30,
+    "warnings": 4,
+    "sql": 46,
+    "union": 95,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 0,
+    "table_cols": 629,
+    "table_totals": 126
+   },
+   "checks": [
+    {
+     "check": "metro",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "france",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "paris-2023",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('75': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "paris-1990",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('75': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "paris-change",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('75': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "somme",
+     "kind": "num",
+     "cat": "b",
+     "reason": "a natural alternative query (names from the question and the catalog) reproduces it; the reference needs value '80' of Départements"
+    },
+    {
+     "check": "75plus",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "at-tourism-2months",
+   "files": [
+    "eu_at_statistik_austria/012_TourismusJuli2026HerkunftEndg.ods",
+    "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods"
+   ],
+   "tokens": 4159,
+   "chars": 12625,
+   "tokens_by_kind": {
+    "file": 99,
+    "time": 46,
+    "sheets": 141,
+    "table": 2031,
+    "columns": 329,
+    "no_sum": 84,
+    "table_status": 30,
+    "total_rows": 714,
+    "numbers": 16,
+    "quality": 52,
+    "totals": 38,
+    "notes": 87,
+    "warnings": 8,
+    "sql": 92,
+    "union": 202,
+    "timing": 6,
+    "files": 184
+   },
+   "tokens_by_segment": {
+    "types": 183,
+    "table_cols": 0,
+    "table_totals": 700
+   },
+   "checks": [
+    {
+     "check": "july",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: columns (8): \"Herkunftsland oder -region\"[text · name e.g. \"Insgesamt\"] \"Ankünfte / Absolut\"[integer 1169..6009964] \"Ankünfte / Veränderung in %\"[number · rate "
+    },
+    {
+     "check": "august",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: columns (8): \"Herkunftsland oder -region\"[text · name e.g. \"Insgesamt\"] \"Ankünfte / Absolut\"[integer 1245..6278575] \"Ankünfte / Veränderung in %\"[number · rate "
+    },
+    {
+     "check": "both",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "germany",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "tirol",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "stay",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "rs-geodetic-licenses",
+   "files": [
+    "data_gov_rs/rgz_registar_geodetskih_licenci.ods"
+   ],
+   "tokens": 495,
+   "chars": 1287,
+   "tokens_by_kind": {
+    "file": 44,
+    "time": 7,
+    "table": 19,
+    "columns": 186,
+    "values": 77,
+    "table_status": 43,
+    "quality": 70,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 114,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "people",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: T1  ← Sheet1!A1:H3606 · 3,605 rows"
+    },
+    {
+     "check": "first",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "second",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "none",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "premer",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('%PREMER SAVKOVI%': matches a value in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "no-employer",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "uk-beis-spending",
+   "files": [
+    "uk_gov/beis_spending_over_25k_2018_03.csv"
+   ],
+   "tokens": 557,
+   "chars": 1795,
+   "tokens_by_kind": {
+    "file": 43,
+    "time": 27,
+    "table": 30,
+    "columns": 209,
+    "share": 65,
+    "values": 28,
+    "table_status": 31,
+    "numbers": 36,
+    "quality": 39,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 163,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "total",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "negative",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "post-office",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('POST OFFICE LTD': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "po-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('POST OFFICE LTD': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "research-councils",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "top-day",
+     "kind": "text_any",
+     "cat": "b",
+     "reason": "the natural query (probe) uses only names the catalog shows"
+    },
+    {
+     "check": "top-day-amount",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('2018-03-07': a date in the catalog's range and format)"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "de-berlin-grants",
+   "files": [
+    "govdata_de/berlin_zuwendungsdatenbank.csv"
+   ],
+   "tokens": 534,
+   "chars": 1644,
+   "tokens_by_kind": {
+    "file": 39,
+    "time": 17,
+    "table": 24,
+    "columns": 162,
+    "entity": 84,
+    "share": 69,
+    "values": 37,
+    "table_status": 35,
+    "numbers": 18,
+    "notes": 4,
+    "warnings": 4,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 134,
+    "table_cols": 0,
+    "table_totals": 0
+   },
+   "checks": [
+    {
+     "check": "total-2024",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "count-2024",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "institutional",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "fvb",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('vr_012174': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "top-year",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "pt-tax-benefits",
+   "files": [
+    "eu_pt_opendata/008_BF_1_2023_beneficiarios_por_tipo_de_imposto_e_beneficio.xlsx"
+   ],
+   "tokens": 3379,
+   "chars": 10164,
+   "tokens_by_kind": {
+    "file": 56,
+    "time": 23,
+    "sheets": 9,
+    "brief": 11,
+    "table": 3158,
+    "totals": 20,
+    "notes": 49,
+    "warnings": 4,
+    "sql": 46,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 0,
+    "table_cols": 2652,
+    "table_totals": 168
+   },
+   "checks": [
+    {
+     "check": "irc",
+     "kind": "num",
+     "cat": "a",
+     "reason": "in the catalog: T3  'IMPOSTO SOBRE O RENDIMENTO DE PESSOAS COLECTIVAS - LISTA DE…' ← IRC!B4:CJ63215 · 63,209 rows · 1 total row (only in T3_all): grand total '(no label)'@63215"
+    },
+    {
+     "check": "vat-total",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "air-force",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "armed-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    },
+    {
+     "check": "bombeiros",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows"
+    }
+   ],
+   "other_lines": []
+  },
+  {
+   "case": "owid-energy",
+   "files": [
+    "owid/owid_energy_data.csv"
+   ],
+   "tokens": 1587,
+   "chars": 5486,
+   "tokens_by_kind": {
+    "file": 36,
+    "time": 16,
+    "table": 67,
+    "columns": 959,
+    "no_sum": 66,
+    "total_rows": 178,
+    "numbers": 140,
+    "quality": 46,
+    "notes": 4,
+    "warnings": 34,
+    "sql": 38,
+    "timing": 3
+   },
+   "tokens_by_segment": {
+    "types": 359,
+    "table_cols": 0,
+    "table_totals": 46
+   },
+   "checks": [
+    {
+     "check": "de-2015",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('Germany': in the question)"
+    },
+    {
+     "check": "de-2024",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('Germany': in the question)"
+    },
+    {
+     "check": "china",
+     "kind": "num",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('China': in the first 5 rows of a ranking query on its column)"
+    },
+    {
+     "check": "china-share",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('China': in the first 5 rows of a ranking query on its column; 'World': in the question)"
+    },
+    {
+     "check": "wind-growth",
+     "kind": "pct_range",
+     "cat": "b",
+     "reason": "the reference query uses only names the catalog shows ('World': in the question)"
+    }
+   ],
+   "other_lines": []
+  }
+ ],
+ "ablation": [
+  {
+   "kind": "file",
+   "tokens": 1408,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "time",
+   "tokens": 916,
+   "lost": [
+    "owid-energy/de-2015",
+    "owid-energy/wind-growth"
+   ],
+   "moved": {
+    "b→c": 2
+   }
+  },
+  {
+   "kind": "sheets",
+   "tokens": 242,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "brief",
+   "tokens": 66,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "table",
+   "tokens": 21481,
+   "lost": [
+    "pt-contracts/top-body",
+    "pt-contracts/second-body",
+    "pt-contracts/top10-share",
+    "pt-contracts/ad-rg-count",
+    "pt-contracts/ad-rg-value",
+    "pt-contracts/cp-count",
+    "pt-contracts/cp-value",
+    "pt-contracts/jan",
+    "pt-contracts/apr",
+    "enron-henry-hub/net",
+    "enron-henry-hub/jan-max",
+    "enron-henry-hub/jan-day",
+    "de-truck-toll/max-2023",
+    "de-truck-toll/max-date",
+    "de-truck-toll/ksb-2023",
+    "de-truck-toll/ksb-2024",
+    "enron-om-2plants/gleason-total",
+    "enron-om-2plants/wheatland-total",
+    "enron-om-2plants/both",
+    "enron-om-2plants/wheatland-variable",
+    "enron-om-2plants/gleason-peak",
+    "enron-newco-cashflow/ni-2005",
+    "enron-newco-cashflow/ni-2020",
+    "enron-newco-cashflow/atc-2010",
+    "enron-newco-cashflow/irr",
+    "enron-deals-pl/total",
+    "enron-deals-pl/mckay",
+    "enron-deals-pl/phys",
+    "enron-deals-pl/fin",
+    "enron-deals-pl/sumas",
+    "enron-mdea-pl/epmi",
+    "enron-mdea-pl/mdea",
+    "enron-mdea-pl/best-day",
+    "enron-mdea-pl/best-value",
+    "enron-storage-inventory/coh",
+    "at-salzburg-budget/expenses",
+    "at-salzburg-budget/revenues",
+    "at-salzburg-budget/surplus",
+    "at-salzburg-budget/surplus-word",
+    "at-salzburg-budget/health",
+    "at-salzburg-budget/health-share",
+    "at-salzburg-budget/personnel",
+    "rs-pancevo-budget/revenues",
+    "rs-pancevo-budget/expenditures",
+    "rs-pancevo-budget/taxes",
+    "rs-pancevo-budget/tax-share",
+    "rs-pancevo-budget/surplus",
+    "rs-pancevo-budget/road",
+    "us-superstore/total",
+    "us-superstore/west",
+    "us-superstore/growth",
+    "us-superstore/tables",
+    "us-superstore/return-share",
+    "us-superstore/returned-sales",
+    "ms-financial-sample/france",
+    "ms-financial-sample/enterprise",
+    "ms-financial-sample/margin",
+    "ms-financial-sample/paseo",
+    "nw-orders/orders-1997",
+    "nw-orders/revenue-1997",
+    "nw-orders/employee-4",
+    "nw-orders/late",
+    "us-chicago-salaries/police-dept",
+    "us-chicago-salaries/po-avg",
+    "us-chicago-salaries/top-name",
+    "us-nyc-payroll/ot-2025",
+    "us-nyc-payroll/ot-peak",
+    "us-nyc-payroll/cps-2015",
+    "us-nyc-payroll/cps-2025",
+    "us-nyc-payroll/cps-rise",
+    "uk-gender-pay-gap/employers",
+    "uk-gender-pay-gap/median",
+    "uk-gender-pay-gap/men-share",
+    "uk-gender-pay-gap/band-500",
+    "uk-gender-pay-gap/late",
+    "pt-social-report/workers",
+    "pt-social-report/women",
+    "pt-social-report/women-share",
+    "pt-social-report/tecnico",
+    "pt-social-report/costs",
+    "pt-social-report/base-share",
+    "pt-social-report/providers",
+    "at-cpi/y2022",
+    "at-cpi/y2023",
+    "at-cpi/peak",
+    "at-cpi/peak-month",
+    "at-cpi/rise",
+    "wb-gdp-wide/monaco",
+    "wb-gdp-wide/srb-2010",
+    "wb-gdp-wide/srb-2024",
+    "wb-gdp-wide/srb-growth",
+    "wb-gdp-wide/pol-eu",
+    "wb-gdp-wide/somalia",
+    "eu-electricity-prices/ireland",
+    "eu-electricity-prices/germany",
+    "eu-electricity-prices/de-change",
+    "uk-ons-labour/period",
+    "uk-ons-labour/employment-rate",
+    "uk-ons-labour/unemployment-rate",
+    "uk-ons-labour/employed",
+    "fr-insee-pop/metro",
+    "fr-insee-pop/france",
+    "fr-insee-pop/paris-2023",
+    "fr-insee-pop/paris-1990",
+    "fr-insee-pop/paris-change",
+    "fr-insee-pop/somme",
+    "fr-insee-pop/75plus",
+    "at-tourism-2months/both",
+    "at-tourism-2months/germany",
+    "at-tourism-2months/tirol",
+    "at-tourism-2months/stay",
+    "rs-geodetic-licenses/people",
+    "rs-geodetic-licenses/first",
+    "rs-geodetic-licenses/second",
+    "rs-geodetic-licenses/none",
+    "rs-geodetic-licenses/share",
+    "rs-geodetic-licenses/premer",
+    "rs-geodetic-licenses/no-employer",
+    "uk-beis-spending/total",
+    "uk-beis-spending/negative",
+    "uk-beis-spending/post-office",
+    "uk-beis-spending/po-share",
+    "uk-beis-spending/research-councils",
+    "uk-beis-spending/top-day",
+    "uk-beis-spending/top-day-amount",
+    "de-berlin-grants/total-2024",
+    "de-berlin-grants/count-2024",
+    "de-berlin-grants/institutional",
+    "de-berlin-grants/fvb",
+    "de-berlin-grants/top-year",
+    "pt-tax-benefits/irc",
+    "pt-tax-benefits/vat-total",
+    "pt-tax-benefits/air-force",
+    "pt-tax-benefits/armed-share",
+    "pt-tax-benefits/bombeiros",
+    "owid-energy/de-2015",
+    "owid-energy/de-2024",
+    "owid-energy/china",
+    "owid-energy/china-share",
+    "owid-energy/wind-growth"
+   ],
+   "moved": {
+    "b→c": 137,
+    "a→c": 3
+   }
+  },
+  {
+   "kind": "columns",
+   "tokens": 6387,
+   "lost": [
+    "pt-contracts/jan",
+    "pt-contracts/apr",
+    "de-truck-toll/max-2023",
+    "de-truck-toll/max-date",
+    "de-truck-toll/ksb-2023",
+    "de-truck-toll/ksb-2024",
+    "enron-om-2plants/gleason-total",
+    "enron-om-2plants/wheatland-total",
+    "enron-om-2plants/wheatland-variable",
+    "enron-om-2plants/gleason-peak",
+    "enron-newco-cashflow/irr",
+    "at-salzburg-budget/expenses",
+    "at-salzburg-budget/revenues",
+    "at-salzburg-budget/surplus",
+    "at-salzburg-budget/surplus-word",
+    "at-salzburg-budget/health",
+    "at-salzburg-budget/health-share",
+    "at-salzburg-budget/personnel",
+    "rs-pancevo-budget/revenues",
+    "us-superstore/tables",
+    "ms-financial-sample/france",
+    "ms-financial-sample/enterprise",
+    "ms-financial-sample/margin",
+    "nw-orders/orders-1997",
+    "nw-orders/revenue-1997",
+    "nw-orders/employee-4",
+    "nw-orders/late",
+    "us-chicago-salaries/po-avg",
+    "us-chicago-salaries/top-name",
+    "us-nyc-payroll/ot-2025",
+    "us-nyc-payroll/ot-peak",
+    "us-nyc-payroll/cps-2015",
+    "us-nyc-payroll/cps-2025",
+    "us-nyc-payroll/cps-rise",
+    "uk-gender-pay-gap/median",
+    "uk-gender-pay-gap/men-share",
+    "uk-gender-pay-gap/band-500",
+    "uk-gender-pay-gap/late",
+    "at-cpi/y2022",
+    "at-cpi/y2023",
+    "at-cpi/peak",
+    "at-cpi/peak-month",
+    "eu-electricity-prices/ireland",
+    "eu-electricity-prices/germany",
+    "eu-electricity-prices/de-change",
+    "at-tourism-2months/july",
+    "at-tourism-2months/august",
+    "at-tourism-2months/both",
+    "at-tourism-2months/germany",
+    "at-tourism-2months/tirol",
+    "at-tourism-2months/stay",
+    "rs-geodetic-licenses/premer",
+    "rs-geodetic-licenses/no-employer",
+    "uk-beis-spending/post-office",
+    "uk-beis-spending/po-share",
+    "uk-beis-spending/research-councils",
+    "de-berlin-grants/total-2024",
+    "de-berlin-grants/count-2024",
+    "de-berlin-grants/institutional",
+    "de-berlin-grants/fvb",
+    "de-berlin-grants/top-year",
+    "owid-energy/de-2015",
+    "owid-energy/de-2024",
+    "owid-energy/china",
+    "owid-energy/china-share",
+    "owid-energy/wind-growth"
+   ],
+   "moved": {
+    "b→c": 64,
+    "a→b": 1,
+    "a→c": 2
+   }
+  },
+  {
+   "kind": "units",
+   "tokens": 40,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "column_notes",
+   "tokens": 289,
+   "lost": [
+    "uk-ons-labour/employment-rate",
+    "uk-ons-labour/unemployment-rate"
+   ],
+   "moved": {
+    "b→c": 2
+   }
+  },
+  {
+   "kind": "entity",
+   "tokens": 1262,
+   "lost": [
+    "pt-contracts/top10-share"
+   ],
+   "moved": {
+    "b→c": 1
+   }
+  },
+  {
+   "kind": "share",
+   "tokens": 429,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "values",
+   "tokens": 2248,
+   "lost": [
+    "de-berlin-grants/institutional"
+   ],
+   "moved": {
+    "b→c": 1
+   }
+  },
+  {
+   "kind": "mixed",
+   "tokens": 66,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "long",
+   "tokens": 1056,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "no_sum",
+   "tokens": 394,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "table_status",
+   "tokens": 911,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "total_rows",
+   "tokens": 2563,
+   "lost": [
+    "at-cpi/y2022",
+    "at-cpi/y2023",
+    "at-cpi/rise"
+   ],
+   "moved": {
+    "b→c": 3
+   }
+  },
+  {
+   "kind": "signs",
+   "tokens": 33,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "inline",
+   "tokens": 5815,
+   "lost": [
+    "enron-deals-pl/mckay",
+    "enron-storage-inventory/value-current"
+   ],
+   "moved": {
+    "a→b": 10,
+    "b→c": 1,
+    "a→c": 1
+   }
+  },
+  {
+   "kind": "numbers",
+   "tokens": 1259,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "quality",
+   "tokens": 1376,
+   "lost": [],
+   "moved": {
+    "a→b": 2
+   }
+  },
+  {
+   "kind": "formulas",
+   "tokens": 35,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "totals",
+   "tokens": 306,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "notes",
+   "tokens": 683,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "warnings",
+   "tokens": 226,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "sql",
+   "tokens": 1396,
+   "lost": [
+    "enron-deals-pl/total",
+    "enron-deals-pl/mckay",
+    "enron-deals-pl/phys",
+    "enron-deals-pl/fin",
+    "enron-deals-pl/sumas",
+    "at-salzburg-budget/expenses",
+    "at-salzburg-budget/revenues",
+    "at-salzburg-budget/surplus",
+    "at-salzburg-budget/surplus-word",
+    "at-salzburg-budget/health",
+    "at-salzburg-budget/health-share",
+    "at-salzburg-budget/personnel",
+    "rs-pancevo-budget/revenues",
+    "rs-pancevo-budget/expenditures",
+    "rs-pancevo-budget/taxes",
+    "rs-pancevo-budget/tax-share",
+    "rs-pancevo-budget/surplus",
+    "rs-pancevo-budget/road",
+    "uk-beis-spending/total",
+    "uk-beis-spending/negative",
+    "uk-beis-spending/post-office",
+    "uk-beis-spending/po-share",
+    "uk-beis-spending/research-councils",
+    "uk-beis-spending/top-day-amount",
+    "de-berlin-grants/total-2024",
+    "de-berlin-grants/count-2024",
+    "de-berlin-grants/institutional",
+    "de-berlin-grants/fvb",
+    "de-berlin-grants/top-year"
+   ],
+   "moved": {
+    "b→c": 29
+   }
+  },
+  {
+   "kind": "sql_long",
+   "tokens": 496,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "union",
+   "tokens": 1813,
+   "lost": [
+    "enron-mdea-pl/epmi",
+    "enron-mdea-pl/mdea",
+    "enron-mdea-pl/best-day",
+    "enron-mdea-pl/best-value"
+   ],
+   "moved": {
+    "b→c": 4
+   }
+  },
+  {
+   "kind": "files",
+   "tokens": 542,
+   "lost": [
+    "enron-om-2plants/both",
+    "nw-orders/revenue-1997",
+    "nw-orders/employee-4",
+    "at-tourism-2months/both"
+   ],
+   "moved": {
+    "b→c": 4
+   }
+  },
+  {
+   "kind": "cut",
+   "tokens": 31,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "timing",
+   "tokens": 99,
+   "lost": [],
+   "moved": {}
+  },
+  {
+   "kind": "types",
+   "tokens": 3274,
+   "lost": [],
+   "moved": {
+    "a→b": 3
+   }
+  },
+  {
+   "kind": "table_cols",
+   "tokens": 8544,
+   "lost": [
+    "enron-mdea-pl/epmi",
+    "enron-mdea-pl/mdea",
+    "enron-mdea-pl/best-day",
+    "enron-mdea-pl/best-value",
+    "pt-social-report/workers",
+    "pt-social-report/women",
+    "pt-social-report/women-share",
+    "pt-social-report/tecnico",
+    "pt-social-report/costs",
+    "pt-social-report/base-share",
+    "pt-social-report/providers",
+    "uk-ons-labour/period",
+    "uk-ons-labour/employed",
+    "fr-insee-pop/metro",
+    "fr-insee-pop/france",
+    "fr-insee-pop/paris-2023",
+    "fr-insee-pop/paris-1990",
+    "fr-insee-pop/paris-change",
+    "fr-insee-pop/somme",
+    "fr-insee-pop/75plus",
+    "pt-tax-benefits/vat-total",
+    "pt-tax-benefits/air-force",
+    "pt-tax-benefits/armed-share",
+    "pt-tax-benefits/bombeiros"
+   ],
+   "moved": {
+    "b→c": 24
+   }
+  },
+  {
+   "kind": "table_totals",
+   "tokens": 3290,
+   "lost": [],
+   "moved": {}
+  }
+ ]
+}

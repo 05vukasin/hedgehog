@@ -1,0 +1,141 @@
+# Information scoreboard (model-free)
+
+hedgehog is a tool call inside an agent. Its main job is to give the agent a short, correct summary
+of the file (the `open_file` catalog) and cheap exact access (`query`, `cells`, …), so that the
+agent spends few tokens. A frontier model will always reason better than a small one. What hedgehog
+controls is the information it hands over, and this folder measures that information without a model.
+
+The agent comparisons in [eval/agents](../agents/README.md) measure answers, so they mix two
+things: what the catalog says and how well a model reads it. This scoreboard measures only the
+first. For every automatic check of the 30 cases in [cases.json](../agents/cases.json), it asks
+whether the catalog alone, or the catalog plus one query, gives the reference answer.
+
+Results: [REPORT.md](REPORT.md) (generated) and [results.json](results.json).
+
+## Categories
+
+Every `num`, `pct_range` and `text_any` check is put into one of four categories. `judge` checks are
+out of scope because they have no reference.
+
+| Cat | Meaning | Decided by |
+|---|---|---|
+| **a** | **in the catalog** | the reference value is in the catalog text, within the check's `tol` (or inside its `pct_range`), on a line that names it: the line contains one of the reference query's string literals or the check's `near` words, or the number has at least 4 significant digits. Numbers are read the way the answer checks read them (`run.numbers`). CSV inline rows are read field by field. Units count: when the reference multiplies by a literal (`* 1000`, `* 1e9`), the raw value counts. For a `text_any` answer, the phrase must be in the catalog and the number it belongs to (`pair`) must be **a**. |
+| **b** | **one query away** | the reference query (or the probe, see below) uses only tables, columns and literal values that the catalog names, and running it reproduces the value |
+| **c** | **reachable with more work** | the value is in hedgehog's tables, but the query needs a name the catalog does not show, so the agent needs `describe_table`, a lookup query or several queries |
+| **d** | **wrong or missing** | the reference or natural query fails or gives another value on hedgehog's tables; or the data rows view (`T<n>`) gives an aggregate other than `T<n>_all`, which means rows the catalog calls totals are data; or a referenced source cell is in no table (lost) |
+
+**Sufficiency** = (a + b) / checks. **Information per 1k tokens** = (a + b) / (catalog tokens / 1000).
+
+### When the catalog "names" something
+
+The SQL is tokenized with a small SQLite tokenizer (`sql_tokens`, `sql_refs`). Aliases (`AS x`, a
+word right after an expression or a table) are not columns. String arguments of functions
+(`strftime('%m', …)`, `REPLACE(col, ' ', '')`) are not filter values, and neither are literals
+compared with `strftime(…)`, because they follow from the SQL, not the data.
+
+- **Tables**: `T<n>` needs its head line. `T<n>_all` needs either the name itself or the SQL tail
+  range (`T1_all..T7_all`). `T<n>_long` and `U<n>` need their names. `f<k>.T<n>` also needs the
+  `FILES` line of a multi-file session.
+- **Columns**: a quoted name in the catalog, a `name[type]` item of a columns line, an item of a
+  brief `N cols:` list, a field of an inline CSV header, a `<col> values:` line, a name inside a
+  range `"2011".."2025"` or `"Thu / 2002-01-31".."Tue / 2002-01-01"` (same shape, inside the
+  range), or a shared-prefix group `solar_{electricity, share_elec}`. View columns (`_row_type`,
+  `_src_row`, `period`, `value`, `sheet`, `variant`, …) count when the catalog mentions them.
+  Unquoted names are matched case-insensitively, as SQLite does.
+- **String literals** (`col = 'x'`, `IN (…)`, `LIKE`), in this order:
+  1. *in the catalog*: quoted (`"x"` or `'x'`) or a field of an inline row; a non-numeric literal
+     of 4 or more characters may also appear anywhere as a whole word;
+  2. *in the question*: a non-numeric literal that is a whole word of the case prompt (the agent has
+     it from the user);
+  3. *a date or period* (`2018-03-07`, `2026-S1`, `2023%`) whose year is inside a range the catalog
+     states and whose shape the catalog shows;
+  4. *in the first 5 rows of a ranking query on its column*: for a reference
+     `SELECT <expr> FROM T WHERE … col = 'x' …`, score.py runs the query an agent would run for
+     "which col has the most/least": the condition is dropped, then the rows are ranked by `<expr>`
+     (grouped when `<expr>` aggregates), both ways, `LIMIT 5`. A value in those rows counts for
+     every check of the case. A `LIKE` pattern counts when it matches such a value.
+- **Numbers compared with a column**: `0`, a year inside a stated range, a number shown in the
+  catalog (`'Gesamt'@9` shows 9), or a value from a ranking query.
+
+### Probes and alternative queries
+
+Some references are not SQL over hedgehog's tables, or filter on a code that the question does not
+give. For these, `PROBES` in score.py holds a hand-written natural query, which is scored exactly
+like a reference:
+
+- `ref_py` checks (uk-gender-pay-gap, values read from the raw CSV) and `ref_cells` checks
+  (enron-mdea-pl, pt-social-report, uk-ons-labour) get the query an agent would write. If a probe
+  fails, the referenced cells are looked up in every table with a second `hedgehog mcp` session
+  (`scan_cells`). The check is **c** if every cell is in some table and **d** if one is in none.
+- `text_any` checks (a day, a name, a period) get the ranking query that answers them. `pair`
+  names the number check the answer belongs to.
+- `alt`: a natural alternative when the reference filters on a code (wb-gdp-wide ISO codes,
+  fr-insee-pop département numbers, nw-orders order-ID lists). It counts only when the reference
+  itself is **c**, and only if it reproduces the value.
+
+Every probe was written once against the case's question and is kept in the script, so a rerun is
+deterministic.
+
+## Tokens
+
+Catalog tokens are counted with **tiktoken `o200k_base`** when it can be imported. Otherwise score.py
+uses ⌈characters / 4⌉, and the report says which one it used. tiktoken is not a dependency of the
+repo. Install it in an isolated venv:
+
+```sh
+python3 -m venv /path/to/venv && /path/to/venv/bin/pip install tiktoken
+```
+
+Per-kind tokens are summed line by line, each line with its newline. The overall figure is the token
+count of the whole catalog text. A multi-file case counts every file's catalog.
+
+## Ablation (what each line kind is worth)
+
+`line_kinds` gives every catalog line a kind. The producers are agent/src/catalog.rs, facts.rs,
+entity.rs, views.rs, types.rs, unions.rs and multi.rs. The kinds are FILE, TIME, SHEETS, table head
+line, columns, units, column notes, entity, share, values, mixed measures, long view, do not sum,
+table status, total rows, signs, inline rows, numbers, quality, FORMULAS, TOTALS, NOTES, WARNINGS,
+the SQL / long / union view tails, FILES/JOIN KEYS, cut, and timing. Three parts of lines are
+ablated the same way: `types` (the `[…]` after each column name), `table_cols` (the brief `N cols:`
+lists) and `table_totals` (the total-row labels on table lines).
+
+For each kind, its lines are removed from every catalog and all checks are scored again. The cached
+query results are reused, so no hedgehog call and no model is needed. *Checks lost* counts the
+checks that were a or b and are not any more.
+
+What this ablation can and cannot see:
+
+- It measures **naming**: whether the agent can find the table, column, value or number. It does
+  not see lines whose job is to prevent a wrong answer (do not sum, signs, mixed measures, total
+  rows that stay in T1, quality, different measures). A kind that loses 0 checks here may still win
+  checks with a model. The optional LLM run below tests that.
+- Kinds are removed one at a time, so two kinds that name the same thing (the `long` line and the
+  `SQL long view` tail) each look free.
+- The parts (`types`, `table_cols`, `table_totals`) overlap with their line kinds, so the shares do
+  not add up to 100 %.
+
+## Running
+
+```sh
+# from the repo root; tier 1 (one hedgehog session per case, ~1 GB, pt-contracts needs 4G)
+../scripts/run_capped.sh 4G /tmp/info.log env HEDGEHOG_BIN=target/release/hedgehog \
+  /path/to/venv/bin/python -I eval/info/score.py --cache /some/disk/dir
+python3 -I eval/info/score.py --offline --cache /some/disk/dir     # re-score from the cached sessions
+python3 -I eval/info/score.py --cases de-gdp,owid-energy --no-ablation
+python3 -I eval/info/test_score.py                                  # unit tests (no hedgehog)
+```
+
+`--cache` keeps every session's raw tool output as JSON: the catalogs, reference and probe results,
+data-view and ranking queries, and cell scans. The default is `eval/info/cache/`, which is ignored
+by git. A run with `--cases` writes results.json for those cases only and leaves REPORT.md as it is.
+
+## Limits
+
+- A value in the catalog counts even when it is only a range bound (`annual_salary … 40008..360504`
+  gives the top salary). The value is there, but the agent may not know that it is the answer.
+- A ranking query that shows a value counts as "one query", even though the agent may need a second
+  query to use it in a filter. The rule is limited to the first 5 rows so that a value does not
+  qualify by chance.
+- "Contradictions" are found only through query results: the data view against `_all` for
+  aggregates, probes against the raw file, and cell scans. A wrong sentence in the catalog that no
+  query exposes is not detected.
