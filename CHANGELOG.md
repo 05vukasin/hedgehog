@@ -6,6 +6,18 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Information scoreboard without a model** ([eval/info](eval/info/README.md)). For each automatic
+  check of the 30 agent cases, `eval/info/score.py` decides from the `open_file` catalog and
+  `hedgehog mcp` query results whether the answer is **a** in the catalog, **b** one query away
+  (the reference query uses only tables, columns and values the catalog names, and it reproduces
+  the value), **c** reachable with more work, or **d** wrong or missing. It counts catalog tokens
+  (tiktoken o200k) and removes each kind of catalog line in turn to measure what it is worth. With
+  v0.4.0: 159 of 168 checks (95 %) are a or b, at 2.95 sufficient checks per 1k catalog tokens.
+  The 9 gaps are backlog items B100–B103 in eval/agents/BACKLOG.md, and the ablation adds B104–B105. Test-only:
+  `HH_HIDE_KINDS=types,quality` hides catalog line kinds from the `swap-hedgehog` arm.
+
 ## [0.4.0] - 2026-10-22
 
 ### Added

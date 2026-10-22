@@ -23,6 +23,9 @@ MARKITDOWN_PY = SCRATCH / "venv-markitdown/bin/python"  # markitdown[xlsx,xls] 0
 EXCELMCP_JS = SCRATCH / "excelmcp/inst/node_modules/excel-csv-mcp-server/dist/index.js"  # excel-csv-mcp-server 1.0.2
 PANDAS_MAX_OUT = 8000   # characters of a python tool result
 MCP_MAX_OUT = 32000     # characters of an MCP tool result (≈ 8k tokens)
+# HH_HIDE_KINDS=quality,types: drop these catalog line kinds (eval/info/score.py KINDS / SEGMENTS) from
+# open_file results, to measure with a model what they are worth.
+HIDE_KINDS = {k for k in os.environ.get("HH_HIDE_KINDS", "").split(",") if k}
 # Read and analysis tools of excel-csv-mcp-server (ishayoyo/excel-mcp); its write, export, formatting
 # and LLM-calling tools are not offered.
 EXCELMCP_READ = {"read_file", "get_cell", "get_range", "get_headers", "search", "filter_rows", "aggregate",
@@ -138,6 +141,11 @@ class Mcp:
                 self.start()
             return f"error: {e}", True
         text = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
+        if HIDE_KINDS and name == "open_file":  # catalog line ablation (eval/info/README.md); test-only
+            import sys
+            sys.path.insert(0, str(HERE.parents[1] / "info"))
+            from score import strip_kinds
+            text = strip_kinds(text, HIDE_KINDS)
         return clip(text, MCP_MAX_OUT), bool(r.get("isError"))
 
     def close(self) -> None:

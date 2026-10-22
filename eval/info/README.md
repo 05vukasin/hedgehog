@@ -114,6 +114,38 @@ What this ablation can and cannot see:
 - The parts (`types`, `table_cols`, `table_totals`) overlap with their line kinds, so the shares do
   not add up to 100 %.
 
+### LLM check of three low-value kinds (2026-10-22)
+
+The ablation found three kinds with the most tokens and no lost check: `types` (3,274 tokens),
+`table_totals` (3,290) and `quality` (1,376), together 15 % of the catalog tokens. To test them with
+a model, `HH_HIDE_KINDS` (a test-only switch in [swap/tools.py](../agents/swap/tools.py)) removes
+these kinds from `open_file` in the `swap-hedgehog` arm. Setup: gpt-4.1-mini, 3 runs per case, 6
+cases with the most tokens of these kinds (pt-contracts is left out for memory), binary v0.4.0.
+
+| Case | Full catalog | Without types, table_totals, quality |
+|---|---:|---:|
+| enron-henry-hub | 18/24 | 23/24 |
+| us-superstore | 14/18 | 13/18 |
+| uk-gender-pay-gap | 14/15 | 13/15 |
+| pt-social-report | 17/21 | 18/21 |
+| at-tourism-2months | 6/18 | 8/18 |
+| owid-energy | 15/15 | 15/15 |
+| **Total** | **84/111 (76 %)** | **90/111 (81 %)** |
+| Input tokens (18 runs) | 399k | 252k |
+| Cost | $0.084 | $0.062 |
+
+Hiding the three kinds lost nothing and used 37 % fewer input tokens. Most of the token saving is
+pt-social-report (167k → 27k), where the model made fewer exploratory calls. With 3 runs per case,
+the +6 checks are within noise. This supports shortening these kinds (B104), but it does not prove
+that they are useless: their trap warnings (do not sum, empty dates) matter in cases outside this
+sample. at-tourism-2months scores 100 % here and 6–8/18 with the model, because the model reads
+`'Österreich gesamt'` (guests from Austria) as Austria's total. This scoreboard cannot see that kind
+of trap (B105).
+
+Command (run under `scripts/run_capped.sh 4G …`, with `SWAP_DIR` on disk):
+`HH_HIDE_KINDS=types,table_totals,quality python3 -I eval/agents/run.py --arms swap-hedgehog --repeat 3
+--cases … --hedgehog <bin> --out-dir <dir>`.
+
 ## Running
 
 ```sh
