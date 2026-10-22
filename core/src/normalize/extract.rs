@@ -420,8 +420,8 @@ struct RowTotal {
 fn table_word(s: &str) -> bool {
     let w = s.split(|c: char| !c.is_alphabetic()).next().unwrap_or("").to_lowercase();
     [
-        "table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabulka", "tabell", "taulukko", "tabel", "quadro",
-        "quadros", "cuadro", "cuadros",
+        "table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabulka", "tabell", "taulukko", "tabel", "tabl",
+        "tab", "quadro", "quadros", "cuadro", "cuadros",
     ]
     .contains(&w.as_str())
 }
@@ -740,7 +740,7 @@ fn build_table(
             if is_nav_link(&it.text) {
                 // "zur Inhaltsübersicht": a link back to the contents, never the title.
                 it.kind = "other";
-            } else if title.is_none() && !it.text.is_empty() {
+            } else if title.is_none() && !it.text.is_empty() && !crate::layout::is_note_label(&it.text) {
                 title = Some((it.text.clone(), (it.row, it.col)));
             }
             notes.push(it);
@@ -1579,9 +1579,12 @@ fn borrow_headers(tables: &mut [Table]) {
         let header = headers[up].clone().unwrap_or_default();
         // Each column's phrase: its own name unless it is a column letter, else the block's one
         // phrase (a unit centred over the block) or its short title.
+        // A phrase says something: two letters or digits, or a percent sign ("%", "Mrd. EUR"), not
+        // a footnote letter or a slash ("z", "s", "/").
+        let says = |n: &str| n.contains('%') || n.chars().filter(|c| c.is_alphanumeric()).count() >= 2;
         let own: Vec<Option<String>> = data
             .iter()
-            .map(|&i| Some(name_base(&t.columns[i].name).to_string()).filter(|n| !n.starts_with("col_")))
+            .map(|&i| Some(name_base(&t.columns[i].name).to_string()).filter(|n| !n.starts_with("col_") && says(n)))
             .collect();
         let phrases: HashSet<&String> = own.iter().flatten().collect();
         let block = match phrases.len() {
@@ -1604,7 +1607,7 @@ fn borrow_headers(tables: &mut [Table]) {
                 let base = header.get(&c.source_col?)?;
                 let numeric = !matches!(c.dtype, Dtype::Text | Dtype::Empty) && !years(c);
                 Some(match own.as_ref().or(block.as_ref()) {
-                    Some(p) if numeric => format!("{base} / {p}"),
+                    Some(p) if numeric && !base.ends_with(&format!("/ {p}")) => format!("{base} / {p}"),
                     _ => base.clone(),
                 })
             })
@@ -2076,7 +2079,11 @@ pub(super) fn process_sheet(
             .iter()
             .filter(|x| x.table == Some(t.n) && x.kind != "repeated_header" && !x.text.is_empty())
             .collect();
-        if t.title.is_none() {
+        // A loose caption above ("Table 1: …", "TABL. 6 (157). …") is preferred to a title line
+        // inside the table's range that is no caption.
+        let caption_above = t.title.as_ref().is_some_and(|x| !table_word(&x.0))
+            && mine.iter().any(|x| x.kind == "title" && x.row < t.rect.top && table_word(&x.text));
+        if t.title.is_none() || caption_above {
             // Nearest loose title above the table; not a source line or key/value metadata
             // ("Source: …", "Date of publication:", B46), and a "Table 1: …" line first.
             let above: Vec<&&NoteItem> = mine.iter().filter(|x| x.kind == "title" && x.row < t.rect.top).collect();
