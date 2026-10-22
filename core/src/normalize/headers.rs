@@ -130,7 +130,7 @@ fn word_after(chars: &[char], start: usize) -> String {
 /// unit: `Fläche km²` stays, B141), or an unmatched `1)` / `12)` / `a)` glued to a word, after a
 /// space, or glued to a year (`20221)` → `2022`).
 fn strip_footnote(s: &str) -> String {
-    if s.ends_with(|c| is_footnote_mark_char(c)) {
+    if s.ends_with(is_footnote_mark_char) {
         return split_footnote_mark(s).map_or(s, |(body, _)| body).to_string();
     }
     let Some(body) = s.strip_suffix(')') else {
