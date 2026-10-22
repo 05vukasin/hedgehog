@@ -85,6 +85,28 @@ fn sex_breakdown_blocks_are_data_with_a_subtotal_per_block() {
 }
 
 #[test]
+fn register_names_that_start_with_a_total_word_are_no_totals() {
+    let n = normalize("names", |ws| {
+        for (c, h) in ["EmployerName", "Town", "Employees", "Gap"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        for r in 1..=260u32 {
+            let name = match r {
+                100 => "TOTAL RECRUIT LTD".to_string(),
+                150 => "Zusammen unterwegs".to_string(),
+                _ => format!("Employer {r} Ltd"),
+            };
+            ws.write_string(r, 0, name).unwrap();
+            ws.write_string(r, 1, ["Leeds", "York", "Hull"][r as usize % 3]).unwrap();
+            ws.write_number(r, 2, (250 + r * 7 % 900) as f64).unwrap();
+            ws.write_number(r, 3, (r % 23) as f64 / 2.0).unwrap();
+        }
+    });
+    assert_eq!(n.tables[0].rows(), 260);
+    assert!(n.totals.is_empty(), "{:?}", n.totals.iter().map(|x| (x.label.clone(), x.status, x.reason.clone(), x.kept_in_data, x.cell_a1())).collect::<Vec<_>>());
+}
+
+#[test]
 fn month_end_headers_roll_over_into_the_next_year() {
     let n = normalize("rollover", |ws| {
         let date = rust_xlsxwriter::Format::new().set_num_format("mm/dd/yy");

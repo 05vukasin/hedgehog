@@ -122,6 +122,40 @@ fn is_series_code(t: &str) -> bool {
         && t.bytes().filter(u8::is_ascii_uppercase).count() >= 2
 }
 
+/// B81: a register record whose name starts with a total word ("TOTAL RECRUIT LTD", "Zusammen
+/// unterwegs", "Total Energies SE") and that stayed a data row: its keyword candidate is no total
+/// unless its numbers add up, so it is not listed on Totals (where an agent would be told to
+/// exclude it). A name: the total word followed by words that are no total word or year.
+fn record_named_like_a_total(grid: &Grid, cand: &TotalCandidate, t: &Table) -> bool {
+    let Some(i) = t.src_rows.iter().position(|&r| r == cand.row) else { return false };
+    t.row_types[i] == RowType::Data && named_like_a_total(grid, cand)
+}
+
+/// The keyword candidate of a register record named with a leading total word, without
+/// arithmetic behind it ([`record_named_like_a_total`]).
+fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
+    let sheet = grid.sheet;
+    let register = match (sheet.cells.first(), sheet.cells.last()) {
+        (Some(a), Some(b)) => b.row - a.row + 1 >= totals::keywords::REGISTER_MIN_ROWS,
+        _ => false,
+    };
+    if !register
+        || cand.origin != TotalOrigin::Typed
+        || cand.evidence.iter().any(|e| matches!(e, Evidence::ArithmeticMatch | Evidence::Unlabelled | Evidence::SourceBelow))
+    {
+        return false;
+    }
+    let Some((lr, lc)) = cand.label else { return false };
+    let Some(Value::Text(label)) = grid.cell(lr, lc).and_then(|c| c.value.as_ref()) else {
+        return false;
+    };
+    let words: Vec<&str> = label.split_whitespace().collect();
+    let Some((first, rest)) = words.split_first() else { return false };
+    !rest.is_empty()
+        && totals::total_keyword(first).is_some()
+        && rest.iter().all(|w| totals::total_keyword(w).is_none() && !w.trim_matches(|c: char| !c.is_alphanumeric()).bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// A total label recurring this often in its column is a category of long-format data.
 const LABEL_CATEGORY_REPEATS: usize = 3;
 /// A total label confirming a total row has at most this many words ("Grand Total", "Razem
@@ -154,6 +188,7 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
                 .count()
         }) >= LABEL_CATEGORY_REPEATS
     };
+    let mut named_rows: Vec<u32> = Vec::new();
     for c in &det.candidates {
         let label_text = c.label.and_then(|(lr, lc)| match grid.cell(lr, lc).and_then(|x| x.value.as_ref()) {
             Some(Value::Text(t)) => Some((lc, t.as_str())),
@@ -178,6 +213,14 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
             let mut cols = vec![c.col];
             cols.extend(c.label.map(|l| l.1));
             add(c.row, RowOverride::Total, cols);
+        } else if c.direction == Direction::Vertical && named_like_a_total(grid, c) {
+            named_rows.push(c.row);
+        }
+    }
+    // B81: "TOTAL RECRUIT LTD" in a register is a record unless some of its numbers add up.
+    for r in named_rows {
+        if !det.candidates.iter().any(|c| c.row == r && c.evidence.contains(&Evidence::ArithmeticMatch)) {
+            add(r, RowOverride::Data, Vec::new());
         }
     }
     for &(r, lc) in &det.aggregates {
@@ -1623,6 +1666,12 @@ pub(super) fn process_sheet(
     for (cand, check) in cands.iter().zip(&checks) {
         let k = table_at(cand.row, cand.col);
         let kept_in_data = k.is_some_and(|k| kept[k].contains(&cand.row));
+        if let Some(k) = k
+            && kept_in_data
+            && record_named_like_a_total(&grid, cand, &tables[k])
+        {
+            continue;
+        }
         if let Some(i) = grid.cell_index(cand.row, cand.col)
             && owner[i] != OWN_TABLE
         {
