@@ -141,6 +141,11 @@ export interface SessionOptions {
 }
 
 /** Options of `HedgehogSession.totals`. */
+export interface SessionOpenOptions {
+  /** The user's question: the catalog lists the tables it matches first and in full. */
+  question?: string
+}
+
 export interface SessionTotalsOptions {
   /** Only this table (`T1`). */
   table?: string
@@ -177,8 +182,12 @@ export declare class HedgehogSession {
   readonly root: string
   /** Allows one more file or folder outside the root. */
   allow(path: PathLike): void
-  /** Normalizes the file and returns its catalog (tables, columns, time coverage, totals, notes). */
-  openFile(path: string): Promise<string>
+  /**
+   * Normalizes the file and returns its catalog (tables, columns, time coverage, totals, notes).
+   * With `question` (the user's question, as asked), the tables it matches come first and in full,
+   * the others one line each.
+   */
+  openFile(path: string, opts?: SessionOpenOptions): Promise<string>
   /** All columns of one table (dtype, unit, nulls, min/max), the first rows, header cells, totals. */
   describeTable(path: string, table: string): Promise<string>
   /**

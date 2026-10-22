@@ -234,6 +234,21 @@ describe('HedgehogSession (agent tools)', () => {
     }
   })
 
+  test('openFile with a question lists the tables it matches first (B150)', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'hedgehog-node-question-'))
+    try {
+      writeFileSync(join(d, 'book.csv'), 'x\n1\n')
+      const s = new HedgehogSession({ root: d })
+      // one table: the question changes nothing (multi-table catalogs: agent/tests/snapshots.rs)
+      assert.equal(await s.openFile('book.csv', { question: 'What is x?' }), await s.openFile('book.csv'))
+      assert.equal(toolSpecs()[0].inputSchema.properties.question.type, 'string')
+      const viaCall = await s.call('open_file', { path: 'book.csv', question: 'What is x?' })
+      assert.match(viaCall, /^FILE book\.csv/)
+    } finally {
+      rmSync(d, { recursive: true, force: true })
+    }
+  })
+
   test('calls run concurrently without blocking and take turns on the session', async () => {
     const s = new HedgehogSession({ root: dir })
     const results = await Promise.all(Array.from({ length: 8 }, (_, i) => s.query('sales.csv', `SELECT ${i} AS n`)))
