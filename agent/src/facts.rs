@@ -54,7 +54,13 @@ pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
             .iter()
             .map(|&i| {
                 let c = &t.columns[i];
-                short(&c.values.get(r).map(|v| out_text(v, c.dtype)).unwrap_or_default(), 60)
+                // B104: fractions to 6 significant digits (47117.8666667 → 47117.9): the
+                // same value for an answer, half the tokens.
+                let text = match c.values.get(r) {
+                    Some(Out::Num(x)) if x.fract() != 0.0 && !is_date(c.dtype) => significant(*x),
+                    v => v.map(|v| out_text(v, c.dtype)).unwrap_or_default(),
+                };
+                short(&text, 60)
             })
             .collect();
         if marked {
@@ -63,6 +69,23 @@ pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
         out.push(format!("    {}", csv_row(&vals)));
     }
     Some(out)
+}
+
+/// A number to 6 significant digits but every digit before the point, without trailing zeros;
+/// as it is when it has at most 2 decimals (money: 31767420.82 stays).
+fn significant(x: f64) -> String {
+    let full = num(x);
+    if full.split_once('.').is_none_or(|(_, f)| f.len() <= 2) {
+        return full;
+    }
+    if x.abs() < 1.0 {
+        let r: f64 = format!("{x:.5e}").parse().unwrap_or(x);
+        return num(r);
+    }
+    let digits = (x.abs().log10().floor() as i32 + 1).max(1);
+    let decimals = (6 - digits).max(0) as usize;
+    let s = format!("{x:.decimals$}");
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -263,10 +286,11 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
     if let Some((&i, _)) = at.iter().max_by_key(|(i, n)| (**n, std::cmp::Reverse(**i))) {
         // B74: every label (up to 15) by level, the grand total named, what each adds up.
         let entries = crate::catalog::total_entries(info);
+        let col = ident(&names[i]);
         return Some(format!(
-            "{head} — labels in {}: {}",
-            ident(&names[i]),
-            crate::catalog::total_entries_text(&entries, &t.id(), true, 15)
+            "{head} — labels in {col}: {}{}",
+            crate::catalog::total_entries_text(&entries, &t.id(), true, 15),
+            crate::catalog::group_totals_note(&entries, Some(&col)).unwrap_or_default()
         ));
     }
     let cols = value_cols(t);
@@ -469,9 +493,9 @@ fn amount_text(a: &Amount, rows: usize, range: bool) -> String {
         let cur = a.col.currency.as_ref().map(|c| format!(" {c}")).unwrap_or_default();
         parts.push(format!("sum {}{cur}", big(f.sum)));
     }
-    parts.push(format!("{} filled", pct(f.filled, rows)));
-    if f.zero * 10 >= f.filled.max(1) {
-        parts.push(format!("{} zero", pct(f.zero, f.filled)));
+    // B104: the fill rate only when cells are missing (a sum or a count over them is partial).
+    if f.filled * 100 < rows * 99 {
+        parts.push(format!("{} filled", pct(f.filled, rows)));
     }
     if range {
         parts.push(format!("{}..{}", big(f.min), big(f.max)));
@@ -529,7 +553,8 @@ pub fn numbers_lines(t: &Table, names: &[String], rows: &[usize], ranges_shown: 
     let rest: Vec<String> = am
         .iter()
         .enumerate()
-        .filter(|(k, a)| !in_line.contains(k) && (!ranges_shown || a.summable || a.facts.filled * 100 < rows.len() * 99))
+        // B104: a sum, or missing cells; a range only when the columns line has none.
+        .filter(|(k, a)| !in_line.contains(k) && (a.summable || a.facts.filled * 10 < rows.len() * 9))
         .take(NUMBER_ITEMS)
         .map(|(_, a)| amount_text(a, rows.len(), !ranges_shown))
         .collect();
@@ -637,6 +662,11 @@ pub fn scale_of(text: &str) -> Option<(f64, &'static str)> {
         let w = raw.trim_matches(|c: char| "()'’.$€£".contains(c));
         let prev = k.checked_sub(1).map(|j| toks[j].trim_matches(|c: char| "()".contains(c))).unwrap_or("");
         let marked = BEFORE.contains(&prev) || raw.starts_with('(');
+        // B130: "in 1 000 EUR", "(1 000 000)": thousands grouped with spaces.
+        let next = |j: usize| toks.get(k + j).map(|n| n.trim_matches(|c: char| "()'’.$€£".contains(c)));
+        if w == "1" && marked && next(1) == Some("000") {
+            return Some(if next(2) == Some("000") { (1e6, "millions") } else { (1e3, "thousands") });
+        }
         if matches!(w, "000s" | "000's" | "000’s" | "tsd" | "tsd." | "thous")
             || (w == "000" && (raw.starts_with(['\'', '’', '(', '$', '€', '£']) || marked))
             || ((w == "1.000" || w == "1,000") && marked)
@@ -1019,6 +1049,12 @@ fn partial_years(c: &Column, name: &str, rows: &[usize]) -> Option<String> {
     (!parts.is_empty()).then(|| format!("{}: {} — compare full years or the same months", ident(name), parts.join(", ")))
 }
 
+/// A column of changes or differences (`Veränderung absolut`, `coal_cons_change_twh`, `Delta`).
+fn change_name(name: &str) -> bool {
+    const CHANGE: &[&str] = &["change", "changes", "veränderung", "differenz", "diff", "difference", "delta", "growth", "variation", "promena"];
+    words(name).iter().any(|w| CHANGE.contains(&w.as_str()))
+}
+
 /// A key of things to count by its name (`Order ID`, `customerID`, `Nr`), not a code such as a
 /// postcode.
 fn key_name(name: &str) -> bool {
@@ -1097,6 +1133,10 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         if empty == 0 || empty * 100 < n || empty == n {
             continue;
         }
+        // B104: a label written once per block (one value) is no gap in the data.
+        if c.dtype == Dtype::Text && label_values(c, rows).is_some_and(|v| v.len() <= 1) {
+            continue;
+        }
         let date = is_date(c.dtype);
         // Unexplained empties only for dates (counts by date drop them) and text columns (a NULL
         // group); the numbers line has the fill rate of amounts.
@@ -1112,7 +1152,7 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
             }
             None if !date => {
                 unexplained += 1;
-                s.push_str(" — one NULL group when grouping by it; filter IS NOT NULL to rank");
+                s.push_str(" (a NULL group when grouping)");
             }
             None => {}
         }
@@ -1129,7 +1169,8 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
     if !signs {
         let neg: Vec<String> = amounts(t, names, rows)
             .iter()
-            .filter(|a| a.facts.neg > 0 && a.facts.neg * 2 < a.facts.filled - a.facts.zero)
+            // B104: changes and differences are negative by nature; a negative amount changes a sum.
+            .filter(|a| a.facts.neg > 0 && a.facts.neg * 2 < a.facts.filled - a.facts.zero && !change_name(a.name))
             .take(4)
             .map(|a| format!("{} negative {}", thousands(a.facts.neg), ident(a.name)))
             .collect();
@@ -1137,7 +1178,23 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
             items.push(neg.join(", "));
         }
     }
-    (!items.is_empty()).then(|| format!("    quality: {}", items.join(" · ")))
+    // B104: columns empty in the same rows for the same reason once: `a, b empty in 158,866 rows …`.
+    let mut merged: Vec<String> = Vec::new();
+    for it in items {
+        let Some(at) = it.find(" empty in ") else {
+            merged.push(it);
+            continue;
+        };
+        let (col, rest) = it.split_at(at);
+        match merged.iter_mut().find(|m| m.find(" empty in ").is_some_and(|k| &m[k..] == rest)) {
+            Some(m) => {
+                let k = m.find(" empty in ").unwrap_or(m.len());
+                m.insert_str(k, &format!(", {col}"));
+            }
+            None => merged.push(it),
+        }
+    }
+    (!merged.is_empty()).then(|| format!("    quality: {}", merged.join(" · ")))
 }
 
 #[cfg(test)]
@@ -1258,7 +1315,7 @@ mod tests {
     #[test]
     fn total_rows_and_signs() {
         let c = catalog(&flows(true), "x.xlsx", MAX_CHARS);
-        assert!(c.contains("\n    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in col_C: totals 'Total'@5, 'Total'@9\n"), "{c}");
+        assert!(c.contains("\n    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in col_C: totals 'Total'@5/9\n"), "{c}");
         assert!(
             c.contains("\n    signs: col_B 'Deliveries' rows are all negative (outflows?) — a net figure is the SUM over all rows, not a difference\n"),
             "{c}"
@@ -1306,7 +1363,7 @@ mod tests {
     fn amounts_and_quality() {
         let c = catalog(&register(), "x.xlsx", MAX_CHARS);
         assert!(
-            c.contains("\n    precoContratual (sum 811,970, 100 % filled) vs PrecoTotalEfetivo (sum 120,000, 100 % filled, 50 % zero) — different measures; pick deliberately\n"),
+            c.contains("\n    precoContratual (sum 811,970) vs PrecoTotalEfetivo (sum 120,000) — different measures; pick deliberately\n"),
             "{c}"
         );
         // IDs and years are not amounts.
@@ -1341,10 +1398,13 @@ mod tests {
             ("Population (in millions)", 1e6),
             ("Dépenses en milliers d'euros", 1e3),
             ("Budget in 1.000 EUR", 1e3),
+            // B130: thousands grouped with a space.
+            ("Municipal budget 2024, in 1 000 EUR", 1e3),
+            ("Ausgaben (in 1 000 000 €)", 1e6),
         ] {
             assert_eq!(scale_of(s).map(|x| x.0), Some(f), "{s}");
         }
-        for s in ["Sales 2024", "Top 1000 companies", "5 million customers served", "Plant 000 status"] {
+        for s in ["Sales 2024", "Top 1000 companies", "5 million customers served", "Plant 000 status", "Top 1 000 firms"] {
             assert_eq!(scale_of(s), None, "{s}");
         }
         let mut n = register();
@@ -1420,7 +1480,7 @@ mod tests {
         let c = catalog(&book(cols, vec![RowType::Data; rows]), "x.xlsx", MAX_CHARS);
         let q = c.lines().find(|l| l.starts_with("    quality: ")).unwrap_or_else(|| panic!("{c}"));
         assert!(q.contains("annual_salary empty in 10 rows (25 %): salary_or_hourly = 'HOURLY' (all its 10 rows)"), "{q}");
-        assert!(q.contains("employer empty in 14 rows (35 %) — one NULL group when grouping by it"), "{q}");
+        assert!(q.contains("employer empty in 14 rows (35 %) (a NULL group when grouping)"), "{q}");
         assert!(q.contains("\"Order ID\": 40 rows, 14 distinct — count them with COUNT(DISTINCT \"Order ID\")"), "{q}");
         assert!(q.contains("Date: 2013 has Sep–Dec only (4 of 12 months), 2016 has Jan–Nov only (11 of 12 months)"), "{q}");
     }

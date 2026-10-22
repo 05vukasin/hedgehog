@@ -475,22 +475,24 @@ fn two_periods(name: &str) -> bool {
 // ------------------------------------------------------------------------------------------------
 // text for the catalog and describe_table
 
-/// The text inside a column item's brackets with the semantic type: `number EUR · amount`,
-/// `number · avg — don't sum` (`kind` is the storage type with unit / currency as shown so far).
+/// The text inside a column item's brackets with the semantic type, only the parts that change an
+/// answer (B104): the currency, `id` (do not add up or range), `rate` / `avg` / `index` (do not
+/// add up; the table's `do not sum:` line says how) — `EUR`, `id`, `% rate`. Plain amounts, counts,
+/// names, dimensions and periods get no tag (`kind` is the storage word with unit / currency).
 pub fn kind_with(kind: &str, c: &Column, ty: Option<&ColType>) -> String {
     let Some(ty) = ty.filter(|ty| !ty.weak) else { return kind.to_string() };
-    if ty.sem == Sem::Text && c.dtype == Dtype::Text && c.role != ColRole::Group {
-        return kind.replacen("text", "free text", 1);
-    }
     let mut s = kind.to_string();
+    let mut push = |w: &str| {
+        if !s.is_empty() {
+            s.push(' ');
+        }
+        s.push_str(w);
+    };
     if let Some(cur) = ty.currency.as_ref().filter(|_| c.currency.is_none() && c.unit.is_none()) {
-        s.push(' ');
-        s.push_str(cur);
+        push(cur);
     }
-    // A text dimension that is the group column says "group" already.
-    if !(c.role == ColRole::Group && ty.sem == Sem::Dimension) {
-        s.push_str(" · ");
-        s.push_str(&ty.tag());
+    if ty.sem == Sem::Id || (ty.no_sum() && is_numeric(c.dtype)) {
+        push(ty.short());
     }
     s
 }
@@ -533,7 +535,7 @@ pub fn no_sum_line(t: &Table, names: &[String], types: &[Option<ColType>], mixed
     if more > 0 {
         s.push_str(&format!(" +{more} more"));
     }
-    s.push_str(if cols > 0 { " — use AVG, a weighted mean or the file's own total" } else { " — use AVG or the file's own figure" });
+    s.push_str(if cols > 0 { " — use AVG, a weighted mean or the file's total" } else { " — use AVG or the file's figure" });
     Some(s)
 }
 

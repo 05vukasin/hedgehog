@@ -6,6 +6,38 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The `open_file` catalog gives more information per token** (B100–B105, B130; measured with
+  [eval/info](eval/info/README.md)): 168 of 168 checks in the catalog or one query away (was 159), at
+  42,360 catalog tokens over the 30 cases (was 53,867, −21 %), no case lower, no trap warning lost.
+  - Column items keep only what changes an answer: the currency or unit, `id`, `rate` / `avg` /
+    `index` (do not add up), `percent`, ranges of measures and dates (4 significant digits) and text
+    examples; no storage word for text and numbers, no role tag (`describe_table` still has them).
+  - Total-row labels once per table (on its `total rows:` line; the head line counts them); rows of
+    one label once (`'T'@13/16/19`); totals named after a constant column (a dataset code) take
+    the label of the column that names them (`geo = 'EU27_2020'`); totals like `'Österreich gesamt'`
+    are flagged as totals of one group, not of the table (guests from Austria, B105).
+  - Per-table totals counts only on a mismatch; `NOTES` / `WARNINGS` lines only when there are some;
+    `numbers:` only sums and missing cells; `quality:` without negatives of change columns and gaps
+    of block labels, columns empty for the same reason once; a shorter long-view line and SQL tail;
+    no `roles:` on the FILE line.
+  - Runs of 3+ tables with an earlier table's columns and facts are one line
+    (`T2..T10 same columns as T1 · … · titles '…': T2 Burgenland, …, T8 Tirol, …`).
+  - Brief catalogs (too long, or more than 40 tables) list every table on one line and spend their
+    room on column names by importance: the main table of each sheet first, shared header levels
+    written once (`"In jeweiligen Preisen / {Ursprungswerte / {Mrd. EUR, %}, …}"`), columns that are
+    an earlier table's with one more level by reference (`Jahr + T27's "a".."b", each + " / % des
+    BIP"`); their cap is 8,500 characters plus 25 per table.
+  - Inlined small tables round fractions to 6 significant digits and take at most 3,500 characters
+    per catalog; short code columns of large tables (≤ 60 codes) and the row labels of small wide
+    tables (≤ 30 rows) are listed when room is left (B102, B103).
+  - Units from titles read space-grouped thousands (`in 1 000 EUR`, B130).
+- **eval/info**: brace groups, table runs and column references are read as the catalog writes them;
+  trap facts (do not sum, total rows that stay in the data, grand totals, signs, mixed measures,
+  scales, COUNT(DISTINCT) keys, empty dates) per case in results.json and a trap check for
+  at-tourism-2months (`'Österreich gesamt'` is a group's total, not the table's).
+
 ### Added
 
 - **Information scoreboard without a model** ([eval/info](eval/info/README.md)). For each automatic

@@ -452,17 +452,20 @@ pub fn catalog_line(t: &Table, lv: &LongView, mixed: Option<usize>, total_rows: 
     per.push(ident(&period));
     let first = &names[lv.periods[0].col];
     let last = &names[lv.periods[lv.periods.len() - 1].col];
+    // B104: one short sentence: which columns become rows, and the view's columns.
+    let keys = per[..per.len() - 1].join(", ");
     let mut s = format!(
-        "    {}: one row per ({}) — {} columns {}..{} as rows: {} {}, {}; use for trends/filters by {}",
+        "    {}: the {} {} columns {}..{} as rows ({}{}{} {}, {})",
         lv.name,
-        per.join(", "),
         lv.periods.len(),
+        lv.granularity,
         ident(&short(first, 30)),
         ident(&short(last, 30)),
+        keys,
+        if keys.is_empty() { "" } else { ", " },
         ident(&period),
         period_span(lv),
         ident(&value),
-        lv.granularity
     );
     if lv.has_measure {
         let mut ms: Vec<&str> = Vec::new();
@@ -478,7 +481,7 @@ pub fn catalog_line(t: &Table, lv: &LongView, mixed: Option<usize>, total_rows: 
         s.push_str(&format!(" · rows mix measures: filter {} first", ident(&names[m])));
     }
     if total_rows {
-        s.push_str(&format!(" · total rows only in {} (_row_type)", lv.all_name));
+        s.push_str(&format!(" · total rows only in {}", lv.all_name));
     }
     s
 }
@@ -577,8 +580,8 @@ mod tests {
         let tot = db.query("SELECT value FROM T1_long_all WHERE _row_type = 'total' AND period = '2024'", 5, DEFAULT_TIMEOUT).unwrap();
         assert_eq!(tot.rows[0][0], "44");
         let line = catalog_line(t, &lv, None, true);
-        assert!(line.contains("T1_long: one row per (Region, period)"), "{line}");
-        assert!(line.contains("period '2021'..'2024'") && line.contains("by year") && line.contains("total rows only in T1_long_all"), "{line}");
+        assert!(line.contains("T1_long: the 4 year columns \"2021\"..\"2024\" as rows (Region, period '2021'..'2024', value)"), "{line}");
+        assert!(line.contains("total rows only in T1_long_all"), "{line}");
         // B21: types from the title (bare year headers), the change column, the label column.
         let tys = crate::types::classify(t, &sql_names(t), None, &[]);
         let ty = |i: usize| tys[i].clone().unwrap();

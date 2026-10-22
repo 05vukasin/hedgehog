@@ -15,6 +15,7 @@
 //! This crate is separate from `hh_core` so the core stays free of SQLite (a C library) and of
 //! session state; `hh_core` keeps the analysis, this crate the agent-facing views of it.
 
+pub mod brief;
 pub mod cache;
 pub mod catalog;
 pub mod cells;

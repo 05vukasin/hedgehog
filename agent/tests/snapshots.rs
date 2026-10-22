@@ -638,6 +638,47 @@ fn side_by_side_and_stacked() {
     s.check();
 }
 
+/// B100: tables that repeat an earlier table's columns in one line (a run), and a workbook of more
+/// than 40 tables listed briefly: shared header levels written once, the main table of each sheet
+/// with every column name, a table with one more header level by reference.
+#[test]
+fn table_runs_and_brief() {
+    let mut s = Snap::new("table_runs_and_brief");
+    let mut wb = Workbook::new();
+    let lands: Vec<String> = (0..36).map(|r| format!("Land {r}")).collect();
+    for (k, state) in ["Burgenland", "Kärnten", "Salzburg", "Tirol", "Wien"].iter().enumerate() {
+        let ws = sheet(&mut wb, &state[..3]);
+        ws.write(0, 0, format!("Nächtigungen in {state} – Juli 2026")).unwrap();
+        let mut data = vec![vec![S("Herkunftsland"), S("Ankünfte"), S("Nächtigungen")]];
+        for (r, l) in lands.iter().enumerate() {
+            let a = (100 * (k + 1) + r * 7) as f64;
+            data.push(vec![S(l), N(a), N(3.0 * a)]);
+        }
+        rows(ws, 2, 0, &data);
+    }
+    s.save("states.xlsx", &mut wb);
+    s.open("states.xlsx");
+    let mut wb = Workbook::new();
+    let abs = ["Jahr", "Einnahmen / insgesamt", "Einnahmen / Steuern", "Ausgaben / insgesamt", "Ausgaben / Zinsen", "Saldo"];
+    let pct: Vec<String> = abs.iter().skip(1).map(|h| format!("{h} / % des BIP")).collect();
+    for k in 0..21 {
+        let ws = sheet(&mut wb, &format!("1.{k}"));
+        ws.write(0, 0, format!("1.{k} Staatshaushalt Bereich {k}")).unwrap();
+        let mut a = vec![abs.iter().map(|h| S(h)).collect::<Vec<_>>()];
+        let mut b = vec![std::iter::once(S("Jahr")).chain(pct.iter().map(|h| S(h))).collect::<Vec<_>>()];
+        for y in 0..6 {
+            let v = (k * 10 + y) as f64;
+            a.push(vec![N(2019.0 + y as f64), N(100.0 + v), N(80.0 + v), N(110.0 + v), N(5.0 + v), N(-10.0)]);
+            b.push(vec![N(2019.0 + y as f64), N(45.5 + v), N(38.25 + v), N(48.75 + v), N(2.5), N(-3.25)]);
+        }
+        rows(ws, 2, 0, &a);
+        rows(ws, 11, 0, &b);
+    }
+    s.save("haushalt.xlsx", &mut wb);
+    s.open("haushalt.xlsx");
+    s.check();
+}
+
 #[test]
 fn diff_marks_changed_lines() {
     let d = diff("a\nb\nc\nd\ne\nf\ng\nh\n", "a\nb\nc\nD\ne\nf\ng\nh\n");

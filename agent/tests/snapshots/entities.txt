@@ -1,10 +1,10 @@
 # snapshot: entities
 
 ## open_file contracts.csv
-FILE contracts.csv · 1 sheet · 124 cells (100% in tables) · 1 table · roles: model
+FILE contracts.csv · 1 sheet · 124 cells (100% in tables) · 1 table
 TIME 2020-01-15–2020-12-15 (day, from columns T1.signed)
 T1  ← contracts!A1:D31 · 30 rows
-    columns (4): buyer[text · dim] supplier[text · dim] price[integer · amount 1000..1290] signed[date · period 2020-01-15..2020-12-15, 12 distinct]
+    columns (4): buyer supplier price[1000..1290] signed[date 2020-01-15..2020-12-15, 12 distinct]
     buyer = "<id> - <name>" (e.g. "503933813 - IP - Infraestruturas de Portugal, S.A."): 3 IDs, 1 with several spellings (e.g. 503933813: 3 names) — group by buyer_id, not by the text: SELECT "buyer_id", "buyer_name", count(*) FROM T1 GROUP BY "buyer_id"; buyer_name holds one name per ID (its most frequent spelling)
     share of the total (e.g. top 10 by "buyer_id"): SELECT 100.0 * SUM(v) / (SELECT SUM("price") FROM T1) AS pct FROM (SELECT SUM("price") AS v FROM T1 GROUP BY "buyer_id" ORDER BY v DESC LIMIT 10)
     all 30 rows (CSV):
@@ -39,9 +39,7 @@ T1  ← contracts!A1:D31 · 30 rows
     503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 3,1270,2020-04-15
     "503278602 - Metro do Porto, S. A.",Supplier 0,1280,2020-05-15
     600012662 - Ministério da Defesa Nacional - Marinha,Supplier 1,1290,2020-06-15
-NOTES none
-WARNINGS none
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query contracts.csv: SELECT buyer_id, count(DISTINCT buyer_name) AS names, count(*) AS n FROM T1 GROUP BY buyer_id ORDER BY n DESC, buyer_id
@@ -62,10 +60,10 @@ note: rows 2 and 3 are one buyer (ID 503933813) under different spellings — gr
 (5 rows)
 
 ## open_file customers.csv
-FILE customers.csv · 1 sheet · 78 cells (100% in tables) · 1 table · roles: model
+FILE customers.csv · 1 sheet · 78 cells (100% in tables) · 1 table
 TIME no dates or periods found
 T1  ← customers!A1:C26 · 25 rows
-    columns (4): customer_id[text · id] customer_name[text · dim] customer_name_key[text · dim] amount[integer · amount 50..218]
+    columns (4): customer_id[id] customer_name customer_name_key amount[50..218]
     warnings: 1 (e.g. "customer_name" has spellings of the same value ('Acme GmbH' / 'Acme Gmbh.'): "customer_n…)
     all 25 rows (CSV):
     customer_id,customer_name,customer_name_key,amount
@@ -94,9 +92,7 @@ T1  ← customers!A1:C26 · 25 rows
     DE200,Beta AG,Beta AG,204
     DE300,Gamma KG,Gamma KG,211
     DE400,Delta SE,Delta SE,218
-NOTES none
-WARNINGS none
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = contracts.csv (T1), f2 = customers.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 (normalized in <t> s)
 

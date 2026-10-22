@@ -1,11 +1,10 @@
 # snapshot: result_notes
 
 ## open_file sales.csv
-FILE sales.csv · 1 sheet · 72 cells (100% in tables) · 1 table · roles: model
+FILE sales.csv · 1 sheet · 72 cells (100% in tables) · 1 table
 TIME no dates or periods found
-T1  ← sales!A1:D20 · 18 rows (+1 total row: 'Total'@20 — only in T1_all)
-    columns (4): region[text · dim] city[text · name] amount[integer · amount 100..3330] bonus[integer 2..34]
-    totals: 1 ok, 0 mismatch, 0 unknown
+T1  ← sales!A1:D20 · 18 rows (+1 total row only in T1_all)
+    columns (4): region city amount[100..3330] bonus[2..34]
     total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in region: grand total 'Total'@20 (= rows 2–19)
     all 19 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
     region,city,amount,bonus,_row_type
@@ -28,10 +27,8 @@ T1  ← sales!A1:D20 · 18 rows (+1 total row: 'Total'@20 — only in T1_all)
     South,City 16,260,32,data
     East,City 17,270,34,data
     Total,,3330,,total
-TOTALS 1 ok, 0 mismatch, 0 unknown (call totals for details)
-NOTES none
-WARNINGS none
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+TOTALS 1 ok, 0 mismatch, 0 unknown (details: totals)
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query sales.csv: SELECT amount FROM T1 WHERE region = 'Total'

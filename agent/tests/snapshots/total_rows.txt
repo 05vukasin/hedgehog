@@ -1,11 +1,10 @@
 # snapshot: total_rows
 
 ## open_file totals.xlsx
-FILE totals.xlsx · 2 sheets · 54 cells (100% in tables) · 2 tables · roles: model
+FILE totals.xlsx · 2 sheets · 54 cells (100% in tables) · 2 tables
 TIME no dates or periods found
-T1  ← Sales!A1:C9 · 4 rows (+4 total rows: 'davon Inland'@3, 'of which: exports'@5, 'Average'@8 +1 more — only in T1_all)
-    columns (3): Region[text · dim] Sales[integer · amount 80..1000] Units[integer 4..80]
-    totals: 8 ok, 0 mismatch, 0 unknown
+T1  ← Sales!A1:C9 · 4 rows (+4 total rows only in T1_all)
+    columns (3): Region Sales[80..1000] Units[4..80]
     total rows: SELECT … FROM T1_all WHERE _row_type IN ('total', 'average', 'of_which') — labels in Region: grand total 'Total'@9 (= rows 2–8); average 'Average'@8 (= rows 2–7); of-which rows 'davon Inland'@3 (= rows 2), 'of which: exports'@5 (= rows 4)
     all 8 rows (CSV, as in T1_all; rows with _row_type other than data are not in T1):
     Region,Sales,Units,_row_type
@@ -17,8 +16,8 @@ T1  ← Sales!A1:C9 · 4 rows (+4 total rows: 'davon Inland'@3, 'of which: expor
     East,200,15,data
     Average,250,20,average
     Total,1000,80,total
-T2  ← Nights!A1:C9 · 5 rows (+3 total rows: 'Insgesamt'@2, 'Österreich gesamt'@3, 'Deutschland gesamt'@6 — only in T2_all) · same layout as T1; headers here: Herkunft[text] "Nächte"[integer] "Ankünfte"[integer]
-    total rows: SELECT … FROM T2_all WHERE _row_type IN ('subtotal', 'total') — labels in Herkunft: grand total 'Insgesamt'@2 (= rows 3–9); subtotals (_row_type 'subtotal', not 'total') 'Österreich gesamt'@3 (= rows 4–5), 'Deutschland gesamt'@6 (= rows 7–8)
+T2  ← Nights!A1:C9 · 5 rows (+3 total rows only in T2_all) · same layout as T1; headers here: Herkunft "Nächte" "Ankünfte"
+    total rows: SELECT … FROM T2_all WHERE _row_type IN ('subtotal', 'total') — labels in Herkunft: grand total 'Insgesamt'@2 (= rows 3–9); subtotals (_row_type 'subtotal', not 'total') 'Österreich gesamt'@3 (= rows 4–5), 'Deutschland gesamt'@6 (= rows 7–8) · 'Österreich gesamt', 'Deutschland gesamt' each total one group of Herkunft (e.g. Österreich), not the table
     all 8 rows (CSV, as in T2_all; rows with _row_type total/subtotal are not in T2):
     Herkunft,Nächte,Ankünfte,_row_type
     Insgesamt,1000,310,total
@@ -29,10 +28,8 @@ T2  ← Nights!A1:C9 · 5 rows (+3 total rows: 'Insgesamt'@2, 'Österreich gesam
     Bayern,250,70,data
     Berlin,50,30,data
     Ausland sonst,100,10,data
-TOTALS 14 ok, 0 mismatch, 0 unknown (call totals for details)
-NOTES none
-WARNINGS none
-SQL views T1..T2 (data rows) and T1_all..T2_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+TOTALS 14 ok, 0 mismatch, 0 unknown (details: totals)
+SQL views T1..T2 = data rows, T1_all..T2_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query totals.xlsx: SELECT Region, Sales FROM T1 ORDER BY Sales DESC

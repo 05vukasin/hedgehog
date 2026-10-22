@@ -521,6 +521,23 @@ pub fn id_name_pairs(t: &Table, rows: &[usize]) -> Vec<IdName> {
     out
 }
 
+/// A further ID ↔ name pair of a table, after the first one's full line (B104): the same advice
+/// without the query.
+pub fn id_name_line_short(p: &IdName, first: &IdName) -> String {
+    let spellings = match &p.most {
+        Some((most, k)) => format!("{} with several spellings (e.g. {}: {k} names)", thousands(p.several), short(most, 30)),
+        None => "one name each".to_string(),
+    };
+    format!(
+        "    {} is the ID of {}: {} IDs, {spellings} — group by {} like {} above",
+        ident(&p.id),
+        ident(&p.name),
+        thousands(p.ids),
+        ident(&p.id),
+        ident(&first.id)
+    )
+}
+
 /// One line per ID ↔ name pair, for the catalog and `describe_table` (indented by 4).
 pub fn id_name_line(p: &IdName, table: &str) -> String {
     let (id, name) = (quote_ident(&p.id), quote_ident(&p.name));

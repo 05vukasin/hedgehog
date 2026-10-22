@@ -1,10 +1,10 @@
 # snapshot: sql_hints
 
 ## open_file contracts.csv
-FILE contracts.csv · 1 sheet · 39 cells (100% in tables) · 1 table · roles: model
+FILE contracts.csv · 1 sheet · 39 cells (100% in tables) · 1 table
 TIME 2020-01-15–2020-12-15 (day, from columns T1.signed)
 T1  ← contracts!A1:C13 · 12 rows
-    columns (3): buyer[text · dim] price[integer · amount 1000..1110] signed[date · period 2020-01-15..2020-12-15, 12 distinct]
+    columns (3): buyer price[1000..1110] signed[date 2020-01-15..2020-12-15, 12 distinct]
     all 12 rows (CSV):
     buyer,price,signed
     Buyer 0,1000,2020-01-15
@@ -19,9 +19,7 @@ T1  ← contracts!A1:C13 · 12 rows
     Buyer 0,1090,2020-10-15
     Buyer 1,1100,2020-11-15
     Buyer 2,1110,2020-12-15
-NOTES none
-WARNINGS none
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query contracts.csv: SELECT MONTH(signed) AS m, count(*) FROM T1 GROUP BY m
@@ -43,11 +41,10 @@ ERROR: SQL error: no such column: buyerr (at character 7) — did you mean T1."b
 ERROR: SQL error: read-only: only SELECT / WITH queries are allowed (got DELETE)
 
 ## open_file flows.xlsx
-FILE flows.xlsx · 1 sheet · 15 cells (100% in tables) · 1 table · roles: model
+FILE flows.xlsx · 1 sheet · 15 cells (100% in tables) · 1 table
 TIME no dates or periods found
-T1  ← Flows!A1:C5 · 3 rows (+1 total row: 'Total'@5 — only in T1_all)
-    columns (3): Pipeline[text · dim] Receipts[integer 100..328] Deliveries[integer 10..60]
-    totals: 2 ok, 0 mismatch, 0 unknown
+T1  ← Flows!A1:C5 · 3 rows (+1 total row only in T1_all)
+    columns (3): Pipeline Receipts[100..328] Deliveries[10..60]
     total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in Pipeline: grand total 'Total'@5 (= rows 2–4)
     all 4 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
     Pipeline,Receipts,Deliveries,_row_type
@@ -55,10 +52,8 @@ T1  ← Flows!A1:C5 · 3 rows (+1 total row: 'Total'@5 — only in T1_all)
     NGPL,105,20,data
     MAINLINE,100,30,data
     Total,328,60,total
-TOTALS 2 ok, 0 mismatch, 0 unknown (call totals for details)
-NOTES none
-WARNINGS none
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = contracts.csv (T1), f2 = flows.xlsx (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 (normalized in <t> s)
 

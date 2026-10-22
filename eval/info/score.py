@@ -160,7 +160,7 @@ def line_kinds(text: str) -> list[str]:
         if line == s:  # top level
             inline = False
             k = next((k for p, k in _TOP if s.startswith(p)), None)
-            if k is None and re.match(r"T\d+\s", s):
+            if k is None and re.match(r"T\d+(?:\.\.T\d+)?\s", s):
                 k = "table"
             kinds.append(k or "other")
             continue
@@ -182,6 +182,67 @@ def line_kinds(text: str) -> list[str]:
             inline = False
         kinds.append(k or "other")
     return kinds
+
+
+# ---------------------------------------------------------------------------------------------
+# traps: warnings that prevent a wrong answer (the ablation cannot see them, see README)
+
+# Per case: (what, regex) pairs the catalog must match. at-tourism (B105): "Österreich gesamt" is the
+# group of guests from Austria, not Austria's total; the grand total is "Insgesamt".
+TRAP_CHECKS: dict[str, list[tuple[str, str]]] = {
+    "at-tourism-2months": [
+        ("the grand total is named first, as such", r"grand total 'Insgesamt'"),
+        ("'Österreich gesamt' is flagged as the total of one group, not of the table",
+         r"'Österreich gesamt'[^\n]*total one group[^\n]*not the table"),
+    ],
+}
+
+_TRAP_WORDS = (("do not sum:", "nosum"), ("signs:", "signs"), ("rows mix measures", "mixed"),
+               ("different measures", "measures"), ("units:", "units"), ("amounts in ", "units"),
+               ("COUNT(DISTINCT", "distinct"), ("counts by this date leave them out", "datecount"),
+               ("duplicate", "duplicates"), ("without a saved value", "formulas"), ("filter = 1", "bool"))
+
+
+def trap_facts(text: str) -> list[str]:
+    """The trap warnings of a catalog as `<kind>:<table>[:<detail>]` facts, so that two catalogs can
+    be compared: do-not-sum columns, total rows that stay in the data (exclude before summing),
+    grand totals, signs, mixed measures, different look-alike measures, scales, COUNT(DISTINCT …)
+    keys, empty dates, duplicates, formulas without values, boolean filters. A table line for a run
+    (`T2..T10 …`) stands for every table of the run."""
+    out: set[str] = set()
+    tables: list[str] = []
+    for line, kind in zip(text.split("\n"), line_kinds(text)):
+        s = line.strip()
+        if kind == "table":
+            m = re.match(r"T(\d+)(?:\.\.T(\d+))?\s", s)
+            tables = [f"T{k}" for k in range(int(m.group(1)), int(m.group(2) or m.group(1)) + 1)]
+        where = tables or ["-"]
+        for t in where:
+            if re.search(r"\bstays? in (?:T\d+|each)\b", s):
+                out.add(f"kept:{t}")
+            for g in re.findall(r"grand total '([^']*)'", s):
+                out.add(f"grand:{t}:{g}")
+            for w, k in _TRAP_WORDS:
+                if w in s:
+                    out.add(f"{k}:{t}")
+        if kind == "no_sum":
+            for name in re.findall(r'(?:: |, )("[^"]*"|[^\s,(]+) \(', s):
+                out.add(f"nosum-col:{name.strip(chr(34))}")
+        if kind in ("columns", "table"):
+            # brace groups written out, each member with its own kind: "a / {b[rate], c}" → "a / b"[rate]
+            s = re.sub(r'"([^"]*\{[^"]*)"', lambda m: " ".join(
+                re.sub(r"^(.*?)(\[[^\]]*\])?$", lambda x: f'"{x.group(1)}"{x.group(2) or ""}', e)
+                for e in expand_braces(m.group(1), True)), s)
+            for name, k in re.findall(r'("[^"]*"|[^\s\[\]"]+)\[([^\]]*)\]', s):
+                if re.search(r"\b(?:rate|avg|index)\b|don't sum", k):
+                    out.add(f"nosum-col:{name.strip(chr(34))}")
+        if s.startswith("FORMULAS "):
+            out.add("formulas:-")
+    return sorted(out)
+
+
+def trap_checks(case: str, text: str) -> list[dict]:
+    return [{"what": w, "ok": re.search(rx, text) is not None} for w, rx in TRAP_CHECKS.get(case, [])]
 
 
 # Parts of a line, ablated like kinds: (the line kind they live in, the pattern removed).
@@ -411,18 +472,35 @@ class CatalogIndex:
         self.described: set[str] = set()
         self.views_all: list[tuple[int, int]] = []
         self.views: list[tuple[int, int]] = []
+        order: dict[str, list[str]] = {}  # a brief table line's column names in order
         for line, kind in zip(lines, kinds):
             s = line.strip()
             if kind == "table":
-                m = re.match(r"(T\d+)\s", s)
-                self.described.add(m.group(1))
+                m = re.match(r"T(\d+)(?:\.\.T(\d+))?\s", s)  # a line for one table or a run T2..T10
+                self.described |= {f"T{k}" for k in range(int(m.group(1)), int(m.group(2) or m.group(1)) + 1)}
                 for m in re.finditer(r"(?:cols|headers here): (.*?)(?: \+\d+ more|$| · )", s):
                     self.cols |= {x.strip('"') for x in re.findall(r'"[^"]*"|[^\s\[\]"]+', m.group(1))}
                 self.cols |= set(re.findall(r'(?:^|\s)([^\s\[\]"]+)\[', s))
+                self.cols |= brace_names(s)
+                # B100: columns as an earlier table's with one more level:
+                # `Jahr + T27's "a".."b", each + " / % des BIP"`
+                d = re.search(r'cols: (.*?)(T\d+)\'s "([^"]*)"\.\."([^"]*)", each \+ " / ([^"]*)"', s)
+                if d and d.group(2) in order:
+                    names = order[d.group(2)]
+                    if d.group(3) in names and d.group(4) in names:
+                        a, b = names.index(d.group(3)), names.index(d.group(4))
+                        self.cols |= {x + " / " + d.group(5) for x in names[a:b + 1]}
+                        self.cols |= {x.strip('"') for x in re.findall(r'"[^"]*"|[^\s"+]+', d.group(1))}
+                else:
+                    c = re.search(r"cols: (.*?)(?: \+\d+ more|$| · )", s)
+                    if c:
+                        order[re.match(r"T\d+", s).group(0)] = [n for x in re.findall(r'"[^"]*"|[^\s"]+', c.group(1))
+                                                         for n in expand_braces(x.strip('"'))]
             if kind == "columns":
                 self.cols |= set(re.findall(r'(?:^|\s)([^\s\[\]"]+)\[', s))
                 bare = re.sub(r"\[[^\]]*\]|\{[^}]*\}", " ", s.split("): ", 1)[-1])
                 self.cols |= {x.strip('"') for x in re.findall(r'"[^"]*"|[^\s"]+', bare)}
+                self.cols |= brace_names(s)
                 # shared prefixes: "a_{b, c[type]}" stands for a_b, a_c
                 for pre, items in re.findall(r'(?:^|\s)([^\s\[\]"{}]+?)_\{([^}]*)\}', s):
                     self.cols |= {pre + "_" + re.sub(r"\[.*", "", x).strip() for x in items.split(", ")}
@@ -487,6 +565,66 @@ class CatalogIndex:
 
     def year_covered(self, y: int) -> bool:
         return any(a <= y <= b for a, b in self.years)
+
+
+def expand_braces(s: str, keep_kinds: bool = False) -> list[str]:
+    """Shared-prefix / suffix groups as the catalog writes them: `a / {b, c / {d, e}} / f` stands for
+    "a / b / f", "a / c / d / f", "a / c / e / f". Members are separated by ", ", or by "; " when a
+    member has a comma; a member's `[kind]` is not part of its name."""
+    i = s.find("{")
+    if i < 0:
+        return [s]
+    depth, j = 0, i
+    for j in range(i, len(s)):
+        depth += {"{": 1, "}": -1}.get(s[j], 0)
+        if depth == 0:
+            break
+    inner, pre, post = s[i + 1:j], s[:i], s[j + 1:]
+    post = re.sub(r"^\[[^\]]*\]", "", post)
+    sep = "; " if _top_level(inner, "; ") else ", "
+    parts, depth, cur, k = [], 0, "", 0
+    while k < len(inner):
+        ch = inner[k]
+        depth += {"{": 1, "}": -1}.get(ch, 0)
+        if depth == 0 and inner.startswith(sep, k):
+            parts.append(cur)
+            cur, k = "", k + len(sep)
+            continue
+        cur += ch
+        k += 1
+    parts.append(cur)
+    out = []
+    for p in parts:
+        p = p.strip()
+        kind = re.search(r"\[[^\]{}]*\]$", p)
+        p = p[:kind.start()] if kind else p
+        out += [x + (kind.group(0) if kind and keep_kinds else "") for x in expand_braces(pre + p + post, keep_kinds)]
+    return out
+
+
+def _top_level(text: str, sep: str) -> bool:
+    depth = 0
+    for k, ch in enumerate(text):
+        depth += {"{": 1, "}": -1}.get(ch, 0)
+        if depth == 0 and text.startswith(sep, k):
+            return True
+    return False
+
+
+def brace_names(line: str) -> set[str]:
+    """Every column name a line's brace groups stand for: quoted groups ("a / {b, c}") and bare
+    ones (`biofuel_{x, y}`)."""
+    out: set[str] = set()
+    for q in re.findall(r'"([^"]*\{[^"]*)"', line):
+        out |= set(expand_braces(q))
+    for m in re.finditer(r'(?:^|\s)([^\s"{}\[\]]+\{)', line):
+        start, depth = m.start(1), 0
+        for j in range(m.end(1) - 1, len(line)):
+            depth += {"{": 1, "}": -1}.get(line[j], 0)
+            if depth == 0:
+                out |= set(expand_braces(line[start:j + 1]))
+                break
+    return out
 
 
 def _template(a: str, b: str) -> tuple[re.Pattern, str, str]:
@@ -973,6 +1111,9 @@ def main() -> None:
                 by_seg[k] = by_seg.get(k, 0) + v
         results.append({"case": c["id"], "files": case_files(c), "tokens": count_tokens(text), "chars": len(text),
                         "tokens_by_kind": by_kind, "tokens_by_segment": by_seg, "checks": checks,
+                        "traps": sorted({f"f{k}:{x}" if len(catalogs) > 1 else x
+                                         for k, cat in enumerate(catalogs, 1) for x in trap_facts(cat)}),
+                        "trap_checks": trap_checks(c["id"], text),
                         "other_lines": [l for l, k in zip(lines, kinds) if k == "other" and l.strip()][:5]})
         n_ok = sum(x["cat"] in "ab" for x in checks)
         print(f"{c['id']}: {n_ok}/{len(checks)} sufficient, {results[-1]['tokens']} tokens", flush=True)
@@ -1048,6 +1189,15 @@ def write(out: Path, results: list[dict], ablation: list[dict], partial: bool) -
         s = k["a"] + k["b"]
         L.append(f"| {r['case']} | {len(cs)} | {k['a']} | {k['b']} | {k['c']} | {k['d']} | {100 * s / len(cs):.0f} % | "
                  f"{r['tokens']:,} | {1000 * s / r['tokens']:.2f} |")
+    L += ["", "## Traps", "",
+          "Warnings that prevent a wrong answer, which the checks above cannot see (`trap_facts`: do not sum,",
+          "total rows that stay in the data, grand totals, signs, mixed or look-alike measures, scales,",
+          "COUNT(DISTINCT …) keys, empty dates, duplicates); results.json lists them per case, so two runs can",
+          "be compared. Trap checks are case-specific patterns the catalog must show.", "",
+          "| Case | Trap facts | Trap checks |", "|---|---:|---|"]
+    for r in results:
+        tc = "; ".join(("✓ " if x["ok"] else "✗ ") + x["what"] for x in r.get("trap_checks", []))
+        L.append(f"| {r['case']} | {len(r.get('traps', []))} | {tc} |")
     L += ["", "## Gaps (c and d)", "", "| Case | Check | Cat | Reason |", "|---|---|---|---|"]
     for r in results:
         for x in r["checks"]:

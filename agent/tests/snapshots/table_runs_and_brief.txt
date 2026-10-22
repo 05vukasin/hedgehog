@@ -1,0 +1,65 @@
+# snapshot: table_runs_and_brief
+
+## open_file states.xlsx
+FILE states.xlsx · 5 sheets · 560 cells (99% in tables) · 5 tables
+TIME 2026 (only mentioned in titles/notes/sheet or file names; no date or period columns)
+T1  'Nächtigungen in Burgenland – Juli 2026' ← Bur!A3:C39 · 36 rows
+    columns (3): Herkunftsland[e.g. "Land 0"] "Ankünfte"[100..345] "Nächtigungen"[300..1035]
+T2..T5 same columns as T1 · 36 rows each · titles 'Nächtigungen in … – Juli 2026': T2 Kärnten, T3 Salzburg, T4 Tirol, T5 Wien
+NOTES 5 cells; e.g. Bur!A1: "Nächtigungen in Burgenland – Juli 2026"
+SQL views T1..T5 = data rows, T1_all..T5_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+SQL union view U1 = T1..T5 (5 tables with the same columns; adds _table, sheet, title, part = 'Burgenland' | 'Kärnten' | 'Salzburg' | 'Tirol' | 'Wien'): one query compares them, e.g. SELECT part, SUM(…) FROM U1 GROUP BY part; U1_all with total rows (_row_type)
+(normalized in <t> s)
+
+## open_file haushalt.xlsx
+FILE haushalt.xlsx · 21 sheets · 1,785 cells (98% in tables) · 42 tables
+TIME 2019–2024 (year, from columns T1.Jahr, T2.Jahr, T3.Jahr, T4.Jahr +38 more)
+(tables listed briefly; a table without ← is on the sheet above; column names grouped: a / {b, c} = "a / b", "a / c"; describe_table lists a table's columns with types)
+T1  '1.0 Staatshaushalt Bereich 0' ← '1.0' · 6 rows · 6 cols: Jahr "Einnahmen / {insgesamt, Steuern}" "Ausgaben / {insgesamt, Zinsen}" Saldo
+T2  · 6 rows · 6 cols: Jahr + T1's "Einnahmen / insgesamt".."Saldo", each + " / % des BIP"
+T3  '1.1 Staatshaushalt Bereich 1' ← '1.1' · 6 rows · same columns as T1
+T4  · 6 rows · same columns as T2
+T5  '1.2 Staatshaushalt Bereich 2' ← '1.2' · 6 rows · same columns as T1
+T6  · 6 rows · same columns as T2
+T7  '1.3 Staatshaushalt Bereich 3' ← '1.3' · 6 rows · same columns as T1
+T8  · 6 rows · same columns as T2
+T9  '1.4 Staatshaushalt Bereich 4' ← '1.4' · 6 rows · same columns as T1
+T10 · 6 rows · same columns as T2
+T11 '1.5 Staatshaushalt Bereich 5' ← '1.5' · 6 rows · same columns as T1
+T12 · 6 rows · same columns as T2
+T13 '1.6 Staatshaushalt Bereich 6' ← '1.6' · 6 rows · same columns as T1
+T14 · 6 rows · same columns as T2
+T15 '1.7 Staatshaushalt Bereich 7' ← '1.7' · 6 rows · same columns as T1
+T16 · 6 rows · same columns as T2
+T17 '1.8 Staatshaushalt Bereich 8' ← '1.8' · 6 rows · same columns as T1
+T18 · 6 rows · same columns as T2
+T19 '1.9 Staatshaushalt Bereich 9' ← '1.9' · 6 rows · same columns as T1
+T20 · 6 rows · same columns as T2
+T21 '1.10 Staatshaushalt Bereich 10' ← '1.10' · 6 rows · same columns as T1
+T22 · 6 rows · same columns as T2
+T23 '1.11 Staatshaushalt Bereich 11' ← '1.11' · 6 rows · same columns as T1
+T24 · 6 rows · same columns as T2
+T25 '1.12 Staatshaushalt Bereich 12' ← '1.12' · 6 rows · same columns as T1
+T26 · 6 rows · same columns as T2
+T27 '1.13 Staatshaushalt Bereich 13' ← '1.13' · 6 rows · same columns as T1
+T28 · 6 rows · same columns as T2
+T29 '1.14 Staatshaushalt Bereich 14' ← '1.14' · 6 rows · same columns as T1
+T30 · 6 rows · same columns as T2
+T31 '1.15 Staatshaushalt Bereich 15' ← '1.15' · 6 rows · same columns as T1
+T32 · 6 rows · same columns as T2
+T33 '1.16 Staatshaushalt Bereich 16' ← '1.16' · 6 rows · same columns as T1
+T34 · 6 rows · same columns as T2
+T35 '1.17 Staatshaushalt Bereich 17' ← '1.17' · 6 rows · same columns as T1
+T36 · 6 rows · same columns as T2
+T37 '1.18 Staatshaushalt Bereich 18' ← '1.18' · 6 rows · same columns as T1
+T38 · 6 rows · same columns as T2
+T39 '1.19 Staatshaushalt Bereich 19' ← '1.19' · 6 rows · same columns as T1
+T40 · 6 rows · same columns as T2
+T41 '1.20 Staatshaushalt Bereich 20' ← '1.20' · 6 rows · same columns as T1
+T42 · 6 rows · same columns as T2
+NOTES 21 cells; e.g. '1.0'!A1: "1.0 Staatshaushalt Bereich 0"
+SQL views T1..T42 = data rows, T1_all..T42_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+SQL union view U1 = T1, T3, T5, T7, T9, T11, T13, T15, +13 more (21 tables with the same columns; adds _table, sheet, title, part = '1.0 Staatshaushalt Bereich 0' | '1.1 Staatshaushalt Bereich 1' | '1.2 Staatshaushalt Bereich 2' | '1.3 Staatshaushalt Bereich 3' | '1.4 Staatshaushalt Bereich 4' | '1.5 Staatshaushalt Bereich 5' | …): one query compares them, e.g. SELECT part, SUM(…) FROM U1 GROUP BY part; U1_all with total rows (_row_type)
+SQL union view U2 = T2, T4, T6, T8, T10, T12, T14, T16, +13 more (like U1; adds _table, sheet, title)
+FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = states.xlsx (T1..T5), f2 = haushalt.xlsx (T1..T42; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
+(normalized in <t> s)

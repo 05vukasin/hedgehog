@@ -1,10 +1,10 @@
 # snapshot: side_by_side_and_stacked
 
 ## open_file layout.xlsx
-FILE layout.xlsx · 2 sheets · 86 cells (97% in tables) · 4 tables · roles: model
+FILE layout.xlsx · 2 sheets · 86 cells (97% in tables) · 4 tables
 TIME 2018–2023 (year, from columns T4.Year)
 T1  ← Two!A1:B7 · 6 rows
-    columns (2): City[text · dim] Visitors[integer · count 1000..1185]
+    columns (2): City Visitors[1000..1185]
     all 6 rows (CSV):
     City,Visitors
     Graz,1000
@@ -14,7 +14,7 @@ T1  ← Two!A1:B7 · 6 rows
     Klagenfurt,1148
     Villach,1185
 T2  ← Two!E1:G8 · 7 rows
-    columns (3): Month[text · dim] "Rain mm"[integer 40..58] "Sun h"[integer 80..200]
+    columns (3): Month "Rain mm"[40..58] "Sun h"[80..200]
     all 7 rows (CSV):
     Month,Rain mm,Sun h
     Jan,40,80
@@ -24,7 +24,7 @@ T2  ← Two!E1:G8 · 7 rows
     May,52,160
     Jun,55,180
     Jul,58,200
-T3  'Table A: Staff by department' ← Stacked!A3:C8 · 5 rows · same layout as T2; headers here: Department[text] Staff[integer] Vacancies[integer]
+T3  'Table A: Staff by department' ← Stacked!A3:C8 · 5 rows · same layout as T2; headers here: Department Staff Vacancies
     all 5 rows (CSV):
     Department,Staff,Vacancies
     Finance,10,0
@@ -33,8 +33,8 @@ T3  'Table A: Staff by department' ← Stacked!A3:C8 · 5 rows · same layout as
     Sales,22,0
     Support,26,1
 T4  'Table B: Contracts by year' ← Stacked!A12:D18 · 6 rows · time 2018–2023 (year)
-    columns (4): Year[integer · period 2018..2023] Contracts[integer 20..35] "Value EUR"[integer EUR · amount 150000..212500] "Average EUR"[integer EUR · avg — don't sum 7000..7500]
-    do not sum: "Average EUR" (avg) — use AVG, a weighted mean or the file's own total
+    columns (4): Year[2018..2023] Contracts[20..35] "Value EUR"[EUR 150000..212500] "Average EUR"[EUR avg 7000..7500]
+    do not sum: "Average EUR" (avg) — use AVG, a weighted mean or the file's total
     all 6 rows (CSV):
     Year,Contracts,Value EUR,Average EUR
     2018,20,150000,7500
@@ -43,9 +43,8 @@ T4  'Table B: Contracts by year' ← Stacked!A12:D18 · 6 rows · time 2018–20
     2021,29,187500,7200
     2022,32,200000,7100
     2023,35,212500,7000
-NOTES 2 cells (title 2); e.g. Stacked!A1: "Table A: Staff by department"
-WARNINGS none
-SQL views T1..T4 (data rows) and T1_all..T4_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+NOTES 2 cells; e.g. Stacked!A1: "Table A: Staff by department"
+SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query layout.xlsx: SELECT count(*) FROM T2
