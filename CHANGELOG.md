@@ -243,6 +243,8 @@ All notable changes to hedgehog are listed here. The format follows
 - `hh_core::normalize::{table_time_coverage, workbook_time_coverage, table_totals}`: the manifest's
   `time_coverage` and `tables[].totals` as Rust values (`TimeCoverage`, `TableTotals`), so other
   views agree with the manifest.
+- `hedgehog normalize --threads N` / `NormalizeOptions::threads`: how many threads analyze sheets
+  in parallel (default up to 4); the output is the same for every value.
 
 ### Changed
 
@@ -293,6 +295,18 @@ All notable changes to hedgehog are listed here. The format follows
   "zur Inhaltsübersicht").
 
 ### Fixed
+
+- **Bit-for-bit repeatable output** (B68). The same file and options now give the same bytes in
+  every run, on any thread count: the normalized xlsx carried the current time in its document
+  properties (`docProps/core.xml` created / modified; now fixed at 1980-01-01, like the zip
+  entries), and a table's `confidence` averaged its column purities in hash-map order, so its last
+  bits, and sometimes the rounded manifest value, could change between runs (now in column order).
+  The agent catalog's `<id> - <name>` separator broke a tie in hash-map order too. The manifest has
+  no run metadata (no time, host or temp path); see
+  [docs/normalized-output.md](docs/normalized-output.md#repeatable-output). Checked by
+  `core/tests/determinism.rs` and `fuzz/determinism.py`: 308 files (Enron 50, US BEA, a US SEC
+  EDGAR sample, 189 European files) x 3 threaded runs, and US BEA x 5 threaded + 5 single-CPU runs,
+  all identical.
 
 - **Register names taken for totals** (B50): in a register, a total word right of the record's own
   keys (`GROWTH WIRELESS LLC | TOTAL WIRELESS`, a counterparty `TOTAL` beside a deal id) needs its
