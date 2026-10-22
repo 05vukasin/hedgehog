@@ -1333,7 +1333,8 @@ fn build_table(
     // Names first (in column order), then every column typed (on parallel threads for a large
     // table: each column's typing reads only its own values and the sheet's shared hints, B120),
     // then the columns assembled in order.
-    let mut heads: Vec<(Vec<(String, (u32, u32))>, String)> = Vec::with_capacity(ncols);
+    // Per column: its header parts (text, cell) and its name.
+    let mut heads: Vec<(Vec<HeaderPart>, String)> = Vec::with_capacity(ncols);
     for k in 0..ncols {
         let col = r.left + k as u32;
         let mut parts: Vec<(String, (u32, u32))> = Vec::new();
@@ -1806,6 +1807,9 @@ fn copy_row_labels(tables: &mut [Table], layouts: &[Vec<(u32, bool)>]) {
     }
 }
 
+/// One header cell's text and position (row, column).
+type HeaderPart = (String, (u32, u32));
+
 /// Tables with at least this many values (columns × rows) type their columns on parallel threads.
 const PARALLEL_TYPING_MIN_VALUES: usize = 200_000;
 /// Threads for typing one table's columns.
@@ -1879,12 +1883,12 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     super::trace("layout", t0);
     let mut owner = vec![OWN_NONE; cells.len()];
     let sheet_hints = OnceLock::new();
-    let det = totals::detection(&grid);
+    let det = totals::detection(grid);
     let cands = &det.candidates;
     super::trace("totals_detect.detection", t0);
-    let overrides = row_overrides(&grid, det);
+    let overrides = row_overrides(grid, det);
     super::trace("totals_detect", t0);
-    let checks: Vec<_> = cands.iter().map(|c| totals::verify(&grid, c)).collect();
+    let checks: Vec<_> = cands.iter().map(|c| totals::verify(grid, c)).collect();
     super::trace("totals_verify", t0);
     let mut row_total: HashMap<u32, RowTotal> = HashMap::new();
     for c in cands.iter().filter(|c| c.direction == Direction::Vertical) {
@@ -1907,7 +1911,7 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     let mut layouts: Vec<Vec<(u32, bool)>> = Vec::new();
     for t in &lay.tables {
         let n = out.tables.len() + 1;
-        let b = build_table(&grid, &lay, t, n, &sheet_hints, &row_total, &overrides, opts, &mut owner);
+        let b = build_table(grid, &lay, t, n, &sheet_hints, &row_total, &overrides, opts, &mut owner);
         info.tables.push(n);
         layouts.push(row_layout(&b.table, &b.removed_totals));
         kept.push(b.kept);
@@ -1940,7 +1944,7 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
         let kept_in_data = k.is_some_and(|k| kept[k].contains(&cand.row));
         if let Some(k) = k
             && kept_in_data
-            && record_named_like_a_total(&grid, cand, &tables[k], &arith_rows, &mut name_columns)
+            && record_named_like_a_total(grid, cand, &tables[k], &arith_rows, &mut name_columns)
         {
             continue;
         }
@@ -1958,7 +1962,7 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
         });
         listed.insert((cand.row, cand.col));
         let header = k.and_then(|k| column_name(&tables[k], cand.col));
-        let (status, reason) = judge(&grid, cand, check, header, label.as_deref());
+        let (status, reason) = judge(grid, cand, check, header, label.as_deref());
         items.push(TotalItem {
             table: k.map(|k| first + k + 1),
             sheet: sheet.name.clone(),
