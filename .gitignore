@@ -30,3 +30,4 @@ __pycache__/
 /node/target*
 /eval/agents/runs/
 !eval/agents/results.jsonl
+/eval/agents/work/

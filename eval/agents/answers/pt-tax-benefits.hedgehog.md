@@ -1,9 +1,9 @@
-# pt-tax-benefits · hedgehog · 2026-10-21T23:16:01+00:00 · gpt-4.1-mini
+# pt-tax-benefits · hedgehog · 2026-10-22T06:32:56+00:00 · gpt-4.1-mini
 
-Run `20261021T231601Z-pt-tax-benefits-hedgehog`
+Run `20261022T063256Z-pt-tax-benefits-hedgehog`
 
-- Number of entities that received corporate income tax (IRC) benefits: 63,209 (T3, distinct "NIF").
-- Total VAT refunded: 103,928,532.98 (sum of all VAT refund columns in T7).
-- The entity with the largest VAT refund is "LAR CONDE DE AGROLONGO" (NIF 500032017), but the exact refund amount is not listed in the data.
-- Share of VAT refunds that went to the armed and security forces category: 51.6% (53,648,422.64 out of 103,928,532.98).
-- Number of fire-brigade associations that received a VAT refund: 400 (T7, distinct "NIF" with names containing "Bombeiros").
+- 63,209 entities received corporate income tax (IRC) benefits (T3, count of distinct NIF with benefits).
+- The total VAT refunded was 123,994,570.29 (currency unit as in the file) (T7_all total row "TOTAL DE RESTITUIÇÃO").
+- The largest VAT refund was 37,534,892.43, received by the entity "ESTADO MAIOR FORCA AEREA" (NIF 600010686).
+- The armed and security forces received 53,648,422.64 in VAT refunds, which is about 43.3% of the total VAT refunds.
+- 414 fire-brigade associations received a VAT refund (T7, count distinct NIF with VAT refund in the fire-brigade category).

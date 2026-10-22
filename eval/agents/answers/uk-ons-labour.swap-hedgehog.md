@@ -1,7 +1,7 @@
-# uk-ons-labour · swap-hedgehog · 2026-10-21T23:44:39+00:00 · gpt-4.1-mini-2025-04-14
+# uk-ons-labour · swap-hedgehog · 2026-10-22T06:45:55+00:00 · gpt-4.1-mini-2025-04-14
 
-Run `20261021T234431Z-uk-ons-labour-swap-hedgehog`
+Run `20261022T064546Z-uk-ons-labour-swap-hedgehog`
 
-For the latest period Sep-Nov 2025 in Table 1, the headline employment rate was approximately 60.79% and the headline unemployment rate was approximately 5.07%. The number of people in employment was about 34,311,899 and the number of unemployed was about 1,833,017.
+For the latest period in Table 1 (May to July 2026), the headline employment rate is approximately 75.08%, and the headline unemployment rate is approximately 4.90%. The number of people in employment is about 34,477,788, and the number of unemployed people is about 1,778,259.
 
-Compared with the previous non-overlapping three-month period Sep-Nov 2024, the unemployment rate rose from about 4.41% to 5.07%.
+Compared with the previous non-overlapping three-month period (February to April 2026), when the unemployment rate was approximately 4.89%, the unemployment rate has risen slightly.

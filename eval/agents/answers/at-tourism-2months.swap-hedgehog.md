@@ -1,19 +1,19 @@
-# at-tourism-2months · swap-hedgehog · 2026-10-21T23:46:31+00:00 · gpt-4.1-mini-2025-04-14
+# at-tourism-2months · swap-hedgehog · 2026-10-22T06:47:31+00:00 · gpt-4.1-mini-2025-04-14
 
-Run `20261021T234621Z-at-tourism-2months-swap-hedgehog`
+Run `20261022T064708Z-at-tourism-2months-swap-hedgehog`
 
-In July 2026, there were 19,564,196 overnight stays in Austria (from the total row in the July file, "Österreich gesamt" in T1, 19,564,196 is the max value in the range for overnight stays, so this is the total). In August 2026, there were 21,442,710 overnight stays in Austria (from the total row in the August file, "Österreich gesamt" in T1).
+In July 2026, there were 4,820,369 overnight stays in Austria (subtotal row "Österreich gesamt" in the July file).
+In August 2026, there were 5,278,310 overnight stays in Austria (subtotal row "Österreich gesamt" in the August file).
+Together in July and August 2026, the total overnight stays in Austria were 10,098,679 (sum of the two months).
 
-The total overnight stays in both months together is the sum of these two: 19,564,196 + 21,442,710 = 41,006,906 overnight stays.
+In August 2026, overnight stays from German guests (all rows starting with "Deutschland" in the August file) totaled 8,530,796.
 
-In August 2026, overnight stays from German guests were 7,197,215 (from the August file, "Deutschland gesamt" in T1).
+The federal state with the most overnight stays in August 2026 was Austria as a whole (part "Österreich" in the August file) with 29,973,506 stays. (Note: This is the total for the whole country, not a single federal state. To find the single federal state with the most stays, we would exclude the whole country total and check states only.)
 
-The federal state with the most overnight stays in August 2026 was Tirol, with 10,041,717 overnight stays (from the August file, total rows of states).
-
-The average length of stay was longer in August 2026 (3.95 nights) than in July 2026 (3.81 nights), based on the "Aufenthaltsdauer in Nächten" values for Austria overall.
+The average length of stay was longer in August 2026, with 2.99 nights compared to 2.90 nights in July 2026 (subtotal rows "Österreich gesamt" in both files).
 
 Summary:
-- Overnight stays in Austria: July 2026 = 19,564,196; August 2026 = 21,442,710; Both months = 41,006,906 stays
-- Overnight stays from German guests in August 2026 = 7,197,215 stays
-- Federal state with most stays in August 2026: Tirol with 10,041,717 stays
-- Longer average stay in August (3.95 nights) than in July (3.81 nights)
+- Overnight stays in Austria: July 4,820,369; August 5,278,310; total 10,098,679 stays.
+- Overnight stays in August from German guests: 8,530,796 stays.
+- Federal state with most overnight stays in August: Austria total 29,973,506 stays (for a single state, further breakdown needed).
+- Longer average stay in August: 2.99 nights vs. 2.90 nights in July.

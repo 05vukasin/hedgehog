@@ -1,11 +1,11 @@
-# enron-om-2plants · swap-hedgehog · 2026-10-21T23:33:41+00:00 · gpt-4.1-mini-2025-04-14
+# enron-om-2plants · swap-hedgehog · 2026-10-22T06:36:14+00:00 · gpt-4.1-mini-2025-04-14
 
-Run `20261021T233332Z-enron-om-2plants-swap-hedgehog`
+Run `20261022T063604Z-enron-om-2plants-swap-hedgehog`
 
-The total 2001 budget for the Gleason plant is $2,302,115.84, and for the Wheatland plant, it is $3,881,470. The combined total budget for both plants is $6,183,585.84.
+The total 2001 budget for the Gleason plant is $2,869,476 (all expenses including owner's expenses and taxes).
+The total 2001 budget for the Wheatland plant is $4,452,830 (all expenses including owner's expenses and taxes).
+Together, both plants have a total 2001 budget of $7,322,306.
 
-Neither plant has a subtotal labeled "Subtotal Variable O&M," so there is no separate budget for variable O&M explicitly listed.
+For variable O&M, Wheatland budgets more with $2,200,688 compared to Gleason's $901,100.
 
-For Gleason, the month with the highest total expense budget is May 2001, with an amount of $260,734.24.
-
-I got these numbers by querying the total O&M expenses for each plant from their respective spreadsheets and checking the monthly totals for Gleason.
+Gleason's total expense budget is highest in May 2001, amounting to $260,734.24.
