@@ -14,8 +14,8 @@ T1  ← gdp!A1:F7 · 6 rows
     Denmark,139,140.5,142,141,143.5
     Estonia,152,153.5,155,154,156.5
     Finland,165,166.5,168,167,169.5
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
-SQL long view T1_long (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
+SQL long view T1_long (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
 (normalized in <t> s)
 
 ## query gdp.csv: SELECT * FROM T1_long WHERE Country = 'Croatia' ORDER BY 2
@@ -33,7 +33,7 @@ TIME 2024-01–2024-04 (month, from column headers in T1)
 T1  ← Prices!A1:F6 · 5 rows
     columns (6): Product "Ø 22"[avg 10..50] "Jan-24"[11..51] "Feb-24"[12..52] "Mar-24"[13..53] "Apr-24"[14..54]
     T1_long: the 4 month columns "Jan-24".."Apr-24" as rows (Product, period '2024-01'..'2024-04', value)
-    do not sum: "Ø 22" (avg) — use AVG, a weighted mean or the file's own total
+    do not sum: "Ø 22" (avg) — use AVG, a weighted mean or the file's total
     all 5 rows (CSV):
     Product,Ø 22,Jan-24,Feb-24,Mar-24,Apr-24
     Apples,10,11,12,13,14
@@ -41,8 +41,8 @@ T1  ← Prices!A1:F6 · 5 rows
     Plums,30,31,32,33,34
     Cherries,40,41,42,43,44
     Grapes,50,51,52,53,54
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
-SQL long view T1_long (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
+SQL long view T1_long (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = gdp.csv (T1), f2 = prices.xlsx (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 (normalized in <t> s)
 
@@ -50,7 +50,7 @@ FILES open in this session — one query can join them (any open file as path; p
 T1 = Prices!A1:F6 · 5 data rows · confidence 1.00
 header: Prices!A1:F1 (1 row; names below are flattened from it)
 T1_long: the 4 month columns "Jan-24".."Apr-24" as rows (Product, period '2024-01'..'2024-04', value)
-do not sum: "Ø 22" (avg) — use AVG, a weighted mean or the file's own total
+do not sum: "Ø 22" (avg) — use AVG, a weighted mean or the file's total
 columns (name | dtype · type | unit | nulls | distinct | min..max, example or all values | source column ← header cells):
   Product | text · dim |  | 0 | 5 | "Apples" | "Pears" | "Plums" | "Cherries" | "Grapes" | A ← A1 "Product"
   "Ø 22" | integer · avg — don't sum |  | 0 | 5 | 10..50 | B ← B1 "Ø 22"

@@ -14,6 +14,12 @@ use crate::facts;
 use crate::types::{self, ColType}; // B21 semantic types (types.rs)
 use crate::text::{csv_row, cut, ident, letter, num, range_a1, sheet_ref, short, thousands, years_in, MAX_CHARS};
 
+/// The cap of a brief catalog (one line per table), in characters, plus this much per table (up to
+/// the catalog's budget).
+const BRIEF_CHARS: usize = 8_500;
+const BRIEF_CHARS_PER_TABLE: usize = 25;
+/// Characters of small tables' rows (inlined CSV) in one catalog (B104).
+const INLINE_TOTAL: usize = 3500;
 /// Tables above this count are always listed one line each.
 const BRIEF_TABLES_OVER: usize = 40;
 /// Up to this many columns a table's columns are listed with ranges / examples.
@@ -103,8 +109,16 @@ fn brief_bound(v: f64, d: Dtype) -> String {
     if is_date(d) || v == v.trunc() {
         return bound(v, d);
     }
-    let r: f64 = format!("{v:.5e}").parse().unwrap_or(v);
-    num(r)
+    // B104: a range bound says where the values lie: 4 significant digits, every digit before
+    // the point (-28.7469 → -28.75, 46322.1 → 46322).
+    if v.abs() < 1.0 {
+        let r: f64 = format!("{v:.3e}").parse().unwrap_or(v);
+        return num(r);
+    }
+    let digits = v.abs().log10().floor() as i32 + 1;
+    let decimals = (4 - digits).max(0) as usize;
+    let s = format!("{v:.decimals$}");
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
 }
 
 fn bound(v: f64, d: Dtype) -> String {
@@ -587,7 +601,11 @@ fn code_values(c: &Column, rows: &[usize]) -> Option<Vec<String>> {
         if let Some(Out::Text(s)) = c.values.get(r)
             && seen.insert(s.as_str())
         {
-            if vals.len() == CODE_VALUES || s.chars().count() > CODE_LEN || s.contains(' ') {
+            // Codes: 2..12 capitals, digits and `_.-` (`AT`, `EU27_2020`, `KWH2500-4999`), not
+            // words or initials.
+            let code = (2..=CODE_LEN).contains(&s.chars().count())
+                && s.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || "_.-".contains(ch));
+            if vals.len() == CODE_VALUES || !code {
                 return None;
             }
             vals.push(s);
@@ -1406,7 +1424,9 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             lines.extend(ents.iter().map(|e| crate::entity::line(e, &t.id())));
             // B80: an ID column with its names in another column.
             let pairs = crate::entity::id_name_pairs(t, &data);
-            lines.extend(pairs.iter().map(|p| crate::entity::id_name_line(p, &t.id())));
+            for (k, p) in pairs.iter().enumerate() {
+                lines.push(if k == 0 { crate::entity::id_name_line(p, &t.id()) } else { crate::entity::id_name_line_short(p, &pairs[0]) });
+            }
             // B19: a share of the total, with the entity (or label) column to rank by.
             let key = ents.first().map(crate::entity::group_key).or_else(|| pairs.first().map(|p| crate::text::quote_ident(&p.id)));
             lines.extend(facts::share_line(t, &names, &data, key, &tys));
@@ -1417,7 +1437,8 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 for (i, c) in data_cols(t) {
                     if let Some(vals) = label_values(c, &data) {
                         lines.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
-                    } else if let Some(vals) = code_values(c, &data) {
+                    } else if let Some(vals) = code_values(c, &data).filter(|_| !pairs.iter().any(|p| p.id == names[i])) {
+                        // (an ID with a name column: the names say more than the codes)
                         more_values.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
                     }
                 }
@@ -1629,7 +1650,19 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 format!("{sheet} · {}{}", plural(m.rows, "row", "rows"), m.tail)
             })
             .collect();
-        let title = |r: &BriefRow| r.member.title.map(|t| format!(" '{}'", short(t, 60))).unwrap_or_default();
+        // A title the table above has too is not repeated.
+        let mut prev_title: Option<&str> = None;
+        let titles: Vec<String> = rows
+            .iter()
+            .map(|r| {
+                let t = r.member.title.filter(|t| prev_title != Some(*t));
+                if r.member.title.is_some() {
+                    prev_title = r.member.title;
+                }
+                t.map(|t| format!(" '{}'", short(t, 60))).unwrap_or_default()
+            })
+            .collect();
+        let title = |k: usize| titles[k].as_str();
         // The first names (keys, labels) within a few characters.
         let shortest = |plain: &[String]| -> String {
             let mut used = 0;
@@ -1678,7 +1711,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             }
         };
         let cost = |k: usize, level: u8| -> usize {
-            let t = if level > 0 { title(&rows[k]).len() } else { 0 };
+            let t = if level > 0 { title(k).len() } else { 0 };
             t + cols_text(k, level).len()
         };
         let fixed: usize = out.iter().map(|l| l.len() + 1).sum::<usize>()
@@ -1729,8 +1762,8 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         }
         // Titles of tables with an earlier table's columns, in table order.
         for k in 0..rows.len() {
-            if matches!(rows[k].cols, BriefCols::Same(_)) && title(&rows[k]).len() <= room {
-                room -= title(&rows[k]).len();
+            if matches!(rows[k].cols, BriefCols::Same(_)) && title(k).len() <= room {
+                room -= title(k).len();
                 level[k] = 1;
             }
         }
@@ -1739,7 +1772,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 out.push(r.line.clone());
                 continue;
             }
-            let t = if level[k] > 0 { title(r) } else { String::new() };
+            let t = if level[k] > 0 { title(k) } else { "" };
             out.push(format!("{:<3}{t}{}{}{}", format!("T{}", r.member.n), rest[k], cols_text(k, level[k]), r.view));
         }
         out
@@ -1749,7 +1782,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     tail.extend(formulas_line(norm)); // B48
     let (ok, bad, unk) = status_counts(norm.totals.iter());
     if ok + bad + unk > 0 {
-        tail.push(format!("TOTALS {ok} ok, {bad} mismatch, {unk} unknown (call totals for details)"));
+        tail.push(format!("TOTALS {ok} ok, {bad} mismatch, {unk} unknown (details: totals)"));
     }
     // B104: notes and warnings only when there are some; notes without the per-kind counts.
     if !norm.notes.is_empty() {
@@ -1768,12 +1801,12 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     }
     if norm.tables.len() == 1 {
         tail.push(
-            "SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT \"col name\" FROM T1"
+            "SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT \"col name\" FROM T1"
                 .into(),
         );
     } else if let (Some(first), Some(last)) = (norm.tables.first(), norm.tables.last()) {
         tail.push(format!(
-            "SQL views {}..{} (data rows) and {}_all..{}_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT \"col name\" FROM {}",
+            "SQL views {}..{} = data rows, {}_all..{}_all = + total rows (_row_type); all with _src_row; quote names: SELECT \"col name\" FROM {}",
             first.id(),
             last.id(),
             first.id(),
@@ -1787,7 +1820,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     let longs: Vec<String> = norm.tables.iter().filter_map(|t| crate::views::table_view(t).map(|lv| lv.name)).collect();
     if !longs.is_empty() {
         tail.push(format!(
-            "SQL long {} {} (data rows) and the same with _long_all (+ total rows, _row_type): period columns as rows (period, period_label, value, _src_row, _src_col; the value's cell is <_src_col><_src_row>)",
+            "SQL long {} {} (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)",
             if longs.len() == 1 { "view" } else { "views" },
             id_list(&longs, 8)
         ));
@@ -1811,12 +1844,18 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             // then column facts; each tier in table order.
             let mut room = budget + 1 - base;
             let mut take: Vec<Vec<bool>> = blocks.iter().map(|b| vec![false; b.parts.len()]).collect();
+            // B104: small tables' rows up to INLINE_TOTAL characters in all (the first tables
+            // first); more rows repeat what a query gives.
+            let mut inline_room = INLINE_TOTAL;
             for tier in 0..3 {
                 for (b, keep) in blocks.iter().zip(take.iter_mut()) {
                     for ((t, part), k) in b.parts.iter().zip(keep.iter_mut()) {
                         let need = len_of(part);
-                        if *t == tier && need <= room {
+                        if *t == tier && need <= room && (tier != 1 || need <= inline_room) {
                             room -= need;
+                            if tier == 1 {
+                                inline_room -= need;
+                            }
                             *k = true;
                         }
                     }
@@ -1835,6 +1874,9 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             return join(&body);
         }
     }
+    // B104: a brief catalog fills its room with column names; this much is enough for the main
+    // tables' names (de-gdp, uk-ons) and keeps big files cheap.
+    let budget = budget.min(BRIEF_CHARS + BRIEF_CHARS_PER_TABLE * norm.tables.len());
     let body = brief(budget.saturating_sub(fixed + 50));
     let text = join(&body);
     if text.len() <= budget {

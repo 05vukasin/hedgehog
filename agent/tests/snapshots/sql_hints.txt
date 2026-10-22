@@ -19,7 +19,7 @@ T1  ← contracts!A1:C13 · 12 rows
     Buyer 0,1090,2020-10-15
     Buyer 1,1100,2020-11-15
     Buyer 2,1110,2020-12-15
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query contracts.csv: SELECT MONTH(signed) AS m, count(*) FROM T1 GROUP BY m
@@ -52,8 +52,8 @@ T1  ← Flows!A1:C5 · 3 rows (+1 total row only in T1_all)
     NGPL,105,20,data
     MAINLINE,100,30,data
     Total,328,60,total
-TOTALS 2 ok, 0 mismatch, 0 unknown (call totals for details)
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = contracts.csv (T1), f2 = flows.xlsx (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 (normalized in <t> s)
 

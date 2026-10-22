@@ -535,7 +535,7 @@ pub fn no_sum_line(t: &Table, names: &[String], types: &[Option<ColType>], mixed
     if more > 0 {
         s.push_str(&format!(" +{more} more"));
     }
-    s.push_str(if cols > 0 { " — use AVG, a weighted mean or the file's own total" } else { " — use AVG or the file's own figure" });
+    s.push_str(if cols > 0 { " — use AVG, a weighted mean or the file's total" } else { " — use AVG or the file's figure" });
     Some(s)
 }
 

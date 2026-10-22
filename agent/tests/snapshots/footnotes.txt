@@ -13,7 +13,7 @@ T1  'Table 1. Hospital beds by region' ← 'Table 1'!A3:C8 · 5 rows
     Delta²,95,101
     Epsilon,660,702
 NOTES 5 cells; e.g. 'Table 1'!A1: "Table 1. Hospital beds by region"
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query beds.xlsx: SELECT * FROM T1 ORDER BY 1

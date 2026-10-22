@@ -34,7 +34,7 @@ T3  'Table A: Staff by department' ← Stacked!A3:C8 · 5 rows · same layout as
     Support,26,1
 T4  'Table B: Contracts by year' ← Stacked!A12:D18 · 6 rows · time 2018–2023 (year)
     columns (4): Year[2018..2023] Contracts[20..35] "Value EUR"[EUR 150000..212500] "Average EUR"[EUR avg 7000..7500]
-    do not sum: "Average EUR" (avg) — use AVG, a weighted mean or the file's own total
+    do not sum: "Average EUR" (avg) — use AVG, a weighted mean or the file's total
     all 6 rows (CSV):
     Year,Contracts,Value EUR,Average EUR
     2018,20,150000,7500
@@ -44,7 +44,7 @@ T4  'Table B: Contracts by year' ← Stacked!A12:D18 · 6 rows · time 2018–20
     2022,32,200000,7100
     2023,35,212500,7000
 NOTES 2 cells; e.g. Stacked!A1: "Table A: Staff by department"
-SQL views T1..T4 (data rows) and T1_all..T4_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+SQL views T1..T4 = data rows, T1_all..T4_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query layout.xlsx: SELECT count(*) FROM T2

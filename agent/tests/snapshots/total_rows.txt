@@ -28,8 +28,8 @@ T2  ← Nights!A1:C9 · 5 rows (+3 total rows only in T2_all) · same layout as 
     Bayern,250,70,data
     Berlin,50,30,data
     Ausland sonst,100,10,data
-TOTALS 14 ok, 0 mismatch, 0 unknown (call totals for details)
-SQL views T1..T2 (data rows) and T1_all..T2_all (+ total rows, _row_type); every view has _src_row; quote names: SELECT "col name" FROM T1
+TOTALS 14 ok, 0 mismatch, 0 unknown (details: totals)
+SQL views T1..T2 = data rows, T1_all..T2_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query totals.xlsx: SELECT Region, Sales FROM T1 ORDER BY Sales DESC

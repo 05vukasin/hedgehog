@@ -27,8 +27,8 @@ T1  ← sales!A1:D20 · 18 rows (+1 total row only in T1_all)
     South,City 16,260,32,data
     East,City 17,270,34,data
     Total,,3330,,total
-TOTALS 1 ok, 0 mismatch, 0 unknown (call totals for details)
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+TOTALS 1 ok, 0 mismatch, 0 unknown (details: totals)
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query sales.csv: SELECT amount FROM T1 WHERE region = 'Total'

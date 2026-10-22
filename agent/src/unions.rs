@@ -343,7 +343,7 @@ fn catalog_lines_of(norm: &Normalized, fams: &[Family]) -> Vec<String> {
                 return format!("SQL union view {} = {} (like U1; adds {})", f.name, id_range(norm, &f.members), adds.join(", "));
             }
             format!(
-                "SQL union view {} = {} ({} tables with the same columns; adds {}): compare them in one query, e.g. SELECT {by}, SUM(…) FROM {} GROUP BY {by}; {}_all also has the total rows (_row_type)",
+                "SQL union view {} = {} ({} tables with the same columns; adds {}): one query compares them, e.g. SELECT {by}, SUM(…) FROM {} GROUP BY {by}; {}_all with total rows (_row_type)",
                 f.name,
                 id_range(norm, &f.members),
                 f.members.len(),

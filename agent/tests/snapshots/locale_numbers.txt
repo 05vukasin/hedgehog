@@ -14,7 +14,7 @@ T1  ← gemeinden!A1:D8 · 7 rows
     Erding,416385,68.49,2024-03-05
     Fulda,517395,75.6,2024-03-06
     Gotha,618405,82.71,2024-03-07
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query gemeinden.csv: SELECT SUM(Einwohner) AS p, MIN(Datum) AS d FROM T1
@@ -26,7 +26,7 @@ p,d
 FILE counties.csv · 1 sheet · 32 cells (100% in tables) · 1 table
 TIME 2024-03-01–2024-03-07 (day, from columns T1.Date)
 T1  ← counties!A1:D8 · 7 rows
-    columns (4): County Population[12345..618405] Income[40100.1..46322.1] Date[date 2024-03-01..2024-03-07, 7 distinct]
+    columns (4): County Population[12345..618405] Income[40100..46322] Date[date 2024-03-01..2024-03-07, 7 distinct]
     warnings: 1 (e.g. column 'Date': 6 value(s) read with a guessed decimal separator or day/month order (pass …)
     all 7 rows (CSV):
     County,Population,Income,Date
@@ -37,7 +37,7 @@ T1  ← counties!A1:D8 · 7 rows
     Erding County,416385,44248.09,2024-03-05
     Fulda County,517395,45285.1,2024-03-06
     Gotha County,618405,46322.11,2024-03-07
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = gemeinden.csv (T1), f2 = counties.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 (normalized in <t> s)
 
@@ -57,7 +57,7 @@ T1  ← latin1!A1:B5 · 4 rows
     München,2.25
     Nürnberg,3.75
     Düsseldorf,4
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = gemeinden.csv (T1), f2 = counties.csv (T1), f3 = latin1.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 (normalized in <t> s)
 

@@ -39,7 +39,7 @@ T1  ← contracts!A1:D31 · 30 rows
     503933813 - INFRAESTRUTURAS DE PORTUGAL SA,Supplier 3,1270,2020-04-15
     "503278602 - Metro do Porto, S. A.",Supplier 0,1280,2020-05-15
     600012662 - Ministério da Defesa Nacional - Marinha,Supplier 1,1290,2020-06-15
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 (normalized in <t> s)
 
 ## query contracts.csv: SELECT buyer_id, count(DISTINCT buyer_name) AS names, count(*) AS n FROM T1 GROUP BY buyer_id ORDER BY n DESC, buyer_id
@@ -92,7 +92,7 @@ T1  ← customers!A1:C26 · 25 rows
     DE200,Beta AG,Beta AG,204
     DE300,Gamma KG,Gamma KG,211
     DE400,Delta SE,Delta SE,218
-SQL view T1 (data rows) and T1_all (+ total rows, _row_type); both have _src_row; quote names: SELECT "col name" FROM T1
+SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = contracts.csv (T1), f2 = customers.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
 (normalized in <t> s)
 

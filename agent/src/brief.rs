@@ -120,7 +120,17 @@ pub fn member_names(members: &[RunMember]) -> (Option<String>, Vec<String>) {
         let parts = crate::unions::differing_parts(&titles);
         let distinct: std::collections::HashSet<&String> = parts.iter().collect();
         if distinct.len() == parts.len() && parts.iter().all(|p| !p.is_empty()) {
-            let pattern = titles[0].replacen(parts[0].as_str(), "…", 1);
+            // The words all titles share in front and at the end, the rest as `…`.
+            let words: Vec<Vec<&str>> = titles.iter().map(|t| t.split_whitespace().collect()).collect();
+            let min = words.iter().map(Vec::len).min().unwrap_or(0);
+            let pre = (0..min).take_while(|&i| words.iter().all(|w| w[i] == words[0][i])).count();
+            let suf = (0..min - pre).take_while(|&i| words.iter().all(|w| w[w.len() - 1 - i] == words[0][words[0].len() - 1 - i])).count();
+            let w0 = &words[0];
+            let pattern = [w0[..pre].join(" "), "…".to_string(), w0[w0.len() - suf..].join(" ")]
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
             let items = members.iter().zip(&parts).map(|(m, p)| format!("{} {}", m.id, short(p, 40))).collect();
             return (Some(short(&pattern, 90)), items);
         }

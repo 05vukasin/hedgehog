@@ -54,7 +54,13 @@ pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
             .iter()
             .map(|&i| {
                 let c = &t.columns[i];
-                short(&c.values.get(r).map(|v| out_text(v, c.dtype)).unwrap_or_default(), 60)
+                // B104: fractions to 6 significant digits (47117.8666667 → 47117.9): the
+                // same value for an answer, half the tokens.
+                let text = match c.values.get(r) {
+                    Some(Out::Num(x)) if x.fract() != 0.0 && !is_date(c.dtype) => significant(*x),
+                    v => v.map(|v| out_text(v, c.dtype)).unwrap_or_default(),
+                };
+                short(&text, 60)
             })
             .collect();
         if marked {
@@ -63,6 +69,23 @@ pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
         out.push(format!("    {}", csv_row(&vals)));
     }
     Some(out)
+}
+
+/// A number to 6 significant digits but every digit before the point, without trailing zeros;
+/// as it is when it has at most 2 decimals (money: 31767420.82 stays).
+fn significant(x: f64) -> String {
+    let full = num(x);
+    if full.split_once('.').is_none_or(|(_, f)| f.len() <= 2) {
+        return full;
+    }
+    if x.abs() < 1.0 {
+        let r: f64 = format!("{x:.5e}").parse().unwrap_or(x);
+        return num(r);
+    }
+    let digits = (x.abs().log10().floor() as i32 + 1).max(1);
+    let decimals = (6 - digits).max(0) as usize;
+    let s = format!("{x:.decimals$}");
+    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -639,6 +662,11 @@ pub fn scale_of(text: &str) -> Option<(f64, &'static str)> {
         let w = raw.trim_matches(|c: char| "()'’.$€£".contains(c));
         let prev = k.checked_sub(1).map(|j| toks[j].trim_matches(|c: char| "()".contains(c))).unwrap_or("");
         let marked = BEFORE.contains(&prev) || raw.starts_with('(');
+        // B130: "in 1 000 EUR", "(1 000 000)": thousands grouped with spaces.
+        let next = |j: usize| toks.get(k + j).map(|n| n.trim_matches(|c: char| "()'’.$€£".contains(c)));
+        if w == "1" && marked && next(1) == Some("000") {
+            return Some(if next(2) == Some("000") { (1e6, "millions") } else { (1e3, "thousands") });
+        }
         if matches!(w, "000s" | "000's" | "000’s" | "tsd" | "tsd." | "thous")
             || (w == "000" && (raw.starts_with(['\'', '’', '(', '$', '€', '£']) || marked))
             || ((w == "1.000" || w == "1,000") && marked)
@@ -1150,7 +1178,23 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
             items.push(neg.join(", "));
         }
     }
-    (!items.is_empty()).then(|| format!("    quality: {}", items.join(" · ")))
+    // B104: columns empty in the same rows for the same reason once: `a, b empty in 158,866 rows …`.
+    let mut merged: Vec<String> = Vec::new();
+    for it in items {
+        let Some(at) = it.find(" empty in ") else {
+            merged.push(it);
+            continue;
+        };
+        let (col, rest) = it.split_at(at);
+        match merged.iter_mut().find(|m| m.find(" empty in ").is_some_and(|k| &m[k..] == rest)) {
+            Some(m) => {
+                let k = m.find(" empty in ").unwrap_or(m.len());
+                m.insert_str(k, &format!(", {col}"));
+            }
+            None => merged.push(it),
+        }
+    }
+    (!merged.is_empty()).then(|| format!("    quality: {}", merged.join(" · ")))
 }
 
 #[cfg(test)]
@@ -1354,10 +1398,13 @@ mod tests {
             ("Population (in millions)", 1e6),
             ("Dépenses en milliers d'euros", 1e3),
             ("Budget in 1.000 EUR", 1e3),
+            // B130: thousands grouped with a space.
+            ("Municipal budget 2024, in 1 000 EUR", 1e3),
+            ("Ausgaben (in 1 000 000 €)", 1e6),
         ] {
             assert_eq!(scale_of(s).map(|x| x.0), Some(f), "{s}");
         }
-        for s in ["Sales 2024", "Top 1000 companies", "5 million customers served", "Plant 000 status"] {
+        for s in ["Sales 2024", "Top 1000 companies", "5 million customers served", "Plant 000 status", "Top 1 000 firms"] {
             assert_eq!(scale_of(s), None, "{s}");
         }
         let mut n = register();
