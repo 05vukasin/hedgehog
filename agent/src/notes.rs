@@ -207,6 +207,10 @@ pub fn result_notes(db: &Db, sql: &str, res: &QueryResult, timeout: Duration) ->
         let colq = quote_ident(col);
         let at = format!("{}.{}", src.shown, crate::text::ident(col));
         for v in f.values.iter().take(MAX_VALUES) {
+            // On a non-empty result only total-row labels matter: text values.
+            if !empty && matches!(v, Lit::Num(_)) {
+                continue;
+            }
             let (text, lit) = match v {
                 Lit::Text(s) => (s.clone(), sql_lit(s)),
                 Lit::Num(n) => (n.clone(), n.clone()),
