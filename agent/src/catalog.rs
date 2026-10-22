@@ -81,10 +81,14 @@ pub fn out_text(v: &Out, dtype: Dtype) -> String {
         Out::Num(x) if matches!(dtype, Dtype::Date | Dtype::Datetime) => iso(*x),
         Out::Num(x) => num(*x),
         Out::Date(x) => iso(*x),
-        Out::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
+        // B82: as SQL stores it (INTEGER 1 / 0), so a filter copied from the catalog matches.
+        Out::Bool(b) => if *b { "1" } else { "0" }.to_string(),
         Out::Text(t) => t.clone(),
     }
 }
+
+/// B82: how a boolean column is stored, for its catalog item and `describe_table`.
+const BOOL_STORED: &str = "1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')";
 
 pub(crate) fn is_date(d: Dtype) -> bool {
     matches!(d, Dtype::Date | Dtype::Datetime)
@@ -152,6 +156,10 @@ pub struct RowInfo {
     pub kept_totals: Vec<TotalRow>,
     /// The table's totals as in the manifest (`tables[].totals`).
     pub totals: TableTotals,
+    /// B74: source rows each total row adds up (1-based row → ranges), from its vertical checks.
+    pub scopes: HashMap<u32, Vec<(u32, u32)>>,
+    /// B74: total rows the totals check calls the grand total.
+    pub grand_rows: HashSet<u32>,
 }
 
 /// Indexes of a table's data rows (all rows when it has no row types).
@@ -192,6 +200,18 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
             kind: if r.level == "subtotal" { RowType::Subtotal } else { RowType::Total },
         })
         .collect();
+    for x in norm.totals.iter().filter(|x| x.table == Some(t.n) && x.direction == "vertical") {
+        // What a total adds up, from a check that confirmed it.
+        if x.status == "ok" {
+            let e = info.scopes.entry(x.row + 1).or_default();
+            if e.is_empty() {
+                *e = source_rows(&x.sources);
+            }
+        }
+        if x.level == "grand_total" {
+            info.grand_rows.insert(x.row + 1);
+        }
+    }
     info.totals = totals;
     info
 }
@@ -222,6 +242,133 @@ fn kept_totals_text(rows: &[TotalRow]) -> String {
         l.push(format!("+{} more labels", labels.len() - 3));
     }
     format!("labelled {}; first @{}", l.join(", "), rows[0].row)
+}
+
+// ------------------------------------------------------------------------------------------------
+// total rows: labels, levels and what each adds up (B74)
+
+/// Source rows (1-based) a total adds up, from its check's `sources` ("B5:B15", "B41 B47"), as
+/// ranges.
+fn source_rows(sources: &[String]) -> Vec<(u32, u32)> {
+    let row_of = |cell: &str| cell.trim_start_matches(|c: char| c.is_ascii_alphabetic() || c == '$').parse::<u32>().ok();
+    let mut out: Vec<(u32, u32)> = Vec::new();
+    for tok in sources.iter().flat_map(|s| s.split([' ', ',', ';'])).filter(|s| !s.is_empty()) {
+        let tok = tok.rsplit('!').next().unwrap_or(tok);
+        let (a, b) = tok.split_once(':').unwrap_or((tok, tok));
+        if let (Some(a), Some(b)) = (row_of(a), row_of(b)) {
+            out.push((a.min(b), a.max(b)));
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// One total / subtotal row with its level and scope.
+#[derive(Debug, Clone)]
+pub(crate) struct TotalEntry {
+    pub label: String,
+    pub row: u32,
+    pub kind: RowType,
+    /// The row stays in `T<n>` (a total the check found inside the data).
+    pub kept: bool,
+    /// Source rows it adds up (empty when unknown).
+    pub scope: Vec<(u32, u32)>,
+    pub grand: bool,
+}
+
+/// A table's total rows (taken out and kept in the data), in source order, with what each adds
+/// up and which one is the grand total: the only total no other total includes, or, when several
+/// are on top, the one the totals check calls the grand total.
+pub(crate) fn total_entries(info: &RowInfo) -> Vec<TotalEntry> {
+    let scope_of = |row: u32| info.scopes.get(&row).cloned().unwrap_or_default();
+    let mut out: Vec<TotalEntry> = info
+        .total_rows
+        .iter()
+        .map(|r| TotalEntry { label: r.label.clone(), row: r.row, kind: r.kind, kept: false, scope: scope_of(r.row), grand: false })
+        .chain(info.kept_totals.iter().map(|r| TotalEntry {
+            label: r.label.clone(),
+            row: r.row,
+            kind: r.kind,
+            kept: true,
+            scope: scope_of(r.row),
+            grand: false,
+        }))
+        .collect();
+    out.sort_by_key(|e| e.row);
+    let inside = |row: u32, e: &TotalEntry| e.row != row && e.scope.iter().any(|(a, b)| (*a..=*b).contains(&row));
+    let top: Vec<usize> = (0..out.len()).filter(|&k| !out.iter().any(|e| inside(out[k].row, e))).collect();
+    let grand = match top.as_slice() {
+        [k] if out.len() > 1 && out[*k].kind == RowType::Total => Some(*k),
+        _ => {
+            let marked: Vec<usize> = top.iter().copied().filter(|&k| info.grand_rows.contains(&out[k].row)).collect();
+            (marked.len() == 1).then(|| marked[0])
+        }
+    };
+    if let Some(k) = grand {
+        out[k].grand = true;
+    }
+    out
+}
+
+/// Ranges of rows as text: `5–15`, `7, 49, 57, 63`, at most 4 parts.
+fn ranges_text(scope: &[(u32, u32)]) -> String {
+    let mut merged: Vec<(u32, u32)> = Vec::new();
+    for &(a, b) in scope {
+        match merged.last_mut() {
+            Some(last) if a <= last.1 + 1 => last.1 = last.1.max(b),
+            _ => merged.push((a, b)),
+        }
+    }
+    let mut parts: Vec<String> = merged.iter().take(4).map(|(a, b)| if a == b { a.to_string() } else { format!("{a}–{b}") }).collect();
+    if merged.len() > 4 {
+        parts.push("…".into());
+    }
+    parts.join(", ")
+}
+
+/// Total rows listed by level: `grand total 'Total Expenses'@65 (= rows 7, 49, 57, 63); totals
+/// 'Total O&M'@49 (= 41, 47); subtotals (_row_type 'subtotal') 'Subtotal Fixed O&M'@41 …`, up to
+/// `max` rows; with `scopes`, the rows each adds up.
+pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bool, max: usize) -> String {
+    let item = |e: &TotalEntry| {
+        let mut s = format!("'{}'@{}", short(&e.label, 40), e.row);
+        if scopes && !e.scope.is_empty() {
+            s.push_str(&format!(" (= rows {})", ranges_text(&e.scope)));
+        }
+        if e.kept {
+            s.push_str(&format!(" [stays in {table}]"));
+        }
+        s
+    };
+    let mut groups: Vec<String> = Vec::new();
+    let mut shown = 0;
+    if let Some(g) = entries.iter().find(|e| e.grand) {
+        groups.push(format!("grand total {}", item(g)));
+        shown += 1;
+    }
+    let both = entries.iter().any(|e| e.kind == RowType::Subtotal) && entries.iter().any(|e| e.kind == RowType::Total);
+    let note = if both { " (_row_type 'subtotal', not 'total')" } else { "" };
+    for (kind, one, many) in [
+        (RowType::Total, "total", "totals"),
+        (RowType::Subtotal, "subtotal", "subtotals"),
+        (RowType::Average, "average", "averages"),
+        (RowType::OfWhich, "of-which row", "of-which rows"),
+    ] {
+        let items: Vec<String> =
+            entries.iter().filter(|e| e.kind == kind && !e.grand).take(max.saturating_sub(shown)).map(item).collect();
+        if !items.is_empty() {
+            shown += items.len();
+            let name = if items.len() == 1 { one } else { many };
+            let note = if kind == RowType::Subtotal { note } else { "" };
+            groups.push(format!("{name}{note} {}", items.join(", ")));
+        }
+    }
+    let mut s = groups.join("; ");
+    if entries.len() > shown {
+        s.push_str(&format!(" +{} more", entries.len() - shown));
+    }
+    s
 }
 
 pub(crate) fn plural(n: usize, one: &str, many: &str) -> String {
@@ -513,10 +660,18 @@ fn col_detail(c: &Column, name: &str, rows: usize, example: bool, ty: Option<&Co
         if is_date(c.dtype) {
             kind.push_str(&format!(", {} distinct", st.distinct));
         }
+    } else if c.dtype == Dtype::Bool {
+        kind.push_str(&format!(" {BOOL_STORED}"));
     } else if let Some(ex) = st.example.as_ref().filter(|_| example) {
         kind.push_str(&format!(" e.g. \"{}\"", short(ex, 24)));
     }
-    if c.dtype == Dtype::Text && rows > 3 && st.nulls * 2 > rows {
+    // B89: only for label columns (a block label is filled on the block's first row, and its
+    // labels rarely repeat); a sparse flag column ("e", "p") is just mostly empty.
+    let filled = rows.saturating_sub(st.nulls);
+    let label_like = matches!(c.values.first(), Some(Out::Text(_))) && st.distinct * 2 >= filled;
+    if c.dtype == Dtype::Text && rows > 3 && st.nulls * 2 > rows && !label_like {
+        kind.push_str(&format!(", {}/{} empty", st.nulls, rows));
+    } else if c.dtype == Dtype::Text && rows > 3 && st.nulls * 2 > rows {
         kind.push_str(&format!(", {}/{} empty: label written once per block?", st.nulls, rows));
     }
     format!("{}[{kind}]", ident(name))
@@ -525,6 +680,9 @@ fn col_detail(c: &Column, name: &str, rows: usize, example: bool, ty: Option<&Co
 /// One column as `name[dtype unit]` (dates with their range).
 fn col_compact(c: &Column, name: &str, ty: Option<&ColType>) -> String {
     let mut kind = types::kind_with(&kind_text(c), c, ty); // B21
+    if c.dtype == Dtype::Bool {
+        kind.push_str(" 1/0"); // B82: as stored in SQL
+    }
     if is_date(c.dtype) {
         let st = col_stats(c);
         if let (Some(lo), Some(hi)) = (st.min, st.max) {
@@ -672,36 +830,27 @@ fn table_head(t: &Table, info: &RowInfo, cov: Option<&TimeCoverage>, brief: bool
         s.push_str(&format!("'{}' ", short(title, if brief { 60 } else { 100 })));
     }
     s.push_str(&format!("← {} · {}", sheet_ref(&t.source_sheet, &range_a1(t.rect)), plural(info.data, "row", "rows")));
-    if !info.total_rows.is_empty() {
+    // Brief lines get their total rows from the caller (B74: all labels, repeated ones once).
+    if !info.total_rows.is_empty() && !brief {
         let k = info.total_rows.len();
         s.push_str(&format!(
             " (+{} {}: {} — only in {}_all)",
             k,
             if k == 1 { "total row" } else { "total rows" },
-            total_rows_text(&info.total_rows, if brief { 1 } else { 3 }),
+            total_rows_text(&info.total_rows, 3),
             t.id()
         ));
     }
-    if !info.kept_totals.is_empty() {
+    if !info.kept_totals.is_empty() && !brief {
         let k = info.kept_totals.len();
-        if brief {
-            s.push_str(&format!(
-                " · {} inside {} (e.g. '{}'@{})",
-                plural(k, "total row", "total rows"),
-                t.id(),
-                short(&info.kept_totals[0].label, 24),
-                info.kept_totals[0].row
-            ));
-        } else {
-            s.push_str(&format!(
-                " · {} {} in {} ({}) — exclude {} before summing",
-                plural(k, "total row", "total rows"),
-                if k == 1 { "stays" } else { "stay" },
-                t.id(),
-                kept_totals_text(&info.kept_totals),
-                if k == 1 { "it" } else { "them" }
-            ));
-        }
+        s.push_str(&format!(
+            " · {} {} in {} ({}) — exclude {} before summing",
+            plural(k, "total row", "total rows"),
+            if k == 1 { "stays" } else { "stay" },
+            t.id(),
+            kept_totals_text(&info.kept_totals),
+            if k == 1 { "it" } else { "them" }
+        ));
     }
     if let Some(c) = cov {
         s.push_str(&format!(" · time {} ({})", period_range(c), c.granularity));
@@ -797,7 +946,9 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             if let Some(first) = layouts.get(&cols) {
                 line.push_str(&format!(" · same columns as {first}"));
                 line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
-                out.push(Block::new(vec![line], t, &names, info, inline));
+                let mut lines = vec![line];
+                lines.extend(facts::scale_line(t)); // B85
+                out.push(Block::new(lines, t, &names, info, inline));
                 continue;
             }
             if cols.len() >= 3
@@ -814,7 +965,9 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                         line.push_str(&format!(" … +{} more (describe_table lists them)", items.len() - 12));
                     }
                 }
-                out.push(Block::new(vec![line], t, &names, info, inline));
+                let mut lines = vec![line];
+                lines.extend(facts::scale_line(t)); // B85
+                out.push(Block::new(lines, t, &names, info, inline));
                 continue;
             }
             layouts.insert(cols.clone(), t.id());
@@ -823,11 +976,12 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             let mixed = mixed_measures_by(t, &data);
             let tys = types::classify(t, &names, mixed, &types::summed_cols(norm, t)); // B21
             let mut lines = vec![line, columns_line(t, &names, inline.is_none(), &tys)];
+            lines.extend(facts::scale_line(t)); // B85: "(All values in 000s)"
             // B2/B18: "<id> - <name>" columns and how to group them, right under the columns.
             let ents = crate::entity::detect(t);
             lines.extend(ents.iter().map(|e| crate::entity::line(e, &t.id())));
             // B19: a share of the total, with the entity (or label) column to rank by.
-            lines.extend(facts::share_line(t, &names, &data, ents.first().map(crate::entity::group_key)));
+            lines.extend(facts::share_line(t, &names, &data, ents.first().map(crate::entity::group_key), &tys));
             // The values to filter on; a small inlined table shows them in its rows.
             if inline.is_none() {
                 for (i, c) in data_cols(t) {
@@ -868,23 +1022,105 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             }
             out.push(b);
         }
+        // B74: a table whose total rows read like an earlier table's says so instead.
+        let mut seen: HashMap<String, String> = HashMap::new();
+        for (t, b) in norm.tables.iter().zip(out.iter_mut()) {
+            for (_, part) in b.parts.iter_mut() {
+                let Some(l) = part.first_mut().filter(|l| l.starts_with("    total rows: ")) else { continue };
+                let key = l.replace(&format!("{}_all", t.id()), "_all").replace(&format!("[stays in {}]", t.id()), "[stays]");
+                match seen.get(&key) {
+                    Some(first) => {
+                        let cond = l.split(" — labels in ").next().unwrap_or(l).to_string();
+                        *l = format!("{cond} — labels as in {first}");
+                    }
+                    None => {
+                        seen.insert(key, t.id());
+                    }
+                }
+            }
+        }
         // B16: a table that is the long form of another, on both of them.
         for (k, l) in facts::long_forms(&norm.tables) {
             out[k].lines.push(l);
         }
         out
     };
-    let brief = || -> Vec<String> {
+    // Tables one line each, within `avail` characters: total rows by level (B74, a repeated set
+    // once), the scale of the numbers (B85), then the column names in full (B71: never cut; the
+    // key columns and total columns first, the rest while the table's share of the room lasts).
+    let brief = |avail: usize| -> Vec<String> {
         let mut out = vec!["(tables listed briefly; call describe_table for columns)".to_string()];
+        let mut seen_totals: HashMap<String, String> = HashMap::new();
+        let mut seen_cols: HashMap<Vec<String>, String> = HashMap::new();
+        // (line so far, column items in priority order with their source position, columns
+        // count, view text); None for columns: same columns as an earlier table (said already).
+        let mut rows: Vec<(String, Option<Vec<(usize, String)>>, usize, String)> = Vec::new();
         for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
             let names = sql_names(t);
-            let cols: Vec<String> = data_cols(t).map(|(i, _)| ident(&short(&names[i], 24))).collect();
             let mut line = table_head(t, info, table_cov(k), true);
-            line.push_str(&format!(" · {} cols: {}", cols.len(), cols.iter().take(4).cloned().collect::<Vec<_>>().join(" ")));
-            if cols.len() > 4 {
-                line.push_str(" …");
+            let entries = total_entries(info);
+            if !entries.is_empty() {
+                let text = total_entries_text(&entries, &t.id(), false, 15);
+                let key = format!("{text}|{}", entries.iter().map(|e| e.row.to_string()).collect::<Vec<_>>().join(","));
+                match seen_totals.get(&key) {
+                    Some(first) => line.push_str(&format!(" · total rows as in {first}")),
+                    None => {
+                        let kept = entries.iter().filter(|e| e.kept).count();
+                        line.push_str(&format!(
+                            " · {} ({}): {text}",
+                            plural(entries.len(), "total row", "total rows"),
+                            if kept == 0 { format!("only in {}_all", t.id()) } else { format!("only in {}_all unless marked", t.id()) }
+                        ));
+                        seen_totals.insert(key, t.id());
+                    }
+                }
             }
-            line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
+            if let Some((f, word, _)) = facts::table_scale(t) {
+                line.push_str(&format!(" · amounts in {word} (× {})", thousands(f as usize)));
+            }
+            let cols: Vec<(usize, &Column)> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).collect();
+            let list: Vec<String> = cols.iter().map(|(i, _)| names[*i].clone()).collect();
+            let view = crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv)).unwrap_or_default();
+            if let Some(first) = seen_cols.get(&list) {
+                line.push_str(&format!(" · {} cols, same as {first}", cols.len()));
+                rows.push((line, None, cols.len(), view));
+                continue;
+            }
+            seen_cols.insert(list, t.id());
+            // Priority: the first two columns (keys, labels), then totals and amounts by name.
+            let total_word = |n: &str| {
+                let low = n.to_lowercase();
+                ["total", "summe", "gesamt", "insgesamt", "ukupno", "totale", "totaal", "ensemble", "zusammen", "sum"].iter().any(|w| low.contains(w))
+            };
+            let mut order: Vec<usize> = (0..cols.len().min(2)).collect();
+            order.extend((2..cols.len()).filter(|&j| total_word(&names[cols[j].0])));
+            order.extend((2..cols.len()).filter(|&j| !total_word(&names[cols[j].0])));
+            let items: Vec<(usize, String)> = order.into_iter().map(|j| (j, ident(&names[cols[j].0]))).collect();
+            rows.push((line, Some(items), cols.len(), view));
+        }
+        let fixed: usize = out.iter().chain(rows.iter().map(|r| &r.0)).map(|l| l.len() + 1).sum::<usize>()
+            + rows.iter().map(|r| r.3.len() + 20).sum::<usize>();
+        let needing = rows.iter().filter(|r| r.1.is_some()).count().max(1);
+        let share = (avail.saturating_sub(fixed) / needing).max(120);
+        for (mut line, items, n, view) in rows {
+            if let Some(items) = items {
+                let mut used = 0;
+                let mut keep: Vec<(usize, String)> = Vec::new();
+                for (j, name) in items {
+                    if !keep.is_empty() && used + name.len() + 1 > share {
+                        break;
+                    }
+                    used += name.len() + 1;
+                    keep.push((j, name));
+                }
+                let shown = keep.len();
+                keep.sort_by_key(|x| x.0);
+                line.push_str(&format!(" · {n} cols: {}", keep.into_iter().map(|x| x.1).collect::<Vec<_>>().join(" ")));
+                if shown < n {
+                    line.push_str(&format!(" +{} more (describe_table)", n - shown));
+                }
+            }
+            line.push_str(&view);
             out.push(line);
         }
         out
@@ -984,7 +1220,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             return join(&body);
         }
     }
-    let body = brief();
+    let body = brief(budget.saturating_sub(fixed + 50));
     let text = join(&body);
     if text.len() <= budget {
         return text;
@@ -1072,27 +1308,17 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     if let Some(g) = t.columns.iter().position(|c| c.role == ColRole::Group) {
         lines.push(format!("group column: {} (labels of group-header rows, filled down)", ident(&names[g])));
     }
-    if !info.total_rows.is_empty() {
-        let tr: Vec<String> = info
-            .total_rows
-            .iter()
-            .take(12)
-            .map(|r| format!("'{}'@{} ({})", short(&r.label, 40), r.row, r.kind.as_str()))
-            .collect();
-        let more = info.total_rows.len().saturating_sub(12);
+    // B74: every total row by level, the grand total named, what each adds up.
+    let entries = total_entries(&info);
+    if !entries.is_empty() {
         lines.push(format!(
-            "total rows (only in {}_all, _row_type): {}{}",
-            t.id(),
-            tr.join(", "),
-            if more > 0 { format!(" +{more} more") } else { String::new() }
+            "total rows (only in {id}_all, _row_type, unless marked): {}",
+            total_entries_text(&entries, &t.id(), true, 24),
+            id = t.id()
         ));
     }
     if !info.kept_totals.is_empty() {
-        lines.push(format!(
-            "total rows that stay in {} (exclude before summing): {}",
-            t.id(),
-            total_rows_text(&info.kept_totals, 12)
-        ));
+        lines.push(format!("total rows that stay in {} (exclude before summing): {}", t.id(), total_rows_text(&info.kept_totals, 12)));
     }
     let mixed = mixed_measures_by(t, &data_rows(t));
     if let Some(i) = mixed {
@@ -1104,6 +1330,7 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
         lines.push(crate::views::catalog_line(t, &lv, mixed, !info.total_rows.is_empty()).trim_start().to_string());
     }
     lines.extend(types::no_sum_line(t, &names, &tys, mixed).map(|l| l.trim_start().to_string()));
+    lines.extend(facts::scale_line(t).map(|l| l.trim_start().to_string())); // B85
     lines.push("columns (name | dtype · type | unit | nulls | distinct | min..max, example or all values | source column ← header cells):".into());
     let data = data_rows(t);
     let cols: Vec<(usize, &Column)> = data_cols(t).collect();
@@ -1119,6 +1346,7 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
             (Some(lo), Some(hi)) if is_numeric(c.dtype) || is_date(c.dtype) => {
                 format!("{}..{}", bound(lo, c.dtype), bound(hi, c.dtype))
             }
+            _ if c.dtype == Dtype::Bool => BOOL_STORED.to_string(), // B82
             _ => match label_values(c, &data) {
                 Some(vals) if vals.len() > 1 => values_text(&vals),
                 _ => st.example.as_ref().map(|e| format!("e.g. \"{}\"", short(e, 40))).unwrap_or_default(),
@@ -1345,7 +1573,7 @@ mod tests {
         assert!(c.contains("\n    Total,0.25,4.25,8.25,total\n"), "{c}");
         assert_eq!(c.matches("all 5 rows (CSV").count(), 2, "{c}");
         // How to select the total rows.
-        assert!(c.contains("\n    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (label in Region: 'Total')\n"), "{c}");
+        assert!(c.contains("\n    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in Region: total 'Total'@6\n"), "{c}");
         assert!(!c.contains("values:"), "{c}");
         assert!(!c.contains("… cut:"));
     }
@@ -1574,13 +1802,66 @@ mod tests {
         let n = book(1, 70, false);
         let d = describe_table(&n, &n.tables[0]);
         assert!(d.len() <= MAX_CHARS);
-        assert!(d.contains("total rows (only in T1_all, _row_type): 'Total'@6 (total)"), "{d}");
+        assert!(d.contains("total rows (only in T1_all, _row_type, unless marked): total 'Total'@6"), "{d}");
         assert!(d.contains("… 12 more columns: "), "{d}");
         assert!(d.contains("first 4 rows (first 12 columns):"), "{d}");
         assert!(find_table(&n, "t1").is_ok() && find_table(&n, "T1_all").is_ok());
         assert!(find_table(&n, "T7").unwrap_err().contains("tables are T1"));
         assert!(totals(&n, None, Some("weird")).is_err());
         assert_eq!(totals(&n, None, None).unwrap(), "TOTALS: 0 ok, 0 mismatch, 0 unknown\nno totals found");
+    }
+
+    #[test]
+    fn total_rows_by_level() {
+        // B74, like the Enron O&M budget: two subtotals, 'Total O&M' over them, and 'Total
+        // Expenses' over 'Total O&M' (the check calls 'Total O&M' the grand total; the inclusion
+        // says otherwise).
+        let mut n = book(1, 3, true);
+        let t = &mut n.tables[0];
+        let labels = ["a", "Subtotal Fixed", "b", "Subtotal Variable", "Total O&M", "Total Expenses"];
+        let types = [RowType::Data, RowType::Subtotal, RowType::Data, RowType::Subtotal, RowType::Total, RowType::Total];
+        for c in &mut t.columns {
+            let v = c.values[0].clone();
+            c.values = vec![v; 6];
+        }
+        t.columns[0].values = labels.iter().map(|s| Out::Text(s.to_string())).collect();
+        t.src_rows = (1..=6).collect();
+        t.row_types = types.to_vec();
+        let item = |row: u32, label: &str, level: &'static str, sources: &[&str]| hh_core::normalize::TotalItem {
+            level,
+            status: "ok",
+            kept_in_data: false,
+            sources: sources.iter().map(|s| s.to_string()).collect(),
+            ..total_item(1, row, label)
+        };
+        n.totals = vec![
+            item(2, "Subtotal Fixed", "subtotal", &["B2:B2"]),
+            item(4, "Subtotal Variable", "subtotal", &["B4"]),
+            item(5, "Total O&M", "grand_total", &["B3 B5"]),
+            item(6, "Total Expenses", "total", &["B6"]),
+        ];
+        let c = catalog(&n, "x.xlsx", MAX_CHARS);
+        assert!(
+            c.contains("labels in Region: grand total 'Total Expenses'@7 (= rows 6); total 'Total O&M'@6 (= rows 3, 5); subtotals (_row_type 'subtotal', not 'total') 'Subtotal Fixed'@3 (= rows 2), 'Subtotal Variable'@5 (= rows 4)"),
+            "{c}"
+        );
+        // describe_table: the same levels.
+        let d = describe_table(&n, &n.tables[0]);
+        assert!(d.contains("grand total 'Total Expenses'@7"), "{d}");
+    }
+
+    #[test]
+    fn booleans_as_stored() {
+        // B82: SQL stores booleans as INTEGER 1 / 0; the catalog says so and shows 1, not "TRUE".
+        let mut n = book(1, 1, true);
+        let t = &mut n.tables[0];
+        t.columns.insert(1, col("Returned", ColRole::Data, Dtype::Bool, (0..5).map(|i| Out::Bool(i % 2 == 0)).collect()));
+        let c = catalog(&n, "x.xlsx", MAX_CHARS);
+        assert!(c.contains("Returned[bool · dim 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')]"), "{c}");
+        assert!(c.contains("\n    r0,1,0.25,data\n"), "{c}");
+        assert!(!c.contains("TRUE\""), "{c}");
+        let d = describe_table(&n, &n.tables[0]);
+        assert!(d.contains("  Returned | bool · dim |  | 0 | 2 | 1/0 in SQL"), "{d}");
     }
 
     #[test]
