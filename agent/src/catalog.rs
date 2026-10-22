@@ -945,6 +945,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             id_list(&longs, 8)
         ));
     }
+    tail.extend(crate::unions::catalog_lines(norm)); // B79: union views (unions.rs)
 
     let join = |body: &[String]| -> String {
         let mut all = head.clone();

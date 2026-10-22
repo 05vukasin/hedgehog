@@ -125,6 +125,11 @@ class HedgehogSession {
     return tool(() => this.#s.listFiles(folder, pattern))
   }
 
+  /** The files opened so far, in order, with their SQL prefix (`f2` in `SELECT … FROM f2.T1`). */
+  openFiles() {
+    return this.#s.openFiles()
+  }
+
   /** Runs a tool by its MCP name (`open_file`, `query`, ...) with JSON arguments. */
   call(name, args) {
     return tool(() => this.#s.call(name, args))

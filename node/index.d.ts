@@ -147,6 +147,14 @@ export interface SessionTotalsOptions {
   status?: 'mismatch' | 'ok' | 'unknown'
 }
 
+/** A file opened in a session: `HedgehogSession.openFiles()`. */
+export interface SessionFile {
+  /** The file's SQL prefix, `f1`, `f2`, …: `SELECT … FROM f1.T1 JOIN f2.T1 …` joins two files. */
+  prefix: string
+  /** The path as the session shows it (relative to the root when inside it). */
+  path: string
+}
+
 /** MCP tool names, for `HedgehogSession.call`. */
 export type ToolName = 'open_file' | 'describe_table' | 'query' | 'cells' | 'totals' | 'list_files'
 
@@ -173,7 +181,10 @@ export declare class HedgehogSession {
   openFile(path: string): Promise<string>
   /** All columns of one table (dtype, unit, nulls, min/max), the first rows, header cells, totals. */
   describeTable(path: string, table: string): Promise<string>
-  /** Read-only SQL (SQLite dialect) over the tables `T1`, `T2`, ... as CSV (default 50, max 200 rows). */
+  /**
+   * Read-only SQL (SQLite dialect) over the tables `T1`, `T2`, ... as CSV (default 50, max 200 rows).
+   * With several files open, `f1.T1`, `f2.T1`, ... name each open file's tables (see `openFiles`).
+   */
   query(path: string, sql: string, limit?: number): Promise<string>
   /** Original source cells of an A1 range (max 200) as `A1<TAB>value` lines, for citations. */
   cells(path: string, sheet: string, range: string): Promise<string>
@@ -181,6 +192,8 @@ export declare class HedgehogSession {
   totals(path: string, opts?: SessionTotalsOptions): Promise<string>
   /** Spreadsheet files under `folder` (relative to root) with size and modified date. */
   listFiles(folder?: string, pattern?: string): Promise<string>
+  /** The files opened so far, in order, with their SQL prefix (`f1`, `f2`, ...). */
+  openFiles(): SessionFile[]
   /** Runs a tool by its MCP name with JSON arguments, as an MCP host would. */
   call(name: ToolName | (string & {}), args?: Record<string, unknown>): Promise<string>
 }

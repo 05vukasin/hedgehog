@@ -216,6 +216,24 @@ describe('HedgehogSession (agent tools)', () => {
     assert.equal(await s.call('query', { path: 'sales.csv', sql: 'SELECT 1 AS x' }), 'x\n1\n(1 row)')
   })
 
+  test('several files: f<k>.T1 joins tables of different files', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'hedgehog-node-multi-'))
+    try {
+      writeFileSync(join(d, 'orders.csv'), 'orderID,employeeID\n1,7\n2,8\n3,7\n')
+      writeFileSync(join(d, 'lines.csv'), 'orderID,amount\n1,10\n1,5\n2,20\n3,1\n')
+      const s = new HedgehogSession({ root: d })
+      await s.openFile('orders.csv')
+      const cat = await s.openFile('lines.csv')
+      assert.match(cat, /^FILES open in this session .*f1 = orders\.csv \(T1\), f2 = lines\.csv \(T1; this file\)/m)
+      assert.match(cat, /^JOIN KEYS f1\.T1\.orderID = f2\.T1\.orderID/m)
+      assert.deepEqual(s.openFiles(), [{ prefix: 'f1', path: 'orders.csv' }, { prefix: 'f2', path: 'lines.csv' }])
+      const sql = 'SELECT o.employeeID, SUM(l.amount) AS s FROM T1 o JOIN f2.T1 l ON o.orderID = l.orderID GROUP BY 1 ORDER BY 1'
+      assert.equal(await s.query('orders.csv', sql), 'employeeID,s\n7,16\n8,20\n(2 rows)')
+    } finally {
+      rmSync(d, { recursive: true, force: true })
+    }
+  })
+
   test('calls run concurrently without blocking and take turns on the session', async () => {
     const s = new HedgehogSession({ root: dir })
     const results = await Promise.all(Array.from({ length: 8 }, (_, i) => s.query('sales.csv', `SELECT ${i} AS n`)))

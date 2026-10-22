@@ -26,6 +26,11 @@ export declare class NativeSession {
   cells(path: string, sheet: string, range: string): Promise<string>
   totals(path: string, table?: string | undefined | null, status?: string | undefined | null): Promise<string>
   listFiles(folder?: string | undefined | null, pattern?: string | undefined | null): Promise<string>
+  /**
+   * The files opened in this session, in order, with their SQL prefix: `f1.T1`, `f2.T1`, …
+   * name the tables of each file in one query (B76).
+   */
+  openFiles(): Array<OpenFileInfo>
   /** Runs a tool by its MCP name with JSON arguments (`{"path": ..., "sql": ...}`). */
   call(name: string, args?: any | undefined | null): Promise<string>
 }
@@ -125,6 +130,14 @@ export declare function open(path: string): Workbook
 
 /** Like `open`, read off the main thread. */
 export declare function openAsync(path: string): Promise<Workbook>
+
+/** One file opened in a session (`HedgehogSession.openFiles()`). */
+export interface OpenFileInfo {
+  /** The file's SQL prefix: `f1`, `f2`, … (`SELECT … FROM f2.T1`). */
+  prefix: string
+  /** The path as the session shows it (relative to the root when inside it). */
+  path: string
+}
 
 /** Values of a rectangular range, row by row (null for empty cells). */
 export interface RangeValues {

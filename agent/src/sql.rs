@@ -14,7 +14,7 @@
 //! query runs under a time limit and the SQLite heap under a hard limit.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -57,6 +57,9 @@ pub struct Db {
     pub entities: Vec<(usize, Vec<Entity>)>,
     /// Set from another thread to stop the running query.
     cancel: Arc<AtomicBool>,
+    /// The URI another connection attaches this database by (B76): a shared-cache memory
+    /// database, or the disk cache's file read-only. Empty for a join connection.
+    pub uri: String,
 }
 
 /// One SQL column of a table: a normalized column, or the ID / name part of entity column k.
@@ -106,11 +109,16 @@ impl Db {
     /// and locks the connection down.
     pub fn load(norm: &Normalized) -> rusqlite::Result<Db> {
         set_heap_limit(0);
-        let conn = Connection::open_in_memory()?;
+        // A named in-memory database in shared-cache mode, so a multi-file query can attach it
+        // (B76); the name is unique to this process and load.
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let uri = format!("file:hh-mem-{}-{}?mode=memory&cache=shared", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let conn = Connection::open_with_flags(&uri, flags)?;
         let (skipped_columns, entities) = fill(&conn, norm)?;
         lock_down(&conn)?;
         set_heap_limit(memory_used() + HEAP_HEADROOM);
-        Ok(Db { conn, skipped_columns, entities, cancel: Arc::default() })
+        Ok(Db { conn, skipped_columns, entities, cancel: Arc::default(), uri })
     }
 
     /// Writes every table of `norm` into a new database file (the disk cache's copy); returns
@@ -132,13 +140,50 @@ impl Db {
         // Fails on a file that is not a database.
         conn.query_row("SELECT count(*) FROM sqlite_schema", [], |_| Ok(()))?;
         lock_down(&conn)?;
-        Ok(Db { conn, skipped_columns: Vec::new(), entities: Vec::new(), cancel: Arc::default() })
+        let uri = format!("{}?mode=ro", file_uri(path));
+        Ok(Db { conn, skipped_columns: Vec::new(), entities: Vec::new(), cancel: Arc::default(), uri })
+    }
+
+    /// A connection for a query across files (B76): an empty main database with each of
+    /// `files` (schema name, [`Db::uri`]) attached read-only, in order, then locked down like
+    /// the others (no more ATTACH). Unqualified names (`T1`) find the first attached file's
+    /// tables; `f2.T1` names a file's table.
+    pub fn join(files: &[(String, String)]) -> rusqlite::Result<Db> {
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_MEMORY;
+        let conn = Connection::open_with_flags(":memory:", flags)?;
+        for (schema, uri) in files {
+            conn.execute("ATTACH DATABASE ?1 AS ?2", rusqlite::params![uri, schema])?;
+            if uri.contains("mode=ro") {
+                conn.execute_batch(&format!("PRAGMA {}.mmap_size = 4294967296;", quote_ident(schema)))?;
+            }
+        }
+        lock_down(&conn)?;
+        Ok(Db { conn, skipped_columns: Vec::new(), entities: Vec::new(), cancel: Arc::default(), uri: String::new() })
     }
 
     /// A flag that, once set, stops the running query (the caller resets it).
     pub fn set_cancel(&mut self, flag: Arc<AtomicBool>) {
         self.cancel = flag;
     }
+}
+
+/// A `file:` URI of a path (the characters URIs reserve are escaped).
+fn file_uri(path: &Path) -> String {
+    let p = path.to_string_lossy().replace('\\', "/");
+    let mut out = String::from("file:");
+    if p.as_bytes().get(1) == Some(&b':') {
+        out.push('/'); // C:/x → file:/C:/x
+    }
+    for c in p.chars() {
+        match c {
+            '%' => out.push_str("%25"),
+            '?' => out.push_str("%3f"),
+            '#' => out.push_str("%23"),
+            ' ' => out.push_str("%20"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// Columns of `t` that are loaded (all special ones, data/group columns up to SQLite's limit),
@@ -278,6 +323,7 @@ fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
         }
     }
     crate::views::create_all(&tx, norm)?; // B20: T<n>_long views (views.rs)
+    crate::unions::create_all(&tx, norm)?; // B79: U<k> union views of same-layout tables (unions.rs)
     tx.commit()?;
     Ok((skipped_columns, entities))
 }

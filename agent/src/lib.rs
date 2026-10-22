@@ -22,12 +22,14 @@ pub mod dialect;
 pub mod entity;
 pub mod facts;
 pub mod files;
+pub mod multi;
 pub mod notes;
 pub mod sql;
 pub mod sqlscan;
 pub mod text;
 pub mod tools;
 pub mod types;
+pub mod unions;
 pub mod views;
 
 use std::collections::HashMap;
@@ -209,6 +211,8 @@ pub struct Session {
     hashes: HashMap<PathBuf, (u64, Option<SystemTime>, String)>,
     /// The last workbook read for `cells` (path, size, mtime).
     book: Option<(PathBuf, u64, Option<SystemTime>, Workbook)>,
+    /// Every file opened in this session, in order: file k is `f<k>` in SQL (B76).
+    order: Vec<PathBuf>,
     clock: u64,
     /// Set (from any thread) to stop the running tool call: a query is interrupted, waiting for
     /// a normalization ends with "cancelled" (the normalization finishes in the background and
@@ -234,6 +238,7 @@ impl Session {
             files: HashMap::new(),
             hashes: HashMap::new(),
             book: None,
+            order: Vec::new(),
             clock: 0,
             cancel: Arc::default(),
         })
@@ -275,7 +280,18 @@ impl Session {
     }
 
     /// Normalizes the file (once per content) and returns its sha256 key and whether it was cached.
+    /// The file gets its session number (`f<k>`) the first time.
     fn load(&mut self, raw: &str) -> Result<(String, bool), ToolError> {
+        let got = self.load_file(raw)?;
+        if let Some(o) = self.files.get(&got.0)
+            && !self.order.contains(&o.path)
+        {
+            self.order.push(o.path.clone());
+        }
+        Ok(got)
+    }
+
+    fn load_file(&mut self, raw: &str) -> Result<(String, bool), ToolError> {
         let path = self.resolve_file(raw)?;
         let ext = path.extension().and_then(|x| x.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
         if !files::EXTENSIONS.contains(&ext.as_str()) {
@@ -530,6 +546,18 @@ impl Session {
         };
         let o = self.files.get_mut(&sha).expect("file is open");
         o.catalogs.entry(name).or_insert_with(|| text.clone());
+        // B76: with several files open, which prefix is which file and the keys that join them.
+        if self.order.len() >= 2 {
+            let here = self.files[&sha].path.clone();
+            let current = self.order.iter().position(|p| *p == here).map_or(0, |i| i + 1);
+            let infos = self.open_norms();
+            let add = multi::session_lines(&infos, &format!("f{current}")).join("\n");
+            match text.find("\n… cut:") {
+                Some(i) => text.insert_str(i, &format!("\n{add}")),
+                None => text.push_str(&format!("\n{add}")),
+            }
+        }
+        let o = self.files.get_mut(&sha).expect("file is open");
         if !text.contains("\n… cut:") {
             if cached {
                 text.push_str("\n(cached)");
@@ -553,6 +581,11 @@ impl Session {
     pub fn query(&mut self, path: &str, sql: &str, limit: Option<usize>) -> ToolResult {
         let timeout = self.opts.query_timeout;
         let limit = limit.unwrap_or(QUERY_DEFAULT_LIMIT).clamp(1, QUERY_MAX_LIMIT);
+        // B76: `f<k>.T1` names a table of another open file.
+        let files: Vec<usize> = sqlscan::file_prefixes(&sqlscan::tokens(sql)).into_iter().filter(|&k| k <= self.order.len()).collect();
+        if !files.is_empty() {
+            return self.query_files(path, sql, limit, &files);
+        }
         // A file from the disk cache answers before its normalized form is decoded: the notes
         // below need that form only after an error, for an empty result, with `_src_row` or with
         // "<id> - <name>" values (spellings note).
@@ -573,8 +606,109 @@ impl Session {
         let res = match first {
             Ok(r) => r,
             Err(e) if e == sql::CANCELLED => return Err(cancelled()),
-            Err(e) => return Err(ToolError(sql_error_hint(norm, db, &used, sql, &e, timeout))),
+            Err(e) => {
+                let mut msg = sql_error_hint(norm, db, &used, sql, &e, timeout);
+                if e.contains("no such table") {
+                    msg.push_str(&self.files_hint());
+                }
+                return Err(ToolError(msg));
+            }
         };
+        Ok(render(norm, db, &used, sql, res, timeout))
+    }
+
+    /// B76: a query that names tables of other open files (`f2.T1`): a connection with the file
+    /// in `path` and each named file attached (`T1` is the file in `path`).
+    fn query_files(&mut self, path: &str, sql: &str, limit: usize, files: &[usize]) -> ToolResult {
+        let timeout = self.opts.query_timeout;
+        let (main_sha, _) = self.load(path)?;
+        let main_path = self.files[&main_sha].path.clone();
+        let main_k = self.order.iter().position(|p| *p == main_path).map_or(0, |i| i + 1);
+        let mut attach: Vec<(String, String)> = Vec::new();
+        let mut ks: Vec<usize> = vec![main_k];
+        ks.extend(files.iter().copied().filter(|&k| k != main_k));
+        for k in ks {
+            let raw = self.order[k - 1].to_string_lossy().into_owned();
+            let o = self.opened(&raw)?;
+            let schema = format!("f{k}");
+            attach.push((schema, o.db.uri.clone()));
+        }
+        let norm = self.opened(path)?.norm.clone();
+        let mut db = sql::Db::join(&attach).map_err(|e| ToolError(format!("cannot join the files: {e}")))?;
+        db.set_cancel(self.cancel.clone());
+        let toks = sqlscan::tokens(sql);
+        let local: Vec<String> = sqlscan::table_refs(&toks).into_iter().filter(|r| r.schema.is_none()).map(|r| r.name).collect();
+        let used: Vec<&Table> = tables_in_sql(&norm, &local.join(" "));
+        match db.query(sql, limit, timeout) {
+            Ok(res) => Ok(render(&norm, &db, &used, sql, res, timeout)),
+            Err(e) if e == sql::CANCELLED => Err(cancelled()),
+            Err(e) => {
+                // Hints about the first table the query names, from its own file (its columns, its
+                // total rows; the rows a hint returns come from that file's database).
+                let first = sqlscan::table_refs(&toks).into_iter().next();
+                let k = first.as_ref().and_then(|r| r.schema.as_deref()).and_then(|s| s.strip_prefix(['f', 'F'])).and_then(|d| d.parse::<usize>().ok());
+                let mut msg = match k.filter(|&k| k >= 1 && k <= self.order.len() && k != main_k) {
+                    Some(k) => {
+                        let names: Vec<String> = sqlscan::table_refs(&toks)
+                            .into_iter()
+                            .filter(|r| r.schema.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(&format!("f{k}"))))
+                            .map(|r| r.name)
+                            .collect();
+                        let raw = self.order[k - 1].to_string_lossy().into_owned();
+                        let o = self.opened(&raw)?;
+                        let used: Vec<&Table> = tables_in_sql(&o.norm, &names.join(" "));
+                        sql_error_hint(&o.norm, &o.db, &used, sql, &e, timeout)
+                    }
+                    None => sql_error_hint(&norm, &db, &used, sql, &e, timeout),
+                };
+                if e.contains("no such table") || e.contains("no such column") {
+                    msg.push_str(&self.files_hint());
+                }
+                Err(ToolError(msg))
+            }
+        }
+    }
+
+    /// The open files and their SQL prefixes, for an error about a table.
+    fn files_hint(&self) -> String {
+        if self.order.len() < 2 {
+            return String::new();
+        }
+        let list: Vec<String> = self.open_files().into_iter().map(|(k, name)| format!("{k} = {name}")).collect();
+        format!(" (open files: {}; a table of another file is f<k>.T1)", list.join(", "))
+    }
+
+    /// The files opened in this session with their SQL prefix (`f1`, `f2`, …; B76) and display
+    /// name, in the order they were opened.
+    pub fn open_files(&self) -> Vec<(String, String)> {
+        self.order.iter().enumerate().map(|(i, p)| (format!("f{}", i + 1), self.bounds.display(p))).collect()
+    }
+
+    /// The normalized form of every open file still in memory (waits for its decoding), with its
+    /// prefix and display name.
+    fn open_norms(&mut self) -> Vec<multi::FileInfo> {
+        let cancel = self.cancel.clone();
+        let mut out = Vec::new();
+        for (i, p) in self.order.clone().iter().enumerate() {
+            let Some(sha) = self.hashes.get(p).map(|h| h.2.clone()) else { continue };
+            let name = self.bounds.display(p);
+            let Some(o) = self.files.get_mut(&sha) else { continue };
+            let norm = match &o.loaded {
+                Some(l) => l.norm.clone(),
+                None => match o.norm.wait(&cancel) {
+                    Ok(n) => n.norm.clone(),
+                    Err(_) => continue,
+                },
+            };
+            out.push(multi::FileInfo { prefix: format!("f{}", i + 1), name, norm });
+        }
+        out
+    }
+}
+
+/// The text of a query result: CSV, notes, `cite as:` and the row count line.
+fn render(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, res: sql::QueryResult, timeout: Duration) -> String {
+    {
         let mut lines = vec![csv_row(&res.header)];
         let mut shown = 0;
         let mut size = lines[0].len();
@@ -592,7 +726,7 @@ impl Session {
         // B75/B88: why a result is empty, values only in T<n>_all, NULL from a + b (notes.rs).
         let notes = notes::result_notes(db, sql, &res, timeout);
         if res.total == 0 && notes.is_empty() {
-            for t in &used {
+            for t in used {
                 let info = catalog::row_info(norm, t);
                 if !info.total_rows.is_empty() && !sql_mentions(sql, &format!("{}_all", t.id())) {
                     lines.push(format!(
@@ -606,10 +740,10 @@ impl Session {
             }
         }
         lines.extend(notes);
-        if let Some(hint) = cite_hint(db, &used, &res.header) {
+        if let Some(hint) = cite_hint(db, used, &res.header) {
             lines.push(hint);
         }
-        if let Some(note) = spellings_note(db, &used, &res) {
+        if let Some(note) = spellings_note(db, used, &res) {
             lines.push(note);
         }
         let n = text::thousands(res.total);
@@ -633,9 +767,11 @@ impl Session {
                 res.rows.len() - shown
             ));
         }
-        Ok(lines.join("\n"))
+        lines.join("\n")
     }
+}
 
+impl Session {
     /// `cells`: original source cells of a range (max 200 cells).
     pub fn cells(&mut self, path: &str, sheet: &str, range: &str) -> ToolResult {
         let p = self.resolve_file(path)?;
