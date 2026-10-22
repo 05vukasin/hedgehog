@@ -579,7 +579,25 @@ pub fn share_line(t: &Table, names: &[String], rows: &[usize], key: Option<Strin
     if data_cols(t).any(|(i, c)| c.dtype == Dtype::Text && unit_column_name(&names[i]) && distinct(c, 2) >= 2) {
         return None;
     }
-    let additive = |a: &&Amount| a.summable && !rate_name(a.name) && !tys.get(a.idx).and_then(|x| x.as_ref()).is_some_and(ColType::no_sum);
+    // A unit price has few values (one per product: "Manufacturing Price"); a contract's price
+    // is mostly its own and adds up.
+    let unit_price = |a: &Amount| {
+        let mut seen: HashSet<u64> = HashSet::new();
+        for &r in rows {
+            if let Some(Out::Num(x)) = a.col.values.get(r) {
+                seen.insert(x.to_bits());
+            }
+        }
+        seen.len() <= 12.max(rows.len() / 20)
+    };
+    let additive = |a: &&Amount| {
+        let ws = words(a.name);
+        let price = ws.iter().any(|w| matches!(w.as_str(), "price" | "prices" | "preis" | "preise" | "prix" | "precio" | "prezzo" | "cijena" | "cena"));
+        a.summable
+            && !(price && unit_price(a))
+            && !(rate_name(a.name) && !price)
+            && !tys.get(a.idx).and_then(|x| x.as_ref()).is_some_and(ColType::no_sum)
+    };
     let am = amounts(t, names, rows);
     let a = am.iter().filter(additive).find(|a| a.money).or_else(|| am.iter().find(additive))?;
     let key = match key {
@@ -1415,7 +1433,8 @@ mod tests {
         let cols = |price: &str, unit: bool| {
             let mut v = vec![
                 col("region", Dtype::Text, region.iter().map(|s| Out::Text(s.clone())).collect()),
-                col(price, Dtype::Number, nums(&(0..rows).map(|i| 10.5 * i as f64 + 100.0).collect::<Vec<_>>())),
+                // A unit price takes a few values (one per product); sales are each their own.
+                col(price, Dtype::Number, nums(&(0..rows).map(|i| 10.5 * (if price.contains("Price") { i % 5 } else { i }) as f64 + 100.5).collect::<Vec<_>>())),
             ];
             if unit {
                 v.push(col("currency", Dtype::Text, text(&(0..rows).map(|i| if i % 2 == 0 { "EUR" } else { "PPS" }).collect::<Vec<_>>())));
@@ -1425,6 +1444,7 @@ mod tests {
         let share = |c: Vec<Column>| catalog(&book(c, vec![RowType::Data; rows]), "x.xlsx", MAX_CHARS).contains("share of the total");
         assert!(share(cols("Sales", false)));
         assert!(!share(cols("Manufacturing Price", false)));
+        assert!(share(cols("Contract price", false)));
         assert!(!share(cols("Sales", true)));
     }
 

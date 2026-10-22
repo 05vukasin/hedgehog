@@ -205,7 +205,7 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
         .collect();
     // What a total adds up: the rows most of its confirmed checks add (one odd formula in one
     // column does not decide), inside the table.
-    let mut votes: HashMap<u32, Vec<(Vec<(u32, u32)>, usize)>> = HashMap::new();
+    let mut votes: HashMap<u32, Vec<(Scope, usize)>> = HashMap::new();
     let (top, bottom) = (t.rect.top + 1, t.rect.bottom + 1);
     for x in norm.totals.iter().filter(|x| x.table == Some(t.n) && x.direction == "vertical") {
         let scope = source_rows(&x.sources);
@@ -260,6 +260,14 @@ fn kept_totals_text(rows: &[TotalRow]) -> String {
 // ------------------------------------------------------------------------------------------------
 // total rows: labels, levels and what each adds up (B74)
 
+/// Ranges of source rows (1-based, inclusive).
+type Scope = Vec<(u32, u32)>;
+
+/// A brief table line in the making: the line so far, its column names in priority order with
+/// their positions (None: same columns as an earlier table), the column count, the long-view and
+/// notes text.
+type BriefRow = (String, Option<Vec<(usize, String)>>, usize, String);
+
 /// Source rows (1-based) a total adds up, from its check's `sources` ("B5:B15", "B41 B47"), as
 /// ranges.
 fn source_rows(sources: &[String]) -> Vec<(u32, u32)> {
@@ -312,7 +320,8 @@ pub(crate) fn total_entries(info: &RowInfo) -> Vec<TotalEntry> {
     let inside = |row: u32, e: &TotalEntry| e.row != row && e.scope.iter().any(|(a, b)| (*a..=*b).contains(&row));
     let top: Vec<usize> = (0..out.len()).filter(|&k| !out.iter().any(|e| inside(out[k].row, e))).collect();
     let grand = match top.as_slice() {
-        [k] if out.len() > 1 && out[*k].kind == RowType::Total => Some(*k),
+        // One total on top of others, or the only total and it adds up rows.
+        [k] if out[*k].kind == RowType::Total && (out.len() > 1 || !out[*k].scope.is_empty()) => Some(*k),
         _ => {
             let marked: Vec<usize> = top.iter().copied().filter(|&k| info.grand_rows.contains(&out[k].row)).collect();
             (marked.len() == 1).then(|| marked[0])
@@ -1124,7 +1133,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         let mut seen_cols: HashMap<Vec<String>, String> = HashMap::new();
         // (line so far, column items in priority order with their source position, columns
         // count, view text); None for columns: same columns as an earlier table (said already).
-        let mut rows: Vec<(String, Option<Vec<(usize, String)>>, usize, String)> = Vec::new();
+        let mut rows: Vec<BriefRow> = Vec::new();
         for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
             let names = sql_names(t);
             let mut line = table_head(t, info, table_cov(k), true);

@@ -164,7 +164,7 @@ fn mcp_session_end_to_end() {
     // a small table: its rows inline, the total row marked; how to select total rows
     assert!(cat.contains("all 5 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):\n    City,Units,Revenue Q1,Revenue Q2,_row_type\n    Beograd,10,1200.5,1300,data\n"), "{cat}");
     assert!(cat.contains("\n    Total,28,2850.5,3140.25,total\n"), "{cat}");
-    assert!(cat.contains("total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (label in City: 'Total')"), "{cat}");
+    assert!(cat.contains("total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in City: grand total 'Total'@8 (= rows 4–7)"), "{cat}");
 
     // query: data rows, sorted
     let q = s.ok("query", json!({"path": "sales.xlsx", "sql": "SELECT City, \"Revenue Q1\", _src_row FROM T1 ORDER BY \"Revenue Q1\" DESC"}));
