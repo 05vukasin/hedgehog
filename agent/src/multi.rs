@@ -43,7 +43,7 @@ fn ids(norm: &Normalized) -> String {
     match ids.len() {
         0 => "no tables".into(),
         1..=4 => ids.join(", "),
-        n => format!("{}..{} ({n} tables)", ids[0], ids[n - 1]),
+        n => format!("{}..{}", ids[0], ids[n - 1]),
     }
 }
 
@@ -64,23 +64,31 @@ fn values(t: &Table, col: usize) -> (HashSet<String>, usize) {
 }
 
 struct Key {
-    left: String,
-    right: String,
+    /// (file a, file b, column key name): one key per pair of files and column name.
+    group: (usize, usize, String),
+    /// Both tables have the same id (T1 and T1).
+    same_id: bool,
+    /// `f1.T1` and the column name as SQL writes it, each side.
+    left: (String, String),
+    right: (String, String),
     shared: usize,
     unique: String,
 }
 
 /// Columns that join tables of different files.
 fn join_keys(files: &[FileInfo]) -> Vec<Key> {
-    // (file, table index) → (key name → column index)
-    let mut cols: HashMap<(usize, usize), Vec<(String, usize, String)>> = HashMap::new();
+    // (file, table index) → its columns: (key name, column index, SQL name)
+    type Cols = Vec<(String, usize, String)>;
+    let mut cols: HashMap<(usize, usize), Cols> = HashMap::new();
     for (f, info) in files.iter().enumerate() {
         for (k, t) in info.norm.tables.iter().enumerate().take(MAX_TABLES) {
             let names = sql_names(t);
             cols.insert((f, k), data_cols(t).map(|(i, _)| (key_name(&names[i]), i, names[i].clone())).filter(|x| !x.0.is_empty()).collect());
         }
     }
-    let mut cache: HashMap<(usize, usize, usize), (HashSet<String>, usize)> = HashMap::new();
+    // (file, table, column) → its values and filled rows
+    type Values = (HashSet<String>, usize);
+    let mut cache: HashMap<(usize, usize, usize), Values> = HashMap::new();
     let mut out: Vec<Key> = Vec::new();
     for fa in 0..files.len() {
         for fb in fa + 1..files.len() {
@@ -103,17 +111,19 @@ fn join_keys(files: &[FileInfo]) -> Vec<Key> {
                             if shared == 0 || (shared as f64) < 0.5 * smaller as f64 || !(ua || ub) {
                                 continue;
                             }
-                            let left = format!("{}.{}.{}", files[fa].prefix, ta.id(), ident(sa));
-                            let right = format!("{}.{}.{}", files[fb].prefix, tb.id(), ident(sb));
+                            let left = (format!("{}.{}", files[fa].prefix, ta.id()), ident(sa));
+                            let right = (format!("{}.{}", files[fb].prefix, tb.id()), ident(sb));
                             let unique = if ua { format!("{}.{}", files[fa].prefix, ta.id()) } else { format!("{}.{}", files[fb].prefix, tb.id()) };
-                            out.push(Key { left, right, shared, unique });
+                            out.push(Key { group: (fa, fb, na.clone()), same_id: ta.n == tb.n, left, right, shared, unique });
                         }
                     }
                 }
             }
         }
     }
-    out.sort_by(|a, b| b.shared.cmp(&a.shared));
+    out.sort_by(|a, b| b.shared.cmp(&a.shared).then(b.same_id.cmp(&a.same_id)));
+    let mut seen = HashSet::new();
+    out.retain(|k| seen.insert(k.group.clone()));
     out.truncate(MAX_KEYS);
     out
 }
@@ -128,10 +138,8 @@ pub fn session_lines(files: &[FileInfo], current: &str) -> Vec<String> {
     let keys = join_keys(files);
     let example = match keys.first() {
         Some(k) => {
-            let (l, r) = (&k.left, &k.right);
-            let lt = l.rsplitn(2, '.').nth(1).unwrap_or(l);
-            let rt = r.rsplitn(2, '.').nth(1).unwrap_or(r);
-            format!("SELECT … FROM {lt} AS a JOIN {rt} AS b ON a.{} = b.{}", l.rsplit('.').next().unwrap_or(""), r.rsplit('.').next().unwrap_or(""))
+            let ((lt, lc), (rt, rc)) = (&k.left, &k.right);
+            format!("SELECT … FROM {lt} AS a JOIN {rt} AS b ON a.{lc} = b.{rc}")
         }
         None => "SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>".to_string(),
     };
@@ -142,7 +150,7 @@ pub fn session_lines(files: &[FileInfo], current: &str) -> Vec<String> {
     if !keys.is_empty() {
         let k: Vec<String> = keys
             .iter()
-            .map(|k| format!("{} = {} ({} shared values; unique in {})", k.left, k.right, thousands(k.shared), k.unique))
+            .map(|k| format!("{}.{} = {}.{} ({} shared values; unique in {})", k.left.0, k.left.1, k.right.0, k.right.1, thousands(k.shared), k.unique))
             .collect();
         out.push(format!("JOIN KEYS {}", k.join(" · ")));
     }

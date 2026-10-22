@@ -37,7 +37,7 @@ fn write_orders(d: &Path) {
 
 /// Expected revenue per employee in 2021, computed here.
 fn expected() -> Vec<(usize, f64)> {
-    let mut by = vec![0.0; 4];
+    let mut by = [0.0; 4];
     for i in 0..25usize {
         for k in 0..(1 + i % 3) {
             by[1 + i % 3] += (5.5 + k as f64) * (1 + i % 4) as f64;

@@ -283,12 +283,18 @@ impl Session {
     /// The file gets its session number (`f<k>`) the first time.
     fn load(&mut self, raw: &str) -> Result<(String, bool), ToolError> {
         let got = self.load_file(raw)?;
-        if let Some(o) = self.files.get(&got.0)
-            && !self.order.contains(&o.path)
+        // A second name of the same content is the same file.
+        if self.number_of(&got.0).is_none()
+            && let Some(o) = self.files.get(&got.0)
         {
             self.order.push(o.path.clone());
         }
         Ok(got)
+    }
+
+    /// The session number (`k` of `f<k>`) of the file with content `sha`.
+    fn number_of(&self, sha: &str) -> Option<usize> {
+        self.order.iter().position(|p| self.hashes.get(p).is_some_and(|h| h.2 == sha)).map(|i| i + 1)
     }
 
     fn load_file(&mut self, raw: &str) -> Result<(String, bool), ToolError> {
@@ -548,8 +554,7 @@ impl Session {
         o.catalogs.entry(name).or_insert_with(|| text.clone());
         // B76: with several files open, which prefix is which file and the keys that join them.
         if self.order.len() >= 2 {
-            let here = self.files[&sha].path.clone();
-            let current = self.order.iter().position(|p| *p == here).map_or(0, |i| i + 1);
+            let current = self.number_of(&sha).unwrap_or(0);
             let infos = self.open_norms();
             let add = multi::session_lines(&infos, &format!("f{current}")).join("\n");
             match text.find("\n… cut:") {
@@ -622,8 +627,7 @@ impl Session {
     fn query_files(&mut self, path: &str, sql: &str, limit: usize, files: &[usize]) -> ToolResult {
         let timeout = self.opts.query_timeout;
         let (main_sha, _) = self.load(path)?;
-        let main_path = self.files[&main_sha].path.clone();
-        let main_k = self.order.iter().position(|p| *p == main_path).map_or(0, |i| i + 1);
+        let main_k = self.number_of(&main_sha).ok_or_else(|| ToolError("internal error: file not numbered".into()))?;
         let mut attach: Vec<(String, String)> = Vec::new();
         let mut ks: Vec<usize> = vec![main_k];
         ks.extend(files.iter().copied().filter(|&k| k != main_k));
