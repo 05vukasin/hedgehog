@@ -299,10 +299,36 @@ fn kept_totals_text(rows: &[TotalRow]) -> String {
 /// Ranges of source rows (1-based, inclusive).
 type Scope = Vec<(u32, u32)>;
 
-/// A brief table line in the making: the line so far, its column names in priority order with
-/// their positions (None: same columns as an earlier table), the column count, the long-view and
-/// notes text.
-type BriefRow = (String, Option<Vec<(usize, String)>>, usize, String);
+/// A table in a brief catalog: what tells it apart in a run line.
+#[derive(Clone)]
+struct BriefMember<'a> {
+    n: usize,
+    title: Option<&'a str>,
+    sheet: &'a str,
+    rows: usize,
+    /// The line's facts after the rows (period, total rows, scale): what a run shares.
+    tail: String,
+    /// The first table on its sheet (its main table): column names first.
+    first_of_sheet: bool,
+}
+
+/// A brief table's columns: its own (grouped names), the same as an earlier table's, or a run line.
+enum BriefCols {
+    /// Grouped names, the plain names (SQL identifiers), and the names as they are.
+    Own(Vec<String>, Vec<String>, Vec<String>),
+    Same(String),
+    Run,
+}
+
+/// A brief table line in the making: the line without columns, its columns, the column count and
+/// the long-view / column-notes text that follows.
+struct BriefRow<'a> {
+    line: String,
+    cols: BriefCols,
+    n: usize,
+    view: String,
+    member: BriefMember<'a>,
+}
 
 /// Source rows (1-based) a total adds up, from its check's `sources` ("B5:B15", "B41 B47"), as
 /// ranges.
@@ -406,7 +432,7 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
             distinct.push(&e.label);
         }
     }
-    if entries.len() > max && distinct.len() * 2 <= entries.len() {
+    if entries.len() > max && distinct.len() * 2 <= entries.len() && !entries.iter().any(|e| e.grand) {
         let l: Vec<String> = distinct.iter().take(max).map(|s| format!("'{}'", short(s, 40))).collect();
         let more = if distinct.len() > max { format!(" +{} more labels", distinct.len() - max) } else { String::new() };
         return format!("{} rows labelled {}{more}", entries.len(), l.join(", "));
@@ -425,11 +451,30 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
         (RowType::Average, "average", "averages"),
         (RowType::OfWhich, "of-which row", "of-which rows"),
     ] {
-        let items: Vec<String> =
-            entries.iter().filter(|e| e.kind == kind && !e.grand).take(max.saturating_sub(shown)).map(item).collect();
+        let of_kind: Vec<&TotalEntry> = entries.iter().filter(|e| e.kind == kind && !e.grand).take(max.saturating_sub(shown)).collect();
+        // B104: rows of one label without a scope of their own once: `'T'@13/16/19`.
+        let plain = |e: &TotalEntry| !e.kept && (!scopes || e.scope.is_empty());
+        let mut items: Vec<String> = Vec::new();
+        let mut done: Vec<bool> = vec![false; of_kind.len()];
+        for (a, e) in of_kind.iter().enumerate() {
+            if done[a] {
+                continue;
+            }
+            let same: Vec<usize> =
+                (a + 1..of_kind.len()).filter(|&b| plain(e) && plain(of_kind[b]) && of_kind[b].label == e.label).collect();
+            if same.is_empty() {
+                items.push(item(e));
+                continue;
+            }
+            let rows: Vec<String> = std::iter::once(e.row).chain(same.iter().map(|&b| of_kind[b].row)).map(|r| r.to_string()).collect();
+            items.push(format!("'{}'@{}", short(&e.label, 40), rows.join("/")));
+            for b in same {
+                done[b] = true;
+            }
+        }
         if !items.is_empty() {
-            shown += items.len();
-            let name = if items.len() == 1 { one } else { many };
+            shown += of_kind.len();
+            let name = if of_kind.len() == 1 { one } else { many };
             let note = if kind == RowType::Subtotal { note } else { "" };
             groups.push(format!("{name}{note} {}", items.join(", ")));
         }
@@ -558,8 +603,8 @@ fn code_values(c: &Column, rows: &[usize]) -> Option<Vec<String>> {
     })
 }
 
-/// Rows of a small table whose row labels are all listed (B102).
-const ROW_LABELS_ROWS: usize = 50;
+/// Rows of a small table whose row labels are all listed (B102): as many as an inlined table has.
+const ROW_LABELS_ROWS: usize = 30;
 
 /// B102: a small table that is not inlined (too wide) lists every row label (the first text column
 /// that is not the group column, over all rows of `T<n>_all`), since the labels are its row index:
@@ -1127,6 +1172,77 @@ struct Block {
     /// The head line's total-row labels and their short form, used when the `total rows:` part
     /// (which names them) is in the catalog.
     head_totals: Option<HeadTotals>,
+    /// A table that repeats an earlier table's columns: what a run of such tables must share.
+    run: Option<RunKey>,
+}
+
+/// A table with the same columns as an earlier one, for one line per run of them (B100).
+struct RunKey {
+    /// The earlier table with the columns.
+    first: String,
+    /// The table number (runs are consecutive).
+    n: usize,
+    /// Facts the members must share: the head line's total-row part (table id as `<id>`) and time.
+    key: String,
+    rows: usize,
+    title: Option<String>,
+    sheet: String,
+}
+
+/// Merges runs of 3+ consecutive tables that repeat an earlier table's columns, total rows and
+/// facts into one line each: `T2..T10 same columns as T1 · 72 rows each (+3 total rows only in
+/// T<n>_all) · total rows labelled as in T1 · titles '… in … – Juli 2026': T2 Burgenland, …`.
+fn merge_runs(blocks: Vec<Block>) -> Vec<Block> {
+    // The table whose total-row labels a block's only part refers to; None when it has no part;
+    // not mergeable when it has other parts or lines.
+    let labels_as = |b: &Block| -> Option<Option<String>> {
+        if b.lines.len() != 1 {
+            return None;
+        }
+        match b.parts.as_slice() {
+            [] => Some(None),
+            [(0, p)] if p.len() == 1 => p[0].split_once(" — labels as in ").map(|(_, x)| Some(x.to_string())),
+            _ => None,
+        }
+    };
+    let mut out: Vec<Block> = Vec::new();
+    let mut i = 0;
+    let mut blocks: Vec<Option<Block>> = blocks.into_iter().map(Some).collect();
+    while i < blocks.len() {
+        let start = blocks[i].as_ref().and_then(|b| Some((b.run.as_ref()?, labels_as(b)?)));
+        let mut j = i + 1;
+        if let Some((r0, l0)) = start {
+            while j < blocks.len() {
+                let ok = blocks[j].as_ref().is_some_and(|b| {
+                    b.run.as_ref().is_some_and(|r| r.first == r0.first && r.key == r0.key && r.n == r0.n + (j - i))
+                        && labels_as(b).as_ref() == Some(&l0)
+                });
+                if !ok {
+                    break;
+                }
+                j += 1;
+            }
+            if j - i >= 3 {
+                let runs: Vec<&RunKey> = blocks[i..j].iter().filter_map(|b| b.as_ref()?.run.as_ref()).collect();
+                let members: Vec<crate::brief::RunMember> = runs
+                    .iter()
+                    .map(|r| crate::brief::RunMember { id: format!("T{}", r.n), title: r.title.as_deref(), sheet: &r.sheet })
+                    .collect();
+                let (lo, hi) = runs.iter().fold((usize::MAX, 0), |(lo, hi), r| (lo.min(r.rows), hi.max(r.rows)));
+                let rows = if lo == hi { format!(" · {} each", plural(lo, "row", "rows")) } else { format!(" · {lo}–{hi} rows") };
+                let (totals, cov) = r0.key.split_once('|').unwrap_or((&r0.key, ""));
+                let totals = totals.replace("<id>_all", "T<n>_all").replace("in <id>", "in each");
+                let labels = l0.map(|x| format!(" · total rows labelled as in {x}")).unwrap_or_default();
+                let line = crate::brief::run_line(&members, &r0.first, &format!("{rows}{totals}{cov}{labels}"));
+                out.push(Block { lines: vec![line], parts: Vec::new(), head_totals: None, run: None });
+                i = j;
+                continue;
+            }
+        }
+        out.extend(blocks[i].take());
+        i += 1;
+    }
+    out
 }
 
 impl Block {
@@ -1141,7 +1257,7 @@ impl Block {
         parts.extend(totals.map(|l| (0, vec![l])));
         parts.extend(facts::signs_line(t, names, &data).map(|l| (0, vec![l])));
         parts.extend(inline.map(|rows| (1, rows)));
-        Block { lines, parts, head_totals }
+        Block { lines, parts, head_totals, run: None }
     }
 
     /// The head line without the total-row labels when the kept parts name them.
@@ -1231,10 +1347,24 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             let inline = facts::inline_rows(t, &names);
             if let Some(first) = layouts.get(&cols) {
                 line.push_str(&format!(" · same columns as {first}"));
-                line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
+                let view = crate::views::table_view(t);
+                line.extend(view.as_ref().map(crate::views::brief_text)); // B20
                 let mut lines = vec![line];
                 lines.extend(facts::scale_line(t)); // B85
-                out.push(Block::new(lines, t, &names, info, inline));
+                let mut b = Block::new(lines, t, &names, info, inline);
+                if view.is_none() {
+                    let short = head_totals(t, info).map(|h| h.short.replace(&t.id(), "<id>")).unwrap_or_default();
+                    let cov = table_cov(k).map(|c| format!(" · time {} ({})", period_range(c), c.granularity)).unwrap_or_default();
+                    b.run = Some(RunKey {
+                        first: first.clone(),
+                        n: t.n,
+                        key: format!("{short}|{cov}"),
+                        rows: info.data,
+                        title: t.title.as_ref().map(|x| x.0.clone()),
+                        sheet: t.source_sheet.clone(),
+                    });
+                }
+                out.push(b);
                 continue;
             }
             if cols.len() >= 3
@@ -1348,30 +1478,52 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
         for (k, l) in facts::long_forms(&norm.tables) {
             out[k].lines.push(l);
         }
-        out
+        merge_runs(out)
     };
-    // Tables one line each, within `avail` characters: total rows by level (B74, a repeated set
-    // once), the scale of the numbers (B85), then the column names in full (B71: never cut; the
-    // key columns and total columns first, the rest while the table's share of the room lasts).
+    // Tables one line each, within `avail` characters (B100): the sheet, rows, total rows by level
+    // (B74, a repeated set once), the scale (B85), then the column names with shared header levels
+    // written once; tables that repeat an earlier table's columns say so, runs of them in one line;
+    // in table order, as many tables as fit show every column name, the others their first two.
     let brief = |avail: usize| -> Vec<String> {
-        let mut out = vec!["(tables listed briefly; call describe_table for columns)".to_string()];
+        let mut out = vec![format!(
+            "(tables listed briefly; a table without ← is on the sheet above; column names grouped: {}; describe_table lists a table's columns with types)",
+            crate::brief::LEGEND
+        )];
         let mut seen_totals: HashMap<String, String> = HashMap::new();
         let mut seen_cols: HashMap<Vec<String>, String> = HashMap::new();
-        // (line so far, column items in priority order with their source position, columns
-        // count, view text); None for columns: same columns as an earlier table (said already).
+        // A table's period only when it is not inside the TIME line's span at its granularity (the
+        // most common one is said once there too).
+        let inside = |c: &TimeCoverage| {
+            wb_cov.as_ref().is_some_and(|w| w.granularity == c.granularity && w.from <= c.from && c.to <= w.to)
+        };
+        let covs_text: Vec<Option<String>> = (0..norm.tables.len())
+            .map(|k| table_cov(k).filter(|c| !inside(c)).map(|c| format!(" · time {} ({})", period_range(c), c.granularity)))
+            .collect();
+        let mut count: HashMap<&str, usize> = HashMap::new();
+        for c in covs_text.iter().flatten() {
+            *count.entry(c.as_str()).or_default() += 1;
+        }
+        let common = count.iter().max_by_key(|(c, n)| (**n, std::cmp::Reverse(**c))).filter(|(_, n)| **n >= 2).map(|(c, _)| c.to_string());
+        let mut sheets_seen: HashSet<&str> = HashSet::new();
         let mut rows: Vec<BriefRow> = Vec::new();
         for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
             let names = sql_names(t);
-            let mut line = table_head(t, info, table_cov(k), true);
+            let mut tail = String::new();
+            if let Some(c) = covs_text[k].as_ref().filter(|c| Some(*c) != common.as_ref()) {
+                tail.push_str(c);
+            }
+            if t.confidence < 0.6 {
+                tail.push_str(&format!(" · low detection confidence {:.2}", t.confidence));
+            }
             let entries = total_entries(info);
             if !entries.is_empty() {
                 let text = total_entries_text(&entries, &t.id(), false, 15) + &group_totals_note(&entries, None).unwrap_or_default();
                 let key = format!("{text}|{}", entries.iter().map(|e| e.row.to_string()).collect::<Vec<_>>().join(","));
                 match seen_totals.get(&key) {
-                    Some(first) => line.push_str(&format!(" · total rows as in {first}")),
+                    Some(first) => tail.push_str(&format!(" · total rows as in {first}")),
                     None => {
                         let kept = entries.iter().filter(|e| e.kept).count();
-                        line.push_str(&format!(
+                        tail.push_str(&format!(
                             " · {} ({}): {text}",
                             plural(entries.len(), "total row", "total rows"),
                             if kept == 0 { format!("only in {}_all", t.id()) } else { format!("only in {}_all unless marked", t.id()) }
@@ -1381,7 +1533,7 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 }
             }
             if let Some((f, word, _)) = facts::table_scale(t) {
-                line.push_str(&format!(" · amounts in {word} (× {})", thousands(f as usize)));
+                tail.push_str(&format!(" · amounts in {word} (× {})", thousands(f as usize)));
             }
             let cols: Vec<(usize, &Column)> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).collect();
             let list: Vec<String> = cols.iter().map(|(i, _)| names[*i].clone()).collect();
@@ -1391,49 +1543,204 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 view.push('\n');
                 view.push_str(&l);
             }
-            if let Some(first) = seen_cols.get(&list) {
-                line.push_str(&format!(" · {} cols, same as {first}", cols.len()));
-                rows.push((line, None, cols.len(), view));
+            let member = BriefMember {
+                n: t.n,
+                title: t.title.as_ref().map(|x| x.0.as_str()),
+                sheet: t.source_sheet.as_str(),
+                rows: info.data,
+                tail,
+                first_of_sheet: sheets_seen.insert(t.source_sheet.as_str()),
+            };
+            let cols = match seen_cols.get(&list) {
+                Some(first) => BriefCols::Same(first.clone()),
+                None => {
+                    seen_cols.insert(list.clone(), t.id());
+                    BriefCols::Own(crate::brief::compress_names(&list), list.iter().map(|x| ident(x)).collect(), list.clone())
+                }
+            };
+            rows.push(BriefRow { line: String::new(), cols, n: list.len(), view, member });
+        }
+        // B100: one line per run of 2+ consecutive tables with an earlier table's columns and the
+        // same facts (total rows, scale, period).
+        let key_of = |r: &BriefRow| r.member.tail.replace(&format!("T{}_all", r.member.n), "T<n>_all");
+        let mut spans: Vec<(usize, usize)> = Vec::new();
+        let mut i = 0;
+        while i < rows.len() {
+            let mut j = i + 1;
+            if let BriefCols::Same(first) = &rows[i].cols
+                && rows[i].view.is_empty()
+            {
+                while j < rows.len()
+                    && matches!(&rows[j].cols, BriefCols::Same(f) if f == first)
+                    && rows[j].view.is_empty()
+                    && rows[j].member.n == rows[i].member.n + (j - i)
+                    && key_of(&rows[j]) == key_of(&rows[i])
+                {
+                    j += 1;
+                }
+            }
+            if j - i >= 2 {
+                spans.push((i, j));
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
+        let mut merged: Vec<BriefRow> = Vec::new();
+        let mut run: Vec<BriefRow> = Vec::new();
+        for (k, r) in rows.into_iter().enumerate() {
+            let Some(&(_, end)) = spans.iter().find(|(a, b)| (*a..*b).contains(&k)) else {
+                merged.push(r);
+                continue;
+            };
+            run.push(r);
+            if k + 1 == end {
+                let ms: Vec<crate::brief::RunMember> = run
+                    .iter()
+                    .map(|r| crate::brief::RunMember { id: format!("T{}", r.member.n), title: r.member.title, sheet: r.member.sheet })
+                    .collect();
+                let (lo, hi) = run.iter().fold((usize::MAX, 0), |(lo, hi), r| (lo.min(r.member.rows), hi.max(r.member.rows)));
+                let n_rows = if lo == hi { format!(" · {} each", plural(lo, "row", "rows")) } else { format!(" · {lo}–{hi} rows") };
+                let BriefCols::Same(first) = &run[0].cols else { unreachable!("runs repeat an earlier table") };
+                let line = crate::brief::run_line(&ms, first, &format!("{n_rows}{}", key_of(&run[0])));
+                let first = run.remove(0);
+                run.clear();
+                merged.push(BriefRow { line, cols: BriefCols::Run, view: String::new(), ..first });
+            }
+        }
+        let rows = merged;
+        // Each line in parts: the id, the title (optional), the rest (the sheet unless it is the one
+        // above, rows, period, total rows, scale), the columns, the view.
+        let mut prev_sheet: Option<&str> = None;
+        let rest: Vec<String> = rows
+            .iter()
+            .map(|r| {
+                if matches!(r.cols, BriefCols::Run) {
+                    prev_sheet = None;
+                    return String::new();
+                }
+                let m = &r.member;
+                let sheet = if prev_sheet == Some(m.sheet) {
+                    String::new()
+                } else {
+                    format!(" ← {}", sheet_ref(m.sheet, "").trim_end_matches('!'))
+                };
+                prev_sheet = Some(m.sheet);
+                format!("{sheet} · {}{}", plural(m.rows, "row", "rows"), m.tail)
+            })
+            .collect();
+        let title = |r: &BriefRow| r.member.title.map(|t| format!(" '{}'", short(t, 60))).unwrap_or_default();
+        // The first names (keys, labels) within a few characters.
+        let shortest = |plain: &[String]| -> String {
+            let mut used = 0;
+            let first: Vec<&str> = plain
+                .iter()
+                .take(2)
+                .take_while(|x| {
+                    used += x.len() + 1;
+                    used <= 48
+                })
+                .map(String::as_str)
+                .collect();
+            match plain.len() - first.len() {
+                0 => format!(": {}", first.join(" ")),
+                m if first.is_empty() => format!(" (+{m})"),
+                m => format!(": {} +{m} more", first.join(" ")),
+            }
+        };
+        // B100: columns that are an earlier table's with one more header level, as a reference.
+        let derived: Vec<Option<(usize, String)>> = (0..rows.len())
+            .map(|k| {
+                let BriefCols::Own(_, _, b) = &rows[k].cols else { return None };
+                (0..k).find_map(|j| match &rows[j].cols {
+                    BriefCols::Own(_, _, a) => crate::brief::derived(b, a, &format!("T{}", rows[j].member.n)).map(|t| (j, t)),
+                    _ => None,
+                })
+            })
+            .collect();
+        // Detail levels: 0 nothing, 1 + title and first names, 2 + title and every name, 3 + title
+        // and the names as an earlier table's (when that one has every name).
+        let cols_text = |k: usize, level: u8| -> String {
+            let r = &rows[k];
+            match &r.cols {
+                BriefCols::Own(items, plain, _) => match level {
+                    0 => String::new(),
+                    1 => format!(" · {} cols{}", r.n, shortest(plain)),
+                    3 => format!(" · {} cols: {}", r.n, derived[k].as_ref().map(|d| d.1.as_str()).unwrap_or_default()),
+                    _ => {
+                        let grouped = items.join(" ");
+                        let flat = plain.join(" ");
+                        format!(" · {} cols: {}", r.n, if grouped.len() < flat.len() { grouped } else { flat })
+                    }
+                },
+                BriefCols::Same(first) => format!(" · same columns as {first}"),
+                BriefCols::Run => String::new(),
+            }
+        };
+        let cost = |k: usize, level: u8| -> usize {
+            let t = if level > 0 { title(&rows[k]).len() } else { 0 };
+            t + cols_text(k, level).len()
+        };
+        let fixed: usize = out.iter().map(|l| l.len() + 1).sum::<usize>()
+            + rows.iter().zip(&rest).enumerate().map(|(k, (r, s))| 5 + r.line.len() + s.len() + r.view.len() + cost(k, 0)).sum::<usize>();
+        let mut room = avail.saturating_sub(fixed);
+        let mut level: Vec<u8> = vec![0; rows.len()];
+        // Tables that repeat no other table's columns get detail: the first table of each sheet
+        // first (the sheet's main table), then the others, each in table order; every name if it
+        // fits, else the first names.
+        // Tables of one or two rows (a header fragment, a note) come last.
+        let rank = |k: usize| -> u8 {
+            let m = &rows[k].member;
+            match (m.rows >= 3, m.first_of_sheet) {
+                (true, true) => 0,
+                (true, false) => 1,
+                _ => 2,
+            }
+        };
+        let mut order: Vec<usize> = (0..rows.len()).filter(|&k| matches!(rows[k].cols, BriefCols::Own(..))).collect();
+        order.sort_by_key(|&k| (rank(k), k));
+        for &k in &order {
+            if level[k] > 0 {
                 continue;
             }
-            seen_cols.insert(list, t.id());
-            // Priority: the first two columns (keys, labels), then totals and amounts by name.
-            let total_word = |n: &str| {
-                let low = n.to_lowercase();
-                ["total", "summe", "gesamt", "insgesamt", "ukupno", "totale", "totaal", "ensemble", "zusammen", "sum"].iter().any(|w| low.contains(w))
-            };
-            let mut order: Vec<usize> = (0..cols.len().min(2)).collect();
-            order.extend((2..cols.len()).filter(|&j| total_word(&names[cols[j].0])));
-            order.extend((2..cols.len()).filter(|&j| !total_word(&names[cols[j].0])));
-            let items: Vec<(usize, String)> = order.into_iter().map(|j| (j, ident(&names[cols[j].0]))).collect();
-            rows.push((line, Some(items), cols.len(), view));
-        }
-        let fixed: usize = out.iter().chain(rows.iter().map(|r| &r.0)).map(|l| l.len() + 1).sum::<usize>()
-            + rows.iter().map(|r| r.3.len() + 20).sum::<usize>();
-        let needing = rows.iter().filter(|r| r.1.is_some()).count().max(1);
-        // When the lines alone overflow (many tables, cut anyway), one name each, so the cut
-        // comes as late as before.
-        let share = (avail.saturating_sub(fixed) / needing).max(if fixed > avail { 0 } else { 120 });
-        for (mut line, items, n, view) in rows {
-            if let Some(items) = items {
-                let mut used = 0;
-                let mut keep: Vec<(usize, String)> = Vec::new();
-                for (j, name) in items {
-                    if !keep.is_empty() && used + name.len() + 1 > share {
-                        break;
-                    }
-                    used += name.len() + 1;
-                    keep.push((j, name));
+            let by_ref = derived[k].as_ref().is_some_and(|(a, _)| level[*a] == 2);
+            for l in [3u8, 2, 1] {
+                if l == 3 && !by_ref {
+                    continue;
                 }
-                let shown = keep.len();
-                keep.sort_by_key(|x| x.0);
-                line.push_str(&format!(" · {n} cols: {}", keep.into_iter().map(|x| x.1).collect::<Vec<_>>().join(" ")));
-                if shown < n {
-                    line.push_str(&format!(" +{} more (describe_table)", n - shown));
+                let extra = cost(k, l) - cost(k, 0);
+                if extra <= room {
+                    room -= extra;
+                    level[k] = l;
+                    break;
                 }
             }
-            line.push_str(&view);
-            out.push(line);
+            // A table with every name: the tables that repeat its columns with one more level
+            // follow it, by reference (cheap, and often what a question needs: `% des BIP`).
+            if level[k] == 2 {
+                for j in (k + 1..rows.len()).filter(|&j| derived[j].as_ref().is_some_and(|(a, _)| *a == k)) {
+                    let extra = cost(j, 3) - cost(j, 0);
+                    if level[j] == 0 && extra <= room {
+                        room -= extra;
+                        level[j] = 3;
+                    }
+                }
+            }
+        }
+        // Titles of tables with an earlier table's columns, in table order.
+        for k in 0..rows.len() {
+            if matches!(rows[k].cols, BriefCols::Same(_)) && title(&rows[k]).len() <= room {
+                room -= title(&rows[k]).len();
+                level[k] = 1;
+            }
+        }
+        for (k, r) in rows.iter().enumerate() {
+            if matches!(r.cols, BriefCols::Run) {
+                out.push(r.line.clone());
+                continue;
+            }
+            let t = if level[k] > 0 { title(r) } else { String::new() };
+            out.push(format!("{:<3}{t}{}{}{}", format!("T{}", r.member.n), rest[k], cols_text(k, level[k]), r.view));
         }
         out
     };
@@ -1485,7 +1792,9 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             id_list(&longs, 8)
         ));
     }
-    tail.extend(crate::unions::catalog_lines(norm)); // B79: union views (unions.rs)
+    // B79: union views (unions.rs); briefly when the catalog lists its tables briefly.
+    let brief_mode = norm.tables.len() > BRIEF_TABLES_OVER;
+    tail.extend(crate::unions::catalog_lines(norm, brief_mode));
 
     let join = |body: &[String]| -> String {
         let mut all = head.clone();
@@ -2020,31 +2329,27 @@ mod tests {
         // Regions of similar size: one measure.
         let c = catalog(&book(1, 3, true), "x.xlsx", MAX_CHARS);
         assert!(!c.contains("mix measures"), "{c}");
-        // More than 12 distinct values: not listed.
-        let mut many = book(1, 13, true);
-        let t = &mut many.tables[0];
-        for c in &mut t.columns {
-            let v = c.values[0].clone();
-            c.values = vec![v; 31];
-        }
-        t.columns[0].values = (0..31).map(|k| Out::Text(format!("r{k}"))).collect();
-        t.src_rows = (1..=31).collect();
-        t.row_types = vec![RowType::Data; 31];
-        let c = catalog(&many, "x.xlsx", MAX_CHARS);
+        // More than 12 distinct values: not listed, unless the table is small (B102).
+        let rows_of = |n: usize| {
+            let mut many = book(1, 13, true);
+            let t = &mut many.tables[0];
+            for c in &mut t.columns {
+                let v = c.values[0].clone();
+                c.values = vec![v; n];
+            }
+            t.columns[0].values = (0..n).map(|k| Out::Text(format!("r{k}"))).collect();
+            t.src_rows = (1..=n as u32).collect();
+            t.row_types = vec![RowType::Data; n];
+            many
+        };
+        let c = catalog(&rows_of(31), "x.xlsx", MAX_CHARS);
         assert!(c.contains("Region[id e.g. \"r0\"]"), "{c}");
-        // B102: a small table (≤ 50 rows) too wide to inline lists every row label.
+        assert!(!c.contains("Region values"), "{c}");
+        // B102: a small table (≤ 30 rows) too wide to inline (30 × 15 cells) lists every row label.
+        let c = catalog(&rows_of(30), "x.xlsx", MAX_CHARS);
+        assert!(!c.contains("(CSV"), "{c}");
         assert!(c.contains("\n    Region values: \"r0\" | \"r1\" | "), "{c}");
-        assert!(c.contains(" | \"r30\"\n"), "{c}");
-        // More than 50 rows: not listed.
-        let t = &mut many.tables[0];
-        for c in &mut t.columns {
-            let v = c.values[0].clone();
-            c.values = vec![v; 51];
-        }
-        t.columns[0].values = (0..51).map(|k| Out::Text(format!("r{k}"))).collect();
-        t.src_rows = (1..=51).collect();
-        t.row_types = vec![RowType::Data; 51];
-        assert!(!catalog(&many, "x.xlsx", MAX_CHARS).contains("Region values"));
+        assert!(c.contains(" | \"r29\"\n"), "{c}");
     }
 
     #[test]
@@ -2124,7 +2429,7 @@ mod tests {
         // 40 wide tables: too long in full, fits briefly.
         let c = catalog(&book(40, 20, false), "x.xlsx", MAX_CHARS);
         assert!(c.len() <= MAX_CHARS);
-        assert!(c.contains("(tables listed briefly; call describe_table for columns)"), "{c}");
+        assert!(c.contains("(tables listed briefly; "), "{c}");
         assert!(c.contains("T30 "), "{c}");
         // 400 tables: cut, with an explicit last line.
         let c = catalog(&book(400, 40, false), "x.xlsx", MAX_CHARS);

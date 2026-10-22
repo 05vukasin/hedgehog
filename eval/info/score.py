@@ -229,6 +229,10 @@ def trap_facts(text: str) -> list[str]:
             for name in re.findall(r'(?:: |, )("[^"]*"|[^\s,(]+) \(', s):
                 out.add(f"nosum-col:{name.strip(chr(34))}")
         if kind in ("columns", "table"):
+            # brace groups written out, each member with its own kind: "a / {b[rate], c}" → "a / b"[rate]
+            s = re.sub(r'"([^"]*\{[^"]*)"', lambda m: " ".join(
+                re.sub(r"^(.*?)(\[[^\]]*\])?$", lambda x: f'"{x.group(1)}"{x.group(2) or ""}', e)
+                for e in expand_braces(m.group(1), True)), s)
             for name, k in re.findall(r'("[^"]*"|[^\s\[\]"]+)\[([^\]]*)\]', s):
                 if re.search(r"\b(?:rate|avg|index)\b|don't sum", k):
                     out.add(f"nosum-col:{name.strip(chr(34))}")
@@ -468,6 +472,7 @@ class CatalogIndex:
         self.described: set[str] = set()
         self.views_all: list[tuple[int, int]] = []
         self.views: list[tuple[int, int]] = []
+        order: dict[str, list[str]] = {}  # a brief table line's column names in order
         for line, kind in zip(lines, kinds):
             s = line.strip()
             if kind == "table":
@@ -477,6 +482,20 @@ class CatalogIndex:
                     self.cols |= {x.strip('"') for x in re.findall(r'"[^"]*"|[^\s\[\]"]+', m.group(1))}
                 self.cols |= set(re.findall(r'(?:^|\s)([^\s\[\]"]+)\[', s))
                 self.cols |= brace_names(s)
+                # B100: columns as an earlier table's with one more level:
+                # `Jahr + T27's "a".."b", each + " / % des BIP"`
+                d = re.search(r'cols: (.*?)(T\d+)\'s "([^"]*)"\.\."([^"]*)", each \+ " / ([^"]*)"', s)
+                if d and d.group(2) in order:
+                    names = order[d.group(2)]
+                    if d.group(3) in names and d.group(4) in names:
+                        a, b = names.index(d.group(3)), names.index(d.group(4))
+                        self.cols |= {x + " / " + d.group(5) for x in names[a:b + 1]}
+                        self.cols |= {x.strip('"') for x in re.findall(r'"[^"]*"|[^\s"+]+', d.group(1))}
+                else:
+                    c = re.search(r"cols: (.*?)(?: \+\d+ more|$| · )", s)
+                    if c:
+                        order[re.match(r"T\d+", s).group(0)] = [n for x in re.findall(r'"[^"]*"|[^\s"]+', c.group(1))
+                                                         for n in expand_braces(x.strip('"'))]
             if kind == "columns":
                 self.cols |= set(re.findall(r'(?:^|\s)([^\s\[\]"]+)\[', s))
                 bare = re.sub(r"\[[^\]]*\]|\{[^}]*\}", " ", s.split("): ", 1)[-1])
@@ -548,7 +567,7 @@ class CatalogIndex:
         return any(a <= y <= b for a, b in self.years)
 
 
-def expand_braces(s: str) -> list[str]:
+def expand_braces(s: str, keep_kinds: bool = False) -> list[str]:
     """Shared-prefix / suffix groups as the catalog writes them: `a / {b, c / {d, e}} / f` stands for
     "a / b / f", "a / c / d / f", "a / c / e / f". Members are separated by ", ", or by "; " when a
     member has a comma; a member's `[kind]` is not part of its name."""
@@ -576,8 +595,10 @@ def expand_braces(s: str) -> list[str]:
     parts.append(cur)
     out = []
     for p in parts:
-        p = re.sub(r"\[[^\]{}]*\]$", "", p.strip())
-        out += expand_braces(pre + p + post)
+        p = p.strip()
+        kind = re.search(r"\[[^\]{}]*\]$", p)
+        p = p[:kind.start()] if kind else p
+        out += [x + (kind.group(0) if kind and keep_kinds else "") for x in expand_braces(pre + p + post, keep_kinds)]
     return out
 
 

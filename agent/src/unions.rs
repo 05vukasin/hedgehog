@@ -96,7 +96,7 @@ fn common_suffix(names: &[String]) -> Option<String> {
 }
 
 /// The words of each string that the strings do not share at the start or end.
-fn differing_parts(texts: &[String]) -> Vec<String> {
+pub(crate) fn differing_parts(texts: &[String]) -> Vec<String> {
     let words: Vec<Vec<&str>> = texts.iter().map(|t| t.split_whitespace().collect()).collect();
     let min = words.iter().map(Vec::len).min().unwrap_or(0);
     let mut pre = 0;
@@ -294,11 +294,30 @@ fn id_range(norm: &Normalized, members: &[usize]) -> String {
     s.join(", ")
 }
 
-/// The catalog's lines for the union views (one per family).
-pub fn catalog_lines(norm: &Normalized) -> Vec<String> {
-    families(norm)
-        .iter()
-        .map(|f| {
+/// The catalog's lines for the union views (one per family); `brief`: the second and later
+/// families in one line, each with its first tables (B100).
+pub fn catalog_lines(norm: &Normalized, brief: bool) -> Vec<String> {
+    let fams = families(norm);
+    if brief && fams.len() > 2 {
+        let mut out = catalog_lines_of(norm, &fams[..1]);
+        let items: Vec<String> = fams[1..]
+            .iter()
+            .map(|f| {
+                let ns: Vec<String> = f.members.iter().take(3).map(|&m| norm.tables[m].id()).collect();
+                let more = if f.members.len() > 3 { format!(", … ({} tables)", f.members.len()) } else { String::new() };
+                format!("{} = {}{more}", f.name, ns.join(", "))
+            })
+            .collect();
+        out.push(format!("SQL union views like U1: {}", items.join("; ")));
+        return out;
+    }
+    catalog_lines_of(norm, &fams)
+}
+
+fn catalog_lines_of(norm: &Normalized, fams: &[Family]) -> Vec<String> {
+    fams.iter()
+        .enumerate()
+        .map(|(k, f)| {
             let mut adds = vec![f.extra[0].clone(), f.extra[1].clone(), f.extra[2].clone()];
             let mut by = ident(&f.extra[1]);
             if let Some(p) = &f.parts {
@@ -318,6 +337,10 @@ pub fn catalog_lines(norm: &Normalized) -> Vec<String> {
                     }
                 }
                 adds.push(format!("{} = {}", f.extra[4], d.iter().take(4).cloned().collect::<Vec<_>>().join(" | ")));
+            }
+            // B104: the first union view says how to use them; the others only what they add.
+            if k > 0 {
+                return format!("SQL union view {} = {} (like U1; adds {})", f.name, id_range(norm, &f.members), adds.join(", "));
             }
             format!(
                 "SQL union view {} = {} ({} tables with the same columns; adds {}): compare them in one query, e.g. SELECT {by}, SUM(…) FROM {} GROUP BY {by}; {}_all also has the total rows (_row_type)",

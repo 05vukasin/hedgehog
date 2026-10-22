@@ -1271,7 +1271,7 @@ mod tests {
     #[test]
     fn total_rows_and_signs() {
         let c = catalog(&flows(true), "x.xlsx", MAX_CHARS);
-        assert!(c.contains("\n    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in col_C: totals 'Total'@5, 'Total'@9\n"), "{c}");
+        assert!(c.contains("\n    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in col_C: totals 'Total'@5/9\n"), "{c}");
         assert!(
             c.contains("\n    signs: col_B 'Deliveries' rows are all negative (outflows?) — a net figure is the SUM over all rows, not a difference\n"),
             "{c}"
