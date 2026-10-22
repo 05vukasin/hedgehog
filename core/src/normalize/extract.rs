@@ -160,7 +160,15 @@ fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
     if !name {
         return false;
     }
-    // A column of names or purposes: more than a third of its texts are distinct.
+    // A legal form makes it a company name ("TOTAL RECRUIT LTD", "Summa Holding GmbH").
+    const LEGAL: &[&str] = &[
+        "ltd", "limited", "plc", "llp", "llc", "inc", "corp", "co", "gmbh", "ggmbh", "ag", "ev", "kg", "ug", "sa", "sas", "sarl",
+        "srl", "spa", "bv", "nv", "ab", "as", "oy", "doo", "ad", "sp", "zoo", "cic",
+    ];
+    let legal = rest.iter().any(|w| LEGAL.contains(&w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()).replace('.', "").as_str()));
+    // Otherwise a column of names or purposes: more than a third of its texts are distinct, and
+    // at least a thousand of them (a register of records, not a statement's line items such as
+    // "Total Assets" or "Total exports").
     let mut texts: HashSet<&str> = HashSet::new();
     let mut n = 0usize;
     for &i in grid.col_cells(lc) {
@@ -169,8 +177,11 @@ fn named_like_a_total(grid: &Grid, cand: &TotalCandidate) -> bool {
             n += 1;
         }
     }
-    texts.len() * 3 > n
+    texts.len() * 3 > n && (legal || texts.len() >= NAME_COLUMN_MIN_DISTINCT)
 }
+
+/// Distinct texts a column needs to count as a register's name column without a legal form (B81).
+const NAME_COLUMN_MIN_DISTINCT: usize = 1000;
 
 /// A total label recurring this often in its column is a category of long-format data.
 const LABEL_CATEGORY_REPEATS: usize = 3;
