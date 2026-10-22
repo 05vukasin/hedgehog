@@ -389,9 +389,213 @@ pub fn line(e: &Entity, table: &str) -> String {
     s
 }
 
+// ------------------------------------------------------------------------------------------------
+// an ID column next to a name column (B80)
+
+/// An ID column whose values each go with one (or a few) names in another column of the same
+/// table, such as `empfaengerid` ("vr_012174") and `name`: group by the ID, show a name.
+#[derive(Debug, Clone)]
+pub struct IdName {
+    /// SQL names of the ID and the name column.
+    pub id: String,
+    pub name: String,
+    pub ids: usize,
+    /// IDs written with more than one name, and the one with the most rows: (id, names).
+    pub several: usize,
+    pub most: Option<(String, usize)>,
+}
+
+/// A name of an ID column: `id`, `nr`, `no`, `number`, `code`, `key`, `nummer` as a word, or a
+/// word ending in `id` (`empfaengerid`, `customerId`).
+fn id_word(name: &str) -> bool {
+    let low = name.to_lowercase();
+    low.split(|c: char| !c.is_alphanumeric()).any(|w| {
+        matches!(w, "id" | "nr" | "no" | "number" | "code" | "key" | "nummer" | "kennung" | "broj" | "sifra" | "šifra" | "codigo" | "código")
+            || (w.len() > 3 && w.ends_with("id"))
+    }) || name.ends_with("Id") || name.ends_with("ID")
+}
+
+/// A header of a name column: `name`, `Customer Name`, `Bezeichnung`, `Назив_програма`,
+/// `empfaenger`, `supplier` …
+fn name_header(name: &str) -> bool {
+    const STEMS: &[&str] = &[
+        "name", "nome", "naam", "bezeichnung", "benennung", "naziv", "назив", "title", "titel", "titulo",
+        "título", "designa", "denomina", "razão", "razao", "firma", "company", "empresa", "unternehmen", "empfänger",
+        "empfaenger", "recipient", "beneficiar", "supplier", "customer", "vendor", "lieferant", "kunde", "client", "dobavlja",
+        "добавља", "agency", "employer",
+    ];
+    let low = name.to_lowercase();
+    STEMS.iter().any(|s| low.contains(s)) || low.split(|c: char| !c.is_alphanumeric()).any(|w| matches!(w, "nom" | "ime" | "име" | "naziv"))
+}
+
+/// The value of a cell as a key (text, or a whole number).
+fn key_of(v: &Out) -> Option<String> {
+    match v {
+        Out::Text(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        Out::Num(x) if x.fract() == 0.0 => Some(format!("{x}")),
+        _ => None,
+    }
+}
+
+/// ID columns with a separate name column: the ID repeats (it is not the row's key), almost
+/// every ID goes with one name, and the name column has about as many values as there are IDs.
+/// `<id> - <name>` columns are [`detect`]'s.
+pub fn id_name_pairs(t: &Table, rows: &[usize]) -> Vec<IdName> {
+    let names = sql_names(t);
+    let n = rows.len();
+    if n < 20 {
+        return Vec::new();
+    }
+    let sample: Vec<usize> = rows.iter().copied().step_by((n / SAMPLE).max(1)).take(SAMPLE).collect();
+    let texts = |c: &Column| sample.iter().filter_map(|&r| c.values.get(r).and_then(key_of)).collect::<Vec<String>>();
+    let data: Vec<(usize, &Column)> =
+        t.columns.iter().enumerate().filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group)).collect();
+    // IDs: codes ("vr_012174", "4711", "AB-12") in at least 90 % of the sampled cells.
+    let id_cols: Vec<usize> = data
+        .iter()
+        // Whole numbers only under an ID-like name (an amount such as 50000 repeats too).
+        .filter(|(i, c)| c.dtype == Dtype::Text || (c.dtype == Dtype::Integer && id_word(&names[*i])))
+        .filter(|(_, c)| {
+            let v = texts(c);
+            v.len() >= 10 && v.iter().filter(|s| is_code(s)).count() * 10 >= v.len() * 9
+        })
+        .map(|(i, _)| *i)
+        .collect();
+    // Names: text with letters under a header that says name (or who: recipient, customer …),
+    // not codes, not long free text.
+    let name_cols: Vec<usize> = data
+        .iter()
+        .filter(|(i, c)| c.dtype == Dtype::Text && name_header(&names[*i]))
+        .filter(|(_, c)| {
+            let v = texts(c);
+            !v.is_empty()
+                && v.iter().filter(|s| is_name(s) && !is_code(s)).count() * 10 >= v.len() * 9
+                && v.iter().map(|s| s.chars().count()).sum::<usize>() <= 80 * v.len()
+        })
+        .map(|(i, _)| *i)
+        .collect();
+    let mut out = Vec::new();
+    for &ic in &id_cols {
+        let idc = &t.columns[ic];
+        let mut best: Option<(usize, IdName)> = None;
+        for &nc in name_cols.iter().filter(|&&nc| nc != ic) {
+            let nm = &t.columns[nc];
+            let mut by: HashMap<String, (usize, Vec<String>)> = HashMap::new();
+            let mut distinct_names: HashSet<&str> = HashSet::new();
+            let mut pairs = 0;
+            for &r in rows {
+                let (Some(id), Some(Out::Text(name))) = (idc.values.get(r).and_then(key_of), nm.values.get(r)) else { continue };
+                let name = name.trim();
+                if name.is_empty() {
+                    continue;
+                }
+                pairs += 1;
+                distinct_names.insert(name);
+                let e = by.entry(id).or_default();
+                e.0 += 1;
+                if e.1.len() < 50 && !e.1.iter().any(|x| x == name) {
+                    e.1.push(name.to_string());
+                }
+            }
+            let ids = by.len();
+            // The ID repeats (not a row key), most IDs have one name, names about as many as IDs.
+            if ids < 10 || pairs < 20 || ids * 20 > pairs * 19 || distinct_names.len() * 2 < ids {
+                continue;
+            }
+            let several = by.values().filter(|x| x.1.len() > 1).count();
+            if several * 5 > ids {
+                continue;
+            }
+            let most = by
+                .iter()
+                .filter(|x| x.1.1.len() > 1)
+                .max_by(|a, b| (a.1.0, b.0).cmp(&(b.1.0, a.0)))
+                .map(|(id, x)| (id.clone(), x.1.len()));
+            let score = distinct_names.len();
+            if best.as_ref().is_none_or(|(s, _)| score > *s) {
+                best = Some((score, IdName { id: names[ic].clone(), name: names[nc].clone(), ids, several, most }));
+            }
+        }
+        out.extend(best.map(|x| x.1));
+    }
+    out
+}
+
+/// One line per ID ↔ name pair, for the catalog and `describe_table` (indented by 4).
+pub fn id_name_line(p: &IdName, table: &str) -> String {
+    let (id, name) = (quote_ident(&p.id), quote_ident(&p.name));
+    let spellings = match &p.most {
+        Some((most, k)) => format!(
+            "{} with several spellings (e.g. {}: {k} names)",
+            thousands(p.several),
+            short(most, 30)
+        ),
+        None => "one name each".to_string(),
+    };
+    format!(
+        "    {} is the ID of {}: {} IDs, {spellings} — group by {}, not by the name, and show a name: SELECT {id}, MAX({name}) AS {name}, count(*) FROM {table} GROUP BY {id}",
+        ident(&p.id),
+        ident(&p.name),
+        thousands(p.ids),
+        ident(&p.id)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn id_with_a_name_column() {
+        // B80, like the Berlin grants: a recipient ID repeated over grants, its name in `name`
+        // (one ID written two ways); a row ID that never repeats is no such pair.
+        let rows = 60;
+        let col = |name: &str, dtype: Dtype, values: Vec<Out>| Column {
+            name: name.into(),
+            role: ColRole::Data,
+            source_col: Some(0),
+            original_header: vec![],
+            dtype,
+            unit: None,
+            currency: None,
+            decimal: None,
+            date_order: None,
+            ambiguous: 0,
+            footnote_marks: Vec::new(),
+            values,
+        };
+        let ids: Vec<Out> = (0..rows).map(|i| Out::Text(format!("vr_{:06}", i % 20))).collect();
+        let names: Vec<Out> =
+            (0..rows).map(|i| Out::Text(if i == 41 { "Verein Eins e.V.".into() } else { format!("Verein {} e.V.", i % 20) })).collect();
+        let t = Table {
+            n: 1,
+            sheet: "T1".into(),
+            source_sheet: "s".into(),
+            rect: hh_core::Rect { top: 0, left: 0, bottom: rows as u32, right: 3 },
+            header_top: 0,
+            header_rows: 1,
+            title: None,
+            notes: vec![],
+            confidence: 1.0,
+            columns: vec![
+                col("id", Dtype::Integer, (0..rows).map(|i| Out::Num(1000.0 + i as f64)).collect()),
+                col("name", Dtype::Text, names),
+                col("empfaengerid", Dtype::Text, ids),
+            ],
+            src_rows: (1..=rows as u32).collect(),
+            row_types: vec![],
+            transforms: Default::default(),
+            warnings: vec![],
+        };
+        let rows: Vec<usize> = (0..rows).collect();
+        let p = id_name_pairs(&t, &rows);
+        assert_eq!(p.len(), 1, "{p:?}");
+        assert_eq!((p[0].id.as_str(), p[0].name.as_str(), p[0].ids, p[0].several), ("empfaengerid", "name", 20, 1));
+        assert_eq!(
+            id_name_line(&p[0], "T1"),
+            "    empfaengerid is the ID of name: 20 IDs, 1 with several spellings (e.g. vr_000001: 2 names) — group by empfaengerid, not by the name, and show a name: SELECT \"empfaengerid\", MAX(\"name\") AS \"name\", count(*) FROM T1 GROUP BY \"empfaengerid\""
+        );
+    }
 
     #[test]
     fn parses_cells() {

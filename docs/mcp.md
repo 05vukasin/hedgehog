@@ -312,10 +312,23 @@ Per table (when the whole catalog fits in ~12,000 characters):
 - **Head line**: id, title, source range, data rows; total rows taken out of the data (only in
   `T<n>_all`); total rows the totals check found that stay in the data (an "Insgesamt" row of a long
   table: exclude them before summing); the table's period when the file has several tables.
-- **Columns**: every column. Up to 14 columns with their value range (numbers, dates) or an example;
-  up to 40 as `name[dtype unit]`; runs of 4+ columns named by consecutive periods are written as one
-  item without hiding any (`"2011".."2025"[15 × number]`, `"Thu / 2002-01-31".."Tue / 2002-01-01"[31
-  × integer]`); wider tables also group runs of 3+ same-type columns (`describe_table` lists them).
+- **Columns**: every column, every name in full. Up to 14 columns with their value range (numbers,
+  dates) or an example; more as `name[dtype unit]`; runs of 4+ columns named by consecutive periods
+  are written as one item without hiding any (`"2011".."2025"[15 × number]`, `"Thu /
+  2002-01-31".."Tue / 2002-01-01"[31 × integer]`). A table wider than 40 columns whose list runs
+  past ~2,500 characters groups 3+ neighbouring names by their prefix, every member named, a member
+  of another type marked (`solar_{cons_change_pct[number · rate — don't sum], consumption,
+  electricity}[3 × number]`; the line says `a_{b, c} = a_b, a_c`). Past 6,000 characters the line
+  gives names only, then a count.
+- **Booleans** are shown as SQL stores them: `Returned[bool · dim 1/0 in SQL (TRUE/yes = 1,
+  FALSE/no = 0; filter = 1, not 'TRUE')]`, and `1` / `0` in inlined rows.
+- **Units**: a scale in the table's title or a note above it (`(All values in 000s)`, `in Tausend`,
+  `Mio. €`, `en milliers`, `(in millions)`): `units: amounts in thousands (× 1,000), says "(All
+  values in 000s)" — multiply by 1,000 for full figures`.
+- **Column notes**: a footnote of the table or its sheet that names a column's series code
+  (`LF24`), or defines a quantity whose words are all in one column's header and match it best
+  (`The headline employment rate is the number of people aged 16 to 64 …`): `column notes: "All
+  aged 16 to 64 / Employment / rate (%) / LF24" ← "The headline employment rate is …" (A681)`.
 - **Values**: text columns with at most 12 distinct values list all of them, so a model filters by
   the exact label.
 - **Column types**: each item says what the column is after its storage type:
@@ -352,17 +365,32 @@ Per table (when the whole catalog fits in ~12,000 characters):
   adjudicante_name holds one name per ID (its most frequent spelling) · …`. It comes right under
   the columns line (when some values have no ID, the query groups by
   `coalesce(<col>_id, <col>_name)`).
-- **Shares** (tables with ≥ 30 data rows and a summable amount column): a ready query for a share
-  of the total, ranked by the first entity column (or a text column with ≥ 10 values): `share of
+- **ID and name columns**: an ID column (codes such as `vr_012174`, or whole numbers under an
+  ID-like header) that repeats over the rows, each ID going with one name (or a few spellings) in
+  a column whose header says name, recipient, customer …: `empfaengerid is the ID of name: 9,873
+  IDs, 1,506 with several spellings (e.g. hra_031152: 2 names) — group by empfaengerid, not by the
+  name, and show a name: SELECT "empfaengerid", MAX("name") AS "name", count(*) FROM T1 GROUP BY
+  "empfaengerid"`.
+- **Shares** (tables with ≥ 30 data rows and an additive amount column: money or a count, not a
+  unit price with few values, a rate or an average, and not when a unit / currency column has
+  several values): a ready query for a share of the total, ranked by the first entity column, an
+  ID with names, or the dimension with the most values in 10..1,000 that is not a name or a
+  period: `share of
   the total (e.g. top 10 by "adjudicante_id"): SELECT 100.0 * SUM(v) / (SELECT SUM("precoContratual")
   FROM T1) AS pct FROM (SELECT SUM("precoContratual") AS v FROM T1 GROUP BY "adjudicante_id" ORDER BY
   v DESC LIMIT 10)`.
 - **Long forms**: when one table repeats another's values one row per key × category (checked on
   up to 40 sampled rows), both get `T5 is the long form of T3: one row per Datum × Saisonbereinigung,
   value in Indexwert (T3 has one column per Saisonbereinigung value)`.
-- **Total rows**: how to select them and where their label is, e.g.
-  `total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (label in col_C: 'Total')`; without a
-  label column, their `_src_row` and sign (`_src_row 51 positive, 65 negative`).
+- **Total rows**: how to select them, where their labels are and every label (up to 15) by level,
+  the grand total named and the source rows each adds up (from the totals checks that confirmed
+  it), e.g. `total rows: SELECT … FROM T1_all WHERE _row_type IN ('subtotal', 'total') — labels in
+  col_A: grand total 'Total Expenses'@65 (= rows 7, 49, 57, 63); total 'Total O&M'@49 (= rows 41,
+  47); subtotals (_row_type 'subtotal', not 'total') 'Subtotal Fixed O&M'@41 (= rows 10–39), …`.
+  The grand total is the one total no other total includes (or, with several on top, the one the
+  check calls the grand total); a total that stays in the data says `[stays in T1]`. A later table
+  with the same labels says `labels as in T1`. Without a label column: their `_src_row` and sign
+  (`_src_row 51 positive, 65 negative`).
 - **Signs**: `signs: col_B 'Deliveries HH' rows are all negative (outflows?) — a net figure is the
   SUM over all rows, not a difference` when a block of rows holds only negative numbers next to
   positive ones: by a label column whose labels (or the number columns' names) name flows (receipts
@@ -379,11 +407,17 @@ Per table (when the whole catalog fits in ~12,000 characters):
   vs PrecoTotalEfetivo (sum 4.28 bn, 100 % filled, 55 % zero) — different measures; pick
   deliberately`.
 - **Quality** (tables with ≥ 20 data rows): `quality:` with duplicates in an ID column that is
-  otherwise unique (≤ 5 % repeats), empty date cells and the label that explains them
-  (`dataCelebracaoContrato empty in 26,722 rows (15 %): tipoprocedimento = 'Ajuste direto
-  simplificado' (all its 26,261 rows) … — counts by this date leave them out`), negative
-  amounts (cells naming several entities are on the entity line) and formula cells saved without a
-  value (`12 formula cells without a saved value (NULL, not evaluated)`, any table size).
+  otherwise unique (≤ 5 % repeats); an ID written on several lines (`"Order ID": 800 rows, 296
+  distinct — count them with COUNT(DISTINCT "Order ID")`, up to two); empty cells of any column and
+  the label that explains them (`annual_salary empty in 7,129 rows (22 %): salary_or_hourly =
+  'HOURLY' (all its 7,129 rows)`, `dataCelebracaoContrato empty in 26,722 rows (15 %):
+  tipoprocedimento = 'Ajuste direto simplificado' (all its 26,261 rows) … — counts by this date
+  leave them out`), up to two text columns with ≥ 5 % empty cells and no such label (`"Запослен у
+  ГО" empty in 1,261 rows (35 %) — one NULL group when grouping by it; filter IS NOT NULL to
+  rank`); a first or last year of the period column with missing months (`Date: 2013 has Sep–Dec
+  only (4 of 12 months)`); negative amounts (cells naming several entities are on the entity line)
+  and formula cells saved without a value (`12 formula cells without a saved value (NULL, not
+  evaluated)`, any table size).
 - **Formulas without values** (whole file): `FORMULAS 1,479 cells without a saved value (e.g.
   May1!H13): NULL in the tables, not evaluated; cells shows the formula`, before `TOTALS`, when the
   file was saved by a tool that did not calculate. hedgehog never evaluates formulas.
@@ -392,11 +426,16 @@ The table lines come first; the optional parts are added while the catalog stays
 total-row and sign lines first, then small tables' rows, then amount and quality lines, each in
 table order. They are computed in one pass per column (about 0.2 s on a 176k-row register).
 
-When the full catalog is too long it lists every table on one line (`describe_table` gives the
-columns); with very many tables the last line says which were cut.
+When the full catalog is too long it lists every table on one line: its total rows by level (a set
+repeated from an earlier table as `total rows as in T1`), the scale of its numbers, and its column
+names in full, the first two and the total columns first, the rest while the table's share of the
+room lasts (`+7 more (describe_table)`; a table with the same names says `20 cols, same as T1`);
+column notes follow on their own line. With very many tables each line keeps one name and the last
+line says which tables were cut.
 
 The totals summary, total-row labels and rows, and the time coverage are the ones the
-[manifest](normalized-output.md) has (`tables[].totals`, `time_coverage`), from the same functions.
+[manifest](normalized-output.md) has (`tables[].totals`, `time_coverage`), from the same functions
+(except a TIME line taken from text period codes over an update stamp, below).
 
 ### The catalog's TIME line
 
@@ -405,7 +444,10 @@ The manifest's [time coverage](normalized-output.md#time-coverage): the period t
 from date / period columns or period-like column headers. Dates that describe the row's entity
 (start, hire, birth, expiry, valid-from: `agency_start_date`, `Hire Date`, `DOB`) count only when a
 table has no other date or period column, so a payroll's `fiscal_year` decides its period, not the
-employees' start dates. When tables differ (a monthly and an
+employees' start dates. A table dated only by an update stamp (`LAST UPDATE`, `Stand`,
+`extraction_date`) or not at all, with a text column of period codes (`2019-S1`, `2024-Q3`,
+`2024M03`, `2024-03`, `2024`), takes its period from those codes (`TIME 2019-S1–2026-S1 (half-year,
+from columns T1.TIME_PERIOD)`; the manifest keeps the core's coverage). When tables differ (a monthly and an
 annual table) it says `mixed: year (T5, …), month (T3) — check what one row is before summing`.
 Years that only titles, notes, sheet or file names mention are a secondary note: added when they lie
 outside the data's period, or the whole line when the data has no dates

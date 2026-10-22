@@ -383,6 +383,10 @@ fn classify_col(
             if st.filled == 0 {
                 return ColType::new(Sem::Text);
             }
+            // B89: period codes written as text ('2019-S1').
+            if crate::views::text_period_column(c, rows).is_some() {
+                return ColType::new(Sem::Period);
+            }
             let unique = st.distinct * 10 >= st.filled * 9;
             if id_words(&ws) && !name_words(&ws) || (unique && st.filled >= 20 && st.code_like * 10 >= st.filled * 9) {
                 return ColType::new(Sem::Id);
