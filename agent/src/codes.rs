@@ -310,9 +310,8 @@ fn value_column(t: &Table) -> Option<usize> {
 /// B160: how a table's total rows read when a total code splits them: the grand total by the code
 /// column with its values, the code's subtotals per group, and what that leaves (`rest`, the other
 /// total rows, for the caller to list as usual). None without a code.
-/// `grand total by Sexo ("Relação Jurídica" 'Total' @8–10): M 4,233 · F 3,245 · T 7,478 in TOTAL
-/// (T = M + F — don't add); subtotals (_row_type 'subtotal') Sexo 'T' of each "Relação Jurídica"
-/// @13/16/19/22/25`.
+/// `grand total 'Total' by Sexo @8–10: M 4,233 · F 3,245 · T 7,478 in TOTAL (T = M + F: don't
+/// add); subtotals (_row_type 'subtotal') Sexo 'T' @13/16/19/22/25`.
 pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entries: &[TotalEntry]) -> Option<(String, Vec<u32>)> {
     let col = &t.columns[code.col];
     let row_of = |src: u32| t.src_rows.iter().position(|s| s + 1 == src);
@@ -341,7 +340,7 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
             break;
         }
     }
-    let codes_line = format!("{} = {} — don't add", short(&code.code, 20), parts_text(code));
+    let codes_line = format!("{} = {}: don't add", short(&code.code, 20), parts_text(code));
     if let Some(members) = &grand {
         let vc = value_column(t);
         let mut order: Vec<&str> = code.parts.iter().map(String::as_str).collect();
@@ -351,8 +350,9 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
         let at = if hi == lo + rows.len() as u32 - 1 && rows.len() > 1 { format!("@{lo}–{hi}") } else {
             format!("@{}", rows.iter().map(|r| r.to_string()).collect::<Vec<_>>().join("/"))
         };
-        let label = group_of(members[0].1).into_iter().zip(&code.by).filter_map(|(v, &k)| v.map(|v| format!("{} '{}'", col_name(names, k), short(v, 30)))).collect::<Vec<_>>();
-        let place = if label.is_empty() { at } else { format!("{} {at}", label.join(" ")) };
+        // The group's own label ('Total' in "Relação Jurídica").
+        let label: Vec<String> = group_of(members[0].1).into_iter().flatten().map(|v| short(v, 30)).collect();
+        let label = if label.is_empty() { String::new() } else { format!(" '{}'", label.join("/")) };
         let values: Vec<String> = order
             .iter()
             .filter_map(|v| {
@@ -369,7 +369,7 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
             })
             .collect();
         let inn = vc.filter(|_| values.iter().all(|v| !v.starts_with('\''))).map(|i| format!(" in {}", col_name(names, i))).unwrap_or_default();
-        out.push(format!("grand total by {d} ({place}): {}{inn} ({codes_line})", values.join(" · ")));
+        out.push(format!("grand total{label} by {d} {at}: {}{inn} ({codes_line})", values.join(" · ")));
         covered.extend(rows);
     }
     // The code's rows in the other groups: one subtotal per group.
@@ -384,12 +384,9 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
             k
         };
         let kind = if kinds.len() == 1 && kinds[0] == "subtotal" { "subtotals (_row_type 'subtotal')".to_string() } else { "total rows".to_string() };
-        let of = if code.by.is_empty() { String::new() } else {
-            format!(" of each {}", code.by.iter().map(|&k| col_name(names, k)).collect::<Vec<_>>().join("/"))
-        };
         let rows: Vec<String> = subs.iter().map(|e| e.row.to_string()).collect();
         let tail = if grand.is_none() { format!(" ({codes_line})") } else { String::new() };
-        out.push(format!("{kind} {d} '{}'{of} @{}{tail}", short(&code.code, 20), rows.join("/")));
+        out.push(format!("{kind} {d} '{}' @{}{tail}", short(&code.code, 20), rows.join("/")));
         covered.extend(subs.iter().map(|e| e.row));
     }
     // Code rows that stay in the data view would be added in.
@@ -488,8 +485,8 @@ mod tests {
         let (text, covered) = coded_totals(&t, &names, &codes[0], &entries).unwrap();
         assert_eq!(
             text,
-            "grand total by Sexo (\"Relação\" 'Total' @7–9): M 4,233 · F 3,245 · T 7,478 in TOTAL (T = M + F — don't add); \
-             subtotals (_row_type 'subtotal') Sexo 'T' of each \"Relação\" @12/15"
+            "grand total 'Total' by Sexo @7–9: M 4,233 · F 3,245 · T 7,478 in TOTAL (T = M + F: don't add); \
+             subtotals (_row_type 'subtotal') Sexo 'T' @12/15"
         );
         assert_eq!(covered, [7, 8, 9, 12, 15]);
         assert_eq!(brief_note(&codes[0], &names), "Sexo 'T' = M + F: don't add");
