@@ -283,6 +283,14 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
         }
     }
     let head = format!("    total rows: SELECT … FROM {}_all WHERE {cond}", t.id());
+    // B160: labels made of several key columns (`'Total/M'`), or a total code.
+    if !info.key_cols.is_empty() || !info.codes.is_empty() {
+        let entries = crate::catalog::total_entries(info);
+        let keys: Vec<String> = info.key_cols.iter().map(|&k| ident(&names[k])).collect();
+        let labels = if keys.is_empty() { String::new() } else { format!(" — labels in {}", keys.join("/")) };
+        let sep = if labels.is_empty() { " — " } else { ": " };
+        return Some(format!("{head}{labels}{sep}{}", crate::catalog::totals_text(t, info, &entries, true, 15)));
+    }
     if let Some((&i, _)) = at.iter().max_by_key(|(i, n)| (**n, std::cmp::Reverse(**i))) {
         // B74: every label (up to 15) by level, the grand total named, what each adds up.
         let entries = crate::catalog::total_entries(info);

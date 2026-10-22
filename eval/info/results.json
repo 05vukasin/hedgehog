@@ -4,14 +4,14 @@
   "cases": 30,
   "checks": 168,
   "counts": {
-   "a": 22,
-   "b": 146,
+   "a": 25,
+   "b": 143,
    "c": 0,
    "d": 0
   },
   "sufficiency": 1.0,
-  "catalog_tokens": 42360,
-  "sufficient_per_1k_tokens": 3.966
+  "catalog_tokens": 42183,
+  "sufficient_per_1k_tokens": 3.983
  },
  "cases": [
   {
@@ -19,8 +19,8 @@
    "files": [
     "eu_pt_opendata/001_contratos2020.xlsx"
    ],
-   "tokens": 1876,
-   "chars": 6028,
+   "tokens": 1866,
+   "chars": 6004,
    "tokens_by_kind": {
     "file": 37,
     "time": 54,
@@ -33,8 +33,7 @@
     "numbers": 74,
     "quality": 225,
     "warnings": 32,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 82,
@@ -112,23 +111,22 @@
     "eu_at_opendata/003_pen_02_02.xlsx"
    ],
    "tokens": 1568,
-   "chars": 3704,
+   "chars": 3710,
    "tokens_by_kind": {
     "file": 33,
     "time": 17,
     "table": 50,
     "columns": 40,
     "mixed": 14,
-    "long": 59,
+    "long": 69,
     "no_sum": 32,
     "table_status": 7,
     "total_rows": 109,
-    "inline": 1065,
+    "inline": 1062,
     "totals": 18,
     "notes": 36,
     "sql": 37,
-    "sql_long": 42,
-    "timing": 9
+    "sql_long": 44
    },
    "tokens_by_segment": {
     "types": 5,
@@ -158,7 +156,7 @@
      "check": "avg-married",
      "kind": "num",
      "cat": "a",
-     "reason": "in the catalog: Durchschnittshöhe in Euro,Verheiratet ***,372.97,382.51,395.92,405.13,409.79,415.32,416.53,423.46,433.99,478.99,486.08,500.48,528.44,572.73,594.2,0.240527,0.037"
+     "reason": "in the catalog: Durchschnittshöhe in Euro,Verheiratet,372.97,382.51,395.92,405.13,409.79,415.32,416.53,423.46,433.99,478.99,486.08,500.48,528.44,572.73,594.2,0.240527,0.0374871"
     }
    ],
    "traps": [
@@ -174,8 +172,8 @@
    "files": [
     "enron/andrea_ring__3__HHmonthlyavg.xlsx"
    ],
-   "tokens": 3088,
-   "chars": 7537,
+   "tokens": 3121,
+   "chars": 7654,
    "tokens_by_kind": {
     "file": 35,
     "time": 43,
@@ -183,14 +181,13 @@
     "columns": 433,
     "total_rows": 339,
     "inline": 1095,
-    "long": 296,
+    "long": 336,
     "table_status": 152,
     "signs": 33,
     "values": 75,
     "totals": 18,
     "sql": 44,
-    "sql_long": 62,
-    "timing": 9
+    "sql_long": 64
    },
    "tokens_by_segment": {
     "types": 124,
@@ -250,7 +247,13 @@
    "traps": [
     "signs:T2"
    ],
-   "trap_checks": [],
+   "trap_checks": [
+    {
+     "what": "naive query: January day with the highest receipts: SUM over T3_long_all counts the total rows too",
+     "ok": true,
+     "how": "the catalog warns"
+    }
+   ],
    "other_lines": []
   },
   {
@@ -258,8 +261,8 @@
    "files": [
     "eu_de_destatis/statistischer-bericht-lkw-maut-fahrleistungsindex-5421901.xlsx"
    ],
-   "tokens": 1542,
-   "chars": 4752,
+   "tokens": 1532,
+   "chars": 4730,
    "tokens_by_kind": {
     "file": 45,
     "time": 30,
@@ -273,8 +276,7 @@
     "long": 72,
     "quality": 58,
     "notes": 20,
-    "sql": 44,
-    "timing": 9
+    "sql": 44
    },
    "tokens_by_segment": {
     "types": 103,
@@ -326,22 +328,21 @@
     "enron/benjamin_rogers__1115__Gleason 01 O&M Budget.xlsx",
     "enron/benjamin_rogers__1117__Wheatland 01 O&M Budget.xlsx"
    ],
-   "tokens": 1460,
-   "chars": 4053,
+   "tokens": 1466,
+   "chars": 4089,
    "tokens_by_kind": {
     "file": 82,
     "time": 50,
     "table": 86,
     "columns": 220,
     "values": 94,
-    "long": 128,
+    "long": 148,
     "table_status": 14,
     "total_rows": 370,
     "totals": 36,
     "notes": 62,
     "sql": 74,
-    "sql_long": 84,
-    "timing": 18,
+    "sql_long": 88,
     "files": 142
    },
    "tokens_by_segment": {
@@ -393,8 +394,8 @@
    "files": [
     "enron/benjamin_rogers__1058__newco development cash flow.xlsx"
    ],
-   "tokens": 828,
-   "chars": 2509,
+   "tokens": 831,
+   "chars": 2527,
    "tokens_by_kind": {
     "file": 38,
     "time": 17,
@@ -403,15 +404,14 @@
     "columns": 47,
     "units": 40,
     "values": 240,
-    "long": 48,
+    "long": 58,
     "table_status": 14,
     "total_rows": 143,
     "mixed": 14,
     "totals": 18,
     "notes": 20,
     "sql": 44,
-    "sql_long": 42,
-    "timing": 9
+    "sql_long": 44
    },
    "tokens_by_segment": {
     "types": 10,
@@ -462,8 +462,8 @@
    "files": [
     "enron/barry_tycholiz__889__June 1 P&L.xlsx"
    ],
-   "tokens": 1218,
-   "chars": 2548,
+   "tokens": 1208,
+   "chars": 2526,
    "tokens_by_kind": {
     "file": 38,
     "time": 24,
@@ -473,8 +473,7 @@
     "inline": 901,
     "totals": 18,
     "notes": 27,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 56,
@@ -522,8 +521,8 @@
    "files": [
     "enron/craig_dean__4381__MDEA P&L Report.xlsx"
    ],
-   "tokens": 2878,
-   "chars": 8171,
+   "tokens": 2869,
+   "chars": 8149,
    "tokens_by_kind": {
     "file": 40,
     "time": 39,
@@ -533,8 +532,7 @@
     "totals": 18,
     "notes": 20,
     "sql": 44,
-    "union": 100,
-    "timing": 9
+    "union": 100
    },
    "tokens_by_segment": {
     "types": 0,
@@ -579,23 +577,22 @@
    "files": [
     "enron/barry_tycholiz__846__NPC Inventory Valuation.xlsx"
    ],
-   "tokens": 2533,
-   "chars": 6588,
+   "tokens": 2546,
+   "chars": 6639,
    "tokens_by_kind": {
     "file": 36,
     "time": 28,
     "table": 96,
     "columns": 435,
     "mixed": 38,
-    "long": 230,
+    "long": 250,
     "table_status": 70,
     "total_rows": 150,
     "inline": 1310,
     "totals": 18,
     "notes": 23,
     "sql": 44,
-    "sql_long": 46,
-    "timing": 9
+    "sql_long": 48
    },
    "tokens_by_segment": {
     "types": 116,
@@ -653,8 +650,8 @@
    "files": [
     "eu_at_opendata/013_budget-Operating-statement-szg-position-2019.xls"
    ],
-   "tokens": 690,
-   "chars": 2188,
+   "tokens": 680,
+   "chars": 2166,
    "tokens_by_kind": {
     "file": 41,
     "time": 17,
@@ -663,8 +660,7 @@
     "entity": 65,
     "values": 345,
     "table_status": 36,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 0,
@@ -725,8 +721,8 @@
     "data_gov_rs/pancevo_budzet_2020_prihodi.xlsx",
     "data_gov_rs/pancevo_budzet_2020_rashodi.xlsx"
    ],
-   "tokens": 1310,
-   "chars": 3197,
+   "tokens": 1292,
+   "chars": 3153,
    "tokens_by_kind": {
     "file": 76,
     "time": 46,
@@ -734,7 +730,6 @@
     "columns": 341,
     "values": 365,
     "sql": 74,
-    "timing": 18,
     "entity": 176,
     "numbers": 21,
     "quality": 25,
@@ -793,8 +788,8 @@
    "files": [
     "superstore/sample_superstore.xls"
    ],
-   "tokens": 827,
-   "chars": 2572,
+   "tokens": 817,
+   "chars": 2550,
    "tokens_by_kind": {
     "file": 28,
     "time": 32,
@@ -807,8 +802,7 @@
     "numbers": 26,
     "quality": 90,
     "inline": 42,
-    "sql": 44,
-    "timing": 9
+    "sql": 44
    },
    "tokens_by_segment": {
     "types": 86,
@@ -867,8 +861,8 @@
    "files": [
     "microsoft/financial_sample.xlsx"
    ],
-   "tokens": 443,
-   "chars": 1375,
+   "tokens": 433,
+   "chars": 1353,
    "tokens_by_kind": {
     "file": 27,
     "time": 22,
@@ -877,8 +871,7 @@
     "values": 160,
     "numbers": 55,
     "quality": 54,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 17,
@@ -923,8 +916,8 @@
     "northwind/orders.csv",
     "northwind/order_details.csv"
    ],
-   "tokens": 697,
-   "chars": 2136,
+   "tokens": 679,
+   "chars": 2092,
    "tokens_by_kind": {
     "file": 53,
     "time": 43,
@@ -933,7 +926,6 @@
     "table_status": 40,
     "quality": 180,
     "sql": 74,
-    "timing": 18,
     "numbers": 14,
     "files": 109
    },
@@ -981,8 +973,8 @@
    "files": [
     "chicago_open_data/employee_salaries.csv"
    ],
-   "tokens": 393,
-   "chars": 1206,
+   "tokens": 383,
+   "chars": 1184,
    "tokens_by_kind": {
     "file": 31,
     "time": 7,
@@ -993,8 +985,7 @@
     "no_sum": 23,
     "numbers": 18,
     "quality": 70,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 58,
@@ -1051,8 +1042,8 @@
    "files": [
     "nyc_open_data/citywide_payroll_100k.csv"
    ],
-   "tokens": 572,
-   "chars": 1826,
+   "tokens": 562,
+   "chars": 1803,
    "tokens_by_kind": {
     "file": 37,
     "time": 18,
@@ -1064,8 +1055,7 @@
     "numbers": 41,
     "quality": 72,
     "warnings": 36,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 19,
@@ -1113,8 +1103,8 @@
    "files": [
     "uk_gov/gender_pay_gap_2024_25.csv"
    ],
-   "tokens": 530,
-   "chars": 1726,
+   "tokens": 520,
+   "chars": 1703,
    "tokens_by_kind": {
     "file": 35,
     "time": 31,
@@ -1125,8 +1115,7 @@
     "table_status": 32,
     "numbers": 37,
     "quality": 40,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 79,
@@ -1182,42 +1171,41 @@
    "files": [
     "eu_pt_opendata/012_balanco-social-2016.xls"
    ],
-   "tokens": 2973,
-   "chars": 8875,
+   "tokens": 2983,
+   "chars": 8824,
    "tokens_by_kind": {
     "file": 36,
     "time": 23,
     "brief": 47,
-    "table": 2493,
+    "table": 2512,
     "totals": 18,
     "notes": 28,
     "sql": 44,
-    "union": 275,
-    "timing": 9
+    "union": 275
    },
    "tokens_by_segment": {
     "types": 0,
-    "table_cols": 754,
-    "table_totals": 1338
+    "table_cols": 774,
+    "table_totals": 1343
    },
    "checks": [
     {
      "check": "workers",
      "kind": "num",
-     "cat": "b",
-     "reason": "the natural query (probe) uses only names the catalog shows"
+     "cat": "a",
+     "reason": "in the catalog: T1  'Quadro 1 Contagem dos trabalhadores por cargo/carreira segu…' ← 'Balanço Social 2016' · 10 rows · 8 total rows (only in T1_all): grand total 'Total' by Sex"
     },
     {
      "check": "women",
      "kind": "num",
-     "cat": "b",
-     "reason": "the natural query (probe) uses only names the catalog shows"
+     "cat": "a",
+     "reason": "in the catalog: T1  'Quadro 1 Contagem dos trabalhadores por cargo/carreira segu…' ← 'Balanço Social 2016' · 10 rows · 8 total rows (only in T1_all): grand total 'Total' by Sex"
     },
     {
      "check": "women-share",
      "kind": "pct_range",
      "cat": "b",
-     "reason": "the natural query (probe) uses only names the catalog shows"
+     "reason": "the natural query (probe) uses only names the catalog shows ('F': in the first 5 rows of a ranking query on its column)"
     },
     {
      "check": "tecnico",
@@ -1240,32 +1228,50 @@
     {
      "check": "providers",
      "kind": "num",
-     "cat": "b",
-     "reason": "the natural query (probe) uses only names the catalog shows"
+     "cat": "a",
+     "reason": "in the catalog: T2  'Quadros 1.1 Contagem dos prestadores de serviços (pessoas s…' · 4 rows · 5 total rows (only in T2_all): grand total 'Total' by Sexo @33–35: M 382 · F 178 ·"
     }
    ],
    "traps": [
-    "grand:T10:T",
-    "grand:T11:T",
-    "grand:T12:T",
-    "grand:T13:T",
+    "grand:T10:Total de efectivos",
+    "grand:T11:Total",
+    "grand:T12:Total",
+    "grand:T13:Total",
+    "grand:T14:Total de dias de Ausência",
     "grand:T15:TOTAL",
     "grand:T16:TOTAL",
-    "grand:T1:T",
+    "grand:T1:Total",
     "grand:T22:TOTAL",
     "grand:T23:Total de Participantes",
     "grand:T25:Total",
-    "grand:T2:T",
-    "grand:T3:T",
-    "grand:T4:T",
-    "grand:T6:T",
-    "grand:T7:T",
-    "grand:T8:T",
-    "grand:T9:T",
+    "grand:T2:Total",
+    "grand:T3:Total",
+    "grand:T4:Total",
+    "grand:T5:Total",
+    "grand:T6:Total",
+    "grand:T7:Total",
+    "grand:T8:Total",
+    "grand:T9:Total/T",
     "kept:T15",
     "kept:T17"
    ],
-   "trap_checks": [],
+   "trap_checks": [
+    {
+     "what": "naive query: workers: SUM over T1_all's total rows adds Sexo M + F + T (twice the workers)",
+     "ok": true,
+     "how": "the catalog warns"
+    },
+    {
+     "what": "naive query: service providers: SUM over T2_all's total rows (M + F + T)",
+     "ok": true,
+     "how": "the catalog warns"
+    },
+    {
+     "what": "naive query: workers: SUM over the data view T1 is right",
+     "ok": true,
+     "how": "the naive query is right"
+    }
+   ],
    "other_lines": []
   },
   {
@@ -1273,8 +1279,8 @@
    "files": [
     "eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods"
    ],
-   "tokens": 742,
-   "chars": 1833,
+   "tokens": 732,
+   "chars": 1811,
    "tokens_by_kind": {
     "file": 45,
     "time": 51,
@@ -1286,8 +1292,7 @@
     "numbers": 88,
     "totals": 18,
     "notes": 33,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 1,
@@ -1338,20 +1343,19 @@
    "files": [
     "world_bank/wdi_gdp_per_capita_wide_years.csv"
    ],
-   "tokens": 492,
-   "chars": 1544,
+   "tokens": 495,
+   "chars": 1562,
    "tokens_by_kind": {
     "file": 36,
     "time": 17,
     "table": 35,
     "columns": 36,
     "values": 32,
-    "long": 58,
+    "long": 68,
     "total_rows": 172,
     "totals": 18,
     "sql": 37,
-    "sql_long": 42,
-    "timing": 9
+    "sql_long": 44
    },
    "tokens_by_segment": {
     "types": 7,
@@ -1405,8 +1409,8 @@
    "files": [
     "eurostat/nrg_pc_204_electricity_prices_households.csv"
    ],
-   "tokens": 643,
-   "chars": 1587,
+   "tokens": 633,
+   "chars": 1564,
    "tokens_by_kind": {
     "file": 36,
     "time": 22,
@@ -1416,8 +1420,7 @@
     "total_rows": 38,
     "numbers": 14,
     "quality": 29,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 64,
@@ -1460,22 +1463,21 @@
     "eu_de_destatis/inlandsprodukt-erste-ergebnisse-xlsx-2180110.xlsx"
    ],
    "tokens": 4097,
-   "chars": 11047,
+   "chars": 11029,
    "tokens_by_kind": {
     "file": 40,
     "time": 42,
     "sheets": 21,
     "brief": 47,
-    "table": 3513,
+    "table": 3521,
     "notes": 27,
     "sql": 44,
-    "sql_long": 42,
-    "union": 312,
-    "timing": 9
+    "sql_long": 44,
+    "union": 312
    },
    "tokens_by_segment": {
     "types": 0,
-    "table_cols": 1573,
+    "table_cols": 1584,
     "table_totals": 0
    },
    "checks": [
@@ -1525,23 +1527,23 @@
    "files": [
     "uk_ons/a01_labour_market_summary_sep2026.xls"
    ],
-   "tokens": 2988,
-   "chars": 8954,
+   "tokens": 2975,
+   "chars": 8927,
    "tokens_by_kind": {
     "file": 35,
     "time": 81,
     "sheets": 19,
     "brief": 47,
-    "table": 2456,
+    "table": 2361,
     "column_notes": 221,
+    "other": 91,
     "notes": 18,
     "sql": 44,
-    "union": 58,
-    "timing": 9
+    "union": 58
    },
    "tokens_by_segment": {
     "types": 0,
-    "table_cols": 1676,
+    "table_cols": 1574,
     "table_totals": 44
    },
    "checks": [
@@ -1581,16 +1583,24 @@
     "units:T25",
     "units:T26"
    ],
-   "trap_checks": [],
-   "other_lines": []
+   "trap_checks": [
+    {
+     "what": "naive query: previous non-overlapping 3-month period: the row before the latest overlaps it (rolling windows)",
+     "ok": true,
+     "how": "the catalog warns"
+    }
+   ],
+   "other_lines": [
+    "    periods: rolling 3-month windows, 1-month step — they overlap; the previous non-overlapping window is 3 rows earlier (latest col_A 'May-Jul 2026' = period 2026-05/2026-07; the one before it without overlap: 'Feb-Apr 2026'); the same windows in T3, T4, T10, T11, T12, T13 +5 more"
+   ]
   },
   {
    "case": "fr-insee-pop",
    "files": [
     "eu_fr_insee/002_estim-pop-dep-sexe-gca-1975-2023.xls"
    ],
-   "tokens": 1007,
-   "chars": 2513,
+   "tokens": 998,
+   "chars": 2491,
    "tokens_by_kind": {
     "file": 43,
     "time": 26,
@@ -1600,8 +1610,7 @@
     "totals": 19,
     "notes": 22,
     "sql": 44,
-    "union": 92,
-    "timing": 9
+    "union": 92
    },
    "tokens_by_segment": {
     "types": 0,
@@ -1666,8 +1675,8 @@
     "eu_at_statistik_austria/012_TourismusJuli2026HerkunftEndg.ods",
     "eu_at_statistik_austria/010_TourismusAugust2026HerkunftEndg.ods"
    ],
-   "tokens": 1764,
-   "chars": 5367,
+   "tokens": 1746,
+   "chars": 5323,
    "tokens_by_kind": {
     "file": 91,
     "time": 46,
@@ -1680,7 +1689,6 @@
     "notes": 71,
     "sql": 88,
     "union": 196,
-    "timing": 18,
     "files": 184
    },
    "tokens_by_segment": {
@@ -1773,8 +1781,8 @@
    "files": [
     "data_gov_rs/rgz_registar_geodetskih_licenci.ods"
    ],
-   "tokens": 418,
-   "chars": 1003,
+   "tokens": 408,
+   "chars": 981,
    "tokens_by_kind": {
     "file": 40,
     "time": 7,
@@ -1783,8 +1791,7 @@
     "values": 77,
     "table_status": 43,
     "quality": 35,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 79,
@@ -1844,8 +1851,8 @@
    "files": [
     "uk_gov/beis_spending_over_25k_2018_03.csv"
    ],
-   "tokens": 486,
-   "chars": 1537,
+   "tokens": 476,
+   "chars": 1515,
    "tokens_by_kind": {
     "file": 39,
     "time": 27,
@@ -1856,8 +1863,7 @@
     "table_status": 31,
     "numbers": 26,
     "quality": 31,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 117,
@@ -1917,8 +1923,8 @@
    "files": [
     "govdata_de/berlin_zuwendungsdatenbank.csv"
    ],
-   "tokens": 477,
-   "chars": 1443,
+   "tokens": 467,
+   "chars": 1420,
    "tokens_by_kind": {
     "file": 35,
     "time": 17,
@@ -1929,8 +1935,7 @@
     "values": 37,
     "table_status": 35,
     "numbers": 13,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 89,
@@ -1978,8 +1983,8 @@
    "files": [
     "eu_pt_opendata/008_BF_1_2023_beneficiarios_por_tipo_de_imposto_e_beneficio.xlsx"
    ],
-   "tokens": 2644,
-   "chars": 8178,
+   "tokens": 2634,
+   "chars": 8155,
    "tokens_by_kind": {
     "file": 52,
     "time": 23,
@@ -1988,8 +1993,7 @@
     "table": 2404,
     "totals": 19,
     "notes": 37,
-    "sql": 44,
-    "timing": 9
+    "sql": 44
    },
    "tokens_by_segment": {
     "types": 0,
@@ -2038,7 +2042,13 @@
     "grand:T7:(no label)",
     "grand:T8:(no label)"
    ],
-   "trap_checks": [],
+   "trap_checks": [
+    {
+     "what": "naive query: a column name copied in the catalog's grouped form a / {b} works in SQL",
+     "ok": true,
+     "how": "the naive query is right"
+    }
+   ],
    "other_lines": []
   },
   {
@@ -2046,8 +2056,8 @@
    "files": [
     "owid/owid_energy_data.csv"
    ],
-   "tokens": 1176,
-   "chars": 4085,
+   "tokens": 1166,
+   "chars": 4062,
    "tokens_by_kind": {
     "file": 32,
     "time": 16,
@@ -2058,8 +2068,7 @@
     "numbers": 121,
     "quality": 14,
     "warnings": 34,
-    "sql": 37,
-    "timing": 9
+    "sql": 37
    },
    "tokens_by_segment": {
     "types": 89,
@@ -2165,7 +2174,7 @@
   },
   {
    "kind": "table",
-   "tokens": 15986,
+   "tokens": 15918,
    "lost": [
     "pt-contracts/top-body",
     "pt-contracts/second-body",
@@ -2318,8 +2327,8 @@
     "owid-energy/wind-growth"
    ],
    "moved": {
-    "b→c": 146,
-    "a→c": 3
+    "b→c": 143,
+    "a→c": 6
    }
   },
   {
@@ -2452,7 +2461,7 @@
   },
   {
    "kind": "long",
-   "tokens": 891,
+   "tokens": 1001,
    "lost": [],
    "moved": {}
   },
@@ -2490,13 +2499,15 @@
   },
   {
    "kind": "inline",
-   "tokens": 4879,
+   "tokens": 4876,
    "lost": [
+    "at-pension/avg-married",
     "enron-deals-pl/mckay",
     "enron-storage-inventory/value-current"
    ],
    "moved": {
-    "a→b": 10,
+    "a→b": 9,
+    "a→d": 1,
     "b→c": 1,
     "a→c": 1
    }
@@ -2580,7 +2591,7 @@
   },
   {
    "kind": "sql_long",
-   "tokens": 360,
+   "tokens": 376,
    "lost": [],
    "moved": {}
   },
@@ -2611,8 +2622,8 @@
    }
   },
   {
-   "kind": "timing",
-   "tokens": 306,
+   "kind": "other",
+   "tokens": 91,
    "lost": [],
    "moved": {}
   },
@@ -2626,19 +2637,16 @@
   },
   {
    "kind": "table_cols",
-   "tokens": 8047,
+   "tokens": 7976,
    "lost": [
     "enron-mdea-pl/epmi",
     "enron-mdea-pl/mdea",
     "enron-mdea-pl/best-day",
     "enron-mdea-pl/best-value",
-    "pt-social-report/workers",
-    "pt-social-report/women",
     "pt-social-report/women-share",
     "pt-social-report/tecnico",
     "pt-social-report/costs",
     "pt-social-report/base-share",
-    "pt-social-report/providers",
     "de-gdp/gdp",
     "de-gdp/real-growth",
     "de-gdp/deficit",
@@ -2661,14 +2669,16 @@
     "pt-tax-benefits/bombeiros"
    ],
    "moved": {
-    "b→c": 31
+    "b→c": 28
    }
   },
   {
    "kind": "table_totals",
-   "tokens": 1784,
+   "tokens": 1789,
    "lost": [],
-   "moved": {}
+   "moved": {
+    "a→b": 3
+   }
   }
  ]
 }

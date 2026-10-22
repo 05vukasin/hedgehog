@@ -174,6 +174,11 @@ pub struct RowInfo {
     pub scopes: HashMap<u32, Vec<(u32, u32)>>,
     /// B74: total rows the totals check calls the grand total.
     pub grand_rows: HashSet<u32>,
+    /// B160: total rows are labelled with these key columns' values joined by `/` (`Total/M`),
+    /// when one column alone does not tell them apart; empty otherwise.
+    pub key_cols: Vec<usize>,
+    /// B160: total codes (`Sexo 'T' = M + F`), checked on the numbers.
+    pub codes: Vec<crate::codes::TotalCode>,
 }
 
 /// Indexes of a table's data rows (all rows when it has no row types).
@@ -203,7 +208,13 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
     if t.row_types.is_empty() {
         info.data = t.rows();
     }
+    let labels: Vec<String> = info.total_rows.iter().map(|r| r.label.clone()).collect();
     relabel_totals(t, &mut info.total_rows);
+    // (B103's labels from a code column stay as they are.)
+    if info.total_rows.iter().map(|r| &r.label).eq(labels.iter()) {
+        info.key_cols = full_key_labels(t, &mut info.total_rows);
+    }
+    info.codes = crate::codes::total_codes(t);
     let in_data: HashSet<u32> = data_rows(t).into_iter().filter_map(|r| t.src_rows.get(r).map(|s| s + 1)).collect();
     info.kept_totals = totals
         .rows
@@ -277,6 +288,75 @@ fn relabel_totals(t: &Table, rows: &mut [TotalRow]) {
             }
         }
     }
+}
+
+/// B160: total rows whose labels one column does not tell apart (`Total`/`M`, `Total`/`F`,
+/// `Total`/`T`: the label taken from either column) are labelled with their full key, every key
+/// column's value joined by `/` (`'Total/M'`), when a key column holds codes that split every
+/// group and the full key tells more of them apart. The key columns used; empty when the labels
+/// stay.
+fn full_key_labels(t: &Table, rows: &mut [TotalRow]) -> Vec<usize> {
+    let keys = crate::codes::key_columns(t);
+    if keys.len() < 2 || rows.len() < 2 || t.rows() > crate::codes::MAX_ROWS {
+        return Vec::new();
+    }
+    let idx: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data)).collect();
+    if idx.len() != rows.len() {
+        return Vec::new();
+    }
+    // Only where the total rows differ in a key column of codes that split every group (`Sexo`:
+    // M, F, T), not for labels repeated down a group column.
+    let split = keys.iter().any(|&k| {
+        let vals: HashSet<Option<&str>> = idx
+            .iter()
+            .zip(rows.iter())
+            .filter(|(_, tr)| tr.kind == RowType::Total)
+            .map(|(&r, _)| match t.columns[k].values.get(r) {
+                Some(Out::Text(s)) => Some(s.trim()),
+                _ => None,
+            })
+            .collect();
+        vals.len() >= 2 && crate::codes::code_dimension(t, k)
+    });
+    if !split {
+        return Vec::new();
+    }
+    // Total rows only: subtotals of one code per group read well by their code ('T'@13/16/19).
+    let full: Vec<Option<String>> = idx
+        .iter()
+        .zip(rows.iter())
+        .map(|(&r, tr)| if tr.kind == RowType::Total { crate::codes::row_key(t, &keys, r) } else { None })
+        .collect();
+    if full.iter().all(Option::is_none) {
+        return Vec::new();
+    }
+    for (r, f) in rows.iter_mut().zip(full) {
+        if let Some(f) = f {
+            r.label = f;
+        }
+    }
+    keys
+}
+
+/// B162: the rolling-windows line of a table; a table with the same windows as one listed
+/// before (`seen`) names it instead.
+fn rolling_text(t: &Table, seen: &mut HashMap<(i64, i64), String>) -> Option<String> {
+    let r = crate::views::rolling(t)?;
+    let first = seen.get(&(r.len, r.step)).cloned();
+    seen.entry((r.len, r.step)).or_insert_with(|| t.id());
+    Some(crate::views::rolling_line(t, &r, first.as_deref()))
+}
+
+/// B160: total rows as the catalog lists them: with a total code, the code's phrase first (the
+/// grand total by the code column, its subtotals per group), then the other total rows as usual.
+pub(crate) fn totals_text(t: &Table, info: &RowInfo, entries: &[TotalEntry], scopes: bool, max: usize) -> String {
+    if let Some(code) = info.codes.first()
+        && let Some((text, covered)) = crate::codes::coded_totals(t, &sql_names(t), code, entries)
+    {
+        let rest: Vec<TotalEntry> = entries.iter().filter(|e| !covered.contains(&e.row)).cloned().collect();
+        return if rest.is_empty() { text } else { format!("{text}; {}", total_entries_text(&rest, &t.id(), scopes, max)) };
+    }
+    total_entries_text(entries, &t.id(), scopes, max)
 }
 
 fn total_rows_text(rows: &[TotalRow], n: usize) -> String {
@@ -1524,6 +1604,7 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         let mut out = Vec::new();
         let mut layouts: HashMap<Vec<(String, &'static str)>, String> = HashMap::new();
         let mut shapes: HashMap<Vec<&'static str>, (String, Vec<String>)> = HashMap::new();
+        let mut rolls: HashMap<(i64, i64), String> = HashMap::new();
         for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
             if !keep[k] {
                 continue;
@@ -1592,6 +1673,7 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             let mut lines = vec![line, columns_line(t, &names, inline.is_none(), &tys)];
             lines.extend(facts::scale_line(t)); // B85: "(All values in 000s)"
             lines.extend(facts::column_notes_line(norm, t, &names)); // B83: footnotes defining columns
+            lines.extend(rolling_text(t, &mut rolls)); // B162: overlapping periods
             // B2/B18: "<id> - <name>" columns and how to group them, right under the columns.
             let ents = tm(3, || crate::entity::detect(t));
             lines.extend(ents.iter().map(|e| crate::entity::line(e, &t.id())));
@@ -1700,6 +1782,30 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         let mut seen_totals: HashMap<String, String> = HashMap::new();
         let mut seen_cols: HashMap<Vec<String>, String> = HashMap::new();
         let mut seen_prio: HashMap<Vec<String>, String> = HashMap::new();
+        // B162: the rolling-windows line on the first table listed with those windows, naming the
+        // others (the question's tables come first).
+        let mut rolls: Vec<Option<String>> = vec![None; norm.tables.len()];
+        {
+            let order: Vec<usize> = (0..norm.tables.len()).filter(|&k| keep[k] && prio[k]).chain((0..norm.tables.len()).filter(|&k| keep[k] && !prio[k])).collect();
+            // (length and step, the first table, its windows, the other tables)
+            type Windows = ((i64, i64), usize, crate::views::Rolling, Vec<String>);
+            let mut by: Vec<Windows> = Vec::new();
+            for k in order {
+                let t = &norm.tables[k];
+                let Some(r) = crate::views::rolling(t) else { continue };
+                match by.iter_mut().find(|x| x.0 == (r.len, r.step)) {
+                    Some(x) => x.3.push(t.id()),
+                    None => by.push(((r.len, r.step), k, r, Vec::new())),
+                }
+            }
+            for (_, k, r, others) in by {
+                let mut l = crate::views::rolling_line(&norm.tables[k], &r, None);
+                if !others.is_empty() {
+                    l.push_str(&format!("; the same windows in {}", id_list(&others, 6)));
+                }
+                rolls[k] = Some(l);
+            }
+        }
         for (t, _) in norm.tables.iter().zip(shown).filter(|(_, s)| **s) {
             let names = sql_names(t);
             let list: Vec<String> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(i, _)| names[i].clone()).collect();
@@ -1736,8 +1842,13 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             if !entries.is_empty() && mode != BriefMode::Plain && !prio[k] {
                 // B150: a table the question does not match: how many, not which.
                 tail.push_str(&format!(" · {} in {}_all", plural(entries.len(), "total row", "total rows"), t.id()));
+                // B160: a total code, briefly.
+                if let Some(code) = info.codes.first() {
+                    tail.push_str(&format!(" ({})", crate::codes::brief_note(code, &names)));
+                }
             } else if !entries.is_empty() {
-                let text = total_entries_text(&entries, &t.id(), false, 15) + &group_totals_note(&entries, None).unwrap_or_default();
+                let groups = if info.codes.is_empty() && info.key_cols.is_empty() { group_totals_note(&entries, None) } else { None };
+                let text = totals_text(t, info, &entries, false, 15) + &groups.unwrap_or_default();
                 let key = format!("{text}|{}", entries.iter().map(|e| e.row.to_string()).collect::<Vec<_>>().join(","));
                 match seen_totals.get(&key) {
                     Some(first) => tail.push_str(&format!(" · total rows as in {first}")),
@@ -1762,6 +1873,11 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             if let Some(l) = facts::column_notes_line(norm, t, &names) {
                 view.push('\n');
                 view.push_str(&l);
+            }
+            // B162: overlapping periods, once for all tables with the same windows.
+            if let Some(l) = &rolls[k] {
+                view.push('\n');
+                view.push_str(l);
             }
             let member = BriefMember {
                 n: t.n,
@@ -2104,7 +2220,7 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
     let longs: Vec<String> = norm.tables.iter().filter_map(|t| crate::views::table_view(t).map(|lv| lv.name)).collect();
     if !longs.is_empty() {
         tail.push(format!(
-            "SQL long {} {} (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)",
+            "SQL long {} {} (sum these; …_long_all adds the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)",
             if longs.len() == 1 { "view" } else { "views" },
             id_list(&longs, 8)
         ));
@@ -2277,7 +2393,7 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     if !entries.is_empty() {
         lines.push(format!(
             "total rows (only in {id}_all, _row_type, unless marked): {}",
-            total_entries_text(&entries, &t.id(), true, 24),
+            totals_text(t, &info, &entries, true, 24),
             id = t.id()
         ));
     }
@@ -2296,6 +2412,7 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     lines.extend(types::no_sum_line(t, &names, &tys, mixed).map(|l| l.trim_start().to_string()));
     lines.extend(facts::scale_line(t).map(|l| l.trim_start().to_string())); // B85
     lines.extend(facts::column_notes_line(norm, t, &names).map(|l| l.trim_start().to_string())); // B83
+    lines.extend(rolling_text(t, &mut HashMap::new()).map(|l| l.trim_start().to_string())); // B162
     // B80: ID columns with their names in another column.
     let pairs = crate::entity::id_name_pairs(t, &data_rows(t));
     lines.extend(pairs.iter().map(|p| crate::entity::id_name_line(p, &t.id()).trim_start().to_string()));

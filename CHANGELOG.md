@@ -8,6 +8,26 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Changed
 
+- **Total codes are said once, with their numbers** (B160): a code column that splits every group
+  (`Sexo` M / F / T, where `T` = M + F, checked on the numbers, never by the name) turns a table's
+  total rows into `grand total 'Total' by Sexo @8–10: M 4,233 · F 3,245 · T 7,478 in TOTAL (T = M +
+  F: don't add); subtotals (_row_type 'subtotal') Sexo 'T' @13/16/…`; tables listed in one line
+  say `(Sexo 'T' = M + F: don't add)`. Total rows split by such a code are labelled with their full
+  key (`'Total/M'`), no longer `'M'@8, 'Total'@9` (row 9 was the women's row). Long views say which
+  view to sum: `sum T3_long; T3_long_all adds the total rows (filter _row_type)`.
+- **A column name copied in the catalog's grouped form works in SQL** (B161): `"a / {b}"` that
+  stands for exactly one column runs as `"a / b"`, with a note; "did you mean" lists the closest
+  name first (case, accents, spaces, punctuation and braces aside) and only that one when it is
+  clearly closest. The grouped form stays: written out, the 30 scoreboard catalogs would be 4,230
+  tokens longer.
+- **Rolling period windows are flagged** (B162): `periods: rolling 3-month windows, 1-month step —
+  they overlap; the previous non-overlapping window is 3 rows earlier (latest col_A 'May-Jul 2026'
+  = period 2026-05/2026-07; the one before it without overlap: 'Feb-Apr 2026')`.
+- The info scoreboard has naive-query trap checks (the query an agent writes first must be right,
+  or the catalog must warn about it): pt-social total rows, pt-tax grouped name, uk-ons rolling
+  windows, henry-hub `_long_all`. All five failed before and pass now; 168/168 checks, catalog
+  tokens 42,034 → 42,183 (+0.4 %).
+
 - **Unit exponents stay in column names** (B141): a `²` / `³` right after a length unit is part of
   the unit, not a footnote mark, so `Fläche km²` stays `Fläche km²` (was `Fläche km`), as do
   `Einwohner je km²`, `Wasser Mio. m³` and `kg/m³`; `Fläche km²¹` loses only the `¹`.

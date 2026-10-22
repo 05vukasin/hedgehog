@@ -277,6 +277,45 @@ fn total_rows() {
     s.check();
 }
 
+/// B160–B162: total rows split by a code column (Sexo 'T' = M + F), a column name copied in the
+/// catalog's grouped form, rolling 3-month windows.
+#[test]
+fn total_codes_grouped_names_rolling() {
+    let mut s = Snap::new("total_codes_grouped_names_rolling");
+    let mut wb = Workbook::new();
+    let mut data = vec![vec![S("Relação Jurídica"), S("Sexo"), S("Técnico"), S("Outros"), S("TOTAL")]];
+    let groups: [(&str, [f64; 2], [f64; 2]); 4] =
+        [("Comissão", [8.0, 6.0], [4.0, 7.0]), ("CTFP indeterminado", [712.0, 1429.0], [152.0, 87.0]), ("CTFP certo", [3.0, 5.0], [0.0, 1.0]), ("Outras", [4.0, 3.0], [27.0, 1.0])];
+    let sum = |k: usize, j: usize| groups.iter().map(|g| if j == 0 { g.1[k] } else { g.2[k] }).sum::<f64>();
+    let tot = |k: usize| sum(k, 0) + sum(k, 1);
+    data.push(vec![S("Total"), S("M"), N(sum(0, 0)), N(sum(0, 1)), N(tot(0))]);
+    data.push(vec![S(""), S("F"), N(sum(1, 0)), N(sum(1, 1)), N(tot(1))]);
+    data.push(vec![S(""), S("T"), N(sum(0, 0) + sum(1, 0)), N(sum(0, 1) + sum(1, 1)), N(tot(0) + tot(1))]);
+    for (name, a, b) in groups {
+        data.push(vec![S(name), S("M"), N(a[0]), N(b[0]), N(a[0] + b[0])]);
+        data.push(vec![S(""), S("F"), N(a[1]), N(b[1]), N(a[1] + b[1])]);
+        data.push(vec![S(""), S("T"), N(a[0] + a[1]), N(b[0] + b[1]), N(a[0] + a[1] + b[0] + b[1])]);
+    }
+    // The group label once per group, as in a report with merged cells.
+    rows(sheet(&mut wb, "Quadro 1"), 0, 0, &data);
+    s.save("social.xlsx", &mut wb);
+    s.open("social.xlsx");
+    s.describe("social.xlsx", "T1");
+    s.query("social.xlsx", "SELECT SUM(TOTAL) FROM T1");
+    s.query("social.xlsx", "SELECT SUM(TOTAL) FROM T1_all WHERE _row_type = 'total'");
+    // Grouped names (B161) and rolling windows (B162).
+    let mut csv = String::from("Period,\"Refund / Armed forces, 2017\",\"Refund / Fire brigades, 2017\",Rate\n");
+    let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    for m in 0..8 {
+        csv.push_str(&format!("{}-{} 2026,{},{},{}\n", months[m], months[m + 2], 100 + m, 50 + 2 * m, 4.0 + m as f64 / 10.0));
+    }
+    s.write("refunds.csv", &csv);
+    s.open("refunds.csv");
+    s.query("refunds.csv", "SELECT SUM(\"Refund / {Armed forces, 2017}\") AS armed FROM T1");
+    s.query("refunds.csv", "SELECT SUM(\"Refund / Armed forces 2017\") FROM T1");
+    s.check();
+}
+
 /// Periods: wide years become a long view; text periods ('Jan-24') and averages ('Ø 22') as columns.
 #[test]
 fn periods() {

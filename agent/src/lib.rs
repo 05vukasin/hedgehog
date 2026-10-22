@@ -18,6 +18,7 @@
 pub mod brief;
 pub mod cache;
 pub mod catalog;
+pub mod codes;
 pub mod cells;
 pub mod dialect;
 pub mod entity;
@@ -626,6 +627,23 @@ impl Session {
         let res = match first {
             Ok(r) => r,
             Err(e) if e == sql::CANCELLED => return Err(cancelled()),
+            // B161: a name copied in the catalog's grouped form (`"a / {b}"`) that stands for
+            // exactly one column: run the query with the name written out, and say so.
+            Err(e) if e.contains("no such column") && ungroup_names(norm, db, &used, sql).is_some() => {
+                let (fixed, read) = ungroup_names(norm, db, &used, sql).expect("checked in the guard");
+                return match db.query(&fixed, limit, timeout) {
+                    Ok(r) => {
+                        let reads: Vec<String> = read.iter().map(|(w, n)| format!("{} as {}", quote_ident(w), quote_ident(n))).collect();
+                        Ok(format!(
+                            "{}\nnote: read {} ({{…}} in the catalog groups column names; write each name in full)",
+                            render(norm, db, &used, &fixed, r, timeout),
+                            reads.join(", ")
+                        ))
+                    }
+                    Err(e) if e == sql::CANCELLED => Err(cancelled()),
+                    Err(e) => Err(ToolError(sql_error_hint(norm, db, &used, &fixed, &e, timeout))),
+                };
+            }
             Err(e) => {
                 let mut msg = sql_error_hint(norm, db, &used, sql, &e, timeout);
                 if e.contains("no such table") {
@@ -886,6 +904,54 @@ fn tables_in_sql<'a>(norm: &'a Normalized, sql: &str) -> Vec<&'a Table> {
     out
 }
 
+/// The column names a query can mean: those of the tables it names (all tables when it names
+/// none), with the entity columns of the SQL views, as (table id, name).
+fn scope_names(norm: &Normalized, db: &sql::Db, used: &[&Table]) -> Vec<(String, String)> {
+    let scope: Vec<&Table> = if used.is_empty() { norm.tables.iter().collect() } else { used.to_vec() };
+    let mut names: Vec<(String, String)> = Vec::new();
+    for t in &scope {
+        for (c, name) in t.columns.iter().zip(catalog::sql_names(t)) {
+            if c.role != ColRole::RowType {
+                names.push((t.id(), name));
+            }
+        }
+        for e in db.entities.iter().filter(|(n, _)| *n == t.n).flat_map(|x| &x.1) {
+            names.push((t.id(), e.id_col.clone()));
+            names.push((t.id(), e.name_col.clone()));
+        }
+    }
+    names
+}
+
+/// B161: the statement with every quoted name written in the catalog's grouped form (`"a / {b}"`,
+/// `"a / {b / {c}}"`) replaced by the one column it stands for ([`brief::resolve_grouped`]: exact,
+/// never a guess), and the names replaced (as written, as read); None when none is.
+fn ungroup_names(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str) -> Option<(String, Vec<(String, String)>)> {
+    let toks = sqlscan::tokens(sql);
+    if !toks.iter().any(|t| matches!(&t.tok, sqlscan::Tok::Ident { name, quoted: true } if name.contains(['{', '}']))) {
+        return None;
+    }
+    let names = scope_names(norm, db, used);
+    let mut out = String::new();
+    let mut read: Vec<(String, String)> = Vec::new();
+    let mut at = 0;
+    for t in &toks {
+        let sqlscan::Tok::Ident { name, quoted: true } = &t.tok else { continue };
+        let Some(col) = brief::resolve_grouped(name, names.iter().map(|(_, n)| n.as_str())) else { continue };
+        out.push_str(&sql[at..t.start]);
+        out.push_str(&quote_ident(col));
+        at = t.end;
+        if !read.iter().any(|(w, _)| w == name) {
+            read.push((name.clone(), col.to_string()));
+        }
+    }
+    if read.is_empty() {
+        return None;
+    }
+    out.push_str(&sql[at..]);
+    Some((out, read))
+}
+
 /// Rows an error returns when it names the rows the query was after (B15).
 const ERROR_ROWS: usize = 10;
 /// Characters of those rows at most.
@@ -919,22 +985,12 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
             return msg;
         }
         let scope: Vec<&Table> = if used.is_empty() { norm.tables.iter().collect() } else { used.to_vec() };
-        let mut names: Vec<(String, String)> = Vec::new();
-        for t in &scope {
-            for (c, name) in t.columns.iter().zip(catalog::sql_names(t)) {
-                if c.role != ColRole::RowType {
-                    names.push((t.id(), name));
-                }
-            }
-            for e in db.entities.iter().filter(|(n, _)| *n == t.n).flat_map(|x| &x.1) {
-                names.push((t.id(), e.id_col.clone()));
-                names.push((t.id(), e.name_col.clone()));
-            }
-        }
-        let close = closest(wanted, names.iter().map(|(_, n)| n.as_str()), 4);
-        let hits: Vec<String> = names
+        let names = scope_names(norm, db, used);
+        // B161: the closest first; when one is clearly closest, only that one.
+        let close = text::clearly_closest(wanted, names.iter().map(|(_, n)| n.as_str()), 4);
+        let hits: Vec<String> = close
             .iter()
-            .filter(|(_, n)| close.contains(&n.as_str()))
+            .flat_map(|c| names.iter().filter(move |(_, n)| n == c))
             .take(6)
             .map(|(t, n)| format!("{t}.{}", quote_ident(n)))
             .collect();

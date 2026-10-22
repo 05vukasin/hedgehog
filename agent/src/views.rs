@@ -481,7 +481,144 @@ pub fn catalog_line(t: &Table, lv: &LongView, mixed: Option<usize>, total_rows: 
         s.push_str(&format!(" · rows mix measures: filter {} first", ident(&names[m])));
     }
     if total_rows {
-        s.push_str(&format!(" · total rows only in {}", lv.all_name));
+        // A model summed `_long_all` whole and got every total twice: which view to sum.
+        s.push_str(&format!(" · sum {}; {} adds the total rows (filter _row_type)", lv.name, lv.all_name));
+    }
+    s
+}
+
+// ------------------------------------------------------------------------------------------------
+// rolling windows (B162)
+
+/// An ISO period as months since year 0 and its length in months: `2026` (12), `2026-Q2` (3),
+/// `2026-05` (1).
+fn iso_months(s: &str) -> Option<(i64, i64)> {
+    let s = s.trim();
+    let y: i64 = s.get(..4)?.parse().ok()?;
+    match s.get(4..) {
+        Some("") => Some((y * 12, 12)),
+        Some(rest) => {
+            let rest = rest.strip_prefix('-')?;
+            if let Some(q) = rest.strip_prefix('Q') {
+                let q: i64 = q.parse().ok().filter(|q| (1..=4).contains(q))?;
+                Some((y * 12 + (q - 1) * 3, 3))
+            } else {
+                let m: i64 = rest.parse().ok().filter(|m| (1..=12).contains(m)).filter(|_| rest.len() == 2)?;
+                Some((y * 12 + m - 1, 1))
+            }
+        }
+        None => None,
+    }
+}
+
+/// A period range `2026-05/2026-07` as (first month, months covered).
+fn iso_range(s: &str) -> Option<(i64, i64)> {
+    let (a, b) = s.split_once('/')?;
+    let (a, _) = iso_months(a)?;
+    let (b, lb) = iso_months(b)?;
+    (b >= a).then_some((a, b + lb - a))
+}
+
+fn months_text(n: i64) -> String {
+    if n % 12 == 0 { format!("{}-year", n / 12) } else { format!("{n}-month") }
+}
+
+/// The most common value and how often it occurs.
+fn mode(v: &[i64]) -> Option<(i64, usize)> {
+    let mut counts: Vec<(i64, usize)> = Vec::new();
+    for &x in v {
+        match counts.iter_mut().find(|c| c.0 == x) {
+            Some(c) => c.1 += 1,
+            None => counts.push((x, 1)),
+        }
+    }
+    counts.into_iter().max_by_key(|c| (c.1, std::cmp::Reverse(c.0)))
+}
+
+/// Rolling windows of a table: its period column (ISO ranges, `2026-05/2026-07`), the window
+/// length and the step, both in months, when consecutive windows overlap (step < length).
+pub struct Rolling {
+    pub col: usize,
+    /// The column with the file's own labels (`May-Jul 2026`) the period column was read from.
+    pub label: Option<usize>,
+    pub len: i64,
+    pub step: i64,
+}
+
+/// B162: a period column of overlapping windows (`Jan-Mar`, `Feb-Apr`, `Mar-May`: 3-month windows,
+/// one month apart). Non-overlapping periods (quarters one quarter apart) are not rolling.
+pub fn rolling(t: &Table) -> Option<Rolling> {
+    let rows: Vec<usize> = crate::catalog::data_rows(t);
+    for (i, c) in data_cols(t) {
+        if c.dtype != Dtype::Text {
+            continue;
+        }
+        let mut wins: Vec<(i64, i64)> = Vec::new();
+        for &r in &rows {
+            match c.values.get(r) {
+                Some(hh_core::normalize::Out::Text(s)) => match iso_range(s) {
+                    Some(w) => wins.push(w),
+                    None => break,
+                },
+                _ => continue,
+            }
+        }
+        if wins.len() < 4 || wins.len() * 10 < rows.len() * 9 {
+            continue;
+        }
+        let (len, n) = mode(&wins.iter().map(|w| w.1).collect::<Vec<_>>())?;
+        let mut starts: Vec<i64> = wins.iter().map(|w| w.0).collect();
+        starts.sort_unstable();
+        starts.dedup();
+        let steps: Vec<i64> = starts.windows(2).map(|w| w[1] - w[0]).collect();
+        let (step, k) = mode(&steps)?;
+        if n * 10 < wins.len() * 9 || k * 10 < steps.len() * 9 || step <= 0 || step >= len {
+            continue;
+        }
+        let label = (c.derived_kind() == Some("period") && i > 0 && t.columns[i - 1].dtype == Dtype::Text).then(|| i - 1);
+        return Some(Rolling { col: i, label, len, step });
+    }
+    None
+}
+
+/// The catalog line of rolling windows: `periods: rolling 3-month windows, 1-month step — they
+/// overlap; the previous non-overlapping window is 3 rows earlier (latest col_A 'May-Jul 2026' =
+/// period 2026-05/2026-07; the one before without overlap: 'Feb-Apr 2026')`. `first`: an earlier
+/// table with the same windows, named instead.
+pub fn rolling_line(t: &Table, r: &Rolling, first: Option<&str>) -> String {
+    let what = format!("rolling {} windows, {} step", months_text(r.len), months_text(r.step));
+    if let Some(f) = first {
+        return format!("    periods: overlapping windows as in {f}");
+    }
+    let names = sql_names(t);
+    let text = |col: usize, row: usize| match t.columns[col].values.get(row) {
+        Some(hh_core::normalize::Out::Text(s)) => Some(s.trim().to_string()),
+        _ => None,
+    };
+    let rows = crate::catalog::data_rows(t);
+    let win = |row: usize| text(r.col, row).and_then(|s| iso_range(&s));
+    let latest = rows.iter().copied().filter(|&x| win(x).is_some()).max_by_key(|&x| win(x).map(|w| w.0));
+    let mut s = format!("    periods: {what} — they overlap");
+    let gap = r.len / r.step;
+    if r.len % r.step == 0 {
+        s.push_str(&format!("; the previous non-overlapping window is {gap} rows earlier"));
+    }
+    if let Some(l) = latest {
+        let (start, _) = win(l).unwrap_or_default();
+        let prev = rows.iter().copied().find(|&x| win(x).is_some_and(|w| w.0 == start - r.len));
+        let show = |row: usize| match r.label {
+            Some(c) => text(c, row).map(|v| format!("'{v}'")),
+            None => text(r.col, row).map(|v| format!("'{v}'")),
+        };
+        let label_col = r.label.map(|c| format!("{} ", ident(&names[c]))).unwrap_or_default();
+        if let Some(lv) = show(l) {
+            let iso = if r.label.is_some() { format!(" = {} {}", ident(&names[r.col]), text(r.col, l).unwrap_or_default()) } else { String::new() };
+            s.push_str(&format!(" (latest {label_col}{lv}{iso}"));
+            if let Some(p) = prev.and_then(show) {
+                s.push_str(&format!("; the one before it without overlap: {p}"));
+            }
+            s.push(')');
+        }
     }
     s
 }
@@ -513,6 +650,62 @@ mod tests {
             footnote_marks: Vec::new(),
             values,
         }
+    }
+
+    /// A table of labels (col_A) and their derived ISO periods (`period`, no source column).
+    fn periods_table(labels: &[&str], isos: &[&str]) -> Table {
+        let n = labels.len();
+        let mut period = col("period", ColRole::Data, Dtype::Text, 0, isos.iter().map(|s| Out::Text((*s).into())).collect());
+        period.source_col = None;
+        period.original_header = Vec::new();
+        Table {
+            n: 2,
+            sheet: "T2_x".into(),
+            source_sheet: "1".into(),
+            rect: Rect { top: 0, left: 0, bottom: n as u32, right: 2 },
+            header_top: 0,
+            header_rows: 1,
+            title: None,
+            notes: vec![],
+            confidence: 0.9,
+            columns: vec![
+                col("col_A", ColRole::Data, Dtype::Text, 0, labels.iter().map(|s| Out::Text((*s).into())).collect()),
+                period,
+                col("rate", ColRole::Data, Dtype::Number, 1, (0..n).map(|i| Out::Num(4.0 + i as f64 / 10.0)).collect()),
+            ],
+            src_rows: (1..=n as u32).collect(),
+            row_types: vec![RowType::Data; n],
+            transforms: Transforms::default(),
+            warnings: vec![],
+        }
+    }
+
+    #[test]
+    fn rolling_windows_overlap() {
+        let t = periods_table(
+            &["Jan-Mar 2026", "Feb-Apr 2026", "Mar-May 2026", "Apr-Jun 2026", "May-Jul 2026"],
+            &["2026-01/2026-03", "2026-02/2026-04", "2026-03/2026-05", "2026-04/2026-06", "2026-05/2026-07"],
+        );
+        let r = rolling(&t).expect("rolling");
+        assert_eq!((r.col, r.label, r.len, r.step), (1, Some(0), 3, 1));
+        assert_eq!(
+            rolling_line(&t, &r, None),
+            "    periods: rolling 3-month windows, 1-month step — they overlap; the previous non-overlapping window is 3 rows earlier \
+             (latest col_A 'May-Jul 2026' = period 2026-05/2026-07; the one before it without overlap: 'Feb-Apr 2026')"
+        );
+        assert_eq!(rolling_line(&t, &r, Some("T2")), "    periods: overlapping windows as in T2");
+        // Quarters one quarter apart do not overlap: not rolling.
+        let q = periods_table(
+            &["Jan-Mar 2025", "Apr-Jun 2025", "Jul-Sep 2025", "Oct-Dec 2025", "Jan-Mar 2026"],
+            &["2025-01/2025-03", "2025-04/2025-06", "2025-07/2025-09", "2025-10/2025-12", "2026-01/2026-03"],
+        );
+        assert!(rolling(&q).is_none());
+        let q = periods_table(&["a", "b", "c", "d"], &["2025-Q1/2025-Q1", "2025-Q2/2025-Q2", "2025-Q3/2025-Q3", "2025-Q4/2025-Q4"]);
+        assert!(rolling(&q).is_none());
+        // Three-year averages one year apart: rolling.
+        let y = periods_table(&["a", "b", "c", "d"], &["2019/2021", "2020/2022", "2021/2023", "2022/2024"]);
+        let r = rolling(&y).expect("rolling years");
+        assert_eq!((r.len, r.step), (36, 12));
     }
 
     /// Region × 2021..2024 plus a change column and a total row.
@@ -581,7 +774,7 @@ mod tests {
         assert_eq!(tot.rows[0][0], "44");
         let line = catalog_line(t, &lv, None, true);
         assert!(line.contains("T1_long: the 4 year columns \"2021\"..\"2024\" as rows (Region, period '2021'..'2024', value)"), "{line}");
-        assert!(line.contains("total rows only in T1_long_all"), "{line}");
+        assert!(line.contains("sum T1_long; T1_long_all adds the total rows (filter _row_type)"), "{line}");
         // B21: types from the title (bare year headers), the change column, the label column.
         let tys = crate::types::classify(t, &sql_names(t), None, &[]);
         let ty = |i: usize| tys[i].clone().unwrap();

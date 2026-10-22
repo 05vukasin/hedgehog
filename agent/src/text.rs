@@ -229,6 +229,28 @@ pub fn closest<'a>(wanted: &str, names: impl IntoIterator<Item = &'a str>, n: us
     out
 }
 
+/// B161: the names most similar to `wanted` for a "did you mean", best first, compared with case,
+/// accents, spaces, punctuation and the catalog's grouping braces ignored; when one is clearly the
+/// closest (the same name that way, or well ahead of the next), only that one.
+pub fn clearly_closest<'a>(wanted: &str, names: impl IntoIterator<Item = &'a str>, n: usize) -> Vec<&'a str> {
+    let w = hh_core::values::norm_key(wanted);
+    let mut scored: Vec<(f64, &str)> = Vec::new();
+    for c in names {
+        let s = similarity(&w, &hh_core::values::norm_key(c));
+        if s >= 0.5 && !scored.iter().any(|x| x.1 == c) {
+            scored.push((s, c));
+        }
+    }
+    // Stable: equal scores keep the names' order.
+    scored.sort_by(|a, b| b.0.total_cmp(&a.0));
+    if let [(a, best), (b, _), ..] = scored.as_slice()
+        && ((*a >= 1.0 && *b < 1.0) || a - b >= 0.15)
+    {
+        return vec![best];
+    }
+    scored.into_iter().take(n).map(|x| x.1).collect()
+}
+
 /// Years 1950–2049 that stand alone in `s` (not part of a longer number).
 pub fn years_in(s: &str) -> Vec<i32> {
     let b = s.as_bytes();
@@ -296,6 +318,23 @@ mod tests {
         let names = ["De-zember / 20211)", "Oktober / 2022", "Region"];
         assert_eq!(closest("Dezember / 2021", names, 2)[0], "De-zember / 20211)");
         assert!(closest("xyz", names, 2).is_empty());
+    }
+
+    #[test]
+    fn clearly_closest_first_and_alone() {
+        let cols = [
+            "RESTITUIÇÃO DO IMPOSTO / Comunidades Religiosas - DL 20/90 de 13/01",
+            "RESTITUIÇÃO DO IMPOSTO / Instituições Particulares de Solidariedade Social - DL n.º 84/2017, de 21/07",
+            "RESTITUIÇÃO DO IMPOSTO / Forças Armadas e de Segurança - DL n.º 84/2017, de 21/07",
+            "RESTITUIÇÃO DO IMPOSTO / Associações e Corpos Bombeiros - DL n.º 84/2017, de 21/07",
+        ];
+        // Braces, accents and case aside it is the third column: only that one.
+        let w = "restituicao do imposto / {Forcas Armadas e de Seguranca - DL n.º 84/2017, de 21/07}";
+        assert_eq!(clearly_closest(w, cols, 4), [cols[2]]);
+        // No clear winner: the closest first, several.
+        let names = ["Umsatz 2023", "Umsatz 2024", "Region"];
+        let c = clearly_closest("Umsatz 2025", names, 3);
+        assert_eq!(c, ["Umsatz 2023", "Umsatz 2024"]);
     }
 
     #[test]
