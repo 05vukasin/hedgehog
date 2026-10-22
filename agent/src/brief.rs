@@ -154,9 +154,152 @@ pub fn run_line(members: &[RunMember], first: &str, facts: &str) -> String {
     )
 }
 
+// ------------------------------------------------------------------------------------------------
+// reading the groups back (B161)
+
+/// Most names one grouped text is expanded to.
+const MAX_EXPANSIONS: usize = 4096;
+
+/// Splits the inside of a group into its members: at `; ` when there is one outside nested
+/// braces, else at `, ` (as [`join`] writes them).
+fn members(inner: &str) -> Vec<&str> {
+    let sep = if top_level(inner, "; ") { "; " } else { ", " };
+    let b = inner.as_bytes();
+    let (mut out, mut depth, mut from, mut k) = (Vec::new(), 0i32, 0, 0);
+    while k < b.len() {
+        match b[k] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            // (the separator is ASCII: a match is at a character boundary)
+            _ if depth == 0 && b[k..].starts_with(sep.as_bytes()) => {
+                out.push(&inner[from..k]);
+                k += sep.len();
+                from = k;
+                continue;
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    out.push(&inner[from..]);
+    out
+}
+
+fn top_level(s: &str, sep: &str) -> bool {
+    let mut depth = 0i32;
+    for (k, c) in s.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            _ if depth == 0 && s[k..].starts_with(sep) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// The names a grouped text stands for: `a / {b, c / {d, e}} / f` → "a / b / f", "a / c / d / f",
+/// "a / c / e / f" (the catalog's shorthand, [`compress_names`]). A text without braces is itself;
+/// unbalanced braces give nothing.
+pub fn expand(s: &str) -> Vec<String> {
+    let Some(i) = s.find('{') else { return vec![s.to_string()] };
+    let mut depth = 0i32;
+    let mut close = None;
+    for (k, c) in s[i..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(i + k);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(j) = close else { return Vec::new() };
+    let (pre, inner, post) = (&s[..i], &s[i + 1..j], &s[j + 1..]);
+    let mut out = Vec::new();
+    for m in members(inner) {
+        for x in expand(&format!("{pre}{}{post}", m.trim())) {
+            if out.len() >= MAX_EXPANSIONS {
+                return out;
+            }
+            out.push(x);
+        }
+    }
+    out
+}
+
+/// B161: the one column a name written in the catalog's grouped form stands for, when an agent
+/// copied the shorthand into SQL (`"RESTITUIÇÃO DO IMPOSTO / {Forças Armadas …}"`): the name read
+/// with its braces expanded, or with them dropped (a member with a comma of its own), compared
+/// with the columns exactly (case-insensitively, as SQLite does). None when the name has no
+/// braces, or when it fits no column or more than one: exact only, never a guess.
+pub fn resolve_grouped<'a>(written: &str, columns: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+    if !written.contains('{') && !written.contains('}') {
+        return None;
+    }
+    let mut cands: Vec<String> = expand(written);
+    cands.push(written.replace(['{', '}'], ""));
+    // A member's `[kind]` (`{b[rate], c}`) is not part of its name.
+    let unkinded: Vec<String> = cands.iter().filter_map(|c| c.rsplit_once('[').filter(|(_, k)| k.ends_with(']')).map(|(n, _)| n.trim_end().to_string())).collect();
+    cands.extend(unkinded);
+    let key = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let cands: Vec<String> = cands.iter().map(|c| key(c)).collect();
+    let mut hit: Option<&str> = None;
+    for c in columns {
+        if cands.contains(&key(c)) {
+            match hit {
+                Some(h) if !h.eq_ignore_ascii_case(c) => return None,
+                _ => hit = Some(c),
+            }
+        }
+    }
+    hit
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grouped_names_read_back() {
+        assert_eq!(expand("a / {b, c / {d, e}} / f"), ["a / b / f", "a / c / d / f", "a / c / e / f"]);
+        assert_eq!(expand("A / {x, y; z}"), ["A / x, y", "A / z"]);
+        assert_eq!(expand("{a, b} / c"), ["a / c", "b / c"]);
+        assert_eq!(expand("plain"), ["plain"]);
+        assert!(expand("a / {b").is_empty());
+        // Every grouped text compress_names writes expands to its names.
+        let n = v(&["Jahr", "P / U / Mrd. EUR", "P / U / %", "Q, r / U / 2020 = 100", "Q, r / U / %", "A / x, y", "A / z"]);
+        let back: Vec<String> = compress_names(&n).iter().flat_map(|g| expand(g.trim_matches('"'))).collect();
+        assert_eq!(back, n);
+    }
+
+    #[test]
+    fn grouped_names_resolve_exactly() {
+        let cols = [
+            "DESIGNAÇÃO SOCIAL",
+            "RESTITUIÇÃO DO IMPOSTO / Comunidades Religiosas - DL 20/90 de 13/01",
+            "RESTITUIÇÃO DO IMPOSTO / Forças Armadas e de Segurança - DL n.º 84/2017, de 21/07",
+            "RESTITUIÇÃO DO IMPOSTO / Associações e Corpos Bombeiros - DL n.º 84/2017, de 21/07",
+        ];
+        // One member copied with its braces (it has a comma of its own): the braces dropped.
+        let w = "RESTITUIÇÃO DO IMPOSTO / {Forças Armadas e de Segurança - DL n.º 84/2017, de 21/07}";
+        assert_eq!(resolve_grouped(w, cols), Some(cols[2]));
+        // Nested groups, other case.
+        let cols2 = ["Isenção / IABA / Álcool", "Isenção / IABA / Cerveja", "Isenção / ISP / Gás"];
+        assert_eq!(resolve_grouped("isenção / {IABA / {Cerveja}}", cols2), Some(cols2[1]));
+        assert_eq!(resolve_grouped("Isenção / {IABA / {Álcool[rate]}}", cols2), Some(cols2[0]));
+        // Two columns: not one name, no answer.
+        assert_eq!(resolve_grouped("Isenção / IABA / {Álcool, Cerveja}", cols2), None);
+        // Close is not enough: exact only.
+        assert_eq!(resolve_grouped("Isenção / {IABA / Cervejas}", cols2), None);
+        assert_eq!(resolve_grouped("RESTITUIÇÃO DO IMPOSTO / {Forcas Armadas e de Seguranca - DL n.º 84/2017, de 21/07}", cols), None);
+        // No braces: nothing to resolve.
+        assert_eq!(resolve_grouped("DESIGNAÇÃO SOCIAL", cols), None);
+    }
 
     fn v(names: &[&str]) -> Vec<String> {
         names.iter().map(|s| s.to_string()).collect()
