@@ -57,7 +57,11 @@ pub fn parallel_read_stats() -> (usize, usize, usize) {
 
 /// Counts a part another reader (ODS tables) read in parallel, or gave up on after starting.
 pub(crate) fn count_part(done: bool) {
-    if done { PARTS.fetch_add(1, Relaxed); } else { GAVE_UP.fetch_add(1, Relaxed); }
+    if done {
+        PARTS.fetch_add(1, Relaxed);
+    } else {
+        GAVE_UP.fetch_add(1, Relaxed);
+    }
 }
 
 thread_local! {
