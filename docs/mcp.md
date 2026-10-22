@@ -123,7 +123,7 @@ tables). Tables are named `T1`, `T2`, … per file, as in the [manifest](normali
 
 | Tool | Arguments | Returns |
 |---|---|---|
-| `open_file` | `path` | The catalog: file line, time coverage, tables with source range, rows, total rows, every column (type, unit; value ranges for up to 14 columns), all values of small label columns, mixed measures, group column, totals check, the rows of small tables as CSV, notes, warnings. Long catalogs list tables one line each. See [The catalog](#the-catalog). |
+| `open_file` | `path`, `question?` | The catalog: file line, time coverage, tables with source range, rows, total rows, every column (type, unit; value ranges for up to 14 columns), all values of small label columns, mixed measures, group column, totals check, the rows of small tables as CSV, notes, warnings. Long catalogs list tables one line each. With the user's `question`, the tables it is about come first and in full, the others one line each ([Question-aware catalog](#question-aware-catalog)). See [The catalog](#the-catalog). |
 | `describe_table` | `path`, `table` | Every column (SQL name, dtype with its semantic type, unit, nulls, distinct, min..max, example or all values (≤ 12), source column ← header cells), source and header range, group column, total rows, entity columns (`<col>_id`, `<col>_name`), first 5 rows as CSV. |
 | `query` | `path`, `sql`, `limit?` | One read-only SQLite `SELECT`/`WITH` as CSV with a header, at most `limit` rows (default 50, max 200), then `(<n> rows)` or `(<n> rows, showing first <k>)`. Text values are returned whole up to 2,000 characters (a `group_concat` list can be pasted into the next query); a longer value ends in `…[+N chars]` and a `note:` says to read the rest with `substr(col, 2001, 2000)`. |
 | `cells` | `path`, `sheet`, `range` | Original source cells (max 200) as `A1<TAB>value` lines, formulas after the value, merged areas marked; a formula saved without a value shows `(formula without a saved value)` and its formula. |
@@ -475,6 +475,72 @@ cut.
 The totals summary, total-row labels and rows, and the time coverage are the ones the
 [manifest](normalized-output.md) has (`tables[].totals`, `time_coverage`), from the same functions
 (except a TIME line taken from text period codes over an update stamp, below).
+
+### Question-aware catalog
+
+`open_file` takes an optional `question`: the user's question, as asked. A host that opens a file
+to answer a question passes it along (`{"path": "toll.xlsx", "question": "What was the highest
+unadjusted daily value in 2023?"}`; Node: `session.openFile(path, { question })`; Rust:
+`Session::open_file_for(path, Some(question))`). The catalog then lists the tables the question is
+about first and in full, the other tables one line each, and says so at the top:
+
+```text
+QUESTION matches T3 (ksb, 2023), T5 (index, 2023): first, in full; then 3 other tables, one line each
+T3  '42191-b01: Lkw-Maut-Fahrleistungsindex: Deutschland, Tage, …' ← '42191-b01'!A4:G6862 · 6,858 rows · …
+    columns (7): Datum[date 2008-01-01..2026-10-10, 6858 distinct] … "Kalender- und saisonbereinigt (KSB)"[index 53.5..129.3] …
+    do not sum: …
+T5  ← 'csv-42191-b01'!A1:G13717 · 13,716 rows · …
+    …
+(other tables, one line each)
+T1  'Daten zur Weiterverarbeitung ("CSV-Tabellen")' ← 'Inhaltsübersicht' · 7 rows · 3 cols: …
+T2  ← 'GENESIS-Online' · 3 rows
+T4  ← 'Erläuterung_zu_CSV-Tabellen' · 12 rows
+```
+
+How tables are matched (deterministic text matching, no model, no embeddings; `agent/src/question.rs`):
+
+- The question's words are folded (lowercase, accents removed, Serbian Cyrillic in Latin letters),
+  function words and question words of English, German, French, Spanish, Portuguese, Italian, Dutch
+  and Serbian dropped, and stemmed with a few suffix rules shared by these languages (`salaries` ~
+  `salary`, `Nächtigungen` ~ `Nächtigung`, `contratos` ~ `contrato`); a word of 5+ letters also
+  matches a longer word it starts, one of 6+ letters a compound that contains it
+  (`Bruttoinlandsprodukts`). A small list of statistical concepts links an English question to
+  other languages' names (`GDP` → `Bruttoinlandsprodukt`, `PIB`; `unemployment` → `Erwerbslose`;
+  `VAT` → `IVA`, …).
+- Each table offers its title (weighs most), sheet name, column names, the distinct values of its
+  text columns (label and code values), and its time coverage. A word counts by the best of these
+  that has it, times how few tables have it: a word every table has tells none apart and counts
+  nothing.
+- Years count when a table's coverage (or a year in its title, sheet or column names) holds them,
+  months (`January 2002`, `Juli 2026`) when its coverage holds the month, the narrowest table
+  first; with years in the question, a table that holds none of them counts less. `Table 1`,
+  `Tabelle 2.3` name a table by its title (`Table 1: …`, `1.1 Bruttoinlandsprodukt`) or sheet.
+- A question often has several parts: the best-scoring table is taken, then, while one scores at
+  least 40 % of that on the parts no chosen table answers well, the best of those; and the table
+  that has a distinctive word (one at most √n tables have) best. Tables the question names by number
+  come first, and then only tables for the other parts.
+
+What changes, and what does not:
+
+- Every table is still listed. When the catalog without a question lists every table in full, the
+  matching tables (up to 8) keep their full block (columns, values, inline rows, total rows, signs,
+  do-not-sum, mixed measures, quality facts) and the others get one line each (title, sheet, rows,
+  how many total rows, as many column names as fit in 20 characters per table); 3+ consecutive
+  other tables that show nothing more share one line (`T10..T26 · 17 tables, 34–35 rows ← sheets
+  '1.4', '1.5', …`). When it is a brief catalog (too long, or more than 40 tables), every table
+  stays one line and the matching ones come first with every column name (`first, with every
+  column name; then 149 other tables`).
+- The catalog stays as without a question when the question tells no table apart (no table, more
+  than 16 or every table matches), for a file of one table, and when the focused catalog would not
+  be shorter. Without `question` (or with an empty one) the output is byte-identical to before.
+- With a question the catalog is computed for it (not taken from the disk cache), so a file
+  reopened from the cache waits for its normalized form (a few ms to ~1 s on large files).
+- `HEDGEHOG_TRACE=1` prints each table's score, matched words and the chosen tables to stderr.
+
+Measured with [eval/info](../eval/info/QUESTION.md) (`score.py --question`, the 30 cases' prompts as
+questions): 168 of 168 checks stay in the catalog or one query away, 42,360 → 34,573 catalog
+tokens over all cases (−18 %), −29 % on the 12 multi-table files and −35 % on the 9 where the
+question told tables apart; no trap warning of a matching table lost.
 
 ### The catalog's TIME line
 

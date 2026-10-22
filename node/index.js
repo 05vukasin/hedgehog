@@ -100,8 +100,9 @@ class HedgehogSession {
     this.#s.allow(toPath(path))
   }
 
-  openFile(path) {
-    return tool(() => this.#s.openFile(path))
+  openFile(path, opts) {
+    const o = opts || {}
+    return tool(() => this.#s.openFile(path, o.question))
   }
 
   describeTable(path, table) {

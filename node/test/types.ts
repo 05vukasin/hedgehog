@@ -39,6 +39,7 @@ async function main(): Promise<void> {
   if (HedgehogSession.available) {
     const s = new HedgehogSession({ root: '.', allow: ['/data/q3.xlsx'] })
     const catalog: string = await s.openFile('q3.xlsx')
+    const focused: string = await s.openFile('q3.xlsx', { question: 'What were sales in Q3?' })
     const text: string[] = await Promise.all([
       s.describeTable('q3.xlsx', 'T1'),
       s.query('q3.xlsx', 'SELECT * FROM T1', 10),
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
     const viaCall: string = await s.call('query', { path: 'q3.xlsx', sql: 'SELECT 1' })
     s.allow(new URL('file:///data/'))
     const root: string = s.root
-    void [catalog, text, specs, viaCall, root]
+    void [catalog, focused, text, specs, viaCall, root]
   }
   void [v, value, kind, rows, hits, ok, coverage, dtypes, paths]
 }

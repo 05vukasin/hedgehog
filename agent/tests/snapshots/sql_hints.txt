@@ -20,7 +20,6 @@ T1  ← contracts!A1:C13 · 12 rows
     Buyer 1,1100,2020-11-15
     Buyer 2,1110,2020-12-15
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-(normalized in <t> s)
 
 ## query contracts.csv: SELECT MONTH(signed) AS m, count(*) FROM T1 GROUP BY m
 ERROR: SQL error: no such function: MONTH (at character 7) — SQLite has no MONTH(); dates are ISO text, use strftime('%m', col) for the month (text '01'..'12'; CAST(strftime('%m', col) AS INTEGER) for a number)
@@ -55,7 +54,6 @@ T1  ← Flows!A1:C5 · 3 rows (+1 total row only in T1_all)
 TOTALS 2 ok, 0 mismatch, 0 unknown (details: totals)
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = contracts.csv (T1), f2 = flows.xlsx (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
-(normalized in <t> s)
 
 ## query flows.xlsx: SELECT "Total" FROM T1_all
 ERROR: SQL error: no such column: "Total" (at character 7) — "Total" is a row label, not a column: total rows are in T1_all with _row_type = 'total' (label in Pipeline): SELECT * FROM T1_all WHERE _row_type = 'total'

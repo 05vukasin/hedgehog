@@ -15,7 +15,6 @@ T1  ← gemeinden!A1:D8 · 7 rows
     Fulda,517395,75.6,2024-03-06
     Gotha,618405,82.71,2024-03-07
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-(normalized in <t> s)
 
 ## query gemeinden.csv: SELECT SUM(Einwohner) AS p, MIN(Datum) AS d FROM T1
 p,d
@@ -39,7 +38,6 @@ T1  ← counties!A1:D8 · 7 rows
     Gotha County,618405,46322.11,2024-03-07
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = gemeinden.csv (T1), f2 = counties.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
-(normalized in <t> s)
 
 ## query counties.csv: SELECT SUM(Population) AS p, MAX(Income) AS i, MIN(Date) AS d FROM T1
 p,i,d
@@ -59,7 +57,6 @@ T1  ← latin1!A1:B5 · 4 rows
     Düsseldorf,4
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
 FILES open in this session — one query can join them (any open file as path; plain T1 is the file in path): f1 = gemeinden.csv (T1), f2 = counties.csv (T1), f3 = latin1.csv (T1; this file); e.g. SELECT … FROM f1.T1 AS a JOIN f2.T1 AS b ON a.<key> = b.<key>
-(normalized in <t> s)
 
 ## query latin1.csv: SELECT * FROM T1
 Stadt,Wert,_src_row

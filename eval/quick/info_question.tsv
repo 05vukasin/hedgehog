@@ -1,0 +1,16 @@
+case	ab	checks	chars	traps_ok	traps
+at-cpi	5	5	1811	0	0
+at-pension	4	4	3670	0	0
+at-salzburg-budget	7	7	2166	0	0
+at-tourism-2months	6	6	5323	2	2
+de-truck-toll	4	4	2911	0	0
+enron-deals-pl	5	5	2526	0	0
+enron-henry-hub	8	8	5787	0	0
+enron-newco-cashflow	5	5	2487	0	0
+enron-om-2plants	5	5	4009	0	0
+enron-storage-inventory	6	6	6566	0	0
+ms-financial-sample	4	4	1353	0	0
+nw-orders	4	4	2092	0	0
+rs-geodetic-licenses	7	7	981	0	0
+rs-pancevo-budget	6	6	3153	0	0
+wb-gdp-wide	6	6	1522	0	0

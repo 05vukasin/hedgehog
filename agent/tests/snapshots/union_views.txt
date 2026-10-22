@@ -34,7 +34,6 @@ T3  'Nächtigungen in Wien – nach Herkunftsland Juli 2026' ← Wie!A3:C9 · 6 
 NOTES 3 cells; e.g. Bur!A1: "Nächtigungen in Burgenland – nach Herkunftsland Juli 2026"
 SQL views T1..T3 = data rows, T1_all..T3_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
 SQL union view U1 = T1..T3 (3 tables with the same columns; adds _table, sheet, title, part = 'Burgenland' | 'Tirol' | 'Wien'): one query compares them, e.g. SELECT part, SUM(…) FROM U1 GROUP BY part; U1_all with total rows (_row_type)
-(normalized in <t> s)
 
 ## query states.xlsx: SELECT * FROM U1 WHERE Herkunftsland = 'Italien' ORDER BY 1
 _table,sheet,title,part,Herkunftsland,Ankünfte,Nächtigungen,_src_row

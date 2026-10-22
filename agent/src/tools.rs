@@ -20,8 +20,18 @@ pub fn tool_specs() -> Value {
             "description": "Normalize a spreadsheet and return its catalog: time coverage (which years/periods the file holds), \
                 the tables T1, T2, … with source sheet!range, title, row counts, total rows, columns (type, unit, value range), \
                 group column and totals check, plus notes and warnings. Call this first for every file. \
-                Fast; cached per file content.",
-            "inputSchema": {"type": "object", "properties": {"path": path}, "required": ["path"]},
+                Fast; cached per file content. Pass the user's question to get the tables it is about first and in full, \
+                the other tables one line each (fewer tokens on files with many tables).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": path,
+                    "question": {"type": "string", "description": "Optional: the user's question, as asked. The catalog then lists \
+                        the tables it matches (by words, column names, values, years) first and in full, the others one line each; \
+                        every table is still listed."}
+                },
+                "required": ["path"]
+            },
             "annotations": ro,
         },
         {
@@ -139,7 +149,7 @@ impl Session {
         let empty = json!({});
         let args = if args.is_object() { args } else { &empty };
         match name {
-            "open_file" => self.open_file(req(args, &["path", "file"])?),
+            "open_file" => self.open_file_for(req(args, &["path", "file"])?, arg(args, &["question"])),
             "describe_table" => self.describe_table(req(args, &["path", "file"])?, req(args, &["table"])?),
             "query" => self.query(req(args, &["path", "file"])?, req(args, &["sql"])?, limit_arg(args)?),
             "cells" => self.cells(req(args, &["path", "file"])?, arg(args, &["sheet"]).unwrap_or(""), req(args, &["range"])?),
