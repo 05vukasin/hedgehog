@@ -26,7 +26,7 @@ fn mixed_table(ws: &mut Worksheet, seed: u32) {
         let r = 3 + i;
         ws.write_string(r, 0, format!("Region {i}")).unwrap();
         for j in 1..15u16 {
-            if (i + seed) % (j as u32 + 2) == 0 {
+            if (i + seed).is_multiple_of(j as u32 + 2) {
                 ws.write_string(r, j, format!("rev {i}")).unwrap();
             } else {
                 ws.write_number(r, j, ((i * 37 + j as u32 * 11 + seed) % 997) as f64 + 0.25).unwrap();
