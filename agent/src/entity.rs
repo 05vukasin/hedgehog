@@ -295,7 +295,9 @@ pub fn detect(t: &Table) -> Vec<Entity> {
         if ((e.split + e.multi) as f64) < MIN_SHARE * e.values as f64 || by_id.len() < 2 {
             continue;
         }
-        e.sep = seps.into_iter().max_by_key(|x| x.1).map_or(SEPS[0], |x| x.0);
+        // Most used separator; a tie goes to the first in SEPS (not to the hash map's order, B68).
+        let rank = |s: &str| SEPS.iter().position(|x| *x == s).unwrap_or(SEPS.len());
+        e.sep = seps.into_iter().max_by_key(|&(s, n)| (n, std::cmp::Reverse(rank(s)))).map_or(SEPS[0], |x| x.0);
         e.ids = by_id.len();
         e.several = by_id.values().filter(|x| x.1.len() > 1).count();
         e.most = by_id

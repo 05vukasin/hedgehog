@@ -751,8 +751,9 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     let sig = if seg.header > 0 { signature(sheet, &rows[body_start - 1]) } else { Vec::new() };
     let has_measures = rows[body_start..seg.end].iter().any(|r| r.n_measure() > 0);
 
-    // Column type purity over data rows, for confidence.
-    let mut col_counts: std::collections::HashMap<u32, (u32, u32)> = std::collections::HashMap::new();
+    // Column type purity over data rows, for confidence. Ordered by column: the mean below is a
+    // float sum, and a hash map's iteration order (random per run) changed its last bits (B68).
+    let mut col_counts: std::collections::BTreeMap<u32, (u32, u32)> = std::collections::BTreeMap::new();
     // Formula totals on most rows are a running/computed column, not total rows.
     let body_len = seg.end - body_start;
     let formula_totals =

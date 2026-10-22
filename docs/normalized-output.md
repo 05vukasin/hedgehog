@@ -43,6 +43,7 @@ Options (CLI flag / Python keyword):
 | `--keep-totals` / `keep_totals=True` | off | Total and subtotal rows stay in the table sheets, marked in a `_row_type` column. By default they are removed from the data and listed only on `Totals`. |
 | `--csv` / `csv=True` | off | Also write one UTF-8 CSV per table. |
 | `--locale TAG` / `locale="TAG"` | inferred | Fixes the decimal separator and day/month order for every column. See [locales.md](locales.md). |
+| `--threads N` (CLI, `NormalizeOptions::threads` in Rust) | up to 4 | Threads that analyze sheets in parallel. The output does not depend on it. |
 
 From Rust: `hh_core::normalize_file(path, out_dir, &hh_core::NormalizeOptions { keep_totals, csv, locale })`.
 `hh_core::normalize_workbook(&wb, &opts)` gives the same result in memory without writing files.
@@ -424,6 +425,29 @@ Every key below is present in every table's `transformations`, with a count (oft
 | `note_rows_moved`, `title_rows_moved` | Rows inside the table range moved to `Notes` |
 | `empty_columns_removed` | Columns with neither header nor values |
 | `row_labels_copied` | Label columns copied from a table beside or above whose rows this table repeats (a daily grid under a summary that names the rows once) |
+
+## Repeatable output
+
+The same input file, options and hedgehog version give the same bytes in every run: the normalized
+xlsx, the manifest and the CSVs, on any number of threads (`--threads`, or a single CPU) and on any
+day. Finance users can diff or hash two runs and get no difference.
+
+- **Run metadata: none.** No output field holds a time, host name, user, process id or temp path,
+  so nothing has to be masked before comparing. The xlsx document properties (`docProps/core.xml`,
+  created / modified) carry a fixed date, 1980-01-01T00:00:00Z, the same as the zip entries'
+  timestamps. The CLI's console line (`… in 16 ms`) and `HEDGEHOG_TRACE` timings go to the terminal
+  only, never into a file.
+- **Fields that follow the invocation, not the run:** `source.path` (the path as given; the same
+  file opened through another path gives another value), the output file names (from the source
+  file's stem) and `generator.version`. Everything else depends on the file's bytes and the options.
+- **Time limits:** with a deadline (`NormalizeOptions::deadline`, `hedgehog mcp --max-seconds`) a
+  run either finishes with the full output or fails with `file refused: … time limit`; a slow
+  machine never yields a partial result.
+- **Across versions** the output can change (that is what `generator.version` is for).
+
+`fuzz/determinism.py` checks this over a folder or file list: it normalizes each file several times
+(threaded and, with `--single N`, pinned to one CPU) and compares the manifest and every part of the
+xlsx. `core/tests/determinism.rs` guards it in the test suite.
 
 ## Known limits
 

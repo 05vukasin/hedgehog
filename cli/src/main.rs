@@ -20,7 +20,7 @@ fn report(r: Result<(), String>) -> ExitCode {
 const USAGE: &str = "usage:
   hedgehog describe <file>
   hedgehog cells <file> [--sheet NAME]   (every non-empty cell as TSV: sheet row col a1 value)
-  hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG] [--rules-only] [--model-max-cells N]
+  hedgehog normalize <file> -o <out_dir> [--keep-totals] [--csv] [--locale TAG] [--rules-only] [--model-max-cells N] [--threads N]
   hedgehog mcp [--root DIR] [--allow PATH]... [--query-timeout-ms N] [--max-file-mb N] [--max-cells N] [--max-seconds N]
                (MCP tool server over stdio: open_file, describe_table, query, cells, totals, list_files; see docs/mcp.md)
   hedgehog eval deco [--split dev|test|all] [--limit N] [--analyzer NAME] [--json OUT.json] [--no-json] [--progress] [--threads N]
@@ -211,6 +211,9 @@ fn normalize(args: &[&str]) -> Result<(), String> {
             "--rules-only" => opts.rules_only = true,
             "--model-max-cells" => {
                 opts.model_max_cells = Some(val()?.parse().map_err(|_| "--model-max-cells needs a number")?)
+            }
+            "--threads" => {
+                opts.threads = Some(val()?.parse::<usize>().map_err(|_| "--threads needs a number")?.max(1))
             }
             "--locale" => {
                 let tag = val()?;

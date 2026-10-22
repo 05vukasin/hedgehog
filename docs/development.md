@@ -85,6 +85,15 @@ per file (heap capped at 2.3 GB, 300 s timeout), and writes a resumable TSV of o
 `error`, `limit`, `crash`, `timeout`):
 `$S 2500M sweep.log python3 -I fuzz/sweep.py target/release/hedgehog $HEDGEHOG_DATA /tmp/sweep.tsv`.
 
+`fuzz/determinism.py` checks that the output is repeatable (B68): it normalizes every file of a
+folder or file list several times (`--runs N` threaded, `--single N` pinned to one CPU) and compares
+the manifest and every part of the normalized xlsx byte for byte; any difference is a bug (see
+[normalized-output.md](normalized-output.md#repeatable-output)):
+`$S 2500M det.log python3 -I fuzz/determinism.py target/release/hedgehog <dir|list> /tmp/det.tsv --runs 3`.
+A `HashMap` / `HashSet` from `std` iterates in a different order in every run: never let its order
+reach an output (sort, use a `BTreeMap`, or an `FxHashMap`, whose order is the same in every run
+for the same inserts), and break ties of `max_by_key` / `min_by_key` over one explicitly.
+
 The `fuzz` profile keeps overflow checks and debug assertions on, so silent wraparounds show up.
 Bugs found in calamine are fixed in `vendor/calamine` (each change marked `hedgehog:`); every fix
 gets a regression test in `core/tests/hostile_files.rs`, built from bytes in the test.
