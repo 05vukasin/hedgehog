@@ -40,6 +40,9 @@ pub fn is_excel_error(s: &str) -> bool {
 /// u low reliability, z not applicable.
 pub(crate) const FLAG_LETTERS: &[u8] = b"bcdefnprsuz";
 
+/// First characters of the [`missing_token`] keys (lowercase ASCII; `ø` aside).
+const MISSING_KEY_STARTS: &[u8] = b"xn#mutkbs";
+
 /// Classifies text that stands for a missing value; `None` for real content.
 pub fn missing_token(s: &str) -> Option<MissingKind> {
     let t = trim(s);
@@ -68,6 +71,11 @@ pub fn missing_token(s: &str) -> Option<MissingKind> {
     }
     if matches!(t, "-/-" | "--/--" | "(-)" | "( - )" | "n.p.") {
         return Some(MissingKind::Placeholder);
+    }
+    // Every key below starts with one of these letters (or `ø`); an ASCII text's key starts with
+    // its first character lowercased, so other ASCII texts need no key (B129).
+    if t.is_ascii() && !MISSING_KEY_STARTS.contains(&t.as_bytes()[0].to_ascii_lowercase()) {
+        return None;
     }
     let key = norm_key(t);
     match key.as_str() {
@@ -164,6 +172,21 @@ pub fn parse_bool(s: &str) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn key_starts_cover_every_key() {
+        // The keys of `missing_token`'s match, as written there (`_` for a space).
+        let keys = "x xx xxx n/a n.a. n._a. n.a na #na n/d n.d. nd null nil none nan missing unknown not_available \
+            not_applicable no_data tbd nema nema_podataka bez_podataka nepoznato nije_poznato nije_dostupno nedostupno \
+            nema_podatka k.a. k._a. k.a keine_angabe keine_angaben n.v. n.b. nicht_verfugbar niet_beschikbaar n.c. \
+            non_disponible non_communique s.d. sin_datos no_disponible non_disponibile b.d. brak_danych";
+        for k in keys.split_whitespace() {
+            let k = k.replace('_', " ");
+            assert!(MISSING_KEY_STARTS.contains(&k.as_bytes()[0]), "{k}");
+            assert!(missing_token(&k).is_some(), "{k}");
+            assert!(missing_token(&k.to_uppercase()).is_some(), "{k}");
+        }
+    }
 
     #[test]
     fn missing_tokens() {

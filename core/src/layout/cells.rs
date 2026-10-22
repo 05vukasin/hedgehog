@@ -285,14 +285,30 @@ pub(crate) fn is_total_label(s: &str) -> bool {
     if t.starts_with('Σ') || t.starts_with('∑') {
         return true;
     }
-    let toks = tokens(t);
-    match toks.first() {
-        None => false,
-        Some(first) if TOTAL_WORDS.contains(&first.as_str()) => true,
-        Some(_) => {
-            toks.len() <= TOTAL_LABEL_MAX_TOKENS && toks.iter().any(|w| TOTAL_WORDS.contains(&w.as_str()))
+    // The words of `tokens(t)`, compared without allocating for ASCII words (the total words are
+    // lower case, so an ASCII word matches one exactly when it equals it ignoring ASCII case).
+    let is_total_word = |w: &str| {
+        if w.is_ascii() {
+            TOTAL_WORDS.iter().any(|tw| tw.eq_ignore_ascii_case(w))
+        } else {
+            TOTAL_WORDS.contains(&w.to_lowercase().as_str())
         }
+    };
+    let mut words = t.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty());
+    let Some(first) = words.next() else { return false };
+    if is_total_word(first) {
+        return true;
     }
+    let mut n = 1;
+    let mut any = false;
+    for w in words {
+        n += 1;
+        if n > TOTAL_LABEL_MAX_TOKENS {
+            return false;
+        }
+        any = any || is_total_word(w);
+    }
+    any
 }
 
 /// "Source: …", "Napomena", "* preliminary", "(1) …", "a) …", "Извор: РЗС".

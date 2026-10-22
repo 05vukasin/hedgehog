@@ -135,6 +135,9 @@ pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
         return false;
     }
     let window = &below[..below.len().min(HEADER_VOTE_WINDOW)];
+    // Rows whose entries do not overlap (each ends left of the next one's start, the usual case):
+    // the entries overlapping a column range are one run, found by binary search (B128).
+    let disjoint: Vec<bool> = window.iter().map(|w| w.entries.windows(2).all(|p| p[0].right < p[1].left)).collect();
     let (mut head, mut data) = (0u32, 0u32);
     for e in r.filled() {
         let t = e.ty();
@@ -142,8 +145,15 @@ pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
             continue;
         }
         let (mut tot, mut same, mut numeric) = (0u32, 0u32, 0u32);
-        for w in window {
-            for x in w.entries.iter().filter(|x| x.left <= e.right && x.right >= e.left) {
+        for (w, &disjoint) in window.iter().zip(&disjoint) {
+            let run = if disjoint {
+                let lo = w.entries.partition_point(|x| x.right < e.left);
+                let hi = w.entries.partition_point(|x| x.left <= e.right).max(lo);
+                &w.entries[lo..hi]
+            } else {
+                &w.entries[..]
+            };
+            for x in run.iter().filter(|x| x.left <= e.right && x.right >= e.left) {
                 let xt = x.ty();
                 if xt == Ty::None {
                     continue;
@@ -251,6 +261,30 @@ pub(crate) fn signature(sheet: &Sheet, r: &Row) -> Signature {
             (e.left, key)
         })
         .collect()
+}
+
+/// `signature(sheet, r) == *sig`, without building the row's signature (B128).
+pub(crate) fn signature_is(sheet: &Sheet, r: &Row, sig: &Signature) -> bool {
+    let value = |e: &Entry| e.cell.and_then(|i| sheet.cells[i].value.as_ref());
+    if r.filled().count() != sig.len() {
+        return false;
+    }
+    let labelled = r.filled().any(|e| matches!(value(e), Some(Value::Text(_))));
+    r.filled().zip(sig).all(|(e, (left, key))| {
+        e.left == *left
+            && match value(e) {
+                Some(Value::Text(s)) => {
+                    let t = s.trim();
+                    if t.is_ascii() {
+                        t.len() == key.len() && t.bytes().zip(key.bytes()).all(|(a, b)| a.to_ascii_lowercase() == b)
+                    } else {
+                        t.to_lowercase() == *key
+                    }
+                }
+                Some(v) if !labelled => format!("\u{1}{v:?}") == *key,
+                _ => key.is_empty(),
+            }
+    })
 }
 
 fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
@@ -421,7 +455,7 @@ fn starts_new_table(
     if !rows[k + 1..end].iter().take(MAX_HEADER_ROWS).any(|x| x.n_measure() > 0) {
         return false;
     }
-    if !header_sig.is_empty() && signature(sheet, r) == *header_sig {
+    if !header_sig.is_empty() && signature_is(sheet, r, header_sig) {
         return false; // repeated header (H9), stays in the table
     }
     let hits =
@@ -772,7 +806,7 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         let last_body = k + 1 == seg.end;
         let total_label =
             if out.registers { has_own_total_label(sheet, r, &out.labelled_totals) } else { has_total_label(sheet, r) };
-        let role = if !sig.is_empty() && r.n() >= 2 && signature(sheet, r) == sig {
+        let role = if !sig.is_empty() && r.n() >= 2 && signature_is(sheet, r, &sig) {
             Role::Header
         } else if total_label || (formula_totals_ok && has_vertical_aggregates(r)) {
             Role::Total

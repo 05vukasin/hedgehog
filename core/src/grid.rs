@@ -142,12 +142,13 @@ impl<'a> Grid<'a> {
 }
 
 /// Position → cell lookup. Readers list cells row by row, left to right, each position once: then
-/// a cell is found by its row's range of `sheet.cells` and a binary search on the column (a few
-/// bytes per row instead of a hash table of ~32 bytes per cell). Cells in any other order (or with
-/// duplicate positions) use a hash table, where the last cell of a position wins.
+/// a cell is found by its row's range of `sheet.cells` and its column in that range (4 bytes per
+/// cell plus 4 per row, instead of a hash table of ~32 bytes per cell). Cells in any other order
+/// (or with duplicate positions) use a hash table, where the last cell of a position wins.
 enum CellIndex {
-    /// `starts[r - first]..starts[r - first + 1]` are the cells of row `r`.
-    Sorted { first: u32, starts: Vec<u32> },
+    /// `starts[r - first]..starts[r - first + 1]` are the cells of row `r`; `cols[i]` is the
+    /// column of cell `i`.
+    Sorted { first: u32, starts: Vec<u32>, cols: Vec<u32> },
     Hashed(FxHashMap<u64, u32>),
 }
 
@@ -166,7 +167,8 @@ impl CellIndex {
                 }
             }
             starts.push(cells.len() as u32);
-            return CellIndex::Sorted { first, starts };
+            let cols = cells.iter().map(|c| c.col).collect();
+            return CellIndex::Sorted { first, starts, cols };
         }
         let mut index = FxHashMap::with_capacity_and_hasher(cells.len(), Default::default());
         for (i, c) in cells.iter().enumerate() {
@@ -176,15 +178,21 @@ impl CellIndex {
     }
 
     #[inline]
-    fn get(&self, cells: &[Cell], row: u32, col: u32) -> Option<u32> {
+    fn get(&self, _cells: &[Cell], row: u32, col: u32) -> Option<u32> {
         match self {
-            CellIndex::Sorted { first, starts } => {
+            CellIndex::Sorted { first, starts, cols } => {
                 let r = row.checked_sub(*first)? as usize;
                 if r + 1 >= starts.len() {
                     return None;
                 }
                 let (a, b) = (starts[r] as usize, starts[r + 1] as usize);
-                cells[a..b].binary_search_by_key(&col, |c| c.col).ok().map(|k| (a + k) as u32)
+                let line = &cols[a..b];
+                // A row without gaps holds column `col` at offset `col - first column`.
+                let guess = (col as usize).wrapping_sub(*line.first()? as usize);
+                if line.get(guess) == Some(&col) {
+                    return Some((a + guess) as u32);
+                }
+                line.binary_search(&col).ok().map(|k| (a + k) as u32)
             }
             CellIndex::Hashed(index) => index.get(&key(row, col)).copied(),
         }
@@ -212,7 +220,32 @@ impl Lines {
             .collect();
         let sorted = order.windows(2).all(|w| major_minor(&cells[w[0] as usize]) < major_minor(&cells[w[1] as usize]));
         if !sorted {
-            order.sort_unstable_by_key(|&i| major_minor(&cells[i as usize]));
+            // Cells listed by (minor, major) — columns of a sheet in reader order — are put in
+            // (major, minor) order by counting per major coordinate: the same order as the sort,
+            // in linear time (B130). Positions are unique, so the order is unique.
+            let swapped = |i: u32| {
+                let (major, minor) = major_minor(&cells[i as usize]);
+                (minor, major)
+            };
+            let max_major = order.iter().map(|&i| major_minor(&cells[i as usize]).0).max().unwrap_or(0);
+            if max_major < 1 << 20 && order.windows(2).all(|w| swapped(w[0]) < swapped(w[1])) {
+                let mut start = vec![0u32; max_major as usize + 2];
+                for &i in &order {
+                    start[major_minor(&cells[i as usize]).0 as usize + 1] += 1;
+                }
+                for k in 1..start.len() {
+                    start[k] += start[k - 1];
+                }
+                let mut out = vec![0u32; order.len()];
+                for &i in &order {
+                    let m = major_minor(&cells[i as usize]).0 as usize;
+                    out[start[m] as usize] = i;
+                    start[m] += 1;
+                }
+                order = out;
+            } else {
+                order.sort_unstable_by_key(|&i| major_minor(&cells[i as usize]));
+            }
         }
         let mut spans = FxHashMap::default();
         let mut keys = Vec::new();
@@ -332,6 +365,31 @@ mod tests {
         assert_eq!(g.merge_index_at(5, 5), None);
         assert!(g.is_filled(5, 5) && g.is_filled(7, 12) && !g.is_filled(7, 7));
         assert_eq!(g.used_range(), Some(Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }));
+    }
+
+    #[test]
+    fn reader_order_lookups_match_a_scan() {
+        // Row-major cells (the readers' order) take the row-range index and the counted column
+        // lines; both must agree with a plain scan.
+        let mut cells = Vec::new();
+        for r in [0u32, 1, 4, 5, 9] {
+            for c in [0u32, 2, 3, 7].iter().filter(|&&c| (r + c) % 3 != 1) {
+                cells.push(cell(r, *c));
+            }
+        }
+        let sheet = Sheet { name: "s".into(), cells: cells.clone(), merges: vec![], formats: vec![] };
+        let g = Grid::new(&sheet);
+        assert!(matches!(g.index, CellIndex::Sorted { .. }));
+        for r in 0..12 {
+            for c in 0..10 {
+                assert_eq!(g.cell_index(r, c), cells.iter().position(|x| x.row == r && x.col == c), "{r},{c}");
+            }
+        }
+        for c in 0..10 {
+            let mut want: Vec<u32> = (0..cells.len() as u32).filter(|&i| cells[i as usize].col == c).collect();
+            want.sort_by_key(|&i| cells[i as usize].row);
+            assert_eq!(g.col_cells(c), &want[..]);
+        }
     }
 
     #[test]
