@@ -112,7 +112,8 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
   (`2002-01-31`), with a table warning.
 - A block of a stacked statistical table without a header of its own (its columns `col_D` …, or
   one unit over all of them), under a block with the same source columns, takes that block's
-  names followed by its own unit or title (`Finanzierungs-saldo / % des Bruttoinlandsprodukts`,
+  names followed by its own unit (`Mrd. EUR`, `%`), the one phrase written over the block, or
+  its short title (`Finanzierungs-saldo / % des Bruttoinlandsprodukts`,
   `Bruttoinlandsprodukt / … / Veränderung gegenüber dem Vorjahr in %`); a table warning says so.
 - When the header rows the layout found are sparse (`Ano: 2016`) and a fuller row of distinct
   header words follows before the first data row, that row is the header and the rows above are

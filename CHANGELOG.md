@@ -27,7 +27,8 @@ All notable changes to hedgehog are listed here. The format follows
     the next year; `totals.rows[].sources_outside` lists source cells in other tables (a grand
     total under stacked blocks that adds the block above).
   - *Names starting with a total word* (B81: 'TOTAL RECRUIT LTD', 'Zusammen unterwegs') in a
-    register's name column stay data and are not listed on Totals unless their numbers add up.
+    register's name column (1,000+ distinct names, or a legal form) stay data and are not listed
+    on Totals unless their numbers add up; a "Table N" caption above a table is preferred as its title.
   - *Stacked blocks without a header* (B86: Destatis "% change", "% of GDP") take the header of
     the block above with the same columns, plus their unit or title.
   - *Known aggregates* (B87): Eurostat `EU27_2020` / `EA20` / `EFTA` geo rows and OWID `World`,

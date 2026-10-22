@@ -213,8 +213,9 @@ numbers only, not to a table beside it.
   `Zusammen interreligiös`), or `Somme` (a département), `Sumas` (a place) and `SOM` (Somalia's
   code) right of other text or with numbers on the row below (inside a list). Alone as the label
   under a table's numbers they stay total labels, as `Suma` and `Zusammen` always do.
-- **Names in a register's name column** (a column with more than a third of its texts distinct)
-  that are a total word followed by a name (`TOTAL RECRUIT LTD`, `Zusammen unterwegs`) are records:
+- **Names in a register's name column** (a column with more than a third of its texts distinct and
+  at least 1,000 of them, or a name with a legal form such as `Ltd`, `GmbH`, `e.V.`) that are a
+  total word followed by a name (`TOTAL RECRUIT LTD`, `Zusammen unterwegs`) are records:
   unless some number on the row adds up, the row stays data and is not listed on `Totals`.
 - A label recurring as a category of its column (`Summe der bezogenen Rohstoffe` once per industry
   in long-format data) stays a total label when the row shares its other keys with a neighbouring
