@@ -10,12 +10,12 @@ general harness, on a frontier model, reading the file with its own Python. Same
 |---|---:|---:|---:|---:|---:|
 | pt-contracts | 8.7/13 (8) | 13.0/13 | 17 s / 101 s | $0.0058 / $0.58 | 22k / 370k |
 | at-pension | 4.0/4 (4) | 4.0/4 | 3 s / 17 s | $0.0018 / $0.29 | 10k / 163k |
-| enron-henry-hub | 6.0/8 (6) | 8.0/8 | 8 s / 30 s | $0.0071 / $0.43 | 36k / 285k |
-| de-truck-toll | 4.0/5 (4) | 5.0/5 | 5 s / 18 s | $0.0023 / $0.32 | 12k / 171k |
+| enron-henry-hub | 8.0/8 (8) | 8.0/8 | 7 s / 30 s | $0.0037 / $0.43 | 18k / 285k |
+| de-truck-toll | 4.0/5 (4) | 5.0/5 | 5 s / 18 s | $0.0020 / $0.32 | 8k / 171k |
 | enron-om-2plants | 5.0/5 (5) | 3.0/5 | 7 s / 18 s | $0.0029 / $0.38 | 14k / 133k |
 | enron-newco-cashflow | 4.3/5 (4) | 5.0/5 | 13 s / 14 s | $0.0096 / $0.33 | 53k / 130k |
 | enron-deals-pl | 3.7/6 (3) | 6.0/6 | 8 s / 21 s | $0.0066 / $0.31 | 37k / 208k |
-| enron-mdea-pl | 2.0/4 (2) | 4.0/4 | 7 s / 42 s | $0.0046 / $0.39 | 26k / 262k |
+| enron-mdea-pl | 2.0/4 (1) | 4.0/4 | 7 s / 42 s | $0.0032 / $0.39 | 16k / 262k |
 | enron-storage-inventory | 2.7/6 (2) | 6.0/6 | 24 s / 21 s | $0.0199 / $0.29 | 131k / 122k |
 | at-salzburg-budget | 7.0/7 (7) | 5.0/7 | 8 s / 43 s | $0.0037 / $0.35 | 22k / 248k |
 | rs-pancevo-budget | 6.0/7 (6) | 7.0/7 | 8 s / 26 s | $0.0040 / $0.36 | 21k / 255k |
@@ -25,22 +25,22 @@ general harness, on a frontier model, reading the file with its own Python. Same
 | us-chicago-salaries | 5.0/7 (5) | 7.0/7 | 6 s / 25 s | $0.0030 / $0.32 | 16k / 167k |
 | us-nyc-payroll | 4.0/6 (2) | 6.0/6 | 10 s / 30 s | $0.0050 / $0.32 | 26k / 247k |
 | uk-gender-pay-gap | 5.0/5 (5) | 5.0/5 | 11 s / 31 s | $0.0055 / $0.30 | 34k / 206k |
-| pt-social-report | 5.0/7 (5) | 7.0/7 | 10 s / 20 s | $0.0052 / $0.41 | 28k / 217k |
+| pt-social-report | 4.5/7 (4) | 7.0/7 | 11 s / 20 s | $0.0057 / $0.41 | 31k / 217k |
 | at-cpi | 3.0/6 (2) | 6.0/6 | 17 s / 23 s | $0.0108 / $0.32 | 74k / 209k |
 | wb-gdp-wide | 5.3/6 (4) | 6.0/6 | 19 s / 20 s | $0.0088 / $0.26 | 49k / 121k |
 | eu-electricity-prices | 3.0/4 (2) | 4.0/4 | 9 s / 22 s | $0.0041 / $0.29 | 22k / 165k |
 | de-gdp | 5.3/6 (5) | 6.0/6 | 23 s / 30 s | $0.0214 / $0.36 | 129k / 216k |
-| uk-ons-labour | 2.0/6 (2) | 6.0/6 | 6 s / 39 s | $0.0034 / $0.38 | 18k / 301k |
+| uk-ons-labour | 2.5/6 (2) | 6.0/6 | 6 s / 39 s | $0.0026 / $0.38 | 9k / 301k |
 | fr-insee-pop | 7.0/7 (7) | 7.0/7 | 15 s / 21 s | $0.0096 / $0.41 | 59k / 244k |
 | at-tourism-2months | 3.3/6 (1) | 6.0/6 | 22 s / 33 s | $0.0152 / $0.37 | 95k / 258k |
 | rs-geodetic-licenses | 6.7/7 (6) | 7.0/7 | 8 s / 32 s | $0.0032 / $0.34 | 19k / 250k |
 | uk-beis-spending | 6.7/7 (6) | 6.0/7 | 9 s / 46 s | $0.0040 / $0.36 | 26k / 251k |
 | de-berlin-grants | 5.0/5 (5) | 5.0/5 | 9 s / 57 s | $0.0038 / $0.38 | 24k / 296k |
-| pt-tax-benefits | 5.0/5 (5) | 5.0/5 | 17 s / 106 s | $0.0031 / $0.46 | 13k / 329k |
+| pt-tax-benefits | 5.0/5 (5) | 5.0/5 | 8 s / 106 s | $0.0032 / $0.46 | 10k / 329k |
 | owid-energy | 4.0/5 (4) | 5.0/5 | 9 s / 13 s | $0.0050 / $0.24 | 31k / 115k |
-| **all cases** | **141.7/180 (130)** | **175.0/180** | 337 s / 971 s | $0.19 / $10.45 | 1142k / 6551k |
+| **all cases** | **143.7/180 (130)** | **175.0/180** | 328 s / 971 s | $0.19 / $10.45 | 1099k / 6551k |
 
-Models: Claude Code: claude-opus-5-5[1m], hedgehog-cli: gpt-4.1-mini. hedgehog-cli is 2.9× faster and 54× cheaper; it passes 79 % of the checks vs 97 % for Claude Code.
+Models: Claude Code: claude-opus-5-5[1m], hedgehog-cli: gpt-4.1-mini. hedgehog-cli is 3.0× faster and 55× cheaper; it passes 80 % of the checks vs 97 % for Claude Code.
 `claude-hh` (Claude Code plus hedgehog's plugin) is in the table below: the same tool in the best harness.
 
 ## Tool swap: same loop, same model, only the tools change
@@ -51,7 +51,7 @@ checks are left out). Mean = mean over the runs, worst = each case's worst run, 
 
 | Tool set | Model | Cases | Checks mean | Checks worst | Time | Input / output tokens | Cost | $ / pass | Tokens / pass | Tool calls (errors) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| hedgehog-cli (reference) | gpt-4.1-mini | 30 | 141.7/168 (84 %) | 130/168 | 337 s | 1,142k / 24.8k | $0.194 | $0.0014 | 8.2k | 225 (22) |
+| hedgehog-cli (reference) | gpt-4.1-mini | 30 | 143.7/168 (86 %) | 130/168 | 328 s | 1,099k / 24.7k | $0.189 | $0.0013 | 7.8k | 229 (20) |
 | Claude Code (reference) | claude-opus-5-5[1m] | 30 | 163.0/168 (97 %) | 163/168 | 971 s | 6,551k / 68.6k | $10.452 | $0.0641 | 40.6k | – |
 | **hedgehog MCP** | gpt-4.1-mini-2025-04-14 | 30 | 143.3/168 (85 %) | 133/168 | 329 s | 602k / 23.6k | $0.139 | $0.0010 | 4.4k | 230 (19) |
 
@@ -61,12 +61,12 @@ Per case, automatic checks: mean (worst) / n.
 |---|---:|---:|---:|
 | pt-contracts | 8.7 (8) / 9 | 9.0 (9) / 9 | 8.7 (8) / 9 |
 | at-pension | 4.0 (4) / 4 | 4.0 (4) / 4 | 2.7 (2) / 4 |
-| enron-henry-hub | 6.0 (6) / 8 | 8.0 (8) / 8 | 8.0 (8) / 8 |
+| enron-henry-hub | 8.0 (8) / 8 | 8.0 (8) / 8 | 8.0 (8) / 8 |
 | de-truck-toll | 4.0 (4) / 4 | 4.0 (4) / 4 | 4.0 (4) / 4 |
 | enron-om-2plants | 5.0 (5) / 5 | 3.0 (3) / 5 | 5.0 (5) / 5 |
 | enron-newco-cashflow | 4.3 (4) / 5 | 5.0 (5) / 5 | 3.3 (2) / 5 |
 | enron-deals-pl | 3.7 (3) / 5 | 5.0 (5) / 5 | 4.0 (4) / 5 |
-| enron-mdea-pl | 2.0 (2) / 4 | 4.0 (4) / 4 | 0.0 (0) / 4 |
+| enron-mdea-pl | 2.0 (1) / 4 | 4.0 (4) / 4 | 0.0 (0) / 4 |
 | enron-storage-inventory | 2.7 (2) / 6 | 6.0 (6) / 6 | 2.7 (2) / 6 |
 | at-salzburg-budget | 7.0 (7) / 7 | 5.0 (5) / 7 | 7.0 (7) / 7 |
 | rs-pancevo-budget | 6.0 (6) / 6 | 6.0 (6) / 6 | 6.0 (6) / 6 |
@@ -76,12 +76,12 @@ Per case, automatic checks: mean (worst) / n.
 | us-chicago-salaries | 5.0 (5) / 6 | 6.0 (6) / 6 | 5.0 (5) / 6 |
 | us-nyc-payroll | 4.0 (2) / 5 | 5.0 (5) / 5 | 5.0 (5) / 5 |
 | uk-gender-pay-gap | 5.0 (5) / 5 | 5.0 (5) / 5 | 4.3 (4) / 5 |
-| pt-social-report | 5.0 (5) / 7 | 7.0 (7) / 7 | 5.7 (5) / 7 |
+| pt-social-report | 4.5 (4) / 7 | 7.0 (7) / 7 | 5.7 (5) / 7 |
 | at-cpi | 3.0 (2) / 5 | 5.0 (5) / 5 | 3.7 (3) / 5 |
 | wb-gdp-wide | 5.3 (4) / 6 | 6.0 (6) / 6 | 5.7 (5) / 6 |
 | eu-electricity-prices | 3.0 (2) / 4 | 4.0 (4) / 4 | 4.0 (4) / 4 |
 | de-gdp | 5.3 (5) / 6 | 6.0 (6) / 6 | 5.3 (4) / 6 |
-| uk-ons-labour | 2.0 (2) / 5 | 5.0 (5) / 5 | 4.7 (4) / 5 |
+| uk-ons-labour | 2.5 (2) / 5 | 5.0 (5) / 5 | 4.7 (4) / 5 |
 | fr-insee-pop | 7.0 (7) / 7 | 7.0 (7) / 7 | 7.0 (7) / 7 |
 | at-tourism-2months | 3.3 (1) / 6 | 6.0 (6) / 6 | 2.0 (1) / 6 |
 | rs-geodetic-licenses | 6.7 (6) / 7 | 7.0 (7) / 7 | 6.3 (6) / 7 |
@@ -107,11 +107,11 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | at-pension | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 17 s | 162,596 / 1,101 | 0.29 | – | 4/4 |
 | at-pension | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 132,222 / 885 | 0.21 | – | 4/4 |
 | at-pension | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 5 s | 7,737 / 370 | 0.0020 | 3 (0) | 2.7/4 (2) |
-| enron-henry-hub | hedgehog | 2026-10-22 | gpt-4.1-mini | 1 | 8 s | 36,424 / 590 | 0.0071 | 4 (0) | 6/8 |
+| enron-henry-hub | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 7 s | 17,803 / 530 | 0.0037 | 6 (0) | 8.0/8 (8) |
 | enron-henry-hub | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 30 s | 284,741 / 2,298 | 0.43 | – | 8/8 |
 | enron-henry-hub | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 11 s | 143,072 / 947 | 0.25 | – | 8/8 |
 | enron-henry-hub | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 8 s | 27,700 / 572 | 0.0048 | 4 (0) | 8.0/8 (8) |
-| de-truck-toll | hedgehog | 2026-10-22 | gpt-4.1-mini | 1 | 5 s | 12,158 / 334 | 0.0023 | 3 (0) | 4/5 |
+| de-truck-toll | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 5 s | 7,543 / 388 | 0.0020 | 4 (0) | 4.0/5 (4) |
 | de-truck-toll | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 18 s | 170,773 / 1,693 | 0.32 | – | 5/5 |
 | de-truck-toll | claude-hh | 2026-10-21 | claude-opus-5-5[1m] | 1 | 15 s | 167,817 / 909 | 0.22 | – | 4/5 |
 | de-truck-toll | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 7 s | 13,873 / 435 | 0.0031 | 4 (0) | 4.0/5 (4) |
@@ -124,7 +124,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | enron-deals-pl | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 8 s | 36,566 / 478 | 0.0066 | 5 (0) | 3.7/6 (3) |
 | enron-deals-pl | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 21 s | 207,502 / 2,004 | 0.31 | – | 6/6 |
 | enron-deals-pl | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 10,415 / 674 | 0.0033 | 9 (4) | 4.0/6 (4) |
-| enron-mdea-pl | hedgehog | 2026-10-22 | gpt-4.1-mini | 1 | 7 s | 25,742 / 346 | 0.0046 | 3 (0) | 2/4 |
+| enron-mdea-pl | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 7 s | 16,135 / 492 | 0.0032 | 4 (0) | 2.0/4 (1) |
 | enron-mdea-pl | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 42 s | 261,995 / 2,976 | 0.39 | – | 4/4 |
 | enron-mdea-pl | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 31 s | 105,450 / 1,938 | 0.0167 | 17 (0) | 0.0/4 (0) |
 | enron-storage-inventory | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 24 s | 131,176 / 1,844 | 0.0199 | 13 (2) | 2.7/6 (2) |
@@ -154,7 +154,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | uk-gender-pay-gap | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 11 s | 33,563 / 638 | 0.0055 | 7 (1) | 5.0/5 (5) |
 | uk-gender-pay-gap | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 31 s | 205,520 / 2,255 | 0.30 | – | 5/5 |
 | uk-gender-pay-gap | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 8 s | 8,626 / 619 | 0.0029 | 8 (1) | 4.3/5 (4) |
-| pt-social-report | hedgehog | 2026-10-22 | gpt-4.1-mini | 1 | 10 s | 27,523 / 892 | 0.0052 | 10 (3) | 5/7 |
+| pt-social-report | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 11 s | 30,652 / 662 | 0.0057 | 9 (0) | 4.5/7 (4) |
 | pt-social-report | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 20 s | 217,181 / 2,025 | 0.41 | – | 7/7 |
 | pt-social-report | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 26,586 / 677 | 0.0059 | 8 (1) | 5.7/7 (5) |
 | at-cpi | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 17 s | 73,744 / 1,094 | 0.0108 | 11 (0) | 3.0/6 (2) |
@@ -169,7 +169,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | de-gdp | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 23 s | 128,855 / 1,792 | 0.0214 | 21 (7) | 5.3/6 (5) |
 | de-gdp | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 30 s | 216,493 / 1,944 | 0.36 | – | 6/6 |
 | de-gdp | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 13 s | 44,427 / 1,165 | 0.0097 | 13 (6) | 5.3/6 (4) |
-| uk-ons-labour | hedgehog | 2026-10-22 | gpt-4.1-mini | 1 | 6 s | 18,336 / 471 | 0.0034 | 3 (0) | 2/6 |
+| uk-ons-labour | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 6 s | 8,882 / 479 | 0.0026 | 3 (0) | 2.5/6 (2) |
 | uk-ons-labour | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 39 s | 301,107 / 2,245 | 0.38 | – | 6/6 |
 | uk-ons-labour | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 9 s | 26,508 / 597 | 0.0051 | 5 (1) | 4.7/6 (4) |
 | fr-insee-pop | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 15 s | 59,460 / 1,171 | 0.0096 | 10 (0) | 7.0/7 (7) |
@@ -187,7 +187,7 @@ numbers are means; Checks shows the mean and the worst run, and the check table 
 | de-berlin-grants | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 24,366 / 529 | 0.0038 | 5 (0) | 5.0/5 (5) |
 | de-berlin-grants | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 57 s | 296,433 / 3,792 | 0.38 | – | 5/5 |
 | de-berlin-grants | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 7 s | 5,407 / 433 | 0.0020 | 5 (0) | 5.0/5 (5) |
-| pt-tax-benefits | hedgehog | 2026-10-22 | gpt-4.1-mini | 1 | 17 s | 13,313 / 680 | 0.0031 | 6 (0) | 5/5 |
+| pt-tax-benefits | hedgehog | 2026-10-22 | gpt-4.1-mini | 2 | 8 s | 10,022 / 682 | 0.0032 | 6 (0) | 5.0/5 (5) |
 | pt-tax-benefits | claude | 2026-10-21 | claude-opus-5-5[1m] | 1 | 106 s | 329,381 / 3,172 | 0.46 | – | 5/5 |
 | pt-tax-benefits | swap-hedgehog | 2026-10-22 | gpt-4.1-mini-2025-04-14 | 3 | 18 s | 11,342 / 674 | 0.0031 | 6 (0) | 5.0/5 (5) |
 | owid-energy | hedgehog | 2026-10-22 | gpt-4.1-mini | 3 | 9 s | 30,599 / 505 | 0.0050 | 5 (1) | 4.0/5 (4) |
@@ -248,14 +248,14 @@ File: `enron/andrea_ring__3__HHmonthlyavg.xlsx`
 
 | Check | hedgehog | claude | claude-hh | swap-hedgehog |
 |---|---|---|---|---|
-| SEA ROBIN 123,367 | ✓ | ✓ | ✓ | 3/3 |
-| NGPL 105,538 | ✓ | ✓ | ✓ | 3/3 |
-| MAINLINE 100,733 | ✓ | ✓ | ✓ | 3/3 |
-| total receipts 424,772 | ✓ | ✓ | ✓ | 3/3 |
-| total deliveries 214,246 (shown as −214,246) | ✓ | ✓ | ✓ | 3/3 |
-| net flow +210,526 | ✓ | ✓ | ✓ | 3/3 |
-| highest January receipts: 606,356 | ✗ | ✓ | ✓ | 3/3 |
-| on 23 January 2002 | ✗ | ✓ | ✓ | 3/3 |
+| SEA ROBIN 123,367 | 2/2 | ✓ | ✓ | 3/3 |
+| NGPL 105,538 | 2/2 | ✓ | ✓ | 3/3 |
+| MAINLINE 100,733 | 2/2 | ✓ | ✓ | 3/3 |
+| total receipts 424,772 | 2/2 | ✓ | ✓ | 3/3 |
+| total deliveries 214,246 (shown as −214,246) | 2/2 | ✓ | ✓ | 3/3 |
+| net flow +210,526 | 2/2 | ✓ | ✓ | 3/3 |
+| highest January receipts: 606,356 | 2/2 | ✓ | ✓ | 3/3 |
+| on 23 January 2002 | 2/2 | ✓ | ✓ | 3/3 |
 
 Answers (latest run): [hedgehog](answers/enron-henry-hub.hedgehog.md), [claude](answers/enron-henry-hub.claude.md), [claude-hh](answers/enron-henry-hub.claude-hh.md), [swap-hedgehog](answers/enron-henry-hub.swap-hedgehog.md)
 Backlog items from this case: B8
@@ -268,10 +268,10 @@ File: `eu_de_destatis/statistischer-bericht-lkw-maut-fahrleistungsindex-5421901.
 
 | Check | hedgehog | claude | claude-hh | swap-hedgehog |
 |---|---|---|---|---|
-| highest unadjusted 2023 value: 153.0 | ✓ | ✓ | ✓ | 3/3 |
-| on 31 May 2023 | ✓ | ✓ | ✓ | 3/3 |
-| KSB average 2023: 95.61 | ✓ | ✓ | ✓ | 3/3 |
-| KSB average 2024: 94.92 | ✓ | ✓ | ✓ | 3/3 |
+| highest unadjusted 2023 value: 153.0 | 2/2 | ✓ | ✓ | 3/3 |
+| on 31 May 2023 | 2/2 | ✓ | ✓ | 3/3 |
+| KSB average 2023: 95.61 | 2/2 | ✓ | ✓ | 3/3 |
+| KSB average 2024: 94.92 | 2/2 | ✓ | ✓ | 3/3 |
 | says it went down | ? | (✓) | ? | ? |
 
 - **claude** (`20261021T070453Z-de-truck-toll-claude`): also noted the index base (2021=100) and that Destatis calls the daily adjusted series experimental
@@ -349,10 +349,10 @@ File: `enron/craig_dean__4381__MDEA P&L Report.xlsx`
 
 | Check | hedgehog | claude | swap-hedgehog |
 |---|---|---|---|
-| EPMI day-ahead profit: $44,058.18 (sum of S32 on the 14 sheets) | ✗ | ✓ | 0/3 |
-| MDEA day-ahead savings: $127,882.48 (sum of T32) | ✗ | ✓ | 0/3 |
-| May 5, 2001 | ✓ | ✓ | 0/3 |
-| MDEA savings on May 5: $15,056.52 | ✓ | ✓ | 0/3 |
+| EPMI day-ahead profit: $44,058.18 (sum of S32 on the 14 sheets) | 1/2 | ✓ | 0/3 |
+| MDEA day-ahead savings: $127,882.48 (sum of T32) | 1/2 | ✓ | 0/3 |
+| May 5, 2001 | 0/2 | ✓ | 0/3 |
+| MDEA savings on May 5: $15,056.52 | 2/2 | ✓ | 0/3 |
 
 Answers (latest run): [hedgehog](answers/enron-mdea-pl.hedgehog.md), [claude](answers/enron-mdea-pl.claude.md), [swap-hedgehog](answers/enron-mdea-pl.swap-hedgehog.md)
 
@@ -563,13 +563,13 @@ File: `eu_pt_opendata/012_balanco-social-2016.xls`
 
 | Check | hedgehog | claude | swap-hedgehog |
 |---|---|---|---|
-| 7,478 workers | ✓ | ✓ | 3/3 |
-| 3,245 women | ✓ | ✓ | 3/3 |
-| 43.4 % | ✓ | ✓ | 3/3 |
-| Técnico Superior 2,148 (just above Assistente Operacional 2,138) | ✗ | ✓ | 0/3 |
-| personnel costs €216,259,993.16 | ✓ | ✓ | 3/3 |
-| base pay 62.6 % | ✓ | ✓ | 2/3 |
-| 560 service providers | ✗ | ✓ | 3/3 |
+| 7,478 workers | 1/2 | ✓ | 3/3 |
+| 3,245 women | 1/2 | ✓ | 3/3 |
+| 43.4 % | 1/2 | ✓ | 3/3 |
+| Técnico Superior 2,148 (just above Assistente Operacional 2,138) | 0/2 | ✓ | 0/3 |
+| personnel costs €216,259,993.16 | 2/2 | ✓ | 3/3 |
+| base pay 62.6 % | 2/2 | ✓ | 2/3 |
+| 560 service providers | 2/2 | ✓ | 3/3 |
 
 Answers (latest run): [hedgehog](answers/pt-social-report.hedgehog.md), [claude](answers/pt-social-report.claude.md), [swap-hedgehog](answers/pt-social-report.swap-hedgehog.md)
 
@@ -667,11 +667,11 @@ File: `uk_ons/a01_labour_market_summary_sep2026.xls`
 
 | Check | hedgehog | claude | swap-hedgehog |
 |---|---|---|---|
-| latest period May–Jul 2026 | ✗ | ✓ | 2/3 |
-| headline employment rate (16–64) 75.1 % | ✓ | ✓ | 3/3 |
-| headline unemployment rate (16+) 4.9 % | ✓ | ✓ | 3/3 |
-| 34.48 million in employment (16+) | ✗ | ✓ | 3/3 |
-| 1.78 million unemployed | ✗ | ✓ | 3/3 |
+| latest period May–Jul 2026 | 1/2 | ✓ | 2/3 |
+| headline employment rate (16–64) 75.1 % | 2/2 | ✓ | 3/3 |
+| headline unemployment rate (16+) 4.9 % | 2/2 | ✓ | 3/3 |
+| 34.48 million in employment (16+) | 0/2 | ✓ | 3/3 |
+| 1.78 million unemployed | 0/2 | ✓ | 3/3 |
 | compares with Feb–Apr 2026 (4.89 %): about unchanged / up 0.02 points | ? | (✓) | ? |
 
 - **claude** (`20261021T232522Z-uk-ons-labour-claude`): Feb–Apr 2026 4.886 % → 4.905 %: up ~0.02 points, essentially unchanged at one decimal
@@ -797,11 +797,11 @@ File: `eu_pt_opendata/008_BF_1_2023_beneficiarios_por_tipo_de_imposto_e_benefici
 
 | Check | hedgehog | claude | swap-hedgehog |
 |---|---|---|---|
-| 63,209 IRC beneficiaries | ✓ | ✓ | 3/3 |
-| VAT refunds €123,994,570.29 | ✓ | ✓ | 3/3 |
-| Estado Maior Força Aérea €37,534,892.43 | ✓ | ✓ | 3/3 |
-| armed and security forces 43.3 % | ✓ | ✓ | 3/3 |
-| 414 fire-brigade associations | ✓ | ✓ | 3/3 |
+| 63,209 IRC beneficiaries | 2/2 | ✓ | 3/3 |
+| VAT refunds €123,994,570.29 | 2/2 | ✓ | 3/3 |
+| Estado Maior Força Aérea €37,534,892.43 | 2/2 | ✓ | 3/3 |
+| armed and security forces 43.3 % | 2/2 | ✓ | 3/3 |
+| 414 fire-brigade associations | 2/2 | ✓ | 3/3 |
 
 Answers (latest run): [hedgehog](answers/pt-tax-benefits.hedgehog.md), [claude](answers/pt-tax-benefits.claude.md), [swap-hedgehog](answers/pt-tax-benefits.swap-hedgehog.md)
 

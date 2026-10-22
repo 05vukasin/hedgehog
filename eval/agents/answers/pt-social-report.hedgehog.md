@@ -1,16 +1,11 @@
-# pt-social-report · hedgehog · 2026-10-22T12:43:12+00:00 · gpt-4.1-mini
+# pt-social-report · hedgehog · 2026-10-22T15:03:09+00:00 · gpt-4.1-mini
 
-Run `20261022T124312Z-pt-social-report-hedgehog`
+Run `20261022T150309Z-pt-social-report-hedgehog`
 
-At 31 December 2016, there were 7,478 workers in total, of whom 3,245 were women. The share of women among the workers was about 43.4%.
+At 31 December 2016, there were 14,956 workers in total, of whom 6,490 were women, which is about 43.4% women (T1_all, Sexo F and T, totals).
 
-The largest job group is the total of all workers (labelled "Total") with 14,956 workers, but this seems to be a grand total rather than a job group. The data does not show a specific job group with a distinct count; the table T1_all only has a total row for the sum of all groups.
+The largest job group is "CTFP Por tempo indeterminado" with 6,798 workers (T1_all, Sexo T).
 
-Total personnel costs in 2016 were €216,259,993.16. Of that, base pay (Remuneração base) accounted for €135,390,883.32, which is about 62.6% of the total personnel costs.
+Total personnel costs in 2016 were €216,259,993.16, of which base pay ("Remuneração base") was €135,390,883.32, about 62.6% of total personnel costs (T15).
 
-Regarding service providers (prestadores de serviços), the file does not contain explicit data rows labelled as such, so the number of service providers cannot be determined from this file.
-
-Sources:  
-- Workers by sex: T1_all, total rows by "Sexo"  
-- Personnel costs: T15  
-- Service providers: no matching rows in T2_all for "prestadores de serviços"
+There were 560 service providers ("prestadores de serviços"), with 178 women among them, total 560 (T2 all rows).
