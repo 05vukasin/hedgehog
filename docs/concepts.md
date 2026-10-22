@@ -186,7 +186,14 @@ A cell is taken for a total when there is evidence (`Workbook.totals()` reports 
 - **Known aggregates:** in a country list with World Bank codes, the rows of region and
   income-group codes (`WLD`, `EUU`, `HIC`, `SSF`, ...) are aggregates. Their values are weighted or
   partial, so they are no checkable sums; they are listed on `Totals` with reason
-  `known_aggregate`, so a sum over the countries does not count them again.
+  `known_aggregate`, so a sum over the countries does not count them again. The same holds for
+  a Eurostat `geo` column of two-letter codes with `EU27_2020`, `EU28`, `EA20`, `EFTA`, ... rows,
+  and for an Our World in Data entity column with `World` beside the countries: `World`,
+  continents, income groups and the source-specific regions (`Non-OECD (EI)`, `ASEAN (Ember)`).
+- **Sex breakdowns:** in blocks of M / F / T rows (and the other languages' codes and words) the
+  both-sexes row is a subtotal of the two rows above it when its numbers add up, and a block
+  labelled `Total` is the table's total by sex; the M and F rows are data (see
+  [normalized output](normalized-output.md#rows)).
 
 In the normalized output a row whose total word is its label (its first text, at most four words,
 not a value recurring in its column as in long-format data) and whose numbers add up is a total row
@@ -206,6 +213,9 @@ numbers only, not to a table beside it.
   `Zusammen interreligiös`), or `Somme` (a département), `Sumas` (a place) and `SOM` (Somalia's
   code) right of other text or with numbers on the row below (inside a list). Alone as the label
   under a table's numbers they stay total labels, as `Suma` and `Zusammen` always do.
+- **Names in a register's name column** (a column with more than a third of its texts distinct)
+  that are a total word followed by a name (`TOTAL RECRUIT LTD`, `Zusammen unterwegs`) are records:
+  unless some number on the row adds up, the row stays data and is not listed on `Totals`.
 - A label recurring as a category of its column (`Summe der bezogenen Rohstoffe` once per industry
   in long-format data) stays a total label when the row shares its other keys with a neighbouring
   row; a record with an id of its own (`K-24-00758 | Total station survey equipment`) does not.
