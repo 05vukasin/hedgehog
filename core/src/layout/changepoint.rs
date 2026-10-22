@@ -20,7 +20,7 @@ use crate::values::{parse_date, parse_number, parse_time, NumberHint};
 use super::blocks::{Entry, Row};
 use super::cells::Kind;
 use super::params::*;
-use super::tables::{is_header_row, is_headerish, is_title_row_simple, is_total_row, signature, Signature};
+use super::tables::{is_header_row, is_headerish, is_title_row_simple, is_total_row, signature_is, Signature};
 
 const K: usize = 6;
 const EMPTY: u8 = 0;
@@ -331,7 +331,7 @@ fn best_cut(
             continue;
         }
         let gap = gap_len(rows, t) > usual;
-        let repeated = !header.is_empty() && r.n() >= 2 && signature(sheet, r) == *header;
+        let repeated = !header.is_empty() && r.n() >= 2 && signature_is(sheet, r, header);
         if repeated && !gap {
             continue;
         }

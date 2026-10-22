@@ -12,9 +12,8 @@ use crate::model::{Cell, Rect, Sheet};
 
 pub struct Grid<'a> {
     pub sheet: &'a Sheet,
-    /// (row, col) packed into a u64 → index into `sheet.cells`. For duplicate positions the last
-    /// cell wins.
-    index: FxHashMap<u64, u32>,
+    /// (row, col) → index into `sheet.cells`. For duplicate positions the last cell wins.
+    index: CellIndex,
     merges: MergeIndex,
     used: Option<Rect>,
     /// Built on first use: per row / per column, the cell indices sorted by column / row.
@@ -23,6 +22,9 @@ pub struct Grid<'a> {
     /// Total detection (with the register rule), built on first use: the layout rules and the
     /// normalizer both need it.
     pub(crate) totals: OnceLock<crate::totals::Detection>,
+    /// The sheet's parsed formulas and references, built on first use: the model's total features
+    /// and the total detection both need them (B131).
+    deps: OnceLock<crate::totals::DependencyIndex>,
 }
 
 #[inline]
@@ -32,10 +34,7 @@ fn key(row: u32, col: u32) -> u64 {
 
 impl<'a> Grid<'a> {
     pub fn new(sheet: &'a Sheet) -> Self {
-        let mut index = FxHashMap::with_capacity_and_hasher(sheet.cells.len(), Default::default());
-        for (i, c) in sheet.cells.iter().enumerate() {
-            index.insert(key(c.row, c.col), i as u32);
-        }
+        let index = CellIndex::new(&sheet.cells);
         Grid {
             sheet,
             index,
@@ -44,7 +43,22 @@ impl<'a> Grid<'a> {
             rows: OnceLock::new(),
             cols: OnceLock::new(),
             totals: OnceLock::new(),
+            deps: OnceLock::new(),
         }
+    }
+
+    /// The parsed formula of the cell at (row, col) from the dependency index, when that index is
+    /// built and every position holds one cell (then it is `parse` of that cell's formula).
+    pub(crate) fn parsed_formula(&self, row: u32, col: u32) -> Option<&crate::totals::formula::ParsedFormula> {
+        match self.index {
+            CellIndex::Sorted { .. } => self.deps.get()?.formula(row, col),
+            CellIndex::Hashed(_) => None,
+        }
+    }
+
+    /// The sheet's dependency index ([`crate::totals::DependencyIndex::new`]), built once.
+    pub fn deps(&self) -> &crate::totals::DependencyIndex {
+        self.deps.get_or_init(|| crate::totals::DependencyIndex::new(self))
     }
 
     /// The cached total detection, if it was run (see `totals::detect`).
@@ -60,13 +74,13 @@ impl<'a> Grid<'a> {
     #[inline]
     pub fn cell(&self, row: u32, col: u32) -> Option<&'a Cell> {
         let sheet: &'a Sheet = self.sheet;
-        self.index.get(&key(row, col)).map(|&i| &sheet.cells[i as usize])
+        self.index.get(&sheet.cells, row, col).map(|i| &sheet.cells[i as usize])
     }
 
     /// Index of the cell at (row, col) in `sheet.cells` — the row index into [`crate::Features`].
     #[inline]
     pub fn cell_index(&self, row: u32, col: u32) -> Option<usize> {
-        self.index.get(&key(row, col)).map(|&i| i as usize)
+        self.index.get(&self.sheet.cells, row, col).map(|i| i as usize)
     }
 
     /// Merged area covering (row, col), if any. For overlapping (malformed) merges, the one listed
@@ -85,7 +99,7 @@ impl<'a> Grid<'a> {
     /// True if the position holds a value/formula or is covered by a merged area.
     #[inline]
     pub fn is_filled(&self, row: u32, col: u32) -> bool {
-        self.index.contains_key(&key(row, col)) || self.merges.at(row, col).is_some()
+        self.index.get(&self.sheet.cells, row, col).is_some() || self.merges.at(row, col).is_some()
     }
 
     /// Bounding box of cells and merged areas ([`Sheet::used_range`]), computed once.
@@ -120,15 +134,30 @@ impl<'a> Grid<'a> {
             let mut out = Vec::new();
             for r in rect.top..=rect.bottom {
                 for c in rect.left..=rect.right {
-                    if let Some(i) = self.index.get(&key(r, c)) {
-                        out.push(*i);
+                    if let Some(i) = self.index.get(&self.sheet.cells, r, c) {
+                        out.push(i);
                     }
                 }
             }
             return out;
         }
-        let cols = self.columns();
         let cells = &self.sheet.cells;
+        if rect.bottom - rect.top <= rect.right - rect.left {
+            // No taller than wide (a row of a sum across columns): row by row, each row's cells
+            // already in column order, so the result needs no sort (B132).
+            let rows = self.rows.get_or_init(|| Lines::new(self, |c| (c.row, c.col)));
+            let lo = rows.keys.partition_point(|&r| r < rect.top);
+            let hi = rows.keys.partition_point(|&r| r <= rect.bottom);
+            let mut out = Vec::new();
+            for &row in &rows.keys[lo..hi] {
+                let line = rows.get(row);
+                let a = line.partition_point(|&i| cells[i as usize].col < rect.left);
+                let b = line.partition_point(|&i| cells[i as usize].col <= rect.right);
+                out.extend_from_slice(&line[a..b]);
+            }
+            return out;
+        }
+        let cols = self.columns();
         let lo = cols.keys.partition_point(|&c| c < rect.left);
         let hi = cols.keys.partition_point(|&c| c <= rect.right);
         let mut out = Vec::new();
@@ -142,6 +171,64 @@ impl<'a> Grid<'a> {
             out.sort_unstable_by_key(|&i| (cells[i as usize].row, cells[i as usize].col));
         }
         out
+    }
+}
+
+/// Position → cell lookup. Readers list cells row by row, left to right, each position once: then
+/// a cell is found by its row's range of `sheet.cells` and its column in that range (4 bytes per
+/// cell plus 4 per row, instead of a hash table of ~32 bytes per cell). Cells in any other order
+/// (or with duplicate positions) use a hash table, where the last cell of a position wins.
+enum CellIndex {
+    /// `starts[r - first]..starts[r - first + 1]` are the cells of row `r`; `cols[i]` is the
+    /// column of cell `i`.
+    Sorted { first: u32, starts: Vec<u32>, cols: Vec<u32> },
+    Hashed(FxHashMap<u64, u32>),
+}
+
+impl CellIndex {
+    fn new(cells: &[Cell]) -> CellIndex {
+        let sorted = cells.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col));
+        if sorted && let (Some(a), Some(b)) = (cells.first(), cells.last()) {
+            // One entry per row of the span: at most a few MB even for a sheet's last row.
+            let (first, last) = (a.row, b.row);
+            let mut starts = Vec::with_capacity((last - first) as usize + 2);
+            let mut i = 0usize;
+            for r in first..=last {
+                starts.push(i as u32);
+                while i < cells.len() && cells[i].row == r {
+                    i += 1;
+                }
+            }
+            starts.push(cells.len() as u32);
+            let cols = cells.iter().map(|c| c.col).collect();
+            return CellIndex::Sorted { first, starts, cols };
+        }
+        let mut index = FxHashMap::with_capacity_and_hasher(cells.len(), Default::default());
+        for (i, c) in cells.iter().enumerate() {
+            index.insert(key(c.row, c.col), i as u32);
+        }
+        CellIndex::Hashed(index)
+    }
+
+    #[inline]
+    fn get(&self, _cells: &[Cell], row: u32, col: u32) -> Option<u32> {
+        match self {
+            CellIndex::Sorted { first, starts, cols } => {
+                let r = row.checked_sub(*first)? as usize;
+                if r + 1 >= starts.len() {
+                    return None;
+                }
+                let (a, b) = (starts[r] as usize, starts[r + 1] as usize);
+                let line = &cols[a..b];
+                // A row without gaps holds column `col` at offset `col - first column`.
+                let guess = (col as usize).wrapping_sub(*line.first()? as usize);
+                if line.get(guess) == Some(&col) {
+                    return Some((a + guess) as u32);
+                }
+                line.binary_search(&col).ok().map(|k| (a + k) as u32)
+            }
+            CellIndex::Hashed(index) => index.get(&key(row, col)).copied(),
+        }
     }
 }
 
@@ -161,12 +248,37 @@ impl Lines {
         let mut order: Vec<u32> = (0..cells.len() as u32)
             .filter(|&i| {
                 let c = &cells[i as usize];
-                grid.index.get(&key(c.row, c.col)) == Some(&i)
+                grid.index.get(cells, c.row, c.col) == Some(i)
             })
             .collect();
         let sorted = order.windows(2).all(|w| major_minor(&cells[w[0] as usize]) < major_minor(&cells[w[1] as usize]));
         if !sorted {
-            order.sort_unstable_by_key(|&i| major_minor(&cells[i as usize]));
+            // Cells listed by (minor, major) — columns of a sheet in reader order — are put in
+            // (major, minor) order by counting per major coordinate: the same order as the sort,
+            // in linear time (B130). Positions are unique, so the order is unique.
+            let swapped = |i: u32| {
+                let (major, minor) = major_minor(&cells[i as usize]);
+                (minor, major)
+            };
+            let max_major = order.iter().map(|&i| major_minor(&cells[i as usize]).0).max().unwrap_or(0);
+            if max_major < 1 << 20 && order.windows(2).all(|w| swapped(w[0]) < swapped(w[1])) {
+                let mut start = vec![0u32; max_major as usize + 2];
+                for &i in &order {
+                    start[major_minor(&cells[i as usize]).0 as usize + 1] += 1;
+                }
+                for k in 1..start.len() {
+                    start[k] += start[k - 1];
+                }
+                let mut out = vec![0u32; order.len()];
+                for &i in &order {
+                    let m = major_minor(&cells[i as usize]).0 as usize;
+                    out[start[m] as usize] = i;
+                    start[m] += 1;
+                }
+                order = out;
+            } else {
+                order.sort_unstable_by_key(|&i| major_minor(&cells[i as usize]));
+            }
         }
         let mut spans = FxHashMap::default();
         let mut keys = Vec::new();
@@ -286,6 +398,31 @@ mod tests {
         assert_eq!(g.merge_index_at(5, 5), None);
         assert!(g.is_filled(5, 5) && g.is_filled(7, 12) && !g.is_filled(7, 7));
         assert_eq!(g.used_range(), Some(Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }));
+    }
+
+    #[test]
+    fn reader_order_lookups_match_a_scan() {
+        // Row-major cells (the readers' order) take the row-range index and the counted column
+        // lines; both must agree with a plain scan.
+        let mut cells = Vec::new();
+        for r in [0u32, 1, 4, 5, 9] {
+            for c in [0u32, 2, 3, 7].iter().filter(|&&c| (r + c) % 3 != 1) {
+                cells.push(cell(r, *c));
+            }
+        }
+        let sheet = Sheet { name: "s".into(), cells: cells.clone(), merges: vec![], formats: vec![] };
+        let g = Grid::new(&sheet);
+        assert!(matches!(g.index, CellIndex::Sorted { .. }));
+        for r in 0..12 {
+            for c in 0..10 {
+                assert_eq!(g.cell_index(r, c), cells.iter().position(|x| x.row == r && x.col == c), "{r},{c}");
+            }
+        }
+        for c in 0..10 {
+            let mut want: Vec<u32> = (0..cells.len() as u32).filter(|&i| cells[i as usize].col == c).collect();
+            want.sort_by_key(|&i| cells[i as usize].row);
+            assert_eq!(g.col_cells(c), &want[..]);
+        }
     }
 
     #[test]

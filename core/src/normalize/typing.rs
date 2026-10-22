@@ -118,6 +118,13 @@ struct Cand {
     annotation: bool,
 }
 
+impl Cand {
+    /// Anything read (a value without readings is the same as `Cand::default()`).
+    fn has_reading(&self) -> bool {
+        self.num.is_some() || self.date.is_some() || self.boolean.is_some() || self.annotation
+    }
+}
+
 /// Types one column. `rows[i]` is the source row of `slots[i]`, `col` the source column (both
 /// 0-based, for warnings). `first` are the hints for the typing pass (explicit locale or none);
 /// `refine` is asked for the final hints of a numeric / date column, given a sample of its text
@@ -132,16 +139,16 @@ pub(super) fn type_column(
     refine: &mut dyn FnMut(&[&str], bool, &NativeNumbers) -> ColumnHints,
     tr: &mut Transforms,
 ) -> Typed {
-    let t = super::tracing().then(std::time::Instant::now);
-    let typed = type_column_untimed(name, col, slots, rows, first, refine, tr);
-    if let Some(t) = t {
-        TYPING.with(|s| s.set(s.get() + t.elapsed()));
-    }
-    typed
+    type_column_untimed(name, col, slots, rows, first, refine, tr)
+}
+
+/// Adds the time of a table's column typing (for the trace).
+pub(super) fn add_typing_time(d: std::time::Duration) {
+    TYPING.with(|s| s.set(s.get() + d));
 }
 
 thread_local! {
-    /// Time this thread spent in [`type_column`] while tracing (see [`take_typing_time`]).
+    /// Time this thread spent typing columns ([`add_typing_time`]) (see [`take_typing_time`]).
     static TYPING: std::cell::Cell<std::time::Duration> = const { std::cell::Cell::new(std::time::Duration::ZERO) };
 }
 
@@ -183,7 +190,9 @@ fn type_column_untimed(
     let mut words_only = true;
     let mut native = NativeNumbers::default();
     let mut ambiguous_seen = false;
-    let mut cands: Vec<Cand> = vec![Cand::default(); slots.len()];
+    // Readings of the text values that are not missing, by slot index in slot order; a text that
+    // reads as nothing is left out (most texts of a text column: little memory per column, B134).
+    let mut cands: Vec<(u32, Cand)> = Vec::new();
     for (i, s) in slots.iter().enumerate() {
         let Slot::Val(v) = s else { continue };
         if missing[i].is_some() {
@@ -199,7 +208,8 @@ fn type_column_untimed(
             Value::DateTime(_) => is_date = true,
             Value::Bool(_) => is_bool = true,
             Value::Text(t) => {
-                let c = &mut cands[i];
+                let mut cand = Cand::default();
+                let c = &mut cand;
                 if num_miss <= allowed_num && lead0 == 0 {
                     c.num = parse_number(t, nh);
                     if let Some(p) = &c.num {
@@ -234,6 +244,9 @@ fn type_column_untimed(
                             words_only = words.len() <= MAX_DISTINCT_WORDS;
                         }
                     }
+                }
+                if cand.has_reading() {
+                    cands.push((i as u32, cand));
                 }
             }
             Value::Error(_) => {}
@@ -295,13 +308,20 @@ fn type_column_untimed(
             let reparse = ambiguous_seen || hints.currency_context != first.currency_context;
             if reparse && hints != first {
                 let nh = hints.number_hint();
+                let mut old = std::mem::take(&mut cands).into_iter().peekable();
                 for (i, s) in slots.iter().enumerate() {
-                    if let (Slot::Val(Value::Text(t)), None) = (s, missing[i]) {
-                        if kind == Kind::Num {
-                            cands[i].num = parse_number(t, nh);
-                        } else {
-                            cands[i].date = parse_date(t, hints.date_order);
-                        }
+                    let (Slot::Val(Value::Text(t)), None) = (s, missing[i]) else { continue };
+                    let mut c = match old.next_if(|x| x.0 == i as u32) {
+                        Some((_, c)) => c,
+                        None => Cand::default(),
+                    };
+                    if kind == Kind::Num {
+                        c.num = parse_number(t, nh);
+                    } else {
+                        c.date = parse_date(t, hints.date_order);
+                    }
+                    if c.has_reading() {
+                        cands.push((i as u32, c));
                     }
                 }
             }
@@ -313,7 +333,7 @@ fn type_column_untimed(
     let mut curs: HashMap<&'static str, usize> = HashMap::new();
     let mut units: HashMap<&'static str, usize> = HashMap::new();
     if kind == Kind::Num {
-        for c in &cands {
+        for (_, c) in &cands {
             if let Some(p) = &c.num {
                 pct += p.percent as usize;
                 if let Some(cc) = p.currency {
@@ -336,7 +356,13 @@ fn type_column_untimed(
     let mut has_time = false;
     let mut all_int = true;
     let mut values = Vec::with_capacity(slots.len());
-    for (i, (s, c)) in slots.iter().zip(&cands).enumerate() {
+    let no_reading = Cand::default();
+    let mut next_cand = cands.iter().peekable();
+    for (i, s) in slots.iter().enumerate() {
+        let c = match next_cand.next_if(|x| x.0 == i as u32) {
+            Some((_, c)) => c,
+            None => &no_reading,
+        };
         let c = (missing[i], c);
         let out = match s {
             Slot::Empty => Out::Null,

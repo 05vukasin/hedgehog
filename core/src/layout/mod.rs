@@ -24,6 +24,9 @@ use cells::{is_aggregate_formula, is_total_label, text_of, Kind};
 use params::{LOOSE_AGGREGATES_AS_TOTAL, LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP};
 use tables::Out;
 
+/// Sheets with at least this many cells detect total rows and blocks on two threads.
+const PARALLEL_MIN_CELLS: usize = 100_000;
+
 /// Detects tables and assigns one [`Role`] per entry of `grid.sheet.cells` (same order).
 pub fn analyze(grid: &Grid) -> SheetLayout {
     analyze_inner(grid, params::COLUMN_NUMBER_ROWS, true)
@@ -40,20 +43,38 @@ pub fn analyze_for_model(grid: &Grid) -> SheetLayout {
 
 fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLayout {
     let sheet = grid.sheet;
-    let t = std::time::Instant::now();
+    let trace = crate::normalize::trace_ms;
+    let totals = || {
+        let t = std::time::Instant::now();
+        let rows = if registers { crate::totals::labelled_rows(grid) } else { Vec::new() };
+        trace("layout.totals", t.elapsed());
+        rows
+    };
+    let blocks = || {
+        let t = std::time::Instant::now();
+        let regions = blocks::regions(grid);
+        trace("layout.blocks", t.elapsed());
+        regions
+    };
+    // The total rows and the blocks are independent reads of the grid: on a large sheet they
+    // run side by side (B120).
+    let (labelled_totals, regions) = if registers && sheet.cells.len() >= PARALLEL_MIN_CELLS {
+        std::thread::scope(|s| {
+            let h = s.spawn(totals);
+            let regions = blocks();
+            (h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)), regions)
+        })
+    } else {
+        (totals(), blocks())
+    };
     let mut out = Out {
         roles: vec![Role::Other; sheet.cells.len()],
         tables: Vec::new(),
         loose: Vec::new(),
         column_numbers,
         registers,
-        labelled_totals: if registers { crate::totals::labelled_rows(grid) } else { Vec::new() },
+        labelled_totals,
     };
-    let trace = crate::normalize::trace_ms;
-    trace("layout.totals", t.elapsed());
-    let t = std::time::Instant::now();
-    let regions = blocks::regions(grid);
-    trace("layout.blocks", t.elapsed());
     let t = std::time::Instant::now();
     let (sigs, search) = changepoint::time_spent();
     for region in regions {

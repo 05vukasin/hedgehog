@@ -189,9 +189,9 @@ Known lenient check, not fixed: `fr-insee-pop paris-change` (`abs`) passes answe
 
 | ID | Problem | Fix | Done when | Status |
 |---|---|---|---|---|
-| B130 | title "in 1 000 EUR" gives no unit line (only "(thousands)" does) | unit-from-title parser handles space-grouped thousands and currency after the scale | snapshot shows the unit line | done: scale_of reads space-grouped thousands (`in 1 000 EUR`, `(in 1 000 000 €)`) |
-| B131 | header `Fläche km²` becomes `Fläche km` (superscript unit dropped as a footnote mark) | keep ²/³ when they follow a unit (km, m, cm); footnote stripping only for marks not part of a unit | header keeps km² | open |
-| B132 | data value `Delta²` keeps its footnote mark | strip footnote marks from text labels consistently (record them like numeric marks) | label is `Delta` with mark recorded | open |
+| B140 | title "in 1 000 EUR" gives no unit line (only "(thousands)" does) | unit-from-title parser handles space-grouped thousands and currency after the scale | snapshot shows the unit line | done: scale_of reads space-grouped thousands (`in 1 000 EUR`, `(in 1 000 000 €)`) |
+| B141 | header `Fläche km²` becomes `Fläche km` (superscript unit dropped as a footnote mark) | keep ²/³ when they follow a unit (km, m, cm); footnote stripping only for marks not part of a unit | header keeps km² | open |
+| B142 | data value `Delta²` keeps its footnote mark | strip footnote marks from text labels consistently (record them like numeric marks) | label is `Delta` with mark recorded | open |
 ## Information gaps (model-free scoreboard, 2026-10-22)
 
 From [eval/info](../info/REPORT.md), binary v0.4.0. Each row is a check that is **c** (reachable only
@@ -207,3 +207,40 @@ line ablation and the LLM check that followed it, not from a gap. Sorted by chec
 | B103 | eu-electricity-prices `eu-2025s2`: geo shows one example (`e.g. "AL"`), and the 1,080 aggregate rows (EU27_2020, EA20, …) are listed by the constant DATAFLOW column (`'ESTAT:NRG_PC_204(1.0)'@137`), so `EU27_2020` is nowhere in the catalog | label total rows by the most specific key column that varies (geo), never by a constant column; list the values of short code dimensions (≤ 60 distinct, ≤ 12 characters) in full | eval/info: eu-2025s2 b; the catalog names EU27_2020 | 1 | P3 | done (pending rerun): total rows labelled by the column that names them (geo), repeated labels once; code columns ≤ 60 short values listed (optional part); eu-2025s2 b |
 | B104 | catalog tokens with no information value in the ablation: `[type · role · range]` after column names (3,274 o200k tokens over 30 catalogs), total-row labels on brief table lines (3,290), `quality:` lines (1,376), together 15 % of 53.9k tokens and 0 lost checks. Hiding them in swap-hedgehog (6 cases × 3 runs) gave 90/111 checks against 84/111 with 37 % fewer input tokens | shorten without losing the traps: keep `don't sum`, `id` and period ranges and drop the role and range on plain measures; brief lines say how many total rows there are and give one label (the rest are in `totals`); quality keeps only facts that change a count or a sum (empty dates by category, duplicates, negatives) | eval/info sufficiency unchanged, catalog tokens −10 %, agent eval no drop | 0 | P3 | done (pending rerun): column items keep currency, id, rate/avg/index, ranges of measures and dates; head lines name total rows only without a total-rows line; status/notes/numbers/quality only when they change an answer; inline rows rounded and capped at 3,500 characters |
 | B105 | blind spot of the scoreboard: at-tourism-2months is 6/6 a or b, yet gpt-4.1-mini gets 6–8 of 18 (both arms) because it reads `'Österreich gesamt'` (guests from Austria, 4,820,369 in July) as Austria's total. The head line lists `+3 total rows: 'Insgesamt'@4, 'Österreich gesamt'@5, 'Deutschland gesamt'@17` without levels; the grand total is `Insgesamt` | the head line names the grand total first and as such (`grand total 'Insgesamt'@4; totals of an origin: 'Österreich gesamt'@5 …`), as brief mode already does; eval/info gets a "trap" check that flags tables with several total rows whose labels contain the question's place or "total" word | at-tourism july/august/both pass in 3/3 swap runs | 3 | P2 | done (pending rerun): total rows like 'Österreich gesamt' flagged as totals of one group, not the table; eval/info trap check for at-tourism passes |
+## Agent-path speed (2026-10-22)
+
+First `open_file` (cache off) through `hedgehog mcp`, measured per stage with `HEDGEHOG_TRACE=1` on
+the ten largest files. Every item is exact: done only when the catalogs and query results of the 30
+eval cases (every `ref_sql`, `describe_table`, `totals` and generic queries over `T<n>_all`, long
+and union views: 529 tool calls), the normalized xlsx + manifest of 300 sampled files (threaded and
+pinned to one CPU), golden enron50 and both benchmark TSVs are byte-identical to v0.4.0. Times are
+to the first query answer, best of 3, before → after the whole batch.
+
+| ID | Waste or cost (where) | Fix | Done when | Status |
+|---|---|---|---|---|
+| B120 | the agent path had no trace below `normalized` / `catalog`; it was not clear whether it wrote an xlsx | trace points `hash`, `read`, `cat.*` (time, row info, types, entities, ID pairs, share, values, numbers, quality), `sql.plan / rows / long_views / unions / commit`, `tot.*`, `totals_prefetch` | the stage breakdown is measured | done: the agent path writes no xlsx, CSV or manifest (`try_normalize_workbook` + catalog + SQLite only) |
+| B121 | the SQLite load started only after the catalog (pt001: catalog 1.0 s, then load 1.5–1.8 s); inserts copied every text into a `Value` row first | the load (or the disk cache entry) starts right after normalizing, beside the catalog; `Cache::put_with` takes the catalog when it is ready; values bound in place | identical catalogs and query results, cache on and off | done: first query ~1 s sooner on pt001 |
+| B122 | sheets analyzed one at a time built a second grid for the extraction (cell index, row/column lines, total detection again) and kept every sheet's layout until all were done | layout and extraction of a sheet share one grid, sheet by sheet | 300-file equivalence | done |
+| B123 | the labelled total rows (`layout.totals`, pt001 3.9 s, chicago 3.2 s) and the blocks (2.5 s / 1.8 s) ran one after the other | both on two threads on sheets of 100k+ cells | same layouts | done |
+| B124 | column typing ran one column at a time (pt001 2.6 s, be027 2.3 s) | columns of a table with 200k+ values on up to four threads, results in column order, transform counts added | same tables | done: pt001 typing 0.74 s |
+| B125 | the grid's cell index was a hash table of ~32 bytes per cell (~140 MB on pt001) | cells in reader order: row range + column array, direct guess then binary search; other orders keep the hash table | same lookups (unit test against a scan) | done: peaks down 30–250 MB |
+| B126 | blocks grew component and row vectors by doubling and sorted entries that were already sorted; typing kept a ~100-byte parse record per text | exact sizes, sort only when unsorted; parse records only for texts that read as something (B134) | same regions and columns | done |
+| B127 | the labelled-rows pass and the total detection computed the same keyword cells and rows twice | computed once and handed over | same detection | done |
+| B128 | `is_header_row` compared every entry with every entry of 12 rows below (pt001 regions 1.9 s); a row's header signature was built only to compare it; `is_total_label` allocated per word | binary search of the overlapping run in rows whose entries do not overlap; `signature_is`; ASCII words without allocation | unit tests against the general paths | done: pt001 regions 1.9 → 1.2 s |
+| B129 | `missing_token` (via `header_text`, called per text cell by the totals) built a folded key for every text | `norm_key` ASCII fast path; no key when the first letter cannot start one (`MISSING_KEY_STARTS`, test lists every key) | same tokens | done |
+| B130 | column lines of a 3–5M-cell sheet were sorted (0.3–0.5 s) | counted per column when the cells are in reader order | same lines (unit test) | done |
+| B131 | every formula was parsed twice on model sheets (model total features + detection; pt008: 632k formulas) and again in `verify` | one `DependencyIndex` per sheet on the grid; `verify` takes its parse from it (only when every position holds one cell) | same features, detection and checks | done |
+| B132 | `cells_in` sorted the cells of wide ranges collected column by column | ranges no taller than wide are collected row by row (already row-major) | same cells (grid tests) | done |
+| B133 | the extraction's total detection waited for the layout (owid 2.2 s, pt008 2.8 s, uk069 1.9 s) | on sheets of 100k+ cells it runs on its own thread beside the layout or the model (the grid's cached value) | same detection | done |
+| B134 | parallel typing of a wide text register held four columns' parse records at once (+50–150 MB on pt001) | sparse parse records (see B126) | peak not above 0.4.0 | done |
+| B135 | memory freed by the analysis threads stayed resident in several glibc arenas (bfs036 peak 574–654 MB over 8 runs, before 589–604) | `malloc_trim(0)` after every sheet of 100k+ cells | peak not above 0.4.0 | done: bfs036 519–581 MB |
+| B136 | not done: reading (calamine zip/XML) is now the largest single stage on xlsx (pt001 3.1 s of 9.6 s, eq08 2.8 s); `read` of several sheets could run in parallel with separate archive handles | one reader per sheet on parallel threads, cells merged in sheet order | same workbook | open |
+| B137 | not done: the catalog (pt001 1.0 s: quality 0.32, entities 0.27, types 0.23 s) and the SQL plan detect entity columns separately | share the detection between the catalog and the load, or split the catalog's per-table steps over threads | same catalog | open |
+
+Before → after (s to the first query, peak MB max of 3): pt001 17.4 → 9.6 (1214 → 1183), be027
+9.7 → 5.4 (1393 → 1224), owid 9.9 → 4.4 (1266 → 1261), eq08 12.1 → 7.3 (1273 → 1024), chicago
+10.2 → 4.8 (758 → 671), nl019 10.0 → 6.7 (646 → 581), uk069 10.6 → 6.4 (643 → 521), usda029 2.4 →
+1.75 (326 → 317), bfs036 5.1 → 3.85 (625 → 557), pt008 11.9 → 7.9 (1314 → 1164). Reopen from the
+disk cache: 1–2 ms to the catalog. This also closes the B90 note (pt001 ~10 % slower than at the
+P7 tip, `layout.totals` + `layout.blocks` +1.4 s): those two now run side by side, 2.3 s instead
+of 6.4 s on pt001.

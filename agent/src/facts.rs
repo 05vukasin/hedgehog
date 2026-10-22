@@ -662,7 +662,7 @@ pub fn scale_of(text: &str) -> Option<(f64, &'static str)> {
         let w = raw.trim_matches(|c: char| "()'’.$€£".contains(c));
         let prev = k.checked_sub(1).map(|j| toks[j].trim_matches(|c: char| "()".contains(c))).unwrap_or("");
         let marked = BEFORE.contains(&prev) || raw.starts_with('(');
-        // B130: "in 1 000 EUR", "(1 000 000)": thousands grouped with spaces.
+        // B140: "in 1 000 EUR", "(1 000 000)": thousands grouped with spaces.
         let next = |j: usize| toks.get(k + j).map(|n| n.trim_matches(|c: char| "()'’.$€£".contains(c)));
         if w == "1" && marked && next(1) == Some("000") {
             return Some(if next(2) == Some("000") { (1e6, "millions") } else { (1e3, "thousands") });

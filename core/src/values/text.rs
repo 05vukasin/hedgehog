@@ -222,9 +222,13 @@ pub(crate) fn fold_key_into(s: &str, out: &mut String) {
 /// whitespace collapsed, Cyrillic transliterated, lowercased, diacritics folded.
 /// `"  Београд "`, `"BEOGRAD"`, `"beograd"` → `"beograd"`; `"Đorđević"` → `"djordjevic"`.
 pub fn norm_key(s: &str) -> String {
+    let t = trim(s);
+    if t.is_ascii() {
+        return ascii_key(t);
+    }
     let mut out = String::with_capacity(s.len());
     let mut pending_space = false;
-    for c in trim(s).chars() {
+    for c in t.chars() {
         if is_invisible(c) {
             continue;
         }
@@ -237,6 +241,26 @@ pub fn norm_key(s: &str) -> String {
         }
         pending_space = false;
         push_key_char(c, &mut out);
+    }
+    out
+}
+
+/// [`norm_key`] of trimmed ASCII text: no invisible, Cyrillic or accented characters, so the key
+/// is the text lowercased with whitespace runs collapsed (B129).
+fn ascii_key(t: &str) -> String {
+    let mut out = String::with_capacity(t.len());
+    let mut pending_space = false;
+    for b in t.bytes() {
+        let c = b as char;
+        if c.is_whitespace() {
+            pending_space = true;
+            continue;
+        }
+        if pending_space && !out.is_empty() {
+            out.push(' ');
+        }
+        pending_space = false;
+        out.push(c.to_ascii_lowercase());
     }
     out
 }
@@ -254,6 +278,35 @@ pub fn fingerprint(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ascii_key_is_the_general_key() {
+        // Every ASCII character folds to itself lowercased (the fast path's assumption).
+        for b in 0u8..128 {
+            let c = b as char;
+            assert!(!is_invisible(c));
+            let mut slow = String::new();
+            push_key_char(c, &mut slow);
+            assert_eq!(slow, c.to_ascii_lowercase().to_string(), "{b}");
+        }
+        for s in ["  N/A ", "Not  Available", "a\tb\n c", "X", "\u{b}x\u{b}", "Total 2024", ""] {
+            let t = trim(s);
+            let mut slow = String::new();
+            let mut pending = false;
+            for c in t.chars() {
+                if c.is_whitespace() {
+                    pending = true;
+                    continue;
+                }
+                if pending && !slow.is_empty() {
+                    slow.push(' ');
+                }
+                pending = false;
+                push_key_char(c, &mut slow);
+            }
+            assert_eq!(norm_key(s), slow, "{s:?}");
+        }
+    }
 
     #[test]
     fn trims_invisible_and_nbsp() {

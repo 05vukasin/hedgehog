@@ -131,9 +131,17 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
         }
     };
     // Direct `+` operands (single cells of an addition chain) convert numeric text like Excel does.
-    let coerce: Vec<(u32, u32)> = cell
-        .and_then(|c| c.formula.as_deref())
-        .map(parse)
+    // The parse the dependency index already holds, if any (B132).
+    let parsed_here;
+    let parsed = match (cell.and_then(|c| c.formula.as_deref()), grid.parsed_formula(cand.row, cand.col)) {
+        (Some(_), Some(p)) => Some(p),
+        (Some(f), None) => {
+            parsed_here = parse(f);
+            Some(&parsed_here)
+        }
+        (None, _) => None,
+    };
+    let coerce: Vec<(u32, u32)> = parsed
         .filter(|p| matches!(p.kind, FormulaKind::AdditionChain | FormulaKind::Sum | FormulaKind::Subtotal))
         .map(|p| p.sum_refs.iter().filter(|r| r.kind == RefKind::Cell).map(|r| (r.rect.top, r.rect.left)).collect())
         .unwrap_or_default();

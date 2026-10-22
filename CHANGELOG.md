@@ -32,7 +32,7 @@ All notable changes to hedgehog are listed here. The format follows
   - Inlined small tables round fractions to 6 significant digits and take at most 3,500 characters
     per catalog; short code columns of large tables (≤ 60 codes) and the row labels of small wide
     tables (≤ 30 rows) are listed when room is left (B102, B103).
-  - Units from titles read space-grouped thousands (`in 1 000 EUR`, B130).
+  - Units from titles read space-grouped thousands (`in 1 000 EUR`, B140).
 - **eval/info**: brace groups, table runs and column references are read as the catalog writes them;
   trap facts (do not sum, total rows that stay in the data, grand totals, signs, mixed measures,
   scales, COUNT(DISTINCT) keys, empty dates) per case in results.json and a trap check for
@@ -49,6 +49,26 @@ All notable changes to hedgehog are listed here. The format follows
   v0.4.0: 159 of 168 checks (95 %) are a or b, at 2.95 sufficient checks per 1k catalog tokens.
   The 9 gaps are backlog items B100–B103 in eval/agents/BACKLOG.md, and the ablation adds B104–B105. Test-only:
   `HH_HIDE_KINDS=types,quality` hides catalog line kinds from the `swap-hedgehog` arm.
+- **Faster first `open_file` on large files, same output** (B120–B135). The ten largest test
+  files (1.7–7M cells) open 25–55 % faster with the cache off (time to the first query answer,
+  best of 3: `001_contratos2020.xlsx` 17.4 → 9.6 s, `027_dataset_azur_ei_88.csv` 9.7 → 5.4 s,
+  `owid_covid_compact_first200k.csv` 9.9 → 4.4 s, `EQ08__13.xlsx` 12.1 → 7.3 s,
+  `business_licenses.csv` 10.2 → 4.8 s, `019_dPi2025_H1-H4.xlsx` 10.0 → 6.7 s,
+  `069_asylum-claims…xlsx` 10.6 → 6.4 s, `029_food-at-home…xlsx` 2.4 → 1.75 s,
+  `036_36752511_master.xlsx` 5.1 → 3.85 s, `008_BF_1_2023…xlsx` 11.9 → 7.9 s), at the same or
+  lower peak memory (e.g. 1.21 → 1.15–1.18 GB, 1.39 → 1.22 GB, 1.27 → 1.02 GB). `hedgehog
+  normalize` gets the same speed-ups in its analysis. Every change computes the same thing in
+  another order or skips repeated work: catalogs and query results of the 30 agent cases, the
+  normalized xlsx and manifest of 300 files (threaded and on one CPU), the golden check and both
+  benchmark TSVs are byte-identical to 0.4.0. What changed: the SQL load runs beside the catalog;
+  a sheet's grid, parsed formulas and total detection are built once for layout and extraction;
+  the total detection of a large sheet runs beside its layout, its labelled total rows beside the
+  blocks, and a large table types its columns on up to four threads; cells in reader order are
+  indexed by row range instead of a hash table (~32 bytes per cell less); several hot row checks
+  no longer allocate; freed memory goes back to the system after each large sheet. See
+  [architecture.md](docs/architecture.md#performance-notes).
+- `HEDGEHOG_TRACE=1` traces the agent path too: `read`, `tot.*`, `totals_prefetch`, `cat.*`,
+  `sql.*`.
 
 ## [0.4.0] - 2026-10-22
 

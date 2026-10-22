@@ -536,20 +536,25 @@ These limits are covered by tests (`agent/src/sql.rs`, `agent/src/files.rs`, `cl
 
 ## Memory and speed
 
-The first open of a file costs what `hedgehog normalize` costs (without writing the output files).
-The catalog comes back as soon as the file is normalized; the SQL tables are built on another thread
-meanwhile, and the first `query` waits for them if it comes sooner. After that the file is in the
-[disk cache](#disk-cache): any later session, in any process, gets the catalog in about 2 ms and
-query answers in milliseconds.
+The first open of a file reads and normalizes it (what `hedgehog normalize` does, without writing
+any output file: no xlsx, CSV or manifest). The SQL tables are built on another thread as soon as
+the file is normalized, beside the catalog, and the first `query` waits for them if it comes sooner.
+A large sheet also uses a few threads of its own (its total detection beside its layout, column
+typing on up to four threads). After that the file is in the [disk cache](#disk-cache): any later
+session, in any process, gets the catalog in a few milliseconds and query answers in milliseconds.
 
 | File (new process each time, best of 3) | First open: catalog / first query | Reopen from the cache: catalog / first query | Peak memory first / reopen |
 |---|---|---|---|
-| `eu_pt_opendata/001_contratos2020.xlsx` (40 MB, 4.5M cells) | 15.0 s / 16.5 s | 2.3 ms / 19 ms | 1.2 GB / 0.54 GB |
-| `eu_ch_bfs/036_36752511_master.xlsx` (7 MB, 1.5M cells) | 12.2 s / 12.8 s | 2.5 ms / 3.2 ms | 0.89 GB / 0.36 GB |
+| `eu_pt_opendata/001_contratos2020.xlsx` (40 MB, 4.5M cells) | 9.0 s / 10.1 s | 1 ms / 20 ms | 1.17 GB / 0.23 GB |
+| `eu_ch_bfs/036_36752511_master.xlsx` (7 MB, 1.5M cells) | 3.6 s / 3.9 s | 1 ms / 4 ms | 0.55 GB / 15 MB |
 | `enron/andrea_ring__3__HHmonthlyavg.xlsx` | 29 ms / 31 ms | 2.3 ms / 2.5 ms | 13 MB / 6 MB |
 | `eu_at_opendata/003_pen_02_02.xlsx` | 12 ms / 13 ms | 2.3 ms / 2.6 ms | 11 MB / 6 MB |
 
-Times are from spawning `hedgehog mcp` to the response. A reopened file's normalized form (which
+Times are from the request to the response (the two large files re-measured after the agent-path
+speed-ups, B120–B135, with the disk cache on; with it off the first query comes ~0.5 s sooner on
+the 4.5M-cell file, since no cache entry is written). First opens of the ten largest test files (1.7–7M cells) take 1.8–9.6 s with
+the cache off, 25–55 % less than in 0.4.0, at the same or lower peak memory; see the
+[changelog](../CHANGELOG.md). A reopened file's normalized form (which
 `describe_table`, `totals` and SQL error hints need) is read on another thread right after
 `open_file` (about 1 s for the 4.5M-cell file). At most 8 files stay in memory per session; the
 least recently used is dropped. Run `hedgehog mcp` with stderr visible to see per-call time and
