@@ -621,9 +621,11 @@ pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
         }
         extract::process_sheet(sheet, opts, lay, &mut out);
     }
+    let t0 = std::time::Instant::now();
     for t in &mut out.tables {
         derive::add_columns(t);
     }
+    trace("derive", t0);
     out
 }
 
