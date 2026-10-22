@@ -34,6 +34,11 @@ general agent that has no hedgehog?**
 5. **Every failure becomes a backlog item** ([BACKLOG.md](BACKLOG.md)) that names the case it came
    from. An item is done when that case passes in a fresh run.
 
+**Information without a model.** [eval/info](../info/README.md) scores the same checks without an
+LLM: is the answer in the `open_file` catalog, one query away, or does it need more work? It also
+measures what each kind of catalog line is worth per token. Run it after catalog changes, before the
+paid agent runs.
+
 ## Running
 
 **Claude Code runs once per case.** Its answer does not depend on hedgehog, so the `claude` arm is
