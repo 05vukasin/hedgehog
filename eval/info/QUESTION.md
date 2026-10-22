@@ -10,44 +10,44 @@ Tokens: tiktoken o200k_base.
 
 | Cases | Checks | a+b without | a+b with | Tokens without | Tokens with | Change |
 |---|---:|---:|---:|---:|---:|---:|
-| all (30) | 168 | 168 | 168 | 42,360 | 34,573 | -18 % |
-| multi-table files (12) | 69 | 69 | 69 | 27,169 | 19,382 | -29 % |
-| question matched some tables (9) | 52 | 52 | 52 | 22,044 | 14,257 | -35 % |
+| all (30) | 168 | 168 | 168 | 42,183 | 34,568 | -18 % |
+| multi-table files (12) | 69 | 69 | 69 | 27,149 | 19,534 | -28 % |
+| question matched some tables (9) | 52 | 52 | 52 | 22,026 | 14,411 | -35 % |
 
 ## Per case
 
 | Case | Tables | Matched | a+b without | a+b with | Tokens without | Tokens with | Change |
 |---|---:|---|---:|---:|---:|---:|---:|
-| pt-contracts | 1 | – | 9/9 | 9/9 | 1,876 | 1,876 | +0 % |
+| pt-contracts | 1 | – | 9/9 | 9/9 | 1,866 | 1,866 | +0 % |
 | at-pension | 1 | – | 4/4 | 4/4 | 1,568 | 1,568 | +0 % |
-| enron-henry-hub | 7 | T1, T2, T3 | 8/8 | 8/8 | 3,088 | 2,415 | -22 % |
-| de-truck-toll | 5 | T3, T5 | 4/4 | 4/4 | 1,542 | 1,019 | -34 % |
-| enron-om-2plants | 2 | – | 5/5 | 5/5 | 1,460 | 1,460 | +0 % |
-| enron-newco-cashflow | 2 | – | 5/5 | 5/5 | 828 | 828 | +0 % |
-| enron-deals-pl | 1 | – | 5/5 | 5/5 | 1,218 | 1,218 | +0 % |
-| enron-mdea-pl | 26 | T3 | 4/4 | 4/4 | 2,878 | 1,331 | -54 % |
-| enron-storage-inventory | 2 | – | 6/6 | 6/6 | 2,533 | 2,533 | +0 % |
-| at-salzburg-budget | 1 | – | 7/7 | 7/7 | 690 | 690 | +0 % |
-| rs-pancevo-budget | 2 | – | 6/6 | 6/6 | 1,310 | 1,310 | +0 % |
-| us-superstore | 3 | T1, T3 | 6/6 | 6/6 | 827 | 817 | -1 % |
-| ms-financial-sample | 1 | – | 4/4 | 4/4 | 443 | 443 | +0 % |
-| nw-orders | 2 | – | 4/4 | 4/4 | 697 | 697 | +0 % |
-| us-chicago-salaries | 1 | – | 6/6 | 6/6 | 393 | 393 | +0 % |
-| us-nyc-payroll | 1 | – | 5/5 | 5/5 | 572 | 572 | +0 % |
-| uk-gender-pay-gap | 1 | – | 5/5 | 5/5 | 530 | 530 | +0 % |
-| pt-social-report | 26 | T2, T18, T15, T14, T17 | 7/7 | 7/7 | 2,973 | 1,649 | -45 % |
-| at-cpi | 1 | – | 5/5 | 5/5 | 742 | 742 | +0 % |
-| wb-gdp-wide | 1 | – | 6/6 | 6/6 | 492 | 492 | +0 % |
-| eu-electricity-prices | 1 | – | 4/4 | 4/4 | 643 | 643 | +0 % |
-| de-gdp | 154 | T30, T2, T111, T27, T97 | 6/6 | 6/6 | 4,097 | 3,166 | -23 % |
-| uk-ons-labour | 28 | T2 | 5/5 | 5/5 | 2,988 | 1,539 | -48 % |
-| fr-insee-pop | 49 | T1, T34 | 7/7 | 7/7 | 1,007 | 963 | -4 % |
-| at-tourism-2months | 20 | – | 6/6 | 6/6 | 1,764 | 1,764 | +0 % |
-| rs-geodetic-licenses | 1 | – | 7/7 | 7/7 | 418 | 418 | +0 % |
-| uk-beis-spending | 1 | – | 7/7 | 7/7 | 486 | 486 | +0 % |
-| de-berlin-grants | 1 | – | 5/5 | 5/5 | 477 | 477 | +0 % |
-| pt-tax-benefits | 8 | T3, T6, T7 | 5/5 | 5/5 | 2,644 | 1,358 | -49 % |
-| owid-energy | 1 | – | 5/5 | 5/5 | 1,176 | 1,176 | +0 % |
+| enron-henry-hub | 7 | T1, T2, T3 | 8/8 | 8/8 | 3,121 | 2,428 | -22 % |
+| de-truck-toll | 5 | T3, T5 | 4/4 | 4/4 | 1,532 | 1,009 | -34 % |
+| enron-om-2plants | 2 | – | 5/5 | 5/5 | 1,466 | 1,466 | +0 % |
+| enron-newco-cashflow | 2 | – | 5/5 | 5/5 | 831 | 831 | +0 % |
+| enron-deals-pl | 1 | – | 5/5 | 5/5 | 1,208 | 1,208 | +0 % |
+| enron-mdea-pl | 26 | T3 | 4/4 | 4/4 | 2,869 | 1,322 | -54 % |
+| enron-storage-inventory | 2 | – | 6/6 | 6/6 | 2,546 | 2,546 | +0 % |
+| at-salzburg-budget | 1 | – | 7/7 | 7/7 | 680 | 680 | +0 % |
+| rs-pancevo-budget | 2 | – | 6/6 | 6/6 | 1,292 | 1,292 | +0 % |
+| us-superstore | 3 | T1, T3 | 6/6 | 6/6 | 817 | 807 | -1 % |
+| ms-financial-sample | 1 | – | 4/4 | 4/4 | 433 | 433 | +0 % |
+| nw-orders | 2 | – | 4/4 | 4/4 | 679 | 679 | +0 % |
+| us-chicago-salaries | 1 | – | 6/6 | 6/6 | 383 | 383 | +0 % |
+| us-nyc-payroll | 1 | – | 5/5 | 5/5 | 562 | 562 | +0 % |
+| uk-gender-pay-gap | 1 | – | 5/5 | 5/5 | 520 | 520 | +0 % |
+| pt-social-report | 26 | T2, T18, T15, T14, T17 | 7/7 | 7/7 | 2,983 | 1,764 | -41 % |
+| at-cpi | 1 | – | 5/5 | 5/5 | 732 | 732 | +0 % |
+| wb-gdp-wide | 1 | – | 6/6 | 6/6 | 495 | 495 | +0 % |
+| eu-electricity-prices | 1 | – | 4/4 | 4/4 | 633 | 633 | +0 % |
+| de-gdp | 154 | T30, T2, T111, T27, T97 | 6/6 | 6/6 | 4,097 | 3,158 | -23 % |
+| uk-ons-labour | 28 | T2 | 5/5 | 5/5 | 2,975 | 1,621 | -46 % |
+| fr-insee-pop | 49 | T1, T34 | 7/7 | 7/7 | 998 | 954 | -4 % |
+| at-tourism-2months | 20 | – | 6/6 | 6/6 | 1,746 | 1,746 | +0 % |
+| rs-geodetic-licenses | 1 | – | 7/7 | 7/7 | 408 | 408 | +0 % |
+| uk-beis-spending | 1 | – | 7/7 | 7/7 | 476 | 476 | +0 % |
+| de-berlin-grants | 1 | – | 5/5 | 5/5 | 467 | 467 | +0 % |
+| pt-tax-benefits | 8 | T3, T6, T7 | 5/5 | 5/5 | 2,634 | 1,348 | -49 % |
+| owid-energy | 1 | – | 5/5 | 5/5 | 1,166 | 1,166 | +0 % |
 
 ## Checks lost with the question
 

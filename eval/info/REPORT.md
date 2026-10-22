@@ -11,42 +11,42 @@ Tokens: tiktoken o200k_base. Binary: `hedgehog mcp` from $HEDGEHOG_BIN.
 
 | Checks | a | b | c | d | Sufficiency | Catalog tokens | Sufficient checks per 1k tokens |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 168 | 22 | 146 | 0 | 0 | **100 %** | 42,360 | 3.97 |
+| 168 | 25 | 143 | 0 | 0 | **100 %** | 42,183 | 3.98 |
 
 ## Per case
 
 | Case | Checks | a | b | c | d | Sufficiency | Tokens | Per 1k tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| pt-contracts | 9 | 0 | 9 | 0 | 0 | 100 % | 1,876 | 4.80 |
+| pt-contracts | 9 | 0 | 9 | 0 | 0 | 100 % | 1,866 | 4.82 |
 | at-pension | 4 | 4 | 0 | 0 | 0 | 100 % | 1,568 | 2.55 |
-| enron-henry-hub | 8 | 5 | 3 | 0 | 0 | 100 % | 3,088 | 2.59 |
-| de-truck-toll | 4 | 0 | 4 | 0 | 0 | 100 % | 1,542 | 2.59 |
-| enron-om-2plants | 5 | 0 | 5 | 0 | 0 | 100 % | 1,460 | 3.42 |
-| enron-newco-cashflow | 5 | 0 | 5 | 0 | 0 | 100 % | 828 | 6.04 |
-| enron-deals-pl | 5 | 0 | 5 | 0 | 0 | 100 % | 1,218 | 4.11 |
-| enron-mdea-pl | 4 | 0 | 4 | 0 | 0 | 100 % | 2,878 | 1.39 |
-| enron-storage-inventory | 6 | 5 | 1 | 0 | 0 | 100 % | 2,533 | 2.37 |
-| at-salzburg-budget | 7 | 0 | 7 | 0 | 0 | 100 % | 690 | 10.14 |
-| rs-pancevo-budget | 6 | 0 | 6 | 0 | 0 | 100 % | 1,310 | 4.58 |
-| us-superstore | 6 | 0 | 6 | 0 | 0 | 100 % | 827 | 7.26 |
-| ms-financial-sample | 4 | 0 | 4 | 0 | 0 | 100 % | 443 | 9.03 |
-| nw-orders | 4 | 0 | 4 | 0 | 0 | 100 % | 697 | 5.74 |
-| us-chicago-salaries | 6 | 3 | 3 | 0 | 0 | 100 % | 393 | 15.27 |
-| us-nyc-payroll | 5 | 0 | 5 | 0 | 0 | 100 % | 572 | 8.74 |
-| uk-gender-pay-gap | 5 | 1 | 4 | 0 | 0 | 100 % | 530 | 9.43 |
-| pt-social-report | 7 | 0 | 7 | 0 | 0 | 100 % | 2,973 | 2.35 |
-| at-cpi | 5 | 0 | 5 | 0 | 0 | 100 % | 742 | 6.74 |
-| wb-gdp-wide | 6 | 0 | 6 | 0 | 0 | 100 % | 492 | 12.20 |
-| eu-electricity-prices | 4 | 0 | 4 | 0 | 0 | 100 % | 643 | 6.22 |
+| enron-henry-hub | 8 | 5 | 3 | 0 | 0 | 100 % | 3,121 | 2.56 |
+| de-truck-toll | 4 | 0 | 4 | 0 | 0 | 100 % | 1,532 | 2.61 |
+| enron-om-2plants | 5 | 0 | 5 | 0 | 0 | 100 % | 1,466 | 3.41 |
+| enron-newco-cashflow | 5 | 0 | 5 | 0 | 0 | 100 % | 831 | 6.02 |
+| enron-deals-pl | 5 | 0 | 5 | 0 | 0 | 100 % | 1,208 | 4.14 |
+| enron-mdea-pl | 4 | 0 | 4 | 0 | 0 | 100 % | 2,869 | 1.39 |
+| enron-storage-inventory | 6 | 5 | 1 | 0 | 0 | 100 % | 2,546 | 2.36 |
+| at-salzburg-budget | 7 | 0 | 7 | 0 | 0 | 100 % | 680 | 10.29 |
+| rs-pancevo-budget | 6 | 0 | 6 | 0 | 0 | 100 % | 1,292 | 4.64 |
+| us-superstore | 6 | 0 | 6 | 0 | 0 | 100 % | 817 | 7.34 |
+| ms-financial-sample | 4 | 0 | 4 | 0 | 0 | 100 % | 433 | 9.24 |
+| nw-orders | 4 | 0 | 4 | 0 | 0 | 100 % | 679 | 5.89 |
+| us-chicago-salaries | 6 | 3 | 3 | 0 | 0 | 100 % | 383 | 15.67 |
+| us-nyc-payroll | 5 | 0 | 5 | 0 | 0 | 100 % | 562 | 8.90 |
+| uk-gender-pay-gap | 5 | 1 | 4 | 0 | 0 | 100 % | 520 | 9.62 |
+| pt-social-report | 7 | 3 | 4 | 0 | 0 | 100 % | 2,983 | 2.35 |
+| at-cpi | 5 | 0 | 5 | 0 | 0 | 100 % | 732 | 6.83 |
+| wb-gdp-wide | 6 | 0 | 6 | 0 | 0 | 100 % | 495 | 12.12 |
+| eu-electricity-prices | 4 | 0 | 4 | 0 | 0 | 100 % | 633 | 6.32 |
 | de-gdp | 6 | 0 | 6 | 0 | 0 | 100 % | 4,097 | 1.46 |
-| uk-ons-labour | 5 | 0 | 5 | 0 | 0 | 100 % | 2,988 | 1.67 |
-| fr-insee-pop | 7 | 0 | 7 | 0 | 0 | 100 % | 1,007 | 6.95 |
-| at-tourism-2months | 6 | 2 | 4 | 0 | 0 | 100 % | 1,764 | 3.40 |
-| rs-geodetic-licenses | 7 | 1 | 6 | 0 | 0 | 100 % | 418 | 16.75 |
-| uk-beis-spending | 7 | 0 | 7 | 0 | 0 | 100 % | 486 | 14.40 |
-| de-berlin-grants | 5 | 0 | 5 | 0 | 0 | 100 % | 477 | 10.48 |
-| pt-tax-benefits | 5 | 1 | 4 | 0 | 0 | 100 % | 2,644 | 1.89 |
-| owid-energy | 5 | 0 | 5 | 0 | 0 | 100 % | 1,176 | 4.25 |
+| uk-ons-labour | 5 | 0 | 5 | 0 | 0 | 100 % | 2,975 | 1.68 |
+| fr-insee-pop | 7 | 0 | 7 | 0 | 0 | 100 % | 998 | 7.01 |
+| at-tourism-2months | 6 | 2 | 4 | 0 | 0 | 100 % | 1,746 | 3.44 |
+| rs-geodetic-licenses | 7 | 1 | 6 | 0 | 0 | 100 % | 408 | 17.16 |
+| uk-beis-spending | 7 | 0 | 7 | 0 | 0 | 100 % | 476 | 14.71 |
+| de-berlin-grants | 5 | 0 | 5 | 0 | 0 | 100 % | 467 | 10.71 |
+| pt-tax-benefits | 5 | 1 | 4 | 0 | 0 | 100 % | 2,634 | 1.90 |
+| owid-energy | 5 | 0 | 5 | 0 | 0 | 100 % | 1,166 | 4.29 |
 
 ## Traps
 
@@ -59,7 +59,7 @@ be compared. Trap checks are case-specific patterns the catalog must show.
 |---|---:|---|
 | pt-contracts | 4 |  |
 | at-pension | 3 |  |
-| enron-henry-hub | 1 |  |
+| enron-henry-hub | 1 | ✓ naive query: January day with the highest receipts: SUM over T3_long_all counts the total rows too |
 | de-truck-toll | 8 |  |
 | enron-om-2plants | 2 |  |
 | enron-newco-cashflow | 2 |  |
@@ -74,18 +74,18 @@ be compared. Trap checks are case-specific patterns the catalog must show.
 | us-chicago-salaries | 2 |  |
 | us-nyc-payroll | 0 |  |
 | uk-gender-pay-gap | 7 |  |
-| pt-social-report | 19 |  |
+| pt-social-report | 21 | ✓ naive query: workers: SUM over T1_all's total rows adds Sexo M + F + T (twice the workers); ✓ naive query: service providers: SUM over T2_all's total rows (M + F + T); ✓ naive query: workers: SUM over the data view T1 is right |
 | at-cpi | 2 |  |
 | wb-gdp-wide | 0 |  |
 | eu-electricity-prices | 0 |  |
 | de-gdp | 0 |  |
-| uk-ons-labour | 3 |  |
+| uk-ons-labour | 3 | ✓ naive query: previous non-overlapping 3-month period: the row before the latest overlaps it (rolling windows) |
 | fr-insee-pop | 3 |  |
 | at-tourism-2months | 28 | ✓ the grand total is named first, as such; ✓ 'Österreich gesamt' is flagged as the total of one group, not of the table |
 | rs-geodetic-licenses | 0 |  |
 | uk-beis-spending | 0 |  |
 | de-berlin-grants | 0 |  |
-| pt-tax-benefits | 8 |  |
+| pt-tax-benefits | 8 | ✓ naive query: a column name copied in the catalog's grouped form a / {b} works in SQL |
 | owid-energy | 29 |  |
 
 ## Gaps (c and d)
@@ -100,34 +100,34 @@ that were a/b and are not any more. Tokens are summed per line over the 30 catal
 
 | Kind | What | Tokens | Share | Checks lost | Tokens per lost check | Moves | Lost checks |
 |---|---|---:|---:|---:|---:|---|---|
-| table | table head line (T<n> ← range · rows · totals; brief: cols) | 15,986 | 37.7 % | 149 | 107 | a→c 3, b→c 146 | pt-contracts/top-body, pt-contracts/second-body, pt-contracts/top10-share, pt-contracts/ad-rg-count, pt-contracts/ad-rg-value, pt-contracts/cp-count +143 |
+| table | table head line (T<n> ← range · rows · totals; brief: cols) | 15,918 | 37.7 % | 149 | 107 | a→c 6, b→c 143 | pt-contracts/top-body, pt-contracts/second-body, pt-contracts/top10-share, pt-contracts/ad-rg-count, pt-contracts/ad-rg-value, pt-contracts/cp-count +143 |
 | columns | columns line (names, types, roles, ranges) | 4,532 | 10.7 % | 72 | 63 | a→b 1, a→c 2, b→c 70 | pt-contracts/jan, pt-contracts/apr, de-truck-toll/max-2023, de-truck-toll/max-date, de-truck-toll/ksb-2023, de-truck-toll/ksb-2024 +66 |
-| table_cols | part: brief 'N cols: …' list on table lines | 8,047 | 19.0 % | 31 | 260 | b→c 31 | enron-mdea-pl/epmi, enron-mdea-pl/mdea, enron-mdea-pl/best-day, enron-mdea-pl/best-value, pt-social-report/workers, pt-social-report/women +25 |
 | sql | SQL view(s) T1 / T1_all tail | 1,349 | 3.2 % | 30 | 45 | b→c 30 | enron-deals-pl/total, enron-deals-pl/mckay, enron-deals-pl/phys, enron-deals-pl/fin, enron-deals-pl/sumas, at-salzburg-budget/expenses +24 |
-| total_rows | total rows: SELECT … _row_type … | 1,969 | 4.6 % | 5 | 394 | b→c 5 | enron-henry-hub/jan-max, at-cpi/y2022, at-cpi/y2023, at-cpi/rise, eu-electricity-prices/eu-2025s2 |
+| table_cols | part: brief 'N cols: …' list on table lines | 7,976 | 18.9 % | 28 | 285 | b→c 28 | enron-mdea-pl/epmi, enron-mdea-pl/mdea, enron-mdea-pl/best-day, enron-mdea-pl/best-value, pt-social-report/women-share, pt-social-report/tecnico +22 |
+| total_rows | total rows: SELECT … _row_type … | 1,969 | 4.7 % | 5 | 394 | b→c 5 | enron-henry-hub/jan-max, at-cpi/y2022, at-cpi/y2023, at-cpi/rise, eu-electricity-prices/eu-2025s2 |
 | union | SQL union view U<n> lines | 1,033 | 2.4 % | 4 | 258 | b→c 4 | enron-mdea-pl/epmi, enron-mdea-pl/mdea, enron-mdea-pl/best-day, enron-mdea-pl/best-value |
 | files | FILES / JOIN KEYS (multi-file) | 542 | 1.3 % | 4 | 136 | b→c 4 | enron-om-2plants/both, nw-orders/revenue-1997, nw-orders/employee-4, at-tourism-2months/both |
-| inline | inline rows (all N rows, CSV) | 4,879 | 11.5 % | 2 | 2,440 | a→b 10, a→c 1, b→c 1 | enron-deals-pl/mckay, enron-storage-inventory/value-current |
+| inline | inline rows (all N rows, CSV) | 4,876 | 11.6 % | 3 | 1,625 | a→b 9, a→c 1, a→d 1, b→c 1 | at-pension/avg-married, enron-deals-pl/mckay, enron-storage-inventory/value-current |
 | values | <col> values: … | 2,543 | 6.0 % | 2 | 1,272 | b→c 2 | enron-newco-cashflow/npv, de-berlin-grants/institutional |
 | time | TIME line | 916 | 2.2 % | 2 | 458 | b→c 2 | owid-energy/de-2015, owid-energy/wind-growth |
 | entity | entity / ID–name lines (B2/B18/B80) | 1,129 | 2.7 % | 1 | 1,129 | b→c 1 | pt-contracts/top10-share |
-| table_totals | part: total-row labels on table lines | 1,784 | 4.2 % | 0 | ∞ |  |  |
+| table_totals | part: total-row labels on table lines | 1,789 | 4.2 % | 0 | ∞ | a→b 3 |  |
 | types | part: [type · role · range] after each column name | 1,484 | 3.5 % | 0 | ∞ | a→b 3 |  |
 | file | FILE line (sheets, cells, tables) | 1,272 | 3.0 % | 0 | ∞ |  |  |
+| long | T<n>_long line, 'is the long form of' | 1,001 | 2.4 % | 0 | ∞ |  |  |
 | quality | quality: … | 923 | 2.2 % | 0 | ∞ | a→b 2 |  |
-| long | T<n>_long line, 'is the long form of' | 891 | 2.1 % | 0 | ∞ |  |  |
 | table_status | group column / totals: n ok / warnings: (per table) | 662 | 1.6 % | 0 | ∞ |  |  |
 | numbers | numbers: … / different measures | 548 | 1.3 % | 0 | ∞ |  |  |
-| notes | NOTES line | 444 | 1.0 % | 0 | ∞ |  |  |
+| notes | NOTES line | 444 | 1.1 % | 0 | ∞ |  |  |
 | share | share-of-total SQL template (B19) | 429 | 1.0 % | 0 | ∞ |  |  |
 | no_sum | do not sum: … | 385 | 0.9 % | 0 | ∞ |  |  |
-| sql_long | SQL long view(s) tail | 360 | 0.8 % | 0 | ∞ |  |  |
-| timing | (normalized in n s) | 306 | 0.7 % | 0 | ∞ |  |  |
+| sql_long | SQL long view(s) tail | 376 | 0.9 % | 0 | ∞ |  |  |
 | totals | TOTALS line | 290 | 0.7 % | 0 | ∞ |  |  |
 | column_notes | column notes (footnotes defining columns) | 289 | 0.7 % | 0 | ∞ |  |  |
 | brief | 'tables listed briefly' note | 282 | 0.7 % | 0 | ∞ |  |  |
 | sheets | SHEETS without tables | 125 | 0.3 % | 0 | ∞ |  |  |
 | warnings | WARNINGS line | 102 | 0.2 % | 0 | ∞ |  |  |
+| other | unclassified | 91 | 0.2 % | 0 | ∞ |  |  |
 | mixed | rows mix measures | 66 | 0.2 % | 0 | ∞ |  |  |
 | units | units: amounts in thousands … | 40 | 0.1 % | 0 | ∞ |  |  |
 | formulas | FORMULAS line | 35 | 0.1 % | 0 | ∞ |  |  |
@@ -149,7 +149,7 @@ that were a/b and are not any more. Tokens are summed per line over the 30 catal
 | at-pension | total-2024 | a | in the catalog: Anzahl Bezieher:innen,Gesamt,234671,229186,229366,224209,215609,211237,212377,208739,205306,198378,194753,190749,193386,190423,189537,-0.0445664,-0.0046528,tota |
 | at-pension | total-2025 | a | in the catalog: Anzahl Bezieher:innen,Gesamt,234671,229186,229366,224209,215609,211237,212377,208739,205306,198378,194753,190749,193386,190423,189537,-0.0445664,-0.0046528,tota |
 | at-pension | avg-single | a | in the catalog: Durchschnittshöhe in Euro,Alleinstehend,264.3,268.98,277.13,283.86,287.27,289.84,292.22,296.23,302.01,311.92,320.64,329.87,355.48,386.9,403.19,0.292607,0.042103 |
-| at-pension | avg-married | a | in the catalog: Durchschnittshöhe in Euro,Verheiratet ***,372.97,382.51,395.92,405.13,409.79,415.32,416.53,423.46,433.99,478.99,486.08,500.48,528.44,572.73,594.2,0.240527,0.037 |
+| at-pension | avg-married | a | in the catalog: Durchschnittshöhe in Euro,Verheiratet,372.97,382.51,395.92,405.13,409.79,415.32,416.53,423.46,433.99,478.99,486.08,500.48,528.44,572.73,594.2,0.240527,0.0374871 |
 | enron-henry-hub | sea-robin | a | in the catalog: ,Receipts HH,SEA ROBIN,250000,0,123367,84474,64111,109748.5,89020.5,157263,data |
 | enron-henry-hub | ngpl | a | in the catalog: ,Receipts HH,NGPL,300000,0,105538,148195,115806,156907,81239.5,61301.2,data |
 | enron-henry-hub | mainline | a | in the catalog: ,Receipts HH,MAINLINE,180000,0,100733,116563,148324,139742,117177,120093,data |
@@ -230,13 +230,13 @@ that were a/b and are not any more. Tokens are summed per line over the 30 catal
 | uk-gender-pay-gap | men-share | b | the natural query (probe) uses only names the catalog shows |
 | uk-gender-pay-gap | band-500 | b | the natural query (probe) uses only names the catalog shows |
 | uk-gender-pay-gap | late | b | the natural query (probe) uses only names the catalog shows |
-| pt-social-report | workers | b | the natural query (probe) uses only names the catalog shows |
-| pt-social-report | women | b | the natural query (probe) uses only names the catalog shows |
-| pt-social-report | women-share | b | the natural query (probe) uses only names the catalog shows |
+| pt-social-report | workers | a | in the catalog: T1  'Quadro 1 Contagem dos trabalhadores por cargo/carreira segu…' ← 'Balanço Social 2016' · 10 rows · 8 total rows (only in T1_all): grand total 'Total' by Sex |
+| pt-social-report | women | a | in the catalog: T1  'Quadro 1 Contagem dos trabalhadores por cargo/carreira segu…' ← 'Balanço Social 2016' · 10 rows · 8 total rows (only in T1_all): grand total 'Total' by Sex |
+| pt-social-report | women-share | b | the natural query (probe) uses only names the catalog shows ('F': in the first 5 rows of a ranking query on its column) |
 | pt-social-report | tecnico | b | the natural query (probe) uses only names the catalog shows |
 | pt-social-report | costs | b | the natural query (probe) uses only names the catalog shows |
 | pt-social-report | base-share | b | the natural query (probe) uses only names the catalog shows ('Remuneração base': in the first 5 rows of a ranking query on its column) |
-| pt-social-report | providers | b | the natural query (probe) uses only names the catalog shows |
+| pt-social-report | providers | a | in the catalog: T2  'Quadros 1.1 Contagem dos prestadores de serviços (pessoas s…' · 4 rows · 5 total rows (only in T2_all): grand total 'Total' by Sexo @33–35: M 382 · F 178 · |
 | at-cpi | y2022 | b | the reference query uses only names the catalog shows |
 | at-cpi | y2023 | b | the reference query uses only names the catalog shows |
 | at-cpi | peak | b | the reference query uses only names the catalog shows |

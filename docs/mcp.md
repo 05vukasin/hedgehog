@@ -148,7 +148,8 @@ For table *n*:
   `Kosten / 2023` → `measure` = `Umsatz` | `Kosten`), `period` (normalized: `2025`, `2025-Q1`,
   `2025-03`, `2025-W05`, `2025-03-31`), `period_label` (the column name), `value`, `_src_row`
   and `_src_col` (the value's source cell is `<_src_col><_src_row>`). Like `T<n>`, it has the data
-  rows only; `T<n>_long_all` also has the total rows, with `_row_type` (as `T<n>_all`). Empty
+  rows only (the view to sum); `T<n>_long_all` also has the total rows, with `_row_type` (as
+  `T<n>_all`), so a `SUM` over it without a `_row_type` filter counts every total twice. Empty
   cells are left out. Both are plain views (a `UNION ALL` over `T<n>` / `T<n>_all`), so nothing is
   copied at load; a filter on `period` reads only that column (a 20,000 × 120 month table:
   `WHERE period = '2019-03'` grouped by region in ~15 ms; a full `GROUP BY period` over all 2.4 M
@@ -222,7 +223,7 @@ TIME 2011–2025 (year, from column headers in T1)
 T1  'jeweils Dezember' ← '2_2'!A3:R18 · 7 rows (+5 total rows only in T1_all) · 1 total row stays in T1 — exclude it before summing
     columns (19): "group"[group] Richtsatz "2011".."2025"[15 cols] "2020/ 2025" "2024/ 2025"
     rows mix measures by "group" — filter before aggregating
-    T1_long: the 15 year columns "2011".."2025" as rows ("group", Richtsatz, period '2011'..'2025', value) · rows mix measures: filter "group" first · total rows only in T1_long_all
+    T1_long: the 15 year columns "2011".."2025" as rows ("group", Richtsatz, period '2011'..'2025', value) · rows mix measures: filter "group" first · sum T1_long; T1_long_all adds the total rows (filter _row_type)
     do not sum: rows "group" = 'Durchschnittshöhe in Euro' (avg EUR) — use AVG or the file's figure
     group column: "group"
     total rows: SELECT … FROM T1_all WHERE _row_type IN ('total', 'of_which') — labels in Richtsatz: totals 'Gesamt'@9 (= rows 5–8), 'Gesamt'@15 [stays in T1]; of-which rows 'davon Männer'@6 (= rows 5), 'davon Frauen'@7 (= rows 5), 'davon Männer'@12 (= rows 11), 'davon Frauen'@13 (= rows 11)
@@ -235,7 +236,7 @@ T1  'jeweils Dezember' ← '2_2'!A3:R18 · 7 rows (+5 total rows only in T1_all)
 TOTALS 51 ok, 0 mismatch, 47 unknown (details: totals)
 NOTES 7 cells; e.g. '2_2'!A1: "AUSGLEICHSZULAGEN - alleinstehend/verheiratet"
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
-SQL long view T1_long (and …_long_all with the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
+SQL long view T1_long (sum these; …_long_all adds the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)
 (normalized in 0.1 s)
 ```
 
@@ -278,6 +279,14 @@ Totale, Ukupno, Subtotal, …) says where the total rows are; one that is a valu
 says which column to filter. Both also run that query and return its rows (at most 10, ~3,000
 characters) under `Those rows (the query above, run for you; pick the columns you need):`, so the
 data is there even when the model does not retry; the call is still an error.
+
+A quoted name copied in the catalog's grouped form (`"RESTITUIÇÃO DO IMPOSTO / {Forças Armadas …}"`,
+B161) that stands for exactly one column (braces expanded, or dropped for a member with a comma of
+its own; compared exactly, case aside) is read as that column: the query runs and its result ends
+with `note: read "a / {b}" as "a / b" ({…} in the catalog groups column names; write each name in
+full)`. A name that fits no column, or several, stays an error. "Did you mean" lists the closest
+names first, with case, accents, spaces, punctuation and braces set aside, and only the closest one
+when it is clearly closer than the next.
 
 A total row takes the keys of the block it closes: its group (`"group"`) and empty text cells left
 of its label that every data row of the block shares (`col_B = 'Receipts HH'`), so
@@ -362,8 +371,8 @@ Per table (when the whole catalog fits in ~12,000 characters):
   labels whose rows are averages / rates / indexes: `do not sum: rows "group" = 'Durchschnittshöhe
   in Euro' (avg EUR)`.
 - **Long view**: `T1_long: the 15 year columns "2011".."2025" as rows ("group", Richtsatz, period
-  '2011'..'2025', value) · rows mix measures: filter "group" first · total rows only in
-  T1_long_all` (see [SQL tables](#sql-tables)); tables listed
+  '2011'..'2025', value) · rows mix measures: filter "group" first · sum T1_long; T1_long_all adds
+  the total rows (filter _row_type)` (see [SQL tables](#sql-tables)); tables listed
   briefly or as "same layout as" get ` · T4_long (by day)`, and the SQL line at the end lists the
   long views.
 - **Mixed measures**: `rows mix measures by "group" — filter before aggregating` when one label
@@ -411,6 +420,23 @@ Per table (when the whole catalog fits in ~12,000 characters):
   group of "Herkunftsland oder -region" (e.g. Österreich), not the table`: guests from Austria, not
   Austria's total). Without a label column: their `_src_row` and sign
   (`_src_row 51 positive, 65 negative`).
+- **Total codes** (B160): a code column that splits every group, such as `Sexo` with `M`, `F` and
+  `T` where `T` = M + F, is found by its numbers, never by its name: in every group (the rows that
+  share the other label columns) with the code and two or more other codes, the code's row must be
+  the sum of theirs in the sum-like columns (a rate column may differ), in two groups with numbers
+  or more; codes are short (≤ 20 characters). The total rows then read `grand total 'Total' by Sexo
+  @8–10: M 4,233 · F 3,245 · T 7,478 in TOTAL (T = M + F: don't add); subtotals (_row_type
+  'subtotal') Sexo 'T' @13/16/19/22/25` (the values from the column named total, or the only
+  numeric one), and a table listed in one line says `(Sexo 'T' = M + F: don't add)`: summing every
+  total row would count each person twice. Code rows that stay in the data view are named with the
+  filter that leaves them out. Total rows that such a code splits are labelled with their full key
+  (`'Total/M'`, `'Total/F'`), not with whichever column held a word.
+- **Rolling windows** (B162): a period column of ranges (`2026-05/2026-07`, derived from labels such
+  as `May-Jul 2026`) whose windows overlap gets one line: `periods: rolling 3-month windows, 1-month
+  step — they overlap; the previous non-overlapping window is 3 rows earlier (latest col_A
+  'May-Jul 2026' = period 2026-05/2026-07; the one before it without overlap: 'Feb-Apr 2026'); the
+  same windows in T3, T4, …`. The file's own label stays in its column next to the derived one.
+  Quarters one quarter apart do not overlap and get no line.
 - **Signs**: `signs: col_B 'Deliveries HH' rows are all negative (outflows?) — a net figure is the
   SUM over all rows, not a difference` when a block of rows holds only negative numbers next to
   positive ones: by a label column whose labels (or the number columns' names) name flows (receipts

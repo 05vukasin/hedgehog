@@ -23,7 +23,7 @@ const MAX_CODES: usize = 12;
 /// Most characters of a code and of the codes it adds up.
 const MAX_CODE_LEN: usize = 20;
 /// Tables with more rows are not checked (the check reads every row once per candidate).
-const MAX_ROWS: usize = 20_000;
+pub const MAX_ROWS: usize = 20_000;
 
 /// A total code: in column `col`, the rows with `code` are the sum of the rows with `parts`, in
 /// every group of the `by` columns that has them.
@@ -46,6 +46,11 @@ pub fn key_columns(t: &Table) -> Vec<usize> {
         .iter()
         .enumerate()
         .filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group) && c.dtype == Dtype::Text && !c.is_derived())
+        // A column with one value (a dataset code on every row) tells no rows apart.
+        .filter(|(_, c)| {
+            let mut vals = c.values.iter().filter_map(|v| if let Out::Text(s) = v { Some(s.trim()) } else { None });
+            vals.next().is_some_and(|first| vals.any(|v| v != first))
+        })
         .map(|(i, _)| i)
         .take(MAX_KEYS)
         .collect()

@@ -208,8 +208,12 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
     if t.row_types.is_empty() {
         info.data = t.rows();
     }
+    let labels: Vec<String> = info.total_rows.iter().map(|r| r.label.clone()).collect();
     relabel_totals(t, &mut info.total_rows);
-    info.key_cols = full_key_labels(t, &mut info.total_rows);
+    // (B103's labels from a code column stay as they are.)
+    if info.total_rows.iter().map(|r| &r.label).eq(labels.iter()) {
+        info.key_cols = full_key_labels(t, &mut info.total_rows);
+    }
     info.codes = crate::codes::total_codes(t);
     let in_data: HashSet<u32> = data_rows(t).into_iter().filter_map(|r| t.src_rows.get(r).map(|s| s + 1)).collect();
     info.kept_totals = totals
@@ -293,7 +297,7 @@ fn relabel_totals(t: &Table, rows: &mut [TotalRow]) {
 /// stay.
 fn full_key_labels(t: &Table, rows: &mut [TotalRow]) -> Vec<usize> {
     let keys = crate::codes::key_columns(t);
-    if keys.len() < 2 || rows.len() < 2 {
+    if keys.len() < 2 || rows.len() < 2 || t.rows() > crate::codes::MAX_ROWS {
         return Vec::new();
     }
     let idx: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data)).collect();
