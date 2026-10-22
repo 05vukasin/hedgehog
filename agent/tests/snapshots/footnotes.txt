@@ -10,7 +10,7 @@ T1  'Table 1. Hospital beds by region' ← 'Table 1'!A3:C8 · 5 rows
     Alpha,1200,1250
     Beta,830,845
     Gamma,410,400
-    Delta²,95,101
+    Delta,95,101
     Epsilon,660,702
 NOTES 5 cells; e.g. 'Table 1'!A1: "Table 1. Hospital beds by region"
 SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; quote names: SELECT "col name" FROM T1
@@ -20,7 +20,7 @@ SQL view T1 = data rows, T1_all = + total rows (_row_type); both with _src_row; 
 Region,Beds 2022,Beds 2023,_src_row
 Alpha,1200,1250,4
 Beta,830,845,5
-Delta²,95,101,7
+Delta,95,101,7
 Epsilon,660,702,8
 Gamma,410,400,6
 cite as: Region = 'Table 1'!A<_src_row>; "Beds 2022" = 'Table 1'!B<_src_row>; "Beds 2023" = 'Table 1'!C<_src_row>

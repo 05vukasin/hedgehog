@@ -275,6 +275,97 @@ pub fn fingerprint(s: &str) -> String {
     tokens.join(" ")
 }
 
+/// A footnote mark character written after a word: superscript digits and parentheses, `*`, `†`,
+/// `‡`. Subscripts (`CO₂`, `H₂O`) are not marks.
+pub fn is_footnote_mark_char(c: char) -> bool {
+    matches!(
+        c,
+        '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '⁰' | '⁽' | '⁾' | '*' | '†' | '‡'
+    )
+}
+
+/// Length units that take a square or cube exponent (`km²`, `m³`, `cm²`, `ft²`); matched
+/// case-insensitively against the whole word before the superscript.
+const SQUARE_UNITS: [&str; 16] = [
+    "km", "m", "cm", "mm", "dm", "µm", "μm", "nm", "ft", "in", "yd", "mi", "км", "м", "см", "мм",
+];
+
+/// Superscript `²` / `³` that are part of a unit (`km²`, `Mio. m³`, `kg/m³`) rather than a
+/// footnote mark: the word right before them is a length unit. `s` ends right before the
+/// superscript.
+fn unit_exponent_before(s: &str) -> bool {
+    let word_start = s.char_indices().rev().take_while(|(_, c)| c.is_alphabetic()).last().map(|(i, _)| i);
+    let Some(start) = word_start else { return false };
+    let word = &s[start..];
+    SQUARE_UNITS.iter().any(|u| word.to_lowercase() == *u)
+}
+
+/// Splits a trailing footnote mark off a header or label: `("Delta", "²")` for `Delta²`,
+/// `("Total", "*")` for `Total *`, `("Fläche km²", "¹")` for `Fläche km²¹`. `None` when there
+/// is no mark, when the text is nothing but marks, or when the superscript is a unit exponent
+/// (`Fläche km²`, `Mio. m³`, `kg/m³`) or follows another exponent sign (`s⁻¹`).
+pub fn split_footnote_mark(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim_end();
+    let mut body = s.trim_end_matches(is_footnote_mark_char);
+    if body.len() == s.len() {
+        return None;
+    }
+    // `km²` / `m³`: the first superscript belongs to the unit, the rest (if any) is the mark.
+    let rest = &s[body.len()..];
+    if let Some(first @ ('²' | '³')) = rest.chars().next()
+        && unit_exponent_before(body)
+    {
+        body = &s[..body.len() + first.len_utf8()];
+    }
+    if body.ends_with(['⁻', '⁺']) {
+        return None;
+    }
+    let mark = &s[body.len()..];
+    let body = body.trim_end();
+    if mark.is_empty() || body.is_empty() {
+        return None;
+    }
+    Some((body, mark))
+}
+
+/// Longest label (in characters) whose trailing mark is read as a footnote: longer text is prose.
+const MAX_LABEL_CHARS: usize = 60;
+
+/// Whether a text value may end in a footnote mark (cheap pre-check for
+/// [`split_label_footnote`]).
+pub fn may_end_in_footnote(s: &str) -> bool {
+    s.trim_end().ends_with(|c: char| is_footnote_mark_char(c) || c == ')')
+}
+
+/// Splits a trailing footnote mark off a short text label (`Delta²`, `Germany *`, `Gamma†`,
+/// `Norway (1)`), keeping marks that belong to the name: unit exponents (`Fläche km²`),
+/// subscripts (`CO₂`), plain numbers (`Area 51`, `Formula 1`, `Fund II`). The label must keep a
+/// letter and be at most 60 characters; a parenthesised mark is one or two digits after a
+/// word.
+pub fn split_label_footnote(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim();
+    if s.chars().count() > MAX_LABEL_CHARS {
+        return None;
+    }
+    let (body, mark) = match split_footnote_mark(s) {
+        Some(x) => x,
+        None => {
+            let open = s.strip_suffix(')')?.rfind('(')?;
+            let inner = &s[open + 1..s.len() - 1];
+            if inner.is_empty() || inner.len() > 2 || !inner.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            let body = s[..open].trim_end();
+            // "Norway (1)", "Norway(1)": after a word, not after a number ("Table 3 (2)").
+            if !body.ends_with(|c: char| c.is_alphabetic() || c == '.') {
+                return None;
+            }
+            (body, &s[open..])
+        }
+    };
+    body.chars().any(char::is_alphabetic).then_some((body, mark))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,6 +396,84 @@ mod tests {
                 push_key_char(c, &mut slow);
             }
             assert_eq!(norm_key(s), slow, "{s:?}");
+        }
+    }
+
+    #[test]
+    fn footnote_marks_but_not_unit_exponents() {
+        for (s, body, mark) in [
+            ("Delta²", "Delta", "²"),
+            ("Total²", "Total", "²"),
+            ("Einwohner*", "Einwohner", "*"),
+            ("Region **", "Region", "**"),
+            ("Gamma†", "Gamma", "†"),
+            ("Beta‡", "Beta", "‡"),
+            ("Alpha¹⁾", "Alpha", "¹⁾"),
+            ("Fläche km²¹", "Fläche km²", "¹"),
+            ("Fläche km¹", "Fläche km", "¹"),
+            ("Volumen m³ *", "Volumen m³", "*"),
+            ("Area 51*", "Area 51", "*"),
+        ] {
+            assert_eq!(split_footnote_mark(s), Some((body, mark)), "{s:?}");
+        }
+        for s in [
+            "Fläche km²",
+            "Einwohner je km²",
+            "Wohnfläche m²",
+            "Fläche in cm²",
+            "Mio. m³",
+            "kg/m³",
+            "Fläche (km²)",
+            "area ft²",
+            "Area sq in²",
+            "Площадь км²",
+            "CO₂",
+            "H₂O",
+            "Fund II",
+            "Area 51",
+            "Formula 1",
+            "Rate s⁻¹",
+            "*",
+            "²",
+            "Delta",
+        ] {
+            assert_eq!(split_footnote_mark(s), None, "{s:?}");
+        }
+    }
+
+    #[test]
+    fn label_footnotes() {
+        for (s, body, mark) in [
+            ("Delta²", "Delta", "²"),
+            ("Germany *", "Germany", "*"),
+            ("Gamma†", "Gamma", "†"),
+            ("Norway (1)", "Norway", "(1)"),
+            ("Norway(12)", "Norway", "(12)"),
+            ("Fund II*", "Fund II", "*"),
+            ("Formula 1¹", "Formula 1", "¹"),
+            ("Mio. m³²", "Mio. m³", "²"),
+        ] {
+            assert!(may_end_in_footnote(s), "{s:?}");
+            assert_eq!(split_label_footnote(s), Some((body, mark)), "{s:?}");
+        }
+        for s in [
+            "Fläche km²",
+            "Mio. m³",
+            "CO₂",
+            "H₂O",
+            "Fund I",
+            "Fund II",
+            "Area 51",
+            "Formula 1",
+            "Table 3 (2)",
+            "Category (A)",
+            "Index (2020=100)",
+            "Region (123)",
+            "2022*",
+            "**",
+            "A long free-text comment that goes on and on beyond any label length*",
+        ] {
+            assert_eq!(split_label_footnote(s), None, "{s:?}");
         }
     }
 

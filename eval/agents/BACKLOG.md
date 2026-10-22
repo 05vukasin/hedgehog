@@ -190,8 +190,8 @@ Known lenient check, not fixed: `fr-insee-pop paris-change` (`abs`) passes answe
 | ID | Problem | Fix | Done when | Status |
 |---|---|---|---|---|
 | B140 | title "in 1 000 EUR" gives no unit line (only "(thousands)" does) | unit-from-title parser handles space-grouped thousands and currency after the scale | snapshot shows the unit line | done: scale_of reads space-grouped thousands (`in 1 000 EUR`, `(in 1 000 000 €)`) |
-| B141 | header `Fläche km²` becomes `Fläche km` (superscript unit dropped as a footnote mark) | keep ²/³ when they follow a unit (km, m, cm); footnote stripping only for marks not part of a unit | header keeps km² | open |
-| B142 | data value `Delta²` keeps its footnote mark | strip footnote marks from text labels consistently (record them like numeric marks) | label is `Delta` with mark recorded | open |
+| B141 | header `Fläche km²` becomes `Fläche km` (superscript unit dropped as a footnote mark) | keep ²/³ when they follow a unit (km, m, cm); footnote stripping only for marks not part of a unit | header keeps km² | done (pending rerun): `²`/`³` after a length unit (km, m, cm, mm, dm, ft, in, yd, mi, Cyrillic) is the unit's exponent in headers and labels (`Fläche km²`, `Mio. m³`, `kg/m³`); `Fläche km²¹` loses only `¹` |
+| B142 | data value `Delta²` keeps its footnote mark | strip footnote marks from text labels consistently (record them like numeric marks) | label is `Delta` with mark recorded | done (pending rerun): text labels ≤ 60 chars lose trailing superscripts / `*` / `†` / `‡` / `(1)` when ≤ half the column's labels carry one, recorded in the column's `footnote_marks`; `CO₂`, `Fund II`, `Area 51`, `Formula 1` stay |
 ## Information gaps (model-free scoreboard, 2026-10-22)
 
 From [eval/info](../info/REPORT.md), binary v0.4.0. Each row is a check that is **c** (reachable only

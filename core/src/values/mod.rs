@@ -30,4 +30,4 @@ pub use missing::{
     is_excel_error, missing_token, numeric_annotation, parse_bool, table_missing_token, MissingKind, NumericAnnotation,
 };
 pub use number::{currency, infer_decimal, parse_number, DecimalSep, NativeNumbers, NegativeStyle, NumberHint, ParsedNumber};
-pub use text::{clean, cyrillic_to_latin, fingerprint, norm_key};
+pub use text::{clean, cyrillic_to_latin, fingerprint, norm_key, split_footnote_mark};

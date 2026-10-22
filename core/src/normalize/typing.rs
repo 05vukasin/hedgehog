@@ -9,7 +9,9 @@
 //! `> 1000`), suppression marks (`c`, `[c]`, `confidential`) and `see note` — stays text but does
 //! not count against the numeric share, as long as the numbers outnumber it. Numbers with footnote
 //! marks (`123¹`, `12 (r)`, `7 p`, `20560.32e`) are read as numbers; the marks are kept per column
-//! (`Column::footnote_marks`, the manifest's `footnote_marks`).
+//! (`Column::footnote_marks`, the manifest's `footnote_marks`). Text labels lose their footnote
+//! marks the same way (`Delta²` → `Delta`, B142) when few of the column's labels carry one; marks
+//! that are part of a name or unit stay (`Fläche km²`, `CO₂`, `Area 51`).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -20,7 +22,7 @@ use crate::values::{
     numeric_annotation, parse_bool, table_missing_token, parse_date, parse_number, serial_to_ymd, ColumnHints, DateOrder,
     DecimalSep, MissingKind, NativeNumbers, NegativeStyle, ParsedDate, ParsedNumber,
 };
-use crate::values::text::clean;
+use crate::values::text::{clean, may_end_in_footnote, split_label_footnote};
 
 /// Excel's cell text limit.
 pub(super) const MAX_TEXT: usize = 32_767;
@@ -356,6 +358,20 @@ fn type_column_untimed(
     let mut has_time = false;
     let mut all_int = true;
     let mut values = Vec::with_capacity(slots.len());
+    // Text labels with footnote marks (B142): stripped when they are the exception in the column
+    // (at most half of its texts), so a column of names that all end the same way stays.
+    let strip_labels = kind == Kind::Text && {
+        let (mut texts, mut marked) = (0usize, 0usize);
+        for (s, m) in slots.iter().zip(&missing) {
+            if let (Slot::Val(Value::Text(t)), None) = (s, m) {
+                texts += 1;
+                marked += (may_end_in_footnote(t) && split_label_footnote(&clean(t)).is_some()) as usize;
+            }
+        }
+        marked > 0 && 2 * marked <= texts
+    };
+    // The previous slot's value: a label filled down from it (same cell) records its mark once.
+    let mut last_val: Option<&Value> = None;
     let no_reading = Cand::default();
     let mut next_cand = cands.iter().peekable();
     for (i, s) in slots.iter().enumerate() {
@@ -364,6 +380,11 @@ fn type_column_untimed(
             None => &no_reading,
         };
         let c = (missing[i], c);
+        let this = match s {
+            Slot::Val(v) => Some(*v),
+            _ => None,
+        };
+        let prev = std::mem::replace(&mut last_val, this);
         let out = match s {
             Slot::Empty => Out::Null,
             Slot::NoCache => {
@@ -434,7 +455,17 @@ fn type_column_untimed(
                         if cl.len() != t.len() {
                             tr.add(T::WhitespaceTrimmed, 1);
                         }
-                        Out::Text(fit(cl.into_owned(), tr))
+                        let split = if strip_labels && may_end_in_footnote(&cl) { split_label_footnote(&cl) } else { None };
+                        match split {
+                            Some((body, m)) => {
+                                if !prev.is_some_and(|p| std::ptr::eq(p, *v)) {
+                                    tr.add(T::FootnoteMarksStripped, 1);
+                                    marks.entry(m.to_string()).or_default().push((rows[i], col));
+                                }
+                                Out::Text(fit(body.to_string(), tr))
+                            }
+                            None => Out::Text(fit(cl.into_owned(), tr)),
+                        }
                     }
                     (Kind::Text | Kind::Empty, _) => {
                         tr.add(T::ValuesToText, 1);
