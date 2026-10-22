@@ -21,8 +21,11 @@ const DETAIL_COLS: usize = 14;
 /// Up to this many columns every column is listed by name (compactly, `name[dtype unit]`); wider
 /// tables group runs of same-type columns.
 const LIST_COLS: usize = 40;
-/// Items of one columns line at most (wide tables after grouping).
-const MAX_COL_ITEMS: usize = 60;
+/// A wide table's plain columns list up to this many characters; longer, it groups names by
+/// prefix (B71: every name stays visible).
+const WIDE_LINE: usize = 2500;
+/// A columns line at most this long; beyond, names only, then cut with a count.
+const MAX_COLS_LINE: usize = 6000;
 /// Text columns with at most this many distinct values get all of them listed.
 const LABEL_VALUES: usize = 12;
 /// Columns with details in `describe_table`.
@@ -200,16 +203,26 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
             kind: if r.level == "subtotal" { RowType::Subtotal } else { RowType::Total },
         })
         .collect();
+    // What a total adds up: the rows most of its confirmed checks add (one odd formula in one
+    // column does not decide), inside the table.
+    let mut votes: HashMap<u32, Vec<(Vec<(u32, u32)>, usize)>> = HashMap::new();
+    let (top, bottom) = (t.rect.top + 1, t.rect.bottom + 1);
     for x in norm.totals.iter().filter(|x| x.table == Some(t.n) && x.direction == "vertical") {
-        // What a total adds up, from a check that confirmed it.
-        if x.status == "ok" {
-            let e = info.scopes.entry(x.row + 1).or_default();
-            if e.is_empty() {
-                *e = source_rows(&x.sources);
+        let scope = source_rows(&x.sources);
+        if x.status == "ok" && !scope.is_empty() && scope.iter().all(|(a, b)| *a >= top && *b <= bottom) {
+            let v = votes.entry(x.row + 1).or_default();
+            match v.iter_mut().find(|(s, _)| *s == scope) {
+                Some(e) => e.1 += x.count,
+                None => v.push((scope, x.count)),
             }
         }
         if x.level == "grand_total" {
             info.grand_rows.insert(x.row + 1);
+        }
+    }
+    for (row, v) in votes {
+        if let Some((scope, _)) = v.into_iter().max_by_key(|(s, n)| (*n, std::cmp::Reverse(s.clone()))) {
+            info.scopes.insert(row, scope);
         }
     }
     info.totals = totals;
@@ -745,9 +758,19 @@ pub(crate) fn name_period(name: &str) -> Option<(u8, i64, String)> {
     None
 }
 
+/// The prefix a column name shares with its neighbours: up to and with the first `_`, ` / ` or
+/// space (`biofuel_`, `Ensemble / `), when something follows it.
+fn name_prefix(name: &str) -> Option<&str> {
+    let end = [name.find(" / ").map(|i| i + 3), name.find('_').map(|i| i + 1), name.find(' ').map(|i| i + 1)]
+        .into_iter()
+        .flatten()
+        .min()?;
+    (end >= 3 && end < name.len()).then(|| &name[..end])
+}
+
 /// Columns compactly: runs of 4+ columns of one type named by consecutive periods (years, months
-/// or days) as `"2011".."2025"[15 × number EUR]` (nothing hidden); with `runs`, also any run of
-/// 3+ same-type columns.
+/// or days) as `"2011".."2025"[15 × number EUR]` (nothing hidden); with `runs`, also runs of 3+
+/// columns with one name prefix, every member named (B71).
 fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &[Option<ColType>]) -> Vec<String> {
     let ty = |k: usize| tys.get(cols[k].0).and_then(|x| x.as_ref()); // B21
     let same_col = |a: &Column, b: &Column| a.dtype == b.dtype && a.role == b.role && a.unit == b.unit && a.currency == b.currency;
@@ -780,13 +803,32 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &
                 continue;
             }
         }
-        if runs {
+        // B71: wide tables group 3+ consecutive columns by their name's prefix, every member
+        // named: `biofuel_{consumption, electricity, share_elec[number · rate — don't sum]}[3 × number]`.
+        if runs && let Some(p) = name_prefix(&names[cols[k].0]) {
             let mut j = k + 1;
-            while j < n && same(k, j) {
+            while j < n && name_prefix(&names[cols[j].0]) == Some(p) {
                 j += 1;
             }
             if j - k >= 3 {
-                out.push(run_text(k, j));
+                let kinds: Vec<String> = (k..j).map(|m| types::kind_with(&kind_text(cols[m].1), cols[m].1, ty(m))).collect();
+                let mut count: Vec<(&String, usize)> = Vec::new();
+                for x in &kinds {
+                    match count.iter_mut().find(|c| c.0 == x) {
+                        Some(c) => c.1 += 1,
+                        None => count.push((x, 1)),
+                    }
+                }
+                let main = count.iter().max_by_key(|c| c.1).map(|c| c.0.clone()).unwrap_or_default();
+                let members: Vec<String> = (k..j)
+                    .map(|m| {
+                        let rest = &names[cols[m].0][p.len()..];
+                        if kinds[m - k] == main { rest.to_string() } else { format!("{rest}[{}]", kinds[m - k]) }
+                    })
+                    .collect();
+                let text = format!("{p}{{{}}}", members.join(", "));
+                let quoted = (k..j).any(|m| ident(&names[cols[m].0]).starts_with('"'));
+                out.push(if quoted { format!("\"{text}\"[{} × {main}]", j - k) } else { format!("{text}[{} × {main}]", j - k) });
                 k = j;
                 continue;
             }
@@ -814,14 +856,29 @@ fn columns_line(t: &Table, names: &[String], examples: bool, tys: &[Option<ColTy
             .map(|(i, c)| col_detail(c, &names[*i], rows, examples && label_values(c, &data).is_none(), tys.get(*i).and_then(|x| x.as_ref())))
             .collect()
     } else {
-        compact_items(&cols, names, n > LIST_COLS, tys)
+        // B71: every name in full; wide tables group them by prefix when the plain list is long.
+        let plain = compact_items(&cols, names, false, tys);
+        if n <= LIST_COLS || len_of(&plain) <= WIDE_LINE { plain } else { compact_items(&cols, names, true, tys) }
     };
-    if items.len() > MAX_COL_ITEMS {
-        let more = items.len() - MAX_COL_ITEMS;
-        items.truncate(MAX_COL_ITEMS);
-        items.push(format!("… +{more} more (describe_table lists them)"));
+    let grouped = items.iter().any(|x| x.contains("}[") || x.contains("}\"["));
+    // Last resort for very wide tables: the rest by name only, still every one.
+    if len_of(&items) > MAX_COLS_LINE {
+        // Names only (types in describe_table), then cut at the cap with what is left.
+        let all: Vec<String> = cols.iter().map(|(i, _)| ident(&names[*i])).collect();
+        let mut used = 0;
+        let keep = all.iter().take_while(|x| {
+            used += x.len() + 1;
+            used <= MAX_COLS_LINE
+        });
+        let keep = keep.count().max(1);
+        items = all[..keep].to_vec();
+        items.insert(0, "(names only; describe_table has the types)".into());
+        if keep < all.len() {
+            items.push(format!("… +{} more (describe_table lists them)", all.len() - keep));
+        }
     }
-    format!("    columns ({label}): {}", items.join(" "))
+    let legend = if grouped { "; a_{b, c} = a_b, a_c" } else { "" };
+    format!("    columns ({label}{legend}): {}", items.join(" "))
 }
 
 fn table_head(t: &Table, info: &RowInfo, cov: Option<&TimeCoverage>, brief: bool) -> String {
@@ -903,7 +960,8 @@ fn len_of(lines: &[String]) -> usize {
 pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
     let budget = budget.min(MAX_CHARS);
     let file_name = display_name.rsplit(['/', '\\']).next().unwrap_or(display_name);
-    let (covs, wb_cov) = time_coverages(norm);
+    let (mut covs, mut wb_cov) = time_coverages(norm);
+    crate::views::fix_stamp_coverage(norm, &mut covs, &mut wb_cov); // B89
     let with_cov: Vec<(String, TimeCoverage)> =
         norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
     // Per-table periods only when there is more than one table (else the TIME line says it).
@@ -960,9 +1018,16 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
                 line.push_str(&format!(" · same layout as {first}"));
                 line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
                 if !items.is_empty() {
-                    line.push_str(&format!("; headers here: {}", items.iter().take(12).cloned().collect::<Vec<_>>().join(" ")));
-                    if items.len() > 12 {
-                        line.push_str(&format!(" … +{} more (describe_table lists them)", items.len() - 12));
+                    // B71: every differing header, up to a byte budget.
+                    let mut used = 0;
+                    let keep = items.iter().take_while(|x| {
+                        used += x.len() + 1;
+                        used <= WIDE_LINE
+                    });
+                    let keep = keep.count().max(1);
+                    line.push_str(&format!("; headers here: {}", items[..keep].join(" ")));
+                    if items.len() > keep {
+                        line.push_str(&format!(" … +{} more (describe_table lists them)", items.len() - keep));
                     }
                 }
                 let mut lines = vec![line];
@@ -977,11 +1042,16 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             let tys = types::classify(t, &names, mixed, &types::summed_cols(norm, t)); // B21
             let mut lines = vec![line, columns_line(t, &names, inline.is_none(), &tys)];
             lines.extend(facts::scale_line(t)); // B85: "(All values in 000s)"
+            lines.extend(facts::column_notes_line(norm, t, &names)); // B83: footnotes defining columns
             // B2/B18: "<id> - <name>" columns and how to group them, right under the columns.
             let ents = crate::entity::detect(t);
             lines.extend(ents.iter().map(|e| crate::entity::line(e, &t.id())));
+            // B80: an ID column with its names in another column.
+            let pairs = crate::entity::id_name_pairs(t, &data);
+            lines.extend(pairs.iter().map(|p| crate::entity::id_name_line(p, &t.id())));
             // B19: a share of the total, with the entity (or label) column to rank by.
-            lines.extend(facts::share_line(t, &names, &data, ents.first().map(crate::entity::group_key), &tys));
+            let key = ents.first().map(crate::entity::group_key).or_else(|| pairs.first().map(|p| crate::text::quote_ident(&p.id)));
+            lines.extend(facts::share_line(t, &names, &data, key, &tys));
             // The values to filter on; a small inlined table shows them in its rows.
             if inline.is_none() {
                 for (i, c) in data_cols(t) {
@@ -1080,7 +1150,12 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
             }
             let cols: Vec<(usize, &Column)> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).collect();
             let list: Vec<String> = cols.iter().map(|(i, _)| names[*i].clone()).collect();
-            let view = crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv)).unwrap_or_default();
+            let mut view = crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv)).unwrap_or_default();
+            // B83: notes that define a column, on their own line under the table.
+            if let Some(l) = facts::column_notes_line(norm, t, &names) {
+                view.push('\n');
+                view.push_str(&l);
+            }
             if let Some(first) = seen_cols.get(&list) {
                 line.push_str(&format!(" · {} cols, same as {first}", cols.len()));
                 rows.push((line, None, cols.len(), view));
@@ -1331,6 +1406,10 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     }
     lines.extend(types::no_sum_line(t, &names, &tys, mixed).map(|l| l.trim_start().to_string()));
     lines.extend(facts::scale_line(t).map(|l| l.trim_start().to_string())); // B85
+    lines.extend(facts::column_notes_line(norm, t, &names).map(|l| l.trim_start().to_string())); // B83
+    // B80: ID columns with their names in another column.
+    let pairs = crate::entity::id_name_pairs(t, &data_rows(t));
+    lines.extend(pairs.iter().map(|p| crate::entity::id_name_line(p, &t.id()).trim_start().to_string()));
     lines.push("columns (name | dtype · type | unit | nulls | distinct | min..max, example or all values | source column ← header cells):".into());
     let data = data_rows(t);
     let cols: Vec<(usize, &Column)> = data_cols(t).collect();
@@ -1617,12 +1696,26 @@ mod tests {
         // Year columns: one run, nothing hidden.
         let c = catalog(&book(1, 15, true), "x.xlsx", MAX_CHARS);
         assert!(c.contains("columns (16): Region[text · dim] \"2001\"..\"2015\"[15 × number]"), "{c}");
-        // Wider than 40: runs of same-type columns.
-        let c = catalog(&book(1, 60, false), "x.xlsx", MAX_CHARS);
+        // B71: wider than 40 and long: grouped by name prefix, every member named.
+        let c = catalog(&book(1, 75, false), "x.xlsx", MAX_CHARS);
         assert!(
-            c.contains("columns (62): Region[text · dim] \"Measure 1-0 long header text\"..\"Measure 1-60 long header text\"[61 × number]"),
+            c.contains("columns (77; a_{b, c} = a_b, a_c): Region[text · dim] \"Measure {1-0 long header text, 1-1 long header text, "),
             "{c}"
         );
+        assert!(c.contains(", 1-75 long header text}\"[76 × number]"), "{c}");
+        // Like owid-energy: prefixes of snake_case names, a member of another type marked.
+        let mut n = book(1, 1, false);
+        let t = &mut n.tables[0];
+        let src = t.columns.pop().unwrap();
+        for f in ["biofuel", "coal", "gas", "hydro", "nuclear", "oil", "solar", "wind", "fossil"] {
+            for m in ["cons_change_pct", "cons_change_twh", "consumption", "elec_per_capita", "electricity", "share_elec", "share_energy", "energy_per_capita", "production"] {
+                t.columns.push(col(&format!("{f}_{m}"), ColRole::Data, Dtype::Number, (0..5).map(|i| Out::Num(i as f64 + 0.5)).collect()));
+            }
+        }
+        t.columns.push(src);
+        let c = catalog(&n, "x.xlsx", MAX_CHARS);
+        assert!(c.contains("solar_{cons_change_pct[number · rate — don't sum], cons_change_twh, consumption, elec_per_capita, electricity, share_elec[number · rate — don't sum], share_energy[number · rate — don't sum], energy_per_capita, production}[9 × number]"), "{c}");
+        assert!(!c.contains(".."), "{c}");
     }
 
     #[test]

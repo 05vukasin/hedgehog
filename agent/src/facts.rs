@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use hh_core::normalize::{ColRole, Column, Dtype, Out, RowType, Table, T};
+use hh_core::normalize::{ColRole, Column, Dtype, Normalized, Out, RowType, Table, T};
 
 use crate::catalog::{data_cols, is_date, is_numeric, label_values, measure_classes, name_period, out_text, plural, RowInfo};
 use crate::text::{csv_row, ident, num, quote_ident, short, thousands};
@@ -660,6 +660,119 @@ pub fn scale_line(t: &Table) -> Option<String> {
 }
 
 // ------------------------------------------------------------------------------------------------
+// notes that define columns (B83)
+
+/// Word stems of a text for matching notes to headers: lowercase words without stop words, cut
+/// to 6 characters; `16+` reads as `16 over`.
+fn stems(text: &str) -> Vec<String> {
+    const STOP: &[&str] = &[
+        "the", "a", "an", "of", "in", "to", "and", "or", "for", "by", "is", "are", "all", "on", "at", "as", "with", "from", "per",
+        "headline", "der", "die", "das", "und", "le", "la", "les", "de", "des", "et", "o", "e", "do", "da", "y", "el",
+    ];
+    let mut s = String::with_capacity(text.len());
+    let mut prev_digit = false;
+    for ch in text.chars() {
+        if ch == '+' && prev_digit {
+            s.push_str(" over ");
+        } else {
+            s.push(ch);
+        }
+        prev_digit = ch.is_ascii_digit();
+    }
+    let mut out: Vec<String> = Vec::new();
+    for w in s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty() && !STOP.contains(w)) {
+        let st: String = w.chars().take(6).collect();
+        if !out.contains(&st) {
+            out.push(st);
+        }
+    }
+    out
+}
+
+/// A series code in a header cell (`LF24`, `MGSX`).
+fn header_code(s: &str) -> bool {
+    let s = s.trim();
+    (3..=8).contains(&s.len()) && s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) && s.chars().any(|c| c.is_ascii_uppercase())
+}
+
+/// Notes of a table that define one of its columns: a sentence naming the column's series code
+/// (`LF24`), or a definition (`The headline employment rate is …`) whose subject words are all in
+/// one column's header and that matches that column best. (column index, the sentence, its cell).
+pub fn column_notes(norm: &Normalized, t: &Table) -> Vec<(usize, String, (u32, u32))> {
+    // The table's notes and the notes of its sheet that belong to no table (footnotes below it).
+    let mut notes: Vec<(&str, (u32, u32))> = t.notes.iter().map(|(s, at)| (s.as_str(), *at)).collect();
+    for n in norm.notes.iter().filter(|n| matches!(n.kind, "note" | "other")) {
+        let mine = n.table == Some(t.n) || (n.table.is_none() && n.sheet == t.source_sheet);
+        if mine && !notes.iter().any(|x| x.1 == (n.row, n.col)) {
+            notes.push((n.text.as_str(), (n.row, n.col)));
+        }
+    }
+    let cols: Vec<(usize, Vec<String>, Vec<String>)> = data_cols(t)
+        .map(|(i, c)| {
+            let codes: Vec<String> = c.original_header.iter().map(|(h, _)| h.trim().to_string()).filter(|h| header_code(h)).collect();
+            (i, stems(&c.name), codes)
+        })
+        .collect();
+    let mut out: Vec<(usize, String, (u32, u32))> = Vec::new();
+    for (text, at) in notes {
+        for sentence in text.split(". ").map(str::trim).filter(|s| s.chars().count() >= 20) {
+            let words: Vec<&str> = sentence.split(|c: char| !c.is_alphanumeric()).collect();
+            // The column whose code the sentence names first.
+            let by_code = words.iter().find_map(|w| cols.iter().find(|(_, _, codes)| codes.iter().any(|c| c == w)));
+            let hit = by_code.map(|c| c.0).or_else(|| {
+                let low = sentence.to_lowercase();
+                let cut = [" is ", " are ", " means ", " refers to ", " ist ", " sind ", " est ", " sont ", " é ", " es ", " je "]
+                    .iter()
+                    .filter_map(|v| low.find(v))
+                    .min()?;
+                let subject = stems(&low[..cut]);
+                if subject.len() < 2 || subject.len() > 6 {
+                    return None;
+                }
+                let all = stems(sentence);
+                let scored: Vec<(usize, usize)> = cols
+                    .iter()
+                    .filter(|(_, st, _)| subject.iter().all(|w| st.contains(w)))
+                    .map(|(i, st, _)| (*i, st.iter().filter(|w| all.contains(w)).count()))
+                    .collect();
+                let best = scored.iter().map(|x| x.1).max()?;
+                let top: Vec<usize> = scored.iter().filter(|x| x.1 == best).map(|x| x.0).collect();
+                (top.len() == 1).then(|| top[0])
+            });
+            if let Some(i) = hit
+                && !out.iter().any(|x| x.0 == i)
+            {
+                // A long note naming the code: the part around it.
+                let mut text = sentence.trim_end_matches('.').to_string();
+                if let Some(code) = by_code.and_then(|c| c.2.iter().find(|k| words.contains(&k.as_str())))
+                    && text.chars().count() > 180
+                    && let Some(pos) = text.find(code.as_str())
+                {
+                    let start = text[..pos].char_indices().rev().nth(60).map_or(0, |x| x.0);
+                    text = format!("…{}", &text[start..]);
+                }
+                out.push((i, text, at));
+            }
+        }
+    }
+    out
+}
+
+/// The `column notes:` line of a table (B83): what the file's own notes say a column is.
+pub fn column_notes_line(norm: &Normalized, t: &Table, names: &[String]) -> Option<String> {
+    let notes = column_notes(norm, t);
+    if notes.is_empty() {
+        return None;
+    }
+    let items: Vec<String> = notes
+        .iter()
+        .take(6)
+        .map(|(i, s, (r, c))| format!("{} ← \"{}\" ({})", ident(&names[*i]), short(s, 180), hh_core::a1(*r, *c)))
+        .collect();
+    Some(format!("    column notes: {}", items.join(" · ")))
+}
+
+// ------------------------------------------------------------------------------------------------
 // long and wide forms of one table (B16)
 
 /// Rows of the long table compared with the wide one.
@@ -888,6 +1001,13 @@ fn partial_years(c: &Column, name: &str, rows: &[usize]) -> Option<String> {
     (!parts.is_empty()).then(|| format!("{}: {} — compare full years or the same months", ident(name), parts.join(", ")))
 }
 
+/// A key of things to count by its name (`Order ID`, `customerID`, `Nr`), not a code such as a
+/// postcode.
+fn key_name(name: &str) -> bool {
+    let ws = words(name);
+    ws.iter().any(|w| matches!(w.as_str(), "id" | "ids" | "nr" | "no" | "number" | "nummer" | "broj") || (w.len() > 3 && w.ends_with("id")))
+}
+
 /// An ID column by its name, not a calendar column (`Order ID`, `empfaengerid`, `Nr`).
 fn id_name(name: &str) -> bool {
     const CAL: &[&str] =
@@ -935,7 +1055,7 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         if dups * 20 <= filled {
             // At most 5 % repeated: meant to be unique.
             items.push(format!("{} duplicate {} values", thousands(dups), ident(&names[i])));
-        } else if repeated < 2 && seen.len() >= 3 {
+        } else if repeated < 2 && seen.len() >= 3 && key_name(&names[i]) {
             // B73: one ID on several lines (order lines, returns): rows are not IDs.
             repeated += 1;
             items.push(format!(
@@ -1213,6 +1333,53 @@ mod tests {
         n.tables[0].title = Some(("Contracts (All values in 000s)".into(), (0, 0)));
         let c = catalog(&n, "x.xlsx", MAX_CHARS);
         assert!(c.contains("\n    units: amounts in thousands (× 1,000), says \"Contracts (All values in 000s)\" — multiply by 1,000"), "{c}");
+    }
+
+    #[test]
+    fn notes_that_define_columns() {
+        // B83, like the ONS labour market summary: the footnotes say which rate is the headline.
+        let mut cols = Vec::new();
+        for (age, codes) in [("All aged 16 & over", ["MGSR", "MGSX", "MGRZ"]), ("All aged 16 to 64", ["LF24", "LF2Q", "LF2G"])] {
+            for (what, code) in ["Employment / rate (%)", "Unemployment / rate (%)", "Total in employment / level"].iter().zip(codes) {
+                let mut c = col(&format!("{age} / {what} / {code}"), Dtype::Number, nums(&[60.5; 4]));
+                c.original_header = vec![(age.into(), (5, 1)), ((*what).into(), (6, 1)), (code.into(), (8, 1))];
+                cols.push(c);
+            }
+        }
+        let mut n = book(cols, vec![RowType::Data; 4]);
+        n.tables[0].notes = vec![
+            ("The headline employment rate is the number of people aged 16 to 64 in employment divided by the population aged 16 to 64.".into(), (680, 0)),
+            ("Source: Labour Force Survey".into(), (2, 18)),
+        ];
+        n.notes.push(hh_core::normalize::NoteItem {
+            sheet: "Sheet 1".into(),
+            row: 681,
+            col: 0,
+            kind: "note",
+            table: None,
+            text: "The headline unemployment rate is the number of unemployed people (aged 16+) divided by the economically active population (aged 16+).".into(),
+            formula: None,
+        });
+        n.notes.push(hh_core::normalize::NoteItem {
+            sheet: "Sheet 1".into(),
+            row: 690,
+            col: 0,
+            kind: "note",
+            table: None,
+            text: "Series MGRZ is seasonally adjusted, like all others here".into(),
+            formula: None,
+        });
+        let got: Vec<(String, u32)> = column_notes(&n, &n.tables[0]).iter().map(|(i, _, at)| (n.tables[0].columns[*i].name.clone(), at.0)).collect();
+        assert_eq!(
+            got,
+            [
+                ("All aged 16 to 64 / Employment / rate (%) / LF24".to_string(), 680),
+                ("All aged 16 & over / Unemployment / rate (%) / MGSX".to_string(), 681),
+                ("All aged 16 & over / Total in employment / level / MGRZ".to_string(), 690),
+            ]
+        );
+        let c = catalog(&n, "x.xlsx", MAX_CHARS);
+        assert!(c.contains("\n    column notes: \"All aged 16 to 64 / Employment / rate (%) / LF24\" ← \"The headline employment rate is"), "{c}");
     }
 
     #[test]

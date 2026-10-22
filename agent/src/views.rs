@@ -223,6 +223,135 @@ pub fn period_of(name: &str) -> Option<(String, &'static str)> {
     None
 }
 
+// ------------------------------------------------------------------------------------------------
+// periods written as text (B89)
+
+/// A period code as statistics offices write it in a text column: `2019`, `2019-S1` / `2019S1` /
+/// `2019-H1` (half-year), `2019-Q3` / `2019Q3`, `2019-03` / `2019M03`, `2019-W05`: (normalized,
+/// granularity). Strict, so labels like "Jan-Mar 1971" are not read.
+pub fn text_period(s: &str) -> Option<(String, &'static str)> {
+    let s = s.trim();
+    let b = s.as_bytes();
+    if b.len() < 4 || !b[..4].iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    let y: u32 = s[..4].parse().ok()?;
+    if !(1800..=2200).contains(&y) {
+        return None;
+    }
+    let rest = s[4..].strip_prefix('-').unwrap_or(&s[4..]);
+    if rest.is_empty() {
+        return (b.len() == 4).then(|| (s.to_string(), "year"));
+    }
+    let (tag, num) = rest.split_at(rest.find(|c: char| c.is_ascii_digit())?);
+    let n: u32 = num.parse().ok()?;
+    match tag.to_ascii_uppercase().as_str() {
+        "S" | "H" if (1..=2).contains(&n) && num.len() == 1 => Some((format!("{y}-S{n}"), "half-year")),
+        "Q" | "T" if (1..=4).contains(&n) && num.len() == 1 => Some((format!("{y}-Q{n}"), "quarter")),
+        "W" if (1..=53).contains(&n) && num.len() == 2 => Some((format!("{y}-W{num}"), "week")),
+        "M" | "" if (1..=12).contains(&n) && num.len() == 2 && (tag == "M" || s.as_bytes()[4] == b'-') => {
+            Some((format!("{y}-{num}"), "month"))
+        }
+        _ => None,
+    }
+}
+
+/// A text column whose filled values (all of the first 400) are period codes of one granularity:
+/// (first, last, granularity) over `rows`.
+pub fn text_period_column(c: &hh_core::normalize::Column, rows: &[usize]) -> Option<(String, String, &'static str)> {
+    if c.dtype != Dtype::Text {
+        return None;
+    }
+    let mut gran: Option<&'static str> = None;
+    let (mut lo, mut hi): (Option<String>, Option<String>) = (None, None);
+    let mut checked = 0;
+    for &r in rows {
+        let Some(hh_core::normalize::Out::Text(s)) = c.values.get(r) else { continue };
+        let (p, g) = text_period(s)?;
+        if gran.is_some_and(|x| x != g) {
+            return None;
+        }
+        gran = Some(g);
+        checked += 1;
+        if lo.as_ref().is_none_or(|x| p < *x) {
+            lo = Some(p.clone());
+        }
+        if hi.as_ref().is_none_or(|x| p > *x) {
+            hi = Some(p);
+        }
+    }
+    (checked >= 2).then_some(())?;
+    Some((lo?, hi?, gran?))
+}
+
+/// A column that stamps when the data was published or loaded, not the period it covers
+/// (`LAST UPDATE`, `Stand`, `extraction_date`).
+pub fn update_stamp(name: &str) -> bool {
+    const STAMP: &[&str] = &[
+        "update", "updated", "aktualisiert", "aktualisierung", "stand", "extraction", "extracted", "published",
+        "publication", "downloaded", "download", "timestamp", "loaded", "retrieved", "maj", "atualização", "atualizacao",
+    ];
+    let low = name.to_lowercase();
+    low.split(|c: char| !c.is_alphanumeric()).any(|w| STAMP.contains(&w))
+}
+
+/// B89: time coverage from period codes written as text (`TIME_PERIOD` '2019-S1') for tables
+/// whose coverage comes only from update stamps (or that have none); the workbook's coverage is
+/// rebuilt from the tables when one changed.
+pub fn fix_stamp_coverage(
+    norm: &hh_core::normalize::Normalized,
+    covs: &mut [Option<hh_core::normalize::TimeCoverage>],
+    wb: &mut Option<hh_core::normalize::TimeCoverage>,
+) {
+    let mut changed = false;
+    for (t, cov) in norm.tables.iter().zip(covs.iter_mut()) {
+        let stamped = cov.as_ref().is_some_and(|c| c.source == "column" && !c.columns.is_empty() && c.columns.iter().all(|n| update_stamp(n)));
+        if !(stamped || cov.is_none()) {
+            continue;
+        }
+        let rows = crate::catalog::data_rows(t);
+        let names = sql_names(t);
+        let found = data_cols(t).find_map(|(i, c)| text_period_column(c, &rows).map(|p| (names[i].clone(), p)));
+        if let Some((name, (from, to, gran))) = found {
+            *cov = Some(hh_core::normalize::TimeCoverage {
+                from,
+                to,
+                granularity: gran,
+                source: "column",
+                columns: vec![name],
+                tables: vec![t.id()],
+            });
+            changed = true;
+        } else if stamped {
+            // A publication stamp is no period of the data.
+            *cov = None;
+            changed = true;
+        }
+    }
+    if !changed {
+        return;
+    }
+    let with: Vec<&hh_core::normalize::TimeCoverage> = covs.iter().flatten().collect();
+    *wb = match with.as_slice() {
+        [] => None,
+        [one, ..] if with.iter().all(|c| c.granularity == one.granularity) => Some(hh_core::normalize::TimeCoverage {
+            from: with.iter().map(|c| c.from.clone()).min().unwrap_or_default(),
+            to: with.iter().map(|c| c.to.clone()).max().unwrap_or_default(),
+            granularity: one.granularity,
+            source: one.source,
+            columns: norm
+                .tables
+                .iter()
+                .zip(covs.iter())
+                .filter_map(|(t, c)| c.as_ref().map(|c| (t, c)))
+                .flat_map(|(t, c)| c.columns.iter().map(move |n| format!("{}.{n}", t.id())))
+                .collect(),
+            tables: with.iter().flat_map(|c| c.tables.clone()).collect(),
+        }),
+        _ => wb.take(),
+    };
+}
+
 /// Names of the view's own columns, made distinct from the key columns' names.
 fn own_names(t: &Table, lv: &LongView) -> [String; 6] {
     let names = sql_names(t);
@@ -365,7 +494,7 @@ pub fn brief_text(lv: &LongView) -> String {
 mod tests {
     use super::*;
     use crate::sql::{Db, DEFAULT_TIMEOUT};
-    use hh_core::normalize::{Column, Normalized, Out, RowType, Transforms};
+    use hh_core::normalize::{Column, Normalized, Out, RowType, TimeCoverage, Transforms};
     use hh_core::Rect;
 
     fn col(name: &str, role: ColRole, dtype: Dtype, src: u32, values: Vec<Out>) -> Column {
@@ -493,6 +622,46 @@ mod tests {
         assert_eq!(header_rest("2024 Q1"), "");
         assert_eq!(header_rest("Month-2 Avg / 2001-12-05"), "Month-2 Avg");
         assert_eq!(header_rest("FY 2024"), "FY");
+    }
+
+    #[test]
+    fn periods_written_as_text() {
+        // B89: Eurostat's TIME_PERIOD codes; labels that only mention a year are not periods.
+        assert_eq!(text_period("2019-S1"), Some(("2019-S1".into(), "half-year")));
+        assert_eq!(text_period("2019S2"), Some(("2019-S2".into(), "half-year")));
+        assert_eq!(text_period("2024-Q3"), Some(("2024-Q3".into(), "quarter")));
+        assert_eq!(text_period("2024M03"), Some(("2024-03".into(), "month")));
+        assert_eq!(text_period("2024-03"), Some(("2024-03".into(), "month")));
+        assert_eq!(text_period("2024"), Some(("2024".into(), "year")));
+        for s in ["Jan-Mar 1971", "2024-13", "20241", "2024 total", "12345", "2024-S3"] {
+            assert_eq!(text_period(s), None, "{s}");
+        }
+        assert!(update_stamp("LAST UPDATE") && update_stamp("Stand") && !update_stamp("TIME_PERIOD"));
+        // A table dated only by its update stamp: the coverage comes from TIME_PERIOD.
+        let mut n = wide();
+        let t = &mut n.tables[0];
+        let rows = t.rows();
+        let periods: Vec<Out> = (0..rows).map(|i| Out::Text(format!("{}-S{}", 2019 + i / 2, 1 + i % 2))).collect();
+        t.columns.insert(0, col("TIME_PERIOD", ColRole::Data, Dtype::Text, 0, periods));
+        let stamp = |n: &str| TimeCoverage {
+            from: "2026-10-19".into(),
+            to: "2026-10-19".into(),
+            granularity: "day",
+            source: "column",
+            columns: vec![n.into()],
+            tables: vec!["T1".into()],
+        };
+        let mut covs = vec![Some(stamp("LAST UPDATE"))];
+        let mut wb = Some(stamp("T1.LAST UPDATE"));
+        fix_stamp_coverage(&n, &mut covs, &mut wb);
+        let wb = wb.unwrap();
+        assert_eq!((wb.from.as_str(), wb.granularity, wb.columns.clone()), ("2019-S1", "half-year", vec!["T1.TIME_PERIOD".to_string()]));
+        assert_eq!(covs[0].as_ref().unwrap().columns, ["TIME_PERIOD"]);
+        // A real date column is left alone.
+        let mut covs = vec![Some(stamp("Datum"))];
+        let mut wb = Some(stamp("T1.Datum"));
+        fix_stamp_coverage(&n, &mut covs, &mut wb);
+        assert_eq!(wb.unwrap().granularity, "day");
     }
 
     #[test]
