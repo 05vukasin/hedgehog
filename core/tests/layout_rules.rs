@@ -463,3 +463,121 @@ fn full_row_merged_title_lines_stay_titles() {
     assert_eq!(role(&s, &l, 3, 0), Role::Header);
     assert_eq!(role(&s, &l, 5, 4), Role::Data);
 }
+
+/// One value column under its header, the row labels in sections (HiTab statcan/107, 1011): the
+/// lone `percentage` over the value column, with a section label (and a `Label: | ...` row) between
+/// it and the first number, is the header of a two-column table, not a title.
+#[test]
+fn one_value_column_under_section_labels() {
+    let s = fixture("one_value_col", |ws| {
+        ws.write_string(0, 0, "Table 1: Responses to household food security questions, percentage").unwrap();
+        ws.write_string(2, 1, "percentage").unwrap();
+        let mut r = 3;
+        for q in ["Q1. Food didn't last and there was no money to buy more", "Q2. Balanced meals unaffordable"] {
+            ws.write_string(r, 0, q).unwrap();
+            r += 1;
+            if q.starts_with("Q2") {
+                ws.write_string(r, 0, "By frequency:").unwrap();
+                ws.write_string(r, 1, "...").unwrap();
+                r += 1;
+            }
+            for (k, a) in ["Often true", "Sometimes true", "Never true"].iter().enumerate() {
+                ws.write_string(r, 0, *a).unwrap();
+                ws.write_number(r, 1, 10.5 + k as f64).unwrap();
+                r += 1;
+            }
+        }
+    });
+    for l in [run(&s), hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap())] {
+        assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
+        assert_eq!(l.tables[0].rect.left, 0);
+        assert_eq!(l.tables[0].rect.right, 1);
+        assert_eq!(l.tables[0].rect.bottom, 11);
+        assert_eq!(role(&s, &l, 2, 1), Role::Header);
+        assert_eq!(role(&s, &l, 4, 1), Role::Data);
+        assert_eq!(role(&s, &l, 11, 1), Role::Data);
+    }
+}
+
+/// The same with the first number right under the header (`percent` over `Total | 30`, HiTab
+/// statcan/1655): taken as the header only when the sheet has no table otherwise.
+#[test]
+fn one_value_column_header_over_number() {
+    let s = fixture("one_value_col_direct", |ws| {
+        ws.write_string(0, 0, "Table 4: Proportion of caregivers who would have liked more support, by characteristic").unwrap();
+        ws.write_string(2, 1, "percent").unwrap();
+        ws.write_string(3, 0, "Total").unwrap();
+        ws.write_number(3, 1, 30.0).unwrap();
+        let mut r = 4;
+        for (sec, items) in [("Sex", vec!["Male", "Female"]), ("Age", vec!["15 to 34", "35 to 64", "65 and older"])] {
+            ws.write_string(r, 0, sec).unwrap();
+            r += 1;
+            for (k, it) in items.iter().enumerate() {
+                ws.write_string(r, 0, *it).unwrap();
+                ws.write_number(r, 1, 25.0 + k as f64).unwrap();
+                r += 1;
+            }
+        }
+    });
+    for l in [run(&s), hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap())] {
+        assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
+        assert_eq!((l.tables[0].rect.left, l.tables[0].rect.right, l.tables[0].rect.bottom), (0, 1, 10));
+        assert_eq!(role(&s, &l, 2, 1), Role::Header);
+        assert_eq!(role(&s, &l, 6, 1), Role::Data);
+    }
+}
+
+/// A long headerless `label | number` list with nothing else on the sheet (HiTab statcan/1328, a
+/// decomposition) is a two-column table; a short key/value block stays loose.
+#[test]
+fn headerless_label_number_list() {
+    let s = fixture("label_number_list", |ws| {
+        ws.write_string(0, 0, "Table 4: Decomposition of change in the gender wage gap, 1997 to 2017").unwrap();
+        let items = ["Change in log wage ratio", "Gap in 2017", "Gap in 1997", "Explained", "Province", "Education", "Age", "Job tenure", "Occupation"];
+        for (k, it) in items.iter().enumerate() {
+            ws.write_string(2 + k as u32, 0, *it).unwrap();
+            ws.write_number(2 + k as u32, 1, k as f64 - 3.5).unwrap();
+        }
+    });
+    let l = run(&s);
+    assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
+    assert_eq!((l.tables[0].rect.left, l.tables[0].rect.right, l.tables[0].rect.bottom), (0, 1, 10));
+    assert_eq!(role(&s, &l, 5, 1), Role::Data);
+    let kv = fixture("short_kv", |ws| {
+        for (k, it) in ["Prepared by", "Date", "Version"].iter().enumerate() {
+            ws.write_string(k as u32, 0, *it).unwrap();
+            ws.write_number(k as u32, 1, k as f64).unwrap();
+        }
+    });
+    assert!(run(&kv).tables.is_empty());
+}
+
+/// A short table under a sparse metadata row (`Stock D | Code: | 656839` over a 12-column header
+/// and three trades, MiMoTable StockSituation4): the header is the wide row, the table is found.
+#[test]
+fn short_table_under_sparse_metadata_row() {
+    let s = fixture("sparse_pre", |ws| {
+        ws.write_string(0, 0, "Stock D").unwrap();
+        ws.write_string(0, 1, "Code:").unwrap();
+        ws.write_number(0, 2, 656839.0).unwrap();
+        let h = ["No", "Date", "Direction", "Price", "Shares", "Fee", "Total Amount", "Cost", "Held", "Average", "Current", "P&L"];
+        for (j, x) in h.iter().enumerate() {
+            ws.write_string(1, j as u16, *x).unwrap();
+        }
+        for i in 0..3u32 {
+            ws.write_string(2 + i, 0, format!("0{}", i + 1)).unwrap();
+            ws.write_number(2 + i, 1, 44198.0 + i as f64).unwrap();
+            ws.write_string(2 + i, 2, if i == 2 { "Sell" } else { "Buy" }).unwrap();
+            for j in 3..12u16 {
+                ws.write_number(2 + i, j, 10.0 * j as f64 + i as f64).unwrap();
+            }
+        }
+    });
+    for l in [run(&s), hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap())] {
+        assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
+        assert_eq!((l.tables[0].rect.left, l.tables[0].rect.right, l.tables[0].rect.bottom), (0, 11, 4));
+        assert_eq!(role(&s, &l, 1, 6), Role::Header);
+        assert_eq!(role(&s, &l, 3, 6), Role::Data);
+        assert_eq!(l.tables[0].header_top, 1, "{:?}", l.tables);
+    }
+}
