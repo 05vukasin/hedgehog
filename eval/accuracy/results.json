@@ -975,7 +975,7 @@
       "id": "en-0064",
       "file": "repo/data/english/spreadsheet/8PumpMachinery.xlsx",
       "atom": "15",
-      "evidence": "8PumpMachinery.xlsx:T2 min(kw·h) where all data rows (file has: header missing)"
+      "evidence": "8PumpMachinery.xlsx:T2 min(kw·h) where all data rows (file has: duplicate headers)"
      },
      {
       "dataset": "mimotable",
@@ -1599,7 +1599,7 @@
       "id": "F554",
       "file": "tables/business-table07.xlsx",
       "atom": "3903.61",
-      "evidence": "question: Based on the growth trend from 2005 to 2009, predict the number of businesses in “Sports Activities” for 2011 in the “So"
+      "evidence": "question: Based on the growth trend from 2005 to 2009, predict the number of businesses in “Sports Activities” for 2011 in the “So (file has: duplicate headers)"
      },
      {
       "dataset": "realhitbench",
@@ -2283,8 +2283,8 @@
   }
  },
  "M": {
-  "violations": 2236,
-  "files": 838,
+  "violations": 2350,
+  "files": 850,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
@@ -2296,11 +2296,11 @@
    },
    "mimotable": {
     "M5 header missing": 254,
+    "M5 duplicate headers": 57,
     "M1 total row in data": 10,
-    "M5 repeated header names": 6,
+    "M5 repeated header names": 12,
     "M2 percent mixed": 11,
     "M3 measures mixed": 31,
-    "M5 duplicate headers": 21,
     "M5 number as header": 2,
     "M4 Excel serial as number": 13,
     "M6 '(n)' read as negative": 1
@@ -2311,16 +2311,16 @@
     "M3 measures mixed": 138,
     "M1 total row in data": 4,
     "M5 number as header": 14,
-    "M5 repeated header names": 13,
-    "M5 duplicate headers": 10
+    "M5 duplicate headers": 49,
+    "M5 repeated header names": 46
    }
   },
   "kinds": {
    "M5 header missing": 1743,
    "M3 measures mixed": 304,
+   "M5 duplicate headers": 107,
+   "M5 repeated header names": 76,
    "M1 total row in data": 74,
-   "M5 repeated header names": 37,
-   "M5 duplicate headers": 32,
    "M5 number as header": 18,
    "M4 Excel serial as number": 13,
    "M2 percent mixed": 11,
@@ -2344,8 +2344,8 @@
    ],
    "M5 duplicate headers": [
     "hitab clean/nsf/163_81_tab2.xlsx T1  | column 'State (2)': the header above ('Extramural performersb') is not in any column name",
-    "mimotable repo/data/chinese/spreadsheet/财务利润分析表.xlsx T1  | column '本年 (2)': the header above ('主营收入') is not in any column name",
-    "mimotable repo/data/chinese/spreadsheet/财务利润分析表.xlsx T1  | column '环比增长 (2)': the header above ('主营收入') is not in any column name"
+    "mimotable repo/data/chinese/spreadsheet/11地下工程机械.xlsx T2  | column '元 (2)': the source names these columns above the header ('人工费', '养路费及车船使用税', '大修理费')",
+    "mimotable repo/data/chinese/spreadsheet/11地下工程机械.xlsx T2  | column '元 (3)': the source names these columns above the header ('人工费', '养路费及车船使用税', '大修理费')"
    ],
    "M5 repeated header names": [
     "hitab clean/nsf/199_93_tab2.xlsx T2  | 4 adjacent columns named '* / na' (a data row taken as the header?)",
@@ -2483,5 +2483,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 129
+ "seconds": 114
 }

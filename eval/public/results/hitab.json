@@ -11,40 +11,40 @@
     "median": 2108,
     "p90": 3469,
     "max": 6026,
-    "sum": 3424986,
-    "mean": 2254.763660302831
+    "sum": 3425311,
+    "mean": 2254.977616853193
    },
    "tokens": {
     "n": 1519,
     "median": 684,
     "p90": 1222,
     "max": 2438,
-    "sum": 1156999,
-    "mean": 761.6846609611587
+    "sum": 1157076,
+    "mean": 761.7353522053983
    },
    "secs": {
     "n": 1519,
-    "median": 0.0116,
-    "p90": 0.0133,
-    "max": 0.0292,
-    "sum": 17.9308,
-    "mean": 0.01180434496379197
+    "median": 0.0132,
+    "p90": 0.0157,
+    "max": 0.0334,
+    "sum": 20.3512,
+    "mean": 0.013397761685319289
    },
    "rss_mb": {
     "n": 1519,
-    "median": 17.1015625,
-    "p90": 17.37890625,
-    "max": 17.765625,
-    "sum": 25981.859375,
-    "mean": 17.10458155036208
+    "median": 17.0625,
+    "p90": 17.328125,
+    "max": 17.7578125,
+    "sum": 25922.83203125,
+    "mean": 17.0657222062212
    },
    "normalize_secs": {
     "n": 1519,
-    "median": 0.0122,
-    "p90": 0.0138,
-    "max": 0.0292,
-    "sum": 18.8984,
-    "mean": 0.012441342988808425
+    "median": 0.0138,
+    "p90": 0.0165,
+    "max": 0.0334,
+    "sum": 21.2268,
+    "mean": 0.013974193548387097
    }
   },
   "pandas": {
@@ -118,7 +118,7 @@
    "header_answer": {
     "items": 1358,
     "verbatim": 1281,
-    "hh_catalog": 1149,
+    "hh_catalog": 1157,
     "md_text": 1279,
     "hh_cell": 1276,
     "hh_loose": 971,
@@ -131,7 +131,7 @@
    "lookup": {
     "items": 4446,
     "verbatim": 4446,
-    "hh_catalog": 596,
+    "hh_catalog": 3705,
     "md_text": 4446,
     "hh_cell": 4442,
     "hh_loose": 4326,
@@ -143,7 +143,7 @@
    "ALL": {
     "items": 7324,
     "verbatim": 5727,
-    "hh_catalog": 1745,
+    "hh_catalog": 4862,
     "md_text": 5725,
     "hh_cell": 5718,
     "hh_loose": 5297,
@@ -160,12 +160,12 @@
   },
   "examples": {
    "lookup | hedgehog: answer not in catalog": [
-    "clean/nsf/0_1_nsf21326-tab001.xlsx · item e3ea71e57afb31f0b257426444523c3e · atoms ['154983.0'] · catalog 2467 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 957ff1802f7171dfe85593e08a8eb8c6 · atoms ['120824.0'] · catalog 1476 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 15ef07a1e7916da2207b2a0bad45bf22 · atoms ['374685.0'] · catalog 1476 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 068e85ed06c5b22bb4aeb913e8e1d4f2 · atoms ['9.6'] · catalog 1476 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 5c146e18a1e3b336c33c7411414b0cee · atoms ['4.2'] · catalog 1476 chars",
-    "clean/nsf/103_54_nsf19316-tab001.xlsx · item 09c3d348ea76b11d305d71fe30e310aa · atoms ['355821.0'] · catalog 3631 chars"
+    "clean/nsf/105_54_nsf19316-tab003.xlsx · item 61143c012eadeb4070c9f6ce7072fa8b · atoms ['18913.0'] · catalog 1712 chars",
+    "clean/nsf/119_57_herd16-ib-19303-tab001.xlsx · item 674bb35bde3ac8d918f0d035f0167f86 · atoms ['71833.0'] · catalog 1569 chars",
+    "clean/nsf/120_57_herd16-ib-19303-tab002.xlsx · item 05932a190de25a313ef7ddef5de1ebae · atoms ['54.0'] · catalog 1488 chars",
+    "clean/nsf/120_57_herd16-ib-19303-tab002.xlsx · item 176b0bea28e61c1fc50d0f3475f1939c · atoms ['25.0'] · catalog 1488 chars",
+    "clean/nsf/123_58_ffrdc17-ib-19311-tab003.xlsx · item 9c6a40494a3d42c65a71e5051f08805c · atoms ['25.5'] · catalog 1710 chars",
+    "clean/nsf/126_6_nsf21309-tab003.xlsx · item ad2166cad0a46dd10bee295dd4ec8d14 · atoms ['41.5'] · catalog 1106 chars"
    ],
    "header_answer | hedgehog: answer not in catalog": [
     "clean/nsf/126_6_nsf21309-tab003.xlsx · item c9818c5da5b03c5884ef46f3b6f72dcd · atoms [\"earn credits for a bachelor's degree\"] · catalog 1106 chars",
@@ -173,7 +173,7 @@
     "clean/statcan/1011.xlsx · item ba6d4c42e3c9603be5f1aec93c6abb4b · atoms ['ethiopia', 'saint vincent and the grenadines', 'grenada', 'saint lucia'] · catalog 842 chars",
     "clean/statcan/1087.xlsx · item cf1b50f3c30e18558d57c2e158b9a02a · atoms ['transportation and warehousing', 'manufacturing'] · catalog 1079 chars",
     "clean/statcan/1087.xlsx · item f863f1bf7397b207042f8b00a7795121 · atoms ['health care and social assistance', 'professional, scientific and technical s'] · catalog 1079 chars",
-    "clean/statcan/1118.xlsx · item a74d199800bf3c2b4a63aa24e1f0d007 · atoms ['new brunswick', '25.1'] · catalog 1764 chars"
+    "clean/statcan/1181.xlsx · item b07a362946b8f657bef0b2cca6593c24 · atoms ['humanities'] · catalog 1223 chars"
    ],
    "lookup | hedgehog: answer value in no table cell": [
     "clean/statcan/1261.xlsx · item 7f3108bdad4843faa9aeda660f0c069b · answer atoms ['11134']",
