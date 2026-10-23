@@ -1,0 +1,11 @@
+# Audited misses: a miss counts as audited only with evidence checked against the source file (raw cells).
+# reason: gold_wrong | not_in_file | outside_knowledge. Verified by hand on 2026-10-23 (eval/accuracy, branch accuracy).
+dataset	item_id	measure	atom	reason	evidence
+mimotable	en-0142	C	120000	gold_wrong	Sheet12!E2:E16 holds 14 x 8000 and one shifted text cell E13='Information Department' (row 13 is shifted one column right); the column sums to 112000; the gold 120000 assumes 15 x 8000
+mimotable	en-0137	C	-41.67%	gold_wrong	Management Cost: Jan 2022 (Sheet3!J2) = 120, May 2023 (J18) = 174.95: growth +45.79 %; -41.67 % = (70 - 120) / 120 uses May 2022 (J6 = 70)
+mimotable	en-0331	C	5.64	gold_wrong	highest Transaction Total Price is K21 = 564000 in units of 10,000 yuan (header I1/K1 '(10,000 yuan)') = 5.64 billion yuan, not 5.64 million
+mimotable	en-0178	C	1435.24	gold_wrong	Unreceived Amount Sheet1!G2:G22 (21 records) averages 1301.63 (the agent's answer); the gold 1435.24 is not this average
+mimotable	en-0408	C	41.38	gold_wrong	Number of Floors D2:D50: 47 cells with a number (incl. '60 floors', '57 floors'), 2 x '—'; mean 61.0 (61.1 over the 45 numeric cells); 41.38 matches no reading
+mimotable	en-0640	L	Weekday Overtime	gold_wrong	Overtime Fee by type (Sheet51 F/I): Weekend Overtime 9488 > Weekday Overtime 8687 > Public Holiday 6103; the highest is Weekend Overtime (Administration Department)
+mimotable	en-0270	C	49,771.6	gold_wrong	(holdout) Order Amount G of rows with Paid L='✔Yes' (11 orders) sums to 46945.82 (the agent's answer), not 49771.6
+mimotable	en-0566	C	125	not_in_file	Sheet1 'Planned Sales Amount' B3:B14 are empty (no values, no cached formula results); 'Planned' occurs only in A1; Sheet2/Sheet3 hold book sales by distributor without a plan
