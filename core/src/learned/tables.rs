@@ -226,11 +226,17 @@ fn merge_header_only(
         while let Some(prev) = out.last() {
             let p = prev.rect;
             let same_cols = p.left.abs_diff(t.rect.left) <= 1 && p.right.abs_diff(t.rect.right) <= 1;
-            let adjacent = p.bottom < t.rect.top && t.rect.top - p.bottom <= 2;
+            // A vertical merge of the upper header may hang into the next table's first row
+            // (`Number` over A2:A6, the next table's unit row 6).
+            let adjacent = p.bottom <= t.rect.top && t.rect.top - p.bottom <= 2;
             if !(same_cols && adjacent) {
                 break;
             }
-            let rows = rows_in(grid, p, roles, raw, rules);
+            // Its rows from its header down to the next table; title rows above its header do not
+            // count against it.
+            let from = if prev.header_rows > 0 { prev.header_top } else { p.top };
+            let rows: Vec<RowInfo> =
+                rows_in(grid, p, roles, raw, rules).into_iter().filter(|r| r.row >= from && r.row < t.rect.top).collect();
             let all_header = !rows.is_empty() && rows.iter().all(|r| r.role() == Role::Header);
             if !all_header {
                 break;

@@ -1,0 +1,204 @@
+//! Column headers that the normalized output used to lose (columns named `col_<letter>`, or a header
+//! row read as data), found by the model-free accuracy scoreboard (eval/accuracy, clusters "answer
+//! column has no header" and "question key: cell not in any table"). Each case is a small generated
+//! sheet shaped like the public-benchmark file it came from.
+
+use std::path::PathBuf;
+
+use hh_core::normalize::{normalize_workbook, Normalized, Options, Table};
+use hh_core::open;
+use rust_xlsxwriter::{ExcelDateTime, Format, Workbook, Worksheet};
+
+fn normalize(name: &str, build: impl FnOnce(&mut Worksheet)) -> Normalized {
+    let path: PathBuf = std::env::temp_dir().join(format!("hh_headers_{name}_{}.xlsx", std::process::id()));
+    let mut wb = Workbook::new();
+    build(wb.add_worksheet());
+    wb.save(&path).unwrap();
+    let book = open(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+    normalize_workbook(&book, &Options { keep_totals: true, ..Options::default() })
+}
+
+fn names(t: &Table) -> Vec<&str> {
+    t.columns.iter().map(|c| c.name.as_str()).filter(|n| !n.starts_with('_')).collect()
+}
+
+fn unnamed(t: &Table) -> Vec<&str> {
+    names(t).into_iter().filter(|n| n.starts_with("col_")).collect()
+}
+
+/// The table whose columns include `name`.
+fn with_column<'a>(n: &'a Normalized, name: &str) -> &'a Table {
+    n.tables
+        .iter()
+        .find(|t| t.columns.iter().any(|c| c.name == name))
+        .unwrap_or_else(|| panic!("no table has a column {name:?}: {:?}", n.tables.iter().map(names).collect::<Vec<_>>()))
+}
+
+/// RealHiTBench military-table07…19: a row of dates over a `Number | %` row, separated from the body
+/// by a blank row. The pair is the header (it used to be a loose title block, and every column of
+/// the table was `col_<letter>`).
+#[test]
+fn date_header_over_a_blank_row() {
+    let n = normalize("dates_blank", |ws| {
+        let date = Format::new().set_num_format("mmm yyyy");
+        ws.write_string(0, 0, "Table 16 - Strength by age").unwrap();
+        ws.write_string(2, 3, "Glossary of terms").unwrap();
+        ws.write_string(3, 3, "Return to Contents").unwrap();
+        for k in 0..5u16 {
+            let d = ExcelDateTime::from_ymd(2012 + k, 4, 1).unwrap();
+            ws.write_datetime_with_format(4, 4 + 2 * k, &d, &date).unwrap();
+            ws.write_string(5, 4 + 2 * k, "Number").unwrap();
+            ws.write_string(5, 5 + 2 * k, "%").unwrap();
+        }
+        // row 6 blank
+        let labels = ["All Services", "Under 18", "18 and 19", "20-24", "25-29", "30-34", "35-39", "40-44"];
+        for (i, l) in labels.iter().enumerate() {
+            let r = 7 + i as u32;
+            ws.write_string(r, if i == 0 { 0 } else { 2 }, *l).unwrap();
+            for k in 0..5u16 {
+                ws.write_number(r, 4 + 2 * k, 1000.0 + (37 * i + 11 * k as usize) as f64).unwrap();
+                ws.write_number(r, 5 + 2 * k, 1.5 + (i + k as usize) as f64).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "2012-04-01 / Number");
+    assert!(t.columns.iter().any(|c| c.name == "2016-04-01 / %"), "{:?}", names(t));
+    assert_eq!(unnamed(t), ["col_A", "col_C"], "only the label columns (no header text) stay unnamed");
+}
+
+/// RealHiTBench education-table26…29: `WP ID | Teaching Group | Condition | 1 | 2 | …`, labels then
+/// a column numbering, is the header (it used to be the first data row of a headerless table).
+#[test]
+fn labels_then_column_numbers_are_a_header() {
+    let n = normalize("numbering", |ws| {
+        for (c, h) in ["WP ID", "Teaching Group", "Condition"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        for k in 1..=8u16 {
+            ws.write_number(0, 2 + k, k as f64).unwrap();
+        }
+        for i in 0..12u32 {
+            ws.write_number(1 + i, 0, 92.0 + i as f64).unwrap();
+            ws.write_number(1 + i, 1, 4.0).unwrap();
+            ws.write_string(1 + i, 2, if i % 2 == 0 { "CAI" } else { "Lecture" }).unwrap();
+            for k in 1..=8u16 {
+                ws.write_number(1 + i, 2 + k, ((i * 7 + k as u32 * 3) % 5) as f64 - 1.0).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "WP ID");
+    assert_eq!(names(t)[..5], ["WP ID", "Teaching Group", "Condition", "1", "2"]);
+    assert!(unnamed(t).is_empty(), "{:?}", names(t));
+}
+
+/// MiMoTable PriceAnalysisTable1: `Name | 1 | … | 12 | Annual Average`, a column numbering between
+/// labels (the trailing label once made the row a total row of a headerless table).
+#[test]
+fn column_numbers_between_labels_are_a_header() {
+    let n = normalize("numbering_tail", |ws| {
+        ws.write_string(0, 1, "Price Analysis Table").unwrap();
+        ws.write_string(2, 1, "Name").unwrap();
+        for k in 1..=12u16 {
+            ws.write_number(2, 1 + k, k as f64).unwrap();
+        }
+        ws.write_string(2, 14, "Annual Average").unwrap();
+        for i in 0..6u32 {
+            ws.write_string(3 + i, 1, format!("Material {}", i + 1)).unwrap();
+            for k in 1..=13u16 {
+                ws.write_number(3 + i, 1 + k, 1.0 + ((i * 13 + k as u32) % 7) as f64 / 10.0).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "Annual Average");
+    assert_eq!(names(t)[..3], ["Name", "1", "2"]);
+    assert!(unnamed(t).is_empty(), "{:?}", names(t));
+}
+
+/// MiMoTable ProjectStatisticsTable1 (en-0516, en-0519): a `Key: | … | Key: | value` line over a wide
+/// header row. The header row is the header (it used to be dropped: the table had no header, the
+/// question's key columns `Contract Number`, `Client Unit` were in no table).
+#[test]
+fn key_value_line_over_the_header() {
+    let n = normalize("kv_over_header", |ws| {
+        ws.write_string(0, 1, "Project Statistics Table").unwrap();
+        ws.write_string(2, 2, "Project Name:").unwrap();
+        ws.write_string(2, 6, "Number of Clients:").unwrap();
+        ws.write_number(2, 7, 7.0).unwrap();
+        let header = [
+            "No.", "Contract Number", "Client Name", "Client Unit", "Contact Information", "Project Name", "Quantity",
+            "Proposed Duration", "Status", "Statistician",
+        ];
+        for (c, h) in header.iter().enumerate() {
+            ws.write_string(3, 1 + c as u16, *h).unwrap();
+        }
+        for i in 0..7u32 {
+            let r = 4 + i;
+            ws.write_number(r, 1, (i + 1) as f64).unwrap();
+            ws.write_string(r, 2, format!("DH102933{}", i + 1)).unwrap();
+            ws.write_string(r, 3, format!("DaoKe{}", i + 1)).unwrap();
+            ws.write_string(r, 4, ["ZhongHang", "Cheng Wei", "BaBaiJiu", "Xiao Lian", "DongNan", "Henan", "Wu Jiang"][i as usize]).unwrap();
+            ws.write_string(r, 5, format!("180xxxx102{}", i + 1)).unwrap();
+            ws.write_string(r, 6, ["Robot Trolley", "Medical Trolley", "Handle", "Machine", "Robot", "Vehicle", "Lathe"][i as usize]).unwrap();
+            ws.write_string(r, 7, format!("{} sets", 10 * (i + 1))).unwrap();
+            ws.write_number(r, 8, 40.0 + 9.0 * i as f64).unwrap();
+            ws.write_string(r, 9, if i < 4 { "Completed" } else { "In Progress" }).unwrap();
+            ws.write_string(r, 10, "Zhang Xiaomei").unwrap();
+        }
+    });
+    let t = with_column(&n, "Contract Number");
+    assert!(t.columns.iter().any(|c| c.name == "Client Unit"), "{:?}", names(t));
+    assert!(unnamed(t).is_empty(), "{:?}", names(t));
+    assert_eq!(t.src_rows.len(), 7, "the header row is no data row");
+}
+
+/// MiMoTable 11UndergroundEngineeringMachinery (en-0008): a four-row header with vertical merges down
+/// to a unit row (`Quota | Yuan | … | kg`). The rules end the header at a row of fuel prices and
+/// start a table at the unit row, but the merges hang into it; the row model calls the upper rows
+/// header, so they are the top of that table's header (they used to stay a table of their own, and
+/// `Machinery Name`, `Model` were `col_B`, `col_D`).
+#[test]
+fn header_block_with_merges_down_to_the_unit_row() {
+    let n = normalize("merged_unit_row", |ws| {
+        let m = Format::new();
+        ws.write_string(0, 0, "Section Eleven: Underground Engineering Machinery").unwrap();
+        ws.merge_range(1, 0, 5, 0, "Number", &m).unwrap();
+        ws.merge_range(1, 1, 5, 2, "Machinery Name", &m).unwrap();
+        ws.merge_range(1, 3, 5, 3, "Model", &m).unwrap();
+        ws.merge_range(1, 4, 5, 5, "Specification Model", &m).unwrap();
+        ws.merge_range(1, 6, 4, 6, "Depreciation Period", &m).unwrap();
+        ws.merge_range(1, 7, 4, 7, "Shift Base Price", &m).unwrap();
+        ws.merge_range(1, 8, 1, 13, "Cost Composition", &m).unwrap();
+        ws.merge_range(2, 8, 3, 8, "Depreciation Cost", &m).unwrap();
+        ws.merge_range(2, 9, 3, 9, "Major Repair Cost", &m).unwrap();
+        ws.merge_range(2, 10, 3, 10, "Fuel and Power Cost", &m).unwrap();
+        ws.merge_range(2, 11, 2, 13, "Including", &m).unwrap();
+        for (k, f) in ["Gasoline", "Diesel", "Electricity"].iter().enumerate() {
+            ws.write_string(3, 11 + k as u16, *f).unwrap();
+        }
+        ws.merge_range(4, 8, 4, 10, "Quota", &m).unwrap();
+        for (k, p) in [5.65, 6.85, 0.9].iter().enumerate() {
+            ws.write_number(4, 11 + k as u16, *p).unwrap();
+        }
+        for (k, u) in ["Quota", "Yuan", "Yuan", "Yuan", "Yuan", "kg", "kg", "kw·h"].iter().enumerate() {
+            ws.write_string(5, 6 + k as u16, *u).unwrap();
+        }
+        let names = ["Dry Excavation Shield", "Hydraulic Cabinet", "Air Pressure Balance"];
+        for i in 0..12u32 {
+            let r = 6 + i;
+            ws.write_string(r, 0, format!("11-{}", i + 1)).unwrap();
+            ws.write_string(r, 1, names[(i / 4) as usize]).unwrap();
+            ws.write_string(r, 3, "Special").unwrap();
+            ws.write_string(r, 4, "Diameter (mm)").unwrap();
+            ws.write_string(r, 5, format!("φ{}", 3500 + 1500 * (i % 4))).unwrap();
+            ws.write_number(r, 6, 8.0 + (i / 4) as f64).unwrap();
+            for c in 7..=13u16 {
+                ws.write_number(r, c, 100.0 * c as f64 + 13.7 * i as f64).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "Number");
+    assert!(t.columns.iter().any(|c| c.name == "Machinery Name"), "{:?}", names(t));
+    assert!(t.columns.iter().any(|c| c.name == "Model"), "{:?}", names(t));
+    assert_eq!(t.src_rows.len(), 12, "{:?}", names(t));
+}

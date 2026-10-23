@@ -1,0 +1,44 @@
+# snapshot: header_rows
+
+## open_file headers.xlsx
+FILE headers.xlsx · 3 sheets · 160 cells (96% in tables) · 3 tables
+TIME 2014–2016 (year, from column headers in T1)
+T1  'Table 16 - Strength by age' ← Strength!A4:I12 · 5 rows (+1 total row only in T1_all) · time 2014–2016 (year)
+    columns (8): col_A[5/6 empty: label written once per block?] col_B "2014 / Number"[1000..1185] "2014 / %"[rate 1.5..6.5] "2015 / Number"[1011..1196] "2015 / %"[rate 2.5..7.5] "2016 / Number"[1022..1207] "2016 / %"[rate 3.5..8.5]
+    do not sum: "2014 / %" (rate), "2015 / %" (rate), "2016 / %" (rate) — use AVG, a weighted mean or the file's total
+    total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in col_A: total 'All Services'@7
+    all 6 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):
+    col_A,col_B,2014 / Number,2014 / %,2015 / Number,2015 / %,2016 / Number,2016 / %,_row_type
+    All Services,,1000,1.5,1011,2.5,1022,3.5,total
+    ,Under 18,1037,2.5,1048,3.5,1059,4.5,data
+    ,18 and 19,1074,3.5,1085,4.5,1096,5.5,data
+    ,20-24,1111,4.5,1122,5.5,1133,6.5,data
+    ,25-29,1148,5.5,1159,6.5,1170,7.5,data
+    ,30-34,1185,6.5,1196,7.5,1207,8.5,data
+T2  ← Scores!A1:G7 · 6 rows
+    columns (7): "WP ID"[id] "Group"[4..4] Condition "1"[1..1] "2"[0..2] "3"[2..2] "4"[-1..-1]
+    all 6 rows (CSV):
+    WP ID,Group,Condition,1,2,3,4
+    92,4,CAI,1,0,2,-1
+    93,4,Lecture,1,1,2,-1
+    94,4,CAI,1,2,2,-1
+    95,4,Lecture,1,0,2,-1
+    96,4,CAI,1,1,2,-1
+    97,4,Lecture,1,2,2,-1
+T3  'Project Name:' ← Projects!B3:J9 · 5 rows
+    columns (9): "No."[id] "Contract Number"[id] Client "Client Unit" Contact Project Quantity[10..50] Days[70..98] Status
+    all 5 rows (CSV):
+    No.,Contract Number,Client,Client Unit,Contact,Project,Quantity,Days,Status
+    1,DH1,DaoKe,ZhongHang,180-1,Robot,10,70,Completed
+    2,DH2,DaoKe,Cheng Wei,180-2,Robot,20,77,Completed
+    3,DH3,DaoKe,BaBaiJiu,180-3,Robot,30,84,Completed
+    4,DH4,DaoKe,Xiao Lian,180-4,Robot,40,91,Completed
+    5,DH5,DaoKe,DongNan,180-5,Robot,50,98,Completed
+NOTES 6 cells; e.g. Strength!A1: "Table 16 - Strength by age"
+SQL views T1..T3 = data rows, T1_all..T3_all = + total rows (_row_type); all with _src_row; quote names: SELECT "col name" FROM T1
+
+## query headers.xlsx: SELECT "Contract Number", "Client Unit" FROM T3 LIMIT 2
+Contract Number,Client Unit
+DH1,ZhongHang
+DH2,Cheng Wei
+(2 rows)

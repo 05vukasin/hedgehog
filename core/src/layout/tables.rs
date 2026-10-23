@@ -154,6 +154,11 @@ pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
     2 * keys >= n && (keys >= 2 || (n == 2 && pure == 1 && r.n_text() == 1))
 }
 
+/// A text cell that is a `Key:` label (ends with a colon, ASCII or full-width).
+fn has_key_label(sheet: &Sheet, r: &Row) -> bool {
+    r.filled().any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with([':', '：']))
+}
+
 /// Header row relative to the rows below it: more of its cells break the column's body type
 /// (text or a year over plain numbers) than repeat it (Pytheas-style signature votes).
 pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
@@ -617,8 +622,11 @@ fn segment(
                 && (rows[start + o].n() <= 2
                     || is_key_value_row(sheet, &rows[start + o])
                     // `sparse_pre`: any row with a third of the cells of the row below it
-                    // (`Stock D | Code: | 656839` over a 12-column header).
-                    || (sparse_pre && rows[start + o].n() * 3 <= rows[start + o + 1].n()))
+                    // (`Stock D | Code: | 656839` over a 12-column header); without it, such a
+                    // row that holds a `Key:` label (`Project Name: | Number of Clients: | 7`
+                    // over a 13-column header, MiMoTable ProjectStatisticsTable1).
+                    || ((sparse_pre || has_key_label(sheet, &rows[start + o]))
+                        && rows[start + o].n() * 3 <= rows[start + o + 1].n()))
             {
                 o += 1;
                 let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
