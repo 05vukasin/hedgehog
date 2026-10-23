@@ -271,6 +271,7 @@ class HH:
                                                                      "dtype": c["dtype"], "col": c["name"], "colmeta": c}))
                     for i in labcols:
                         if i < len(row) and row[i]:
+                            self.labels[sheet].add(norm_loose(row[i]))  # one label (a group level of its own)
                             for part in row[i].split(" / "):
                                 self.labels[sheet].add(norm_loose(part))
         x = next(iter(glob.glob(str(out / "*.normalized.xlsx"))), None)
@@ -382,6 +383,11 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
             if not k:
                 _count(res, "intentionally_dropped", "punctuation_only", addr, s, "", "")
                 continue
+        # a whole number used as a section label (a year row `2015` over its rows): in the group column
+        if s.kind == "number" and isinstance(s.value, (int, float)) and float(s.value).is_integer() \
+                and norm_loose(str(int(s.value))) in hh.labels.get(sheet, ()):
+            _count(res, "ok", "label", addr, s, "", "group label (number)")
+            continue
         if s.kind == "error":
             _count(res, "intentionally_dropped", "excel_error_outside_tables", addr, s, "", "")
             continue

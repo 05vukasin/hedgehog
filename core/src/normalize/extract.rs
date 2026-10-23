@@ -454,7 +454,9 @@ fn section_rows(
     };
     let merged = |row: u32| grid.sheet.merges.iter().any(|m| m.top == row && m.left == lc && m.right > m.left);
     let values = |idxs: &[usize]| idxs.iter().any(|&i| cells[i].col != lc && filled(i));
-    for (k, (row, idxs)) in body.iter().enumerate() {
+    // From the bottom up, so a section right below is known (`Segment Information:` over the
+    // section `Net sales:`).
+    for (k, (row, idxs)) in body.iter().enumerate().rev() {
         let Some(i) = label(idxs) else { continue };
         if values(idxs) || !matches!(roles[i], Role::Data | Role::Other) {
             continue;
@@ -462,7 +464,10 @@ fn section_rows(
         let text_ok = match &cells[i].value {
             Some(Value::Text(t)) => {
                 let t = t.trim();
-                crate::totals::total_keyword(t).is_none() && !crate::layout::is_note_label(t) && t.chars().any(|c| c.is_alphanumeric())
+                crate::totals::total_keyword(t).is_none()
+                    && !crate::layout::is_note_label(t)
+                    && crate::values::table_missing_token(t).is_none()
+                    && t.chars().any(|c| c.is_alphanumeric())
             }
             Some(Value::Number(x)) => x.fract() == 0.0 && (1900.0..=2100.0).contains(x),
             _ => false,
@@ -471,13 +476,20 @@ fn section_rows(
             continue;
         }
         // The next row with a label in the label column, right below (blank rows aside).
-        let Some((_, next)) = body[k + 1..].iter().find(|(_, ix)| ix.iter().any(|&j| filled(j))).map(|x| (x.0, &x.1)) else {
+        let Some((next_row, next)) = body[k + 1..].iter().find(|(_, ix)| ix.iter().any(|&j| filled(j))).map(|x| (x.0, &x.1)) else {
             continue;
         };
         let Some(j) = label(next) else { continue };
+        // A section heads data rows: not only a total row (`CONTINGENCY` over its `TOTAL`).
+        let total_next = next.iter().any(|&x| matches!(&cells[x].value, Some(Value::Text(t)) if crate::totals::total_keyword(t.trim()).is_some()));
+        if total_next {
+            continue;
+        }
         let deeper = level(j) > level(i);
         let apart = (fmt(i).bold && !fmt(j).bold) || (caps(i) && !caps(j)) || merged(*row);
-        if deeper || (apart && values(next)) {
+        let heading = fmt(i).bold || caps(i) || matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with(':'));
+        let next_section = !values(next) && (out.contains(&next_row) || matches!(roles[j], Role::GroupHeader)) && level(j) >= level(i);
+        if deeper || (apart && values(next)) || (heading && next_section) {
             out.insert(*row);
         }
     }
@@ -1243,7 +1255,8 @@ fn build_table(
         let i = idxs.iter().copied().find(|&i| Some(cells[i].col) == outline_col)?;
         let Some(Value::Text(t)) = &cells[i].value else { return None };
         let label = t.trim();
-        if label.is_empty() {
+        // A missing-value token (`no data`, `n/a`) in the label column is no label.
+        if label.is_empty() || crate::values::table_missing_token(label).is_some() {
             return None;
         }
         let fmt = grid.sheet.formats.get(i).and_then(|f| f.unpack());
@@ -1314,6 +1327,21 @@ fn build_table(
             && matches!(kind, RowKind::Data | RowKind::Total | RowKind::Group | RowKind::NonSum(_))
         {
             kind = k;
+        }
+        // A "group" row whose label is a missing-value token (` no data`): no group, a note.
+        if kind == RowKind::Group
+            && idxs.iter().any(|&i| !blank(i))
+            && idxs.iter().filter(|&&i| !blank(i)).all(|&i| {
+                matches!(&cells[i].value, Some(Value::Text(t)) if crate::values::table_missing_token(t.trim()).is_some())
+            })
+        {
+            for &i in idxs {
+                owner[i] = OWN_NOTES;
+                if !blank(i) {
+                    notes.push(note(i, "other"));
+                }
+            }
+            continue;
         }
         match kind {
             RowKind::Group => {
@@ -1419,15 +1447,20 @@ fn build_table(
             let first = levels.next();
             let indented = levels.any(|l| Some(l) != first);
             if indented {
+                // Consecutive group rows at one indent (`Segment Information:` over `Net
+                // sales:`, no rows between) nest like a run without indents.
+                let mut fresh = 0usize; // entries on top of the path pushed by this run
                 for (label, row, level) in run.drain(..) {
-                    while path_levels.last().is_some_and(|&l| l >= level) {
+                    while path_levels.last().is_some_and(|&l| if fresh > 0 { l > level } else { l >= level }) {
                         path.pop();
                         path_rows.pop();
                         path_levels.pop();
+                        fresh = fresh.saturating_sub(1);
                     }
                     path.push(label);
                     path_rows.push(row);
                     path_levels.push(level);
+                    fresh += 1;
                 }
             } else {
                 let keep = path.len().saturating_sub(run.len());

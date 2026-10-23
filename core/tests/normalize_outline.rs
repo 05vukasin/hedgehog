@@ -246,3 +246,45 @@ fn indented_sections_nest() {
     let gp = t.columns.iter().position(|c| c.name == "group_parent").unwrap_or_else(|| panic!("{:?}", names(&t)));
     assert_eq!(t.columns[gp].derived_kind(), Some("parent"));
 }
+
+/// Enron: consecutive group rows at one indent, then an indented one, all before the first
+/// data row (`Segment Information:` > `Net sales:` > `  Beers`): each level is kept.
+#[test]
+fn consecutive_sections_at_one_indent_nest() {
+    let t = table(
+        "consecutive",
+        &[
+            ("Segment information:", 0, true, false),
+            ("Net sales:", 0, true, false),
+            ("Beers and spirits", 1, true, false),
+            ("Imported beers", 2, false, true),
+            ("Spirits", 2, false, true),
+            ("Wines", 1, true, false),
+            ("Branded wine", 2, false, true),
+            ("Wholesale", 2, false, true),
+        ],
+    );
+    assert_eq!(group(&t, "Branded wine"), "Wines");
+    assert_eq!(cell(&t, "group_parent", "Branded wine"), "Net sales:");
+    assert_eq!(cell(&t, "group_parent_2", "Branded wine"), "Segment information:");
+    assert_eq!(group(&t, "Spirits"), "Beers and spirits");
+}
+
+/// BLS injuries: a ` no data` placeholder alone on its row is no section and no label.
+#[test]
+fn missing_value_token_is_no_section() {
+    let t = table(
+        "nodata",
+        &[
+            ("Employee status", 0, true, false),
+            ("Wage and salary workers", 0, false, true),
+            ("Self-employed", 0, false, true),
+            (" no data", 0, false, false),
+            ("Gender", 0, true, false),
+            ("Men", 0, false, true),
+            ("Women", 0, false, true),
+        ],
+    );
+    assert_eq!(group(&t, "Men"), "Gender");
+    assert!(t.columns.iter().all(|c| c.values.iter().all(|v| *v != Out::Text("no data".into()))), "{:?}", names(&t));
+}
