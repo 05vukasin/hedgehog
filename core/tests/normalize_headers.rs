@@ -232,3 +232,70 @@ fn repeated_sub_headers_take_their_section_as_parent() {
     }
     assert!(!names(t).iter().any(|n| n.ends_with(')')), "{:?}", names(t));
 }
+
+/// HiTab statcan/861: a body row whose values are all StatCan's suppression mark `F` (too
+/// unreliable to publish) reads like a header row over the numbers below it, and split the table
+/// there (the lower part's columns were `F`, `F (2)`). The mark already stands in those columns
+/// above: it is a value, not a new header.
+#[test]
+fn a_row_of_suppression_marks_is_no_new_header() {
+    let n = normalize("suppressed_row", |ws| {
+        ws.write_string(0, 0, "Table 1: Reasons for not reporting, by type of incident").unwrap();
+        ws.write_string(2, 0, "Reason for not reporting").unwrap();
+        ws.write_string(2, 1, "Hate crime").unwrap();
+        ws.write_string(2, 2, "Not a hate crime").unwrap();
+        ws.write_string(3, 1, "percent").unwrap();
+        let reasons = [
+            "Fear of revenge", "Lack of evidence", "Unsatisfactory service", "Tried to report", "Could have caused trouble",
+            "Did not want the hassle", "Reporting would not help", "Family prevented the victim", "Incident was a private matter",
+            "Crime was minor", "No one was harmed", "Offender would not be convicted", "Police would be biased",
+        ];
+        for (i, r) in reasons.iter().enumerate() {
+            let row = 4 + i as u32;
+            ws.write_string(row, 0, *r).unwrap();
+            for c in 1..=2u16 {
+                // `F` on a few rows, and on both columns of the "Family prevented" row.
+                if i == 7 || (c == 1 && (i == 3 || i == 4)) {
+                    ws.write_string(row, c, "F").unwrap();
+                } else {
+                    ws.write_number(row, c, (11 + 7 * i + 13 * c as usize) as f64).unwrap();
+                }
+            }
+        }
+    });
+    let t = with_column(&n, "Hate crime");
+    assert_eq!(t.src_rows.len(), 13, "one table: {:?}", n.tables.iter().map(names).collect::<Vec<_>>());
+    assert!(!n.tables.iter().any(|t| t.columns.iter().any(|c| c.name == "F")));
+}
+
+/// DECO peter_keavey (Pipe Options): `TIME BUCKET/KEY: | REPORT REGION | RISK TYPE | 1 | 2 | …` over
+/// two rows of dates (from / to). Labels then column numbers are no header of their own when a
+/// header row follows: the dates still name the columns.
+#[test]
+fn numbered_row_over_a_date_header_keeps_the_dates() {
+    let n = normalize("numbers_over_dates", |ws| {
+        let date = Format::new().set_num_format("mm/dd/yy");
+        ws.write_string(5, 0, "TIME BUCKET/KEY:").unwrap();
+        ws.write_string(5, 2, "REPORT REGION").unwrap();
+        ws.write_string(5, 3, "RISK TYPE").unwrap();
+        for k in 0..6u16 {
+            ws.write_number(5, 4 + k, (k + 1) as f64).unwrap();
+            let d = ExcelDateTime::from_ymd(2000, 4 + k as u8, 1).unwrap();
+            ws.write_datetime_with_format(6, 4 + k, &d, &date).unwrap();
+            ws.write_datetime_with_format(7, 4 + k, &d, &date).unwrap();
+        }
+        ws.write_string(6, 0, "(Positions in Cont. Equiv.) From:").unwrap();
+        ws.write_string(7, 0, "To:").unwrap();
+        for i in 0..10u32 {
+            let r = 9 + i;
+            ws.write_string(r, 0, format!("Gas Daily {i}")).unwrap();
+            ws.write_string(r, 2, "MAWEST").unwrap();
+            ws.write_string(r, 3, ["G", "I", "D", "P"][(i % 4) as usize]).unwrap();
+            for k in 0..6u16 {
+                ws.write_number(r, 4 + k, 10.5 * (i as f64 + 1.0) - 3.25 * k as f64).unwrap();
+            }
+        }
+    });
+    let t = n.tables.iter().max_by_key(|t| t.src_rows.len()).unwrap();
+    assert!(names(t).iter().any(|n| n.contains("2000-04-01")), "{:?}", names(t));
+}

@@ -424,7 +424,18 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         // a label over period numbers (`Year | 1 | 2 | …`).
         let vals: Option<Vec<&Value>> =
             rows[start].filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
-        let periods = vals.is_some_and(|v| super::labelled_numbering(v.into_iter()));
+        // Several labels before the numbers only when no header row follows: over a header of
+        // dates (`TIME BUCKET | REGION | 1 | 2 | …` over two rows of dates, DECO peter_keavey) the
+        // numbers row is not the header.
+        let next_header = || {
+            start + 2 < end
+                && rows[start + 1].row == rows[start].row + 1
+                && is_header_row(&rows[start + 1], &rows[start + 2..end])
+        };
+        let periods = vals.is_some_and(|v| {
+            super::labelled_numbering_single(v.iter().copied())
+                || (super::labelled_numbering(v.iter().copied()) && !next_header())
+        });
         if end - start >= 2 && (periods || (HEADER_PRIOR && is_wide_text_row(&rows[start], rect))) {
             d = 1;
         } else {
@@ -475,6 +486,7 @@ fn starts_new_table(
     end: usize,
     numeric_cols: &HashSet<u32>,
     header_sig: &Signature,
+    seen: &HashSet<(u32, String)>,
 ) -> bool {
     let r = &rows[k];
     if r.filled().all(|e| e.rule) {
@@ -489,9 +501,23 @@ fn starts_new_table(
     if !header_sig.is_empty() && signature_is(sheet, r, header_sig) {
         return false; // repeated header (H9), stays in the table
     }
-    let hits =
-        r.filled().skip(1).filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left)).count();
+    // A text that the body above already holds in the same column is one of its values (a
+    // suppression mark, `F` = too unreliable, on a row of them), not a new header's label.
+    let hits = r
+        .filled()
+        .skip(1)
+        .filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left))
+        .filter(|e| !(e.kind == Kind::Text && seen.contains(&(e.left, seen_key(text(sheet, e))))))
+        .count();
     hits >= SPLIT_MIN_HITS && hits as f32 >= SPLIT_MIN_HIT_FRAC * numeric_cols.len() as f32
+}
+
+/// Texts up to this long are remembered per column while a body is read ([`starts_new_table`]):
+/// markers and codes, not long labels.
+const SEEN_MAX_CHARS: usize = 12;
+
+fn seen_key(t: &str) -> String {
+    t.trim().to_lowercase()
 }
 
 /// Long sparse tail of a table (helper formulas or a lone column running far below the data):
@@ -650,10 +676,19 @@ fn segment(
         let mut numeric_cols: HashSet<u32> = HashSet::new();
         let mut num_counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
         let mut split = None;
+        // Short texts of the body rows with numbers so far, by column ([`starts_new_table`]).
+        let mut seen: HashSet<(u32, String)> = HashSet::new();
         for k in body..e {
-            if k > body && k + 1 < e && starts_new_table(sheet, rows, k, e, &numeric_cols, &sig) {
+            if k > body && k + 1 < e && starts_new_table(sheet, rows, k, e, &numeric_cols, &sig, &seen) {
                 split = Some(k);
                 break;
+            }
+            // Only from rows with numbers: a header the body repeats (page headers) is no value.
+            for en in rows[k].filled().filter(|en| en.kind == Kind::Text && rows[k].n_measure() > 0) {
+                let t = text(sheet, en);
+                if t.trim().chars().count() <= SEEN_MAX_CHARS {
+                    seen.insert((en.left, seen_key(t)));
+                }
             }
             let seen = (k - body + 1) as u32;
             for en in &rows[k].entries {

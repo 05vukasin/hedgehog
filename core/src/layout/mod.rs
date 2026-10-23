@@ -188,6 +188,13 @@ pub fn labelled_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Val
         && column_numbering(v[lead..v.len() - tail].iter().copied())
 }
 
+/// [`labelled_numbering`] with exactly one label, before the numbers (`Year | 1 | 2 | 3 | …`).
+pub fn labelled_numbering_single<'a>(values: impl Iterator<Item = &'a crate::model::Value>) -> bool {
+    let mut it = values.peekable();
+    matches!(it.next(), Some(crate::model::Value::Text(t)) if !t.trim().is_empty() && column_number(&crate::model::Value::Text(t.clone())).is_none())
+        && column_numbering(it)
+}
+
 /// Labels before (and after) the column numbers of a [`labelled_numbering`] header.
 const NUMBERING_MAX_LABELS: usize = 4;
 
