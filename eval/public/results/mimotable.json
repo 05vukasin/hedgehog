@@ -1,0 +1,512 @@
+{
+ "dataset": "mimotable",
+ "items": 1636,
+ "files": 501,
+ "tokenizer": "tiktoken o200k_base",
+ "cost": {
+  "files": 501,
+  "hedgehog": {
+   "chars": {
+    "n": 501,
+    "median": 1750,
+    "p90": 3648,
+    "max": 8462,
+    "sum": 1031828,
+    "mean": 2059.5369261477044
+   },
+   "tokens": {
+    "n": 501,
+    "median": 859,
+    "p90": 1703,
+    "max": 4179,
+    "sum": 477842,
+    "mean": 953.7764471057884
+   },
+   "secs": {
+    "n": 501,
+    "median": 0.0128,
+    "p90": 0.0177,
+    "max": 0.9292,
+    "sum": 9.1799,
+    "mean": 0.01832315369261477
+   },
+   "rss_mb": {
+    "n": 501,
+    "median": 17.09765625,
+    "p90": 17.95703125,
+    "max": 94.37109375,
+    "sum": 8837.71484375,
+    "mean": 17.640149388722556
+   },
+   "normalize_secs": {
+    "n": 501,
+    "median": 0.0134,
+    "p90": 0.0195,
+    "max": 0.8451,
+    "sum": 9.6636,
+    "mean": 0.01928862275449102
+   }
+  },
+  "pandas": {
+   "secs": {
+    "n": 501,
+    "median": 0.0806,
+    "p90": 0.0986,
+    "max": 1.0211,
+    "sum": 44.5364,
+    "mean": 0.08889500998003992
+   },
+   "rss_mb": {
+    "n": 501,
+    "median": 71.06640625,
+    "p90": 71.69921875,
+    "max": 89.94921875,
+    "sum": 35734.23046875,
+    "mean": 71.32580931886227
+   }
+  },
+  "markitdown": {
+   "chars": {
+    "n": 501,
+    "median": 2753,
+    "p90": 11538,
+    "max": 1552135,
+    "sum": 5546755,
+    "mean": 11071.367265469062
+   },
+   "tokens": {
+    "n": 501,
+    "median": 1407,
+    "p90": 5848,
+    "max": 1057339,
+    "sum": 3185137,
+    "mean": 6357.558882235529
+   },
+   "secs": {
+    "n": 501,
+    "median": 0.0714,
+    "p90": 0.1494,
+    "max": 10.8393,
+    "sum": 70.3853,
+    "mean": 0.14048962075848304
+   },
+   "rss_mb": {
+    "n": 501,
+    "median": 112.734375,
+    "p90": 113.97265625,
+    "max": 374.109375,
+    "sum": 57134.7578125,
+    "mean": 114.04143275948104
+   }
+  },
+  "failures": {
+   "hedgehog": {},
+   "pandas": {},
+   "markitdown": {}
+  },
+  "failure_examples": {}
+ },
+ "reach_task": {
+  "groups": {
+   "chinese · lookup": {
+    "items": 175,
+    "verbatim": 105,
+    "hh_catalog": 42,
+    "md_text": 104,
+    "hh_cell": 99,
+    "hh_loose": 89,
+    "hh_strict": 61,
+    "pd_cell": 105,
+    "pd_loose": 91,
+    "pd_strict": 36,
+    "needs_query": 70,
+    "hh_ops_matched": 51,
+    "hh_ops_clean": 43,
+    "pd_ops_matched": 35,
+    "pd_ops_clean": 18
+   },
+   "chinese · needs_query": {
+    "items": 566,
+    "verbatim": 297,
+    "hh_catalog": 80,
+    "md_text": 296,
+    "hh_cell": 283,
+    "hh_loose": 233,
+    "hh_strict": 97,
+    "pd_cell": 297,
+    "pd_loose": 198,
+    "pd_strict": 61,
+    "needs_query": 267,
+    "hh_ops_matched": 214,
+    "hh_ops_clean": 186,
+    "pd_ops_matched": 142,
+    "pd_ops_clean": 65,
+    "missing_file": 2
+   },
+   "chinese · not_measured": {
+    "items": 254,
+    "not_measured": 254
+   },
+   "english · lookup": {
+    "items": 128,
+    "verbatim": 77,
+    "hh_catalog": 28,
+    "md_text": 75,
+    "hh_cell": 75,
+    "hh_loose": 70,
+    "hh_strict": 48,
+    "pd_cell": 77,
+    "pd_loose": 71,
+    "pd_strict": 33,
+    "needs_query": 51,
+    "hh_ops_matched": 35,
+    "hh_ops_clean": 31,
+    "pd_ops_matched": 27,
+    "pd_ops_clean": 13
+   },
+   "english · needs_query": {
+    "items": 419,
+    "needs_query": 201,
+    "hh_ops_matched": 150,
+    "hh_ops_clean": 136,
+    "pd_ops_matched": 110,
+    "pd_ops_clean": 51,
+    "verbatim": 218,
+    "hh_catalog": 62,
+    "md_text": 217,
+    "hh_cell": 208,
+    "hh_loose": 169,
+    "hh_strict": 80,
+    "pd_cell": 217,
+    "pd_loose": 154,
+    "pd_strict": 49
+   },
+   "english · not_measured": {
+    "items": 94,
+    "not_measured": 94
+   },
+   "ALL": {
+    "items": 1636,
+    "needs_query": 589,
+    "hh_ops_matched": 450,
+    "hh_ops_clean": 396,
+    "pd_ops_matched": 314,
+    "pd_ops_clean": 147,
+    "verbatim": 697,
+    "hh_catalog": 212,
+    "md_text": 692,
+    "hh_cell": 665,
+    "hh_loose": 561,
+    "hh_strict": 286,
+    "pd_cell": 696,
+    "pd_loose": 514,
+    "pd_strict": 179,
+    "not_measured": 348,
+    "missing_file": 2
+   }
+  },
+  "examples": {
+   "english · needs_query | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/11UndergroundEngineeringMachinery.xlsx · item en-0008 · atoms ['Hydraulic Cabinet (Power System)', '10.03'] · catalog 1233 chars",
+    "repo/data/english/spreadsheet/StoreSalesDataStatisticsAnalysisTable1.xlsx · item en-0011 · atoms ['5035.3', '4000'] · catalog 2541 chars",
+    "repo/data/english/spreadsheet/LoanDetailsRegistrationForm1.xlsx · item en-0017 · atoms ['Bell Original Ecology', '9,900'] · catalog 1794 chars",
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(531).xlsx · item en-0019 · atoms ['360'] · catalog 1824 chars",
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(531).xlsx · item en-0020 · atoms ['1240', '0.0', '1241', '1242'] · catalog 1824 chars",
+    "repo/data/english/spreadsheet/PileSingleCalculation.xlsx · item en-0033 · atoms ['Civil Air Defense Garage', 'Non-Civil Air Defense Garage', '273.33'] · catalog 2887 chars"
+   ],
+   "english · lookup | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/11UndergroundEngineeringMachinery.xlsx · item en-0009 · atoms ['Dry Excavation Shield Tunneling Machine'] · catalog 1233 chars",
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(531).xlsx · item en-0024 · atoms ['1000'] · catalog 1824 chars",
+    "repo/data/english/spreadsheet/PileSingleCalculation.xlsx · item en-0032 · atoms ['1', '74.434541420118'] · catalog 2887 chars",
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(9).xlsx · item en-0047 · atoms ['1', '6', '13', '14'] · catalog 1582 chars",
+    "repo/data/english/spreadsheet/MaterialProcurement(44).xlsx · item en-0055 · atoms ['1051'] · catalog 1293 chars",
+    "repo/data/english/spreadsheet/MaterialProcurement(44).xlsx · item en-0059 · atoms ['20'] · catalog 1293 chars"
+   ],
+   "english · needs_query | hedgehog: answer value in no table cell": [
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(9).xlsx · item en-0045 · answer atoms ['None', '0.1', '24.1', '1']",
+    "repo/data/english/spreadsheet/SalespersonMonthlySalesRevenueSummaryAnalysisTable1.xlsx · item en-0083 · answer atoms ['4,151.61']",
+    "repo/data/english/spreadsheet/CashJournal-IncomeandExpenditureTable3.xlsx · item en-0088 · answer atoms ['9666']",
+    "repo/data/english/spreadsheet/EmployeeOvertimeExpenseStatisticsTable1.xlsx · item en-0123 · answer atoms ['180.0', '180']",
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0163 · answer atoms ['40,035']",
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0166 · answer atoms ['30']"
+   ],
+   "english · lookup | hedgehog: answer value in no table cell": [
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0162 · answer atoms ['20']",
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0165 · answer atoms ['03', '1000']"
+   ],
+   "chinese · needs_query | hedgehog: answer not in catalog": [
+    "repo/data/chinese/spreadsheet/生产制造 表格 (594).xlsx · item ch-0000 · atoms ['现浇砼构件钢筋中12m内', '5090'] · catalog 2203 chars",
+    "repo/data/chinese/spreadsheet/生产制造 表格 (594).xlsx · item ch-0001 · atoms ['5090.00'] · catalog 2203 chars",
+    "repo/data/chinese/spreadsheet/材料成本.xlsx · item ch-0010 · atoms ['1293.09', '2155.15'] · catalog 1803 chars",
+    "repo/data/chinese/spreadsheet/材料成本.xlsx · item ch-0012 · atoms ['1293.09'] · catalog 1803 chars",
+    "repo/data/chinese/spreadsheet/1216 (2).xlsx · item ch-0014 · atoms ['72.4'] · catalog 1121 chars",
+    "repo/data/chinese/spreadsheet/1216 (2).xlsx · item ch-0015 · atoms ['81.08'] · catalog 1121 chars"
+   ],
+   "chinese · lookup | hedgehog: answer not in catalog": [
+    "repo/data/chinese/spreadsheet/1216 (2).xlsx · item ch-0017 · atoms ['13800'] · catalog 1121 chars",
+    "repo/data/chinese/spreadsheet/物资采购 (44).xlsx · item ch-0034 · atoms ['1051'] · catalog 811 chars",
+    "repo/data/chinese/spreadsheet/物资采购 (44).xlsx · item ch-0038 · atoms ['20'] · catalog 811 chars",
+    "repo/data/chinese/spreadsheet/桩单方计算.xlsx · item ch-0048 · atoms ['1', '74.434541420118'] · catalog 1948 chars",
+    "repo/data/chinese/spreadsheet/生产制造 表格 (9).xlsx · item ch-0081 · atoms ['1', '6', '13', '14'] · catalog 1089 chars",
+    "repo/data/chinese/spreadsheet/8泵类机械.xlsx · item ch-0100 · atoms ['电动单级离心清水泵'] · catalog 970 chars"
+   ],
+   "chinese · needs_query | hedgehog: answer value in no table cell": [
+    "repo/data/chinese/spreadsheet/员工加班费用统计表1.xlsx · item ch-0044 · answer atoms ['180.0', '180']",
+    "repo/data/chinese/spreadsheet/现金日记账-收支表3.xlsx · item ch-0095 · answer atoms ['9666']",
+    "repo/data/chinese/spreadsheet/业务员月度销售收入汇总分析表1.xlsx · item ch-0167 · answer atoms ['4,151.61']",
+    "repo/data/chinese/spreadsheet/股票情况9.xlsx · item ch-0355 · answer atoms ['24', '25']",
+    "repo/data/chinese/spreadsheet/股票情况4.xlsx · item ch-0565 · answer atoms ['40,035']",
+    "repo/data/chinese/spreadsheet/股票情况4.xlsx · item ch-0568 · answer atoms ['30']"
+   ],
+   "chinese · lookup | hedgehog: answer value in no table cell": [
+    "repo/data/chinese/spreadsheet/项目收支报表（带提成）1.xlsx · item ch-0187 · answer atoms ['软装合同']",
+    "repo/data/chinese/spreadsheet/股票情况9.xlsx · item ch-0352 · answer atoms ['24']",
+    "repo/data/chinese/spreadsheet/股票情况9.xlsx · item ch-0354 · answer atoms ['2000']",
+    "repo/data/chinese/spreadsheet/股票情况4.xlsx · item ch-0564 · answer atoms ['20']",
+    "repo/data/chinese/spreadsheet/股票情况4.xlsx · item ch-0567 · answer atoms ['03', '1000']",
+    "repo/data/chinese/spreadsheet/项目收入表欠款收款统计1.xlsx · item ch-0849 · answer atoms ['项目1', '1']"
+   ]
+  }
+ },
+ "reach_type": {
+  "groups": {
+   "multiple files, complicate header": {
+    "items": 69,
+    "not_measured": 12,
+    "needs_query": 29,
+    "hh_ops_matched": 26,
+    "hh_ops_clean": 25,
+    "pd_ops_matched": 11,
+    "pd_ops_clean": 2,
+    "verbatim": 28,
+    "hh_catalog": 10,
+    "md_text": 28,
+    "hh_cell": 28,
+    "hh_loose": 16,
+    "hh_strict": 6,
+    "pd_cell": 28,
+    "pd_loose": 8,
+    "pd_strict": 0
+   },
+   "multiple files, simple header": {
+    "items": 71,
+    "verbatim": 31,
+    "hh_catalog": 6,
+    "md_text": 31,
+    "hh_cell": 28,
+    "hh_loose": 23,
+    "hh_strict": 10,
+    "pd_cell": 31,
+    "pd_loose": 20,
+    "pd_strict": 6,
+    "needs_query": 31,
+    "hh_ops_matched": 23,
+    "hh_ops_clean": 19,
+    "pd_ops_matched": 10,
+    "pd_ops_clean": 3,
+    "not_measured": 9
+   },
+   "multiple tables": {
+    "items": 178,
+    "needs_query": 60,
+    "hh_ops_matched": 47,
+    "hh_ops_clean": 41,
+    "pd_ops_matched": 15,
+    "pd_ops_clean": 0,
+    "verbatim": 83,
+    "hh_catalog": 31,
+    "md_text": 83,
+    "hh_cell": 75,
+    "hh_loose": 67,
+    "hh_strict": 32,
+    "pd_cell": 83,
+    "pd_loose": 63,
+    "pd_strict": 0,
+    "not_measured": 35
+   },
+   "single file, multiple sheets, complicate header": {
+    "items": 159,
+    "verbatim": 47,
+    "hh_catalog": 10,
+    "md_text": 47,
+    "hh_cell": 45,
+    "hh_loose": 43,
+    "hh_strict": 27,
+    "pd_cell": 47,
+    "pd_loose": 37,
+    "pd_strict": 5,
+    "needs_query": 73,
+    "hh_ops_matched": 60,
+    "hh_ops_clean": 39,
+    "pd_ops_matched": 28,
+    "pd_ops_clean": 6,
+    "not_measured": 37,
+    "missing_file": 2
+   },
+   "single file, multiple sheets, simple header": {
+    "items": 78,
+    "needs_query": 45,
+    "hh_ops_matched": 36,
+    "hh_ops_clean": 33,
+    "pd_ops_matched": 35,
+    "pd_ops_clean": 18,
+    "verbatim": 21,
+    "hh_catalog": 3,
+    "md_text": 21,
+    "hh_cell": 21,
+    "hh_loose": 20,
+    "hh_strict": 11,
+    "pd_cell": 21,
+    "pd_loose": 21,
+    "pd_strict": 11,
+    "not_measured": 12
+   },
+   "single file, single sheet, complicate header": {
+    "items": 349,
+    "needs_query": 91,
+    "hh_ops_matched": 66,
+    "hh_ops_clean": 59,
+    "pd_ops_matched": 22,
+    "pd_ops_clean": 2,
+    "verbatim": 162,
+    "hh_catalog": 61,
+    "md_text": 158,
+    "hh_cell": 154,
+    "hh_loose": 126,
+    "hh_strict": 55,
+    "pd_cell": 161,
+    "pd_loose": 105,
+    "pd_strict": 7,
+    "not_measured": 96
+   },
+   "single file, single sheet, simple header": {
+    "items": 732,
+    "needs_query": 260,
+    "hh_ops_matched": 192,
+    "hh_ops_clean": 180,
+    "pd_ops_matched": 193,
+    "pd_ops_clean": 116,
+    "verbatim": 325,
+    "hh_catalog": 91,
+    "md_text": 324,
+    "hh_cell": 314,
+    "hh_loose": 266,
+    "hh_strict": 145,
+    "pd_cell": 325,
+    "pd_loose": 260,
+    "pd_strict": 150,
+    "not_measured": 147
+   },
+   "ALL": {
+    "items": 1636,
+    "needs_query": 589,
+    "hh_ops_matched": 450,
+    "hh_ops_clean": 396,
+    "pd_ops_matched": 314,
+    "pd_ops_clean": 147,
+    "verbatim": 697,
+    "hh_catalog": 212,
+    "md_text": 692,
+    "hh_cell": 665,
+    "hh_loose": 561,
+    "hh_strict": 286,
+    "pd_cell": 696,
+    "pd_loose": 514,
+    "pd_strict": 179,
+    "not_measured": 348,
+    "missing_file": 2
+   }
+  },
+  "examples": {
+   "single file, single sheet, complicate header | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/11UndergroundEngineeringMachinery.xlsx · item en-0008 · atoms ['Hydraulic Cabinet (Power System)', '10.03'] · catalog 1233 chars",
+    "repo/data/english/spreadsheet/11UndergroundEngineeringMachinery.xlsx · item en-0009 · atoms ['Dry Excavation Shield Tunneling Machine'] · catalog 1233 chars",
+    "repo/data/english/spreadsheet/StoreSalesDataStatisticsAnalysisTable1.xlsx · item en-0011 · atoms ['5035.3', '4000'] · catalog 2541 chars",
+    "repo/data/english/spreadsheet/LoanDetailsRegistrationForm1.xlsx · item en-0017 · atoms ['Bell Original Ecology', '9,900'] · catalog 1794 chars",
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(531).xlsx · item en-0019 · atoms ['360'] · catalog 1824 chars",
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(531).xlsx · item en-0020 · atoms ['1240', '0.0', '1241', '1242'] · catalog 1824 chars"
+   ],
+   "single file, single sheet, complicate header | hedgehog: answer value in no table cell": [
+    "repo/data/english/spreadsheet/ProductionManufacturingForm(9).xlsx · item en-0045 · answer atoms ['None', '0.1', '24.1', '1']",
+    "repo/data/english/spreadsheet/SalespersonMonthlySalesRevenueSummaryAnalysisTable1.xlsx · item en-0083 · answer atoms ['4,151.61']",
+    "repo/data/english/spreadsheet/CashJournal-IncomeandExpenditureTable3.xlsx · item en-0088 · answer atoms ['9666']",
+    "repo/data/english/spreadsheet/EmployeeOvertimeExpenseStatisticsTable1.xlsx · item en-0123 · answer atoms ['180.0', '180']",
+    "repo/data/chinese/spreadsheet/员工加班费用统计表1.xlsx · item ch-0044 · answer atoms ['180.0', '180']",
+    "repo/data/chinese/spreadsheet/现金日记账-收支表3.xlsx · item ch-0095 · answer atoms ['9666']"
+   ],
+   "single file, single sheet, simple header | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/WorkplaceGeneral(3).xlsx · item en-0139 · atoms ['2.95'] · catalog 2115 chars",
+    "repo/data/english/spreadsheet/Sheet12(1).xlsx · item en-0141 · atoms ['1010103', '1500', '1010106', '1300'] · catalog 2573 chars",
+    "repo/data/english/spreadsheet/Sheet12(1).xlsx · item en-0143 · atoms ['11500'] · catalog 2573 chars",
+    "repo/data/english/spreadsheet/WorkplaceGeneral(39).xlsx · item en-0145 · atoms ['5000.0'] · catalog 2946 chars",
+    "repo/data/english/spreadsheet/WorkplaceGeneral(39).xlsx · item en-0146 · atoms ['4,500.00'] · catalog 2946 chars",
+    "repo/data/english/spreadsheet/ProductionandManufacturingForm(97).xlsx · item en-0151 · atoms ['201603001'] · catalog 1223 chars"
+   ],
+   "single file, single sheet, simple header | hedgehog: answer value in no table cell": [
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0162 · answer atoms ['20']",
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0163 · answer atoms ['40,035']",
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0165 · answer atoms ['03', '1000']",
+    "repo/data/english/spreadsheet/StockSituation4.xlsx · item en-0166 · answer atoms ['30']",
+    "repo/data/chinese/spreadsheet/股票情况9.xlsx · item ch-0352 · answer atoms ['24']",
+    "repo/data/chinese/spreadsheet/股票情况9.xlsx · item ch-0354 · answer atoms ['2000']"
+   ],
+   "single file, multiple sheets, complicate header | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/GoodsLogisticsManagement(60).xlsx · item en-0436 · atoms ['13', '16'] · catalog 3421 chars",
+    "repo/data/english/spreadsheet/GoodsLogisticsManagement(60).xlsx · item en-0437 · atoms ['30'] · catalog 3421 chars",
+    "repo/data/english/spreadsheet/ProductionMasterPlan.xlsx · item en-0439 · atoms ['MV06203127NTP-10Ah', '10Ah', '10000'] · catalog 2874 chars",
+    "repo/data/english/spreadsheet/ProductionMasterPlan.xlsx · item en-0441 · atoms ['Microvast PACK', 'Pouch Cell', '10000'] · catalog 2874 chars",
+    "repo/data/english/spreadsheet/CoalMineProductionDailyReport.xlsx · item en-0442 · atoms ['12000'] · catalog 5967 chars",
+    "repo/data/english/spreadsheet/CoalMineProductionDailyReport.xlsx · item en-0444 · atoms ['1994'] · catalog 5967 chars"
+   ],
+   "single file, multiple sheets, complicate header | hedgehog: answer value in no table cell": [
+    "repo/data/english/spreadsheet/ProductionandManufacturingForm(19).xlsx · item en-0475 · answer atoms ['270', '80', '30']",
+    "repo/data/chinese/spreadsheet/生产制造 表格 (19).xlsx · item ch-0735 · answer atoms ['270', '80', '30']"
+   ],
+   "multiple tables | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/StudentDormitoryArrangementTable1.xlsx · item en-0502 · atoms ['1022', '4'] · catalog 1795 chars",
+    "repo/data/english/spreadsheet/StudentDormitoryArrangementTable1.xlsx · item en-0503 · atoms ['1022', '1023'] · catalog 1795 chars",
+    "repo/data/english/spreadsheet/InventoryManagementSheetforInboundandOutbound.xlsx · item en-0507 · atoms ['1894', '2'] · catalog 2419 chars",
+    "repo/data/english/spreadsheet/FinancialProfitAnalysisTable.xlsx · item en-0509 · atoms ['95.00'] · catalog 3419 chars",
+    "repo/data/english/spreadsheet/FinancialProfitAnalysisTable.xlsx · item en-0510 · atoms ['16.28%'] · catalog 3419 chars",
+    "repo/data/english/spreadsheet/StudentExamScoresIntelligentStatisticsTable1.xlsx · item en-0513 · atoms ['488'] · catalog 1712 chars"
+   ],
+   "multiple tables | hedgehog: answer value in no table cell": [
+    "repo/data/english/spreadsheet/StudentExamScoresIntelligentStatisticsTable1.xlsx · item en-0514 · answer atoms ['15']",
+    "repo/data/english/spreadsheet/ElectronicInvoiceRegistrationDetailStatisticsTable.xlsx · item en-0533 · answer atoms ['125,065.1']",
+    "repo/data/chinese/spreadsheet/学生考试成绩智能统计表1.xlsx · item ch-0816 · answer atoms ['15']",
+    "repo/data/chinese/spreadsheet/电子发票登记明细统计表.xlsx · item ch-0823 · answer atoms ['125,065.1']",
+    "repo/data/chinese/spreadsheet/项目收入表欠款收款统计1.xlsx · item ch-0849 · answer atoms ['项目1', '1']",
+    "repo/data/chinese/spreadsheet/项目收入表欠款收款统计1.xlsx · item ch-0850 · answer atoms ['项目3', '3', '10,598']"
+   ],
+   "single file, multiple sheets, simple header | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/SteelConstructionCapacitySummary.xlsx · item en-0559 · atoms ['0.019'] · catalog 2584 chars",
+    "repo/data/english/spreadsheet/E-commerceAnalysis(15).xlsx · item en-0568 · atoms ['234', '652'] · catalog 2095 chars",
+    "repo/data/english/spreadsheet/QuarterlySalesReport.xlsx · item en-0571 · atoms ['2220.00'] · catalog 1753 chars",
+    "repo/data/english/spreadsheet/QuarterlySalesReport.xlsx · item en-0572 · atoms ['2220', '1225'] · catalog 1753 chars",
+    "repo/data/chinese/spreadsheet/生鲜单品控表.xlsx · item ch-0863 · atoms ['346956', '81974', '125747'] · catalog 2822 chars",
+    "repo/data/chinese/spreadsheet/生鲜单品控表.xlsx · item ch-0864 · atoms ['15.415', '125778'] · catalog 2822 chars"
+   ],
+   "multiple files, complicate header | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/AthleticsCompetitionScoreboard1.xlsx · item en-0588 · atoms ['Grade x Class x 1', '1', '18'] · catalog 5778 chars",
+    "repo/data/english/spreadsheet/AccountsReceivableandPayableAnalysisTable1.xlsx · item en-0592 · atoms ['28000', '708,480', '28,000', '30,000'] · catalog 6051 chars",
+    "repo/data/english/spreadsheet/1706800061649.xlsx · item en-0593 · atoms ['1', '3', '5', '1,477,979'] · catalog 3479 chars",
+    "repo/data/english/spreadsheet/Sheet50.xlsx · item en-0597 · atoms ['32'] · catalog 10087 chars",
+    "repo/data/english/spreadsheet/SchoolLiteraryandArtPerformanceProgramScoreSheet1.xlsx · item en-0603 · atoms ['Dance', '86'] · catalog 4112 chars",
+    "repo/data/english/spreadsheet/EngineeringCostAccountingTable1.xlsx · item en-0611 · atoms ['2000'] · catalog 9268 chars"
+   ],
+   "multiple files, simple header | hedgehog: answer not in catalog": [
+    "repo/data/english/spreadsheet/FanSituationAnalysisTable1.xlsx · item en-0613 · atoms ['2274'] · catalog 4205 chars",
+    "repo/data/english/spreadsheet/Concrete,AsphaltConcrete(2).xlsx · item en-0617 · atoms ['350', '358', '360', '368'] · catalog 3351 chars",
+    "repo/data/english/spreadsheet/PriceAnalysisTable1.xlsx · item en-0620 · atoms ['Product L', '46'] · catalog 5118 chars",
+    "repo/data/english/spreadsheet/DeviceRepairandMaintenanceRecordFollow-upForm.xlsx · item en-0625 · atoms ['Device 4', '4', '4000'] · catalog 2816 chars",
+    "repo/data/english/spreadsheet/Workbook1(2).xlsx · item en-0626 · atoms ['92.22', '92.00', '91.78', '89.00'] · catalog 4073 chars",
+    "repo/data/english/spreadsheet/Workbook1(2).xlsx · item en-0627 · atoms ['83.425'] · catalog 4073 chars"
+   ],
+   "multiple files, simple header | hedgehog: answer value in no table cell": [
+    "repo/data/english/spreadsheet/ItemsIssuanceRegistrationForm.xlsx · item en-0634 · answer atoms ['300']",
+    "repo/data/chinese/spreadsheet/项目费用预算清单-自动统计1.xlsx · item ch-0952 · answer atoms ['97600']",
+    "repo/data/chinese/spreadsheet/物品领用登记表.xlsx · item ch-0966 · answer atoms ['3', '300']"
+   ]
+  }
+ }
+}

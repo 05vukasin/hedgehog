@@ -1,0 +1,582 @@
+{
+ "dataset": "realhitbench",
+ "items": 3752,
+ "files": 671,
+ "tokenizer": "tiktoken o200k_base",
+ "cost": {
+  "files": 671,
+  "hedgehog": {
+   "chars": {
+    "n": 671,
+    "median": 1665,
+    "p90": 3778,
+    "max": 11160,
+    "sum": 1378897,
+    "mean": 2054.9880774962744
+   },
+   "tokens": {
+    "n": 671,
+    "median": 583,
+    "p90": 1529,
+    "max": 4408,
+    "sum": 511027,
+    "mean": 761.5901639344262
+   },
+   "secs": {
+    "n": 671,
+    "median": 0.0132,
+    "p90": 0.0226,
+    "max": 0.1353,
+    "sum": 10.6125,
+    "mean": 0.015815946348733234
+   },
+   "rss_mb": {
+    "n": 671,
+    "median": 17.1875,
+    "p90": 17.7421875,
+    "max": 47.640625,
+    "sum": 11637.75,
+    "mean": 17.343889716840536
+   },
+   "normalize_secs": {
+    "n": 671,
+    "median": 0.0137,
+    "p90": 0.0256,
+    "max": 0.218,
+    "sum": 11.6504,
+    "mean": 0.01736274217585693
+   }
+  },
+  "pandas": {
+   "secs": {
+    "n": 671,
+    "median": 0.0856,
+    "p90": 0.1088,
+    "max": 3.3736,
+    "sum": 65.5328,
+    "mean": 0.09766438152011922
+   },
+   "rss_mb": {
+    "n": 671,
+    "median": 69.77734375,
+    "p90": 70.7421875,
+    "max": 165.81640625,
+    "sum": 47210.73828125,
+    "mean": 70.3587753818927
+   }
+  },
+  "markitdown": {
+   "chars": {
+    "n": 671,
+    "median": 4816,
+    "p90": 27509,
+    "max": 733734,
+    "sum": 8389868,
+    "mean": 12503.529061102832
+   },
+   "tokens": {
+    "n": 671,
+    "median": 2198,
+    "p90": 13428,
+    "max": 357835,
+    "sum": 4019862,
+    "mean": 5990.852459016393
+   },
+   "secs": {
+    "n": 671,
+    "median": 0.0829,
+    "p90": 0.3141,
+    "max": 5.5695,
+    "sum": 98.8517,
+    "mean": 0.14731997019374068
+   },
+   "rss_mb": {
+    "n": 671,
+    "median": 113.68359375,
+    "p90": 118.125,
+    "max": 267.34765625,
+    "sum": 77301.0,
+    "mean": 115.2026825633383
+   }
+  },
+  "failures": {
+   "hedgehog": {},
+   "pandas": {},
+   "markitdown": {}
+  },
+  "failure_examples": {}
+ },
+ "reach_task": {
+  "groups": {
+   "Data Analysis": {
+    "items": 533,
+    "not_measured": 533
+   },
+   "Data Analysis (long tables)": {
+    "items": 155,
+    "not_measured": 155
+   },
+   "Fact Checking": {
+    "items": 1217,
+    "verbatim": 825,
+    "hh_catalog": 350,
+    "md_text": 816,
+    "hh_cell": 804,
+    "hh_loose": 656,
+    "hh_strict": 374,
+    "pd_cell": 825,
+    "pd_loose": 552,
+    "pd_strict": 214,
+    "needs_query": 390,
+    "hh_ops_matched": 278,
+    "hh_ops_clean": 243,
+    "pd_ops_matched": 159,
+    "pd_ops_clean": 27,
+    "not_measured": 2
+   },
+   "Fact Checking (long tables)": {
+    "items": 245,
+    "verbatim": 138,
+    "hh_catalog": 35,
+    "md_text": 137,
+    "hh_cell": 137,
+    "hh_loose": 108,
+    "hh_strict": 63,
+    "pd_cell": 138,
+    "pd_loose": 79,
+    "pd_strict": 21,
+    "not_measured": 2,
+    "needs_query": 105,
+    "hh_ops_matched": 75,
+    "hh_ops_clean": 48,
+    "pd_ops_matched": 25,
+    "pd_ops_clean": 5
+   },
+   "Numerical Reasoning": {
+    "items": 771,
+    "verbatim": 298,
+    "hh_catalog": 159,
+    "md_text": 297,
+    "hh_cell": 290,
+    "hh_loose": 195,
+    "hh_strict": 102,
+    "pd_cell": 298,
+    "pd_loose": 151,
+    "pd_strict": 65,
+    "needs_query": 468,
+    "hh_ops_matched": 354,
+    "hh_ops_clean": 321,
+    "pd_ops_matched": 208,
+    "pd_ops_clean": 40,
+    "missing_file": 3,
+    "not_measured": 2
+   },
+   "Numerical Reasoning (long tables)": {
+    "items": 203,
+    "verbatim": 115,
+    "hh_catalog": 30,
+    "md_text": 114,
+    "hh_cell": 110,
+    "hh_loose": 77,
+    "hh_strict": 31,
+    "pd_cell": 115,
+    "pd_loose": 62,
+    "pd_strict": 14,
+    "needs_query": 88,
+    "hh_ops_matched": 69,
+    "hh_ops_clean": 52,
+    "pd_ops_matched": 21,
+    "pd_ops_clean": 2
+   },
+   "Structure Comprehending": {
+    "items": 396,
+    "not_measured": 396
+   },
+   "Structure Comprehending (long tables)": {
+    "items": 34,
+    "not_measured": 34
+   },
+   "Visualization": {
+    "items": 154,
+    "not_measured": 154
+   },
+   "Visualization (long tables)": {
+    "items": 44,
+    "not_measured": 44
+   },
+   "ALL": {
+    "items": 3752,
+    "verbatim": 1376,
+    "hh_catalog": 574,
+    "md_text": 1364,
+    "hh_cell": 1341,
+    "hh_loose": 1036,
+    "hh_strict": 570,
+    "pd_cell": 1376,
+    "pd_loose": 844,
+    "pd_strict": 314,
+    "needs_query": 1051,
+    "hh_ops_matched": 776,
+    "hh_ops_clean": 664,
+    "pd_ops_matched": 413,
+    "pd_ops_clean": 74,
+    "not_measured": 1322,
+    "missing_file": 3
+   }
+  },
+  "examples": {
+   "Fact Checking | hedgehog: answer not in catalog": [
+    "tables/employment-table01.xlsx · item F1 · atoms ['1955', '62170'] · catalog 1582 chars",
+    "tables/employment-table01.xlsx · item F2 · atoms ['1954'] · catalog 1582 chars",
+    "tables/employment-table01.xlsx · item F4 · atoms ['158772'] · catalog 1582 chars",
+    "tables/employment-table02.xlsx · item F14 · atoms ['1986'] · catalog 1260 chars",
+    "tables/employment-table03.xlsx · item F19 · atoms ['161037'] · catalog 1274 chars",
+    "tables/employment-table03.xlsx · item F21 · atoms ['99826'] · catalog 1274 chars"
+   ],
+   "Numerical Reasoning | hedgehog: answer not in catalog": [
+    "tables/employment-table03.xlsx · item F20 · atoms ['35 to 39 years', '35 to 44 years'] · catalog 1274 chars",
+    "tables/employment-table04.xlsx · item F25 · atoms ['16 to 17 years'] · catalog 1529 chars",
+    "tables/employment-table04.xlsx · item F27 · atoms ['45 to 49 years', '40 to 44 years', '35 to 39 years', '35 to 44 years'] · catalog 1529 chars",
+    "tables/employment-table18.xlsx · item F94 · atoms ['265'] · catalog 2199 chars",
+    "tables/economy-table132.xlsx · item F131 · atoms ['Shelter', 'Household furnishings and operations', 'Fuels and utilities'] · catalog 1506 chars",
+    "tables/economy-table132.xlsx · item F134 · atoms ['Housing'] · catalog 1506 chars"
+   ],
+   "Numerical Reasoning | hedgehog: answer value in no table cell": [
+    "tables/education-table03.xlsx · item F349 · answer atoms ['573480']",
+    "tables/business-table07.xlsx · item F552 · answer atoms ['London']",
+    "tables/business-table07.xlsx · item F553 · answer atoms ['South East', 'South West', 'North West']",
+    "tables/health-table10.xlsx · item F588 · answer atoms ['Access & waiting']",
+    "tables/labor-table13.xlsx · item F813 · answer atoms ['18']",
+    "tables/economy-table68.xlsx · item F987 · answer atoms ['Canada']"
+   ],
+   "Fact Checking | hedgehog: answer value in no table cell": [
+    "tables/education-table03.xlsx · item F351 · answer atoms ['Sum of Participation - English and maths']",
+    "tables/employment-table30.xlsx · item F546 · answer atoms ['North East']",
+    "tables/business-table06.xlsx · item F549 · answer atoms ['England']",
+    "tables/health-table08.xlsx · item F572 · answer atoms ['64.30']",
+    "tables/health-table08.xlsx · item F573 · answer atoms ['Building closer relationships']",
+    "tables/health-table11.xlsx · item F592 · answer atoms ['Building closer relationships']"
+   ],
+   "Numerical Reasoning (long tables) | hedgehog: answer not in catalog": [
+    "tables/employment-table11.xlsx · item L1 · atoms ['70275', '161037'] · catalog 1458 chars",
+    "tables/employment-table11.xlsx · item L2 · atoms ['593'] · catalog 1458 chars",
+    "tables/employment-table11.xlsx · item L3 · atoms ['Marketing managers', 'General and operations managers', 'Chief executives'] · catalog 1458 chars",
+    "tables/employment-table20.xlsx · item L10 · atoms ['370'] · catalog 1639 chars",
+    "tables/economy-table133.xlsx · item L27 · atoms ['Cereals and bakery products', 'Food', 'Food at home'] · catalog 2819 chars",
+    "tables/injuries-table02.xlsx · item L36 · atoms ['174'] · catalog 1203 chars"
+   ],
+   "Fact Checking (long tables) | hedgehog: answer not in catalog": [
+    "tables/employment-table12.xlsx · item L5 · atoms ['43.60', '17457'] · catalog 1243 chars",
+    "tables/employment-table12.xlsx · item L6 · atoms ['Service occupations'] · catalog 1243 chars",
+    "tables/economy-table131.xlsx · item L15 · atoms ['0.20'] · catalog 4000 chars",
+    "tables/economy-table131.xlsx · item L16 · atoms ['Food at home'] · catalog 4000 chars",
+    "tables/economy-table131.xlsx · item L17 · atoms ['Commodities less food and beverages'] · catalog 4000 chars",
+    "tables/injuries-table05.xlsx · item L41 · atoms ['233'] · catalog 1856 chars"
+   ],
+   "Numerical Reasoning (long tables) | hedgehog: answer value in no table cell": [
+    "tables/productivity-table02.xlsx · item L75 · answer atoms ['Manufacturing']",
+    "tables/productivity-table04.xlsx · item L89 · answer atoms ['Production', '149.50']",
+    "tables/society-table43.xlsx · item L520 · answer atoms ['5']",
+    "tables/society-table43.xlsx · item L521 · answer atoms ['9']",
+    "tables/society-table43.xlsx · item L522 · answer atoms ['5']"
+   ],
+   "Fact Checking (long tables) | hedgehog: answer value in no table cell": [
+    "tables/education-table13.xlsx · item L127 · answer atoms ['2015/16']"
+   ]
+  }
+ },
+ "reach_type": {
+  "groups": {
+   "": {
+    "items": 1,
+    "needs_query": 1,
+    "hh_ops_matched": 1,
+    "hh_ops_clean": 1,
+    "pd_ops_matched": 1,
+    "pd_ops_clean": 0
+   },
+   "(not measured)": {
+    "items": 1322,
+    "not_measured": 1322
+   },
+   "Calculation": {
+    "items": 321,
+    "needs_query": 249,
+    "hh_ops_matched": 211,
+    "hh_ops_clean": 188,
+    "pd_ops_matched": 106,
+    "pd_ops_clean": 19,
+    "verbatim": 72,
+    "hh_catalog": 10,
+    "md_text": 72,
+    "hh_cell": 70,
+    "hh_loose": 55,
+    "hh_strict": 15,
+    "pd_cell": 72,
+    "pd_loose": 42,
+    "pd_strict": 9
+   },
+   "Comparison": {
+    "items": 166,
+    "verbatim": 89,
+    "hh_catalog": 49,
+    "md_text": 88,
+    "hh_cell": 86,
+    "hh_loose": 57,
+    "hh_strict": 45,
+    "pd_cell": 89,
+    "pd_loose": 48,
+    "pd_strict": 25,
+    "needs_query": 76,
+    "hh_ops_matched": 59,
+    "hh_ops_clean": 55,
+    "pd_ops_matched": 29,
+    "pd_ops_clean": 2,
+    "missing_file": 1
+   },
+   "Counting": {
+    "items": 255,
+    "needs_query": 145,
+    "hh_ops_matched": 88,
+    "hh_ops_clean": 79,
+    "pd_ops_matched": 61,
+    "pd_ops_clean": 14,
+    "verbatim": 109,
+    "hh_catalog": 59,
+    "md_text": 109,
+    "hh_cell": 104,
+    "hh_loose": 68,
+    "hh_strict": 16,
+    "pd_cell": 109,
+    "pd_loose": 56,
+    "pd_strict": 10,
+    "missing_file": 1
+   },
+   "Inference-based Fact Checking": {
+    "items": 537,
+    "verbatim": 334,
+    "hh_catalog": 179,
+    "md_text": 332,
+    "hh_cell": 322,
+    "hh_loose": 237,
+    "hh_strict": 136,
+    "pd_cell": 334,
+    "pd_loose": 174,
+    "pd_strict": 101,
+    "needs_query": 203,
+    "hh_ops_matched": 149,
+    "hh_ops_clean": 119,
+    "pd_ops_matched": 86,
+    "pd_ops_clean": 14
+   },
+   "Multi-hop Fact Checking": {
+    "items": 296,
+    "verbatim": 158,
+    "hh_catalog": 72,
+    "md_text": 158,
+    "hh_cell": 156,
+    "hh_loose": 130,
+    "hh_strict": 74,
+    "pd_cell": 158,
+    "pd_loose": 104,
+    "pd_strict": 43,
+    "needs_query": 138,
+    "hh_ops_matched": 106,
+    "hh_ops_clean": 88,
+    "pd_ops_matched": 54,
+    "pd_ops_clean": 10
+   },
+   "Multi-hop Numerical Reasoning": {
+    "items": 92,
+    "needs_query": 60,
+    "hh_ops_matched": 42,
+    "hh_ops_clean": 34,
+    "pd_ops_matched": 24,
+    "pd_ops_clean": 5,
+    "verbatim": 32,
+    "hh_catalog": 16,
+    "md_text": 32,
+    "hh_cell": 32,
+    "hh_loose": 27,
+    "hh_strict": 14,
+    "pd_cell": 32,
+    "pd_loose": 16,
+    "pd_strict": 5
+   },
+   "Non-adverse, Adverse, Cancelled": {
+    "items": 1,
+    "verbatim": 1,
+    "hh_catalog": 1,
+    "md_text": 1,
+    "hh_cell": 1,
+    "hh_loose": 1,
+    "hh_strict": 1,
+    "pd_cell": 1,
+    "pd_loose": 0,
+    "pd_strict": 0
+   },
+   "Ranking": {
+    "items": 142,
+    "verbatim": 115,
+    "hh_catalog": 55,
+    "md_text": 114,
+    "hh_cell": 111,
+    "hh_loose": 68,
+    "hh_strict": 45,
+    "pd_cell": 115,
+    "pd_loose": 54,
+    "pd_strict": 33,
+    "needs_query": 26,
+    "hh_ops_matched": 23,
+    "hh_ops_clean": 17,
+    "pd_ops_matched": 9,
+    "pd_ops_clean": 2,
+    "missing_file": 1
+   },
+   "Value-Matching": {
+    "items": 619,
+    "verbatim": 466,
+    "hh_catalog": 133,
+    "md_text": 458,
+    "hh_cell": 459,
+    "hh_loose": 393,
+    "hh_strict": 224,
+    "pd_cell": 466,
+    "pd_loose": 350,
+    "pd_strict": 88,
+    "needs_query": 153,
+    "hh_ops_matched": 97,
+    "hh_ops_clean": 83,
+    "pd_ops_matched": 43,
+    "pd_ops_clean": 8
+   },
+   "ALL": {
+    "items": 3752,
+    "verbatim": 1376,
+    "hh_catalog": 574,
+    "md_text": 1364,
+    "hh_cell": 1341,
+    "hh_loose": 1036,
+    "hh_strict": 570,
+    "pd_cell": 1376,
+    "pd_loose": 844,
+    "pd_strict": 314,
+    "needs_query": 1051,
+    "hh_ops_matched": 776,
+    "hh_ops_clean": 664,
+    "pd_ops_matched": 413,
+    "pd_ops_clean": 74,
+    "not_measured": 1322,
+    "missing_file": 3
+   }
+  },
+  "examples": {
+   "Multi-hop Fact Checking | hedgehog: answer not in catalog": [
+    "tables/employment-table01.xlsx · item F1 · atoms ['1955', '62170'] · catalog 1582 chars",
+    "tables/employment-table07.xlsx · item F42 · atoms ['39357'] · catalog 2447 chars",
+    "tables/employment-table10.xlsx · item F50 · atoms ['0.70'] · catalog 1391 chars",
+    "tables/employment-table08.xlsx · item F58 · atoms ['134056', '26981'] · catalog 2452 chars",
+    "tables/employment-table17.xlsx · item F83 · atoms ['590'] · catalog 1539 chars",
+    "tables/economy-table137.xlsx · item F136 · atoms ['Cereals and bakery products'] · catalog 1269 chars"
+   ],
+   "Inference-based Fact Checking | hedgehog: answer not in catalog": [
+    "tables/employment-table01.xlsx · item F2 · atoms ['1954'] · catalog 1582 chars",
+    "tables/employment-table08.xlsx · item F59 · atoms ['3810'] · catalog 2452 chars",
+    "tables/employment-table19.xlsx · item F90 · atoms ['Crop production'] · catalog 1342 chars",
+    "tables/employment-table26.xlsx · item F121 · atoms ['135'] · catalog 2075 chars",
+    "tables/economy-table137.xlsx · item F137 · atoms ['13.47'] · catalog 1269 chars",
+    "tables/economy-table136.xlsx · item F142 · atoms ['Airline fares'] · catalog 1268 chars"
+   ],
+   "Value-Matching | hedgehog: answer not in catalog": [
+    "tables/employment-table01.xlsx · item F4 · atoms ['158772'] · catalog 1582 chars",
+    "tables/employment-table02.xlsx · item F14 · atoms ['1986'] · catalog 1260 chars",
+    "tables/employment-table03.xlsx · item F19 · atoms ['161037'] · catalog 1274 chars",
+    "tables/employment-table03.xlsx · item F21 · atoms ['99826'] · catalog 1274 chars",
+    "tables/employment-table05.xlsx · item F31 · atoms ['164287'] · catalog 1631 chars",
+    "tables/employment-table10.xlsx · item F49 · atoms ['43.60'] · catalog 1391 chars"
+   ],
+   "Ranking | hedgehog: answer not in catalog": [
+    "tables/employment-table03.xlsx · item F20 · atoms ['35 to 39 years', '35 to 44 years'] · catalog 1274 chars",
+    "tables/employment-table04.xlsx · item F27 · atoms ['45 to 49 years', '40 to 44 years', '35 to 39 years', '35 to 44 years'] · catalog 1529 chars",
+    "tables/economy-table132.xlsx · item F131 · atoms ['Shelter', 'Household furnishings and operations', 'Fuels and utilities'] · catalog 1506 chars",
+    "tables/economy-table01.xlsx · item F254 · atoms ['China', 'European Union-27', 'Mexico', 'Japan'] · catalog 1013 chars",
+    "tables/education-table04.xlsx · item F354 · atoms ['2009/10', '952400'] · catalog 4986 chars",
+    "tables/health-table04.xlsx · item F484 · atoms ['United States', '70405'] · catalog 1370 chars"
+   ],
+   "Comparison | hedgehog: answer not in catalog": [
+    "tables/employment-table04.xlsx · item F25 · atoms ['16 to 17 years'] · catalog 1529 chars",
+    "tables/economy-table132.xlsx · item F134 · atoms ['Housing'] · catalog 1506 chars",
+    "tables/activitytime-table04.xlsx · item F207 · atoms ['0.50'] · catalog 2167 chars",
+    "tables/welfare-table09.xlsx · item F246 · atoms ['Jun. 2024', '3.7'] · catalog 1405 chars",
+    "tables/education-table14.xlsx · item F424 · atoms ['Austria', '0.4'] · catalog 3541 chars",
+    "tables/business-table05.xlsx · item F502 · atoms ['Germany'] · catalog 981 chars"
+   ],
+   "Calculation | hedgehog: answer not in catalog": [
+    "tables/employment-table18.xlsx · item F94 · atoms ['265'] · catalog 2199 chars",
+    "tables/injuries-table08.xlsx · item F169 · atoms ['Nursing care facilities (skilled nursing'] · catalog 2855 chars",
+    "tables/activitytime-table01.xlsx · item F190 · atoms ['1.78'] · catalog 2422 chars",
+    "tables/activitytime-table05.xlsx · item F202 · atoms ['2.23'] · catalog 2260 chars",
+    "tables/activitytime-table04.xlsx · item F208 · atoms ['0.59'] · catalog 2167 chars",
+    "tables/activitytime-table04.xlsx · item F211 · atoms ['0.64'] · catalog 2167 chars"
+   ],
+   "Multi-hop Numerical Reasoning | hedgehog: answer not in catalog": [
+    "tables/welfare-table05.xlsx · item F226 · atoms ['57.10'] · catalog 1559 chars",
+    "tables/economy-table05.xlsx · item F397 · atoms ['2018'] · catalog 1346 chars",
+    "tables/health-table05.xlsx · item F489 · atoms ['United States'] · catalog 1043 chars",
+    "tables/health-table05.xlsx · item F492 · atoms ['Italy'] · catalog 1043 chars",
+    "tables/economy-table50.xlsx · item F597 · atoms ['0.89'] · catalog 2442 chars",
+    "tables/economy-table35.xlsx · item F694 · atoms ['15000'] · catalog 366 chars"
+   ],
+   "Calculation | hedgehog: answer value in no table cell": [
+    "tables/education-table03.xlsx · item F349 · answer atoms ['573480']",
+    "tables/education-table28.xlsx · item F1502 · answer atoms ['13']"
+   ],
+   "Inference-based Fact Checking | hedgehog: answer value in no table cell": [
+    "tables/education-table03.xlsx · item F351 · answer atoms ['Sum of Participation - English and maths']",
+    "tables/employment-table30.xlsx · item F546 · answer atoms ['North East']",
+    "tables/health-table11.xlsx · item F592 · answer atoms ['Building closer relationships']",
+    "tables/labor-table06.xlsx · item F723 · answer atoms ['Jerlyn Thompson', 'Human resources department']",
+    "tables/science-table12.xlsx · item F1286 · answer atoms ['3']",
+    "tables/science-table12.xlsx · item F1287 · answer atoms ['Yes']"
+   ],
+   "Ranking | hedgehog: answer value in no table cell": [
+    "tables/business-table06.xlsx · item F549 · answer atoms ['England']",
+    "tables/business-table07.xlsx · item F553 · answer atoms ['South East', 'South West', 'North West']",
+    "tables/productivity-table02.xlsx · item L75 · answer atoms ['Manufacturing']",
+    "tables/productivity-table04.xlsx · item L89 · answer atoms ['Production', '149.50']"
+   ],
+   "Comparison | hedgehog: answer value in no table cell": [
+    "tables/business-table07.xlsx · item F552 · answer atoms ['London']",
+    "tables/health-table10.xlsx · item F588 · answer atoms ['Access & waiting']",
+    "tables/economy-table68.xlsx · item F987 · answer atoms ['Canada']"
+   ],
+   "Value-Matching | hedgehog: answer value in no table cell": [
+    "tables/health-table08.xlsx · item F572 · answer atoms ['64.30']",
+    "tables/manufacture-table12.xlsx · item F961 · answer atoms ['04', '2014']",
+    "tables/manufacture-table12.xlsx · item F966 · answer atoms ['04', '2014']",
+    "tables/economy-table72.xlsx · item F1015 · answer atoms ['Bob', 'John']",
+    "tables/science-table11.xlsx · item F1283 · answer atoms ['0.07']",
+    "tables/society-table49.xlsx · item F1475 · answer atoms ['24%']"
+   ],
+   "Multi-hop Fact Checking | hedgehog: answer value in no table cell": [
+    "tables/health-table08.xlsx · item F573 · answer atoms ['Building closer relationships']",
+    "tables/economy-table120.xlsx · item F2399 · answer atoms ['£411.50']"
+   ],
+   "Counting | hedgehog: answer not in catalog": [
+    "tables/economy-table53.xlsx · item F656 · atoms ['4'] · catalog 1470 chars",
+    "tables/economy-table43.xlsx · item F774 · atoms ['2'] · catalog 844 chars",
+    "tables/labor-table13.xlsx · item F813 · atoms ['18'] · catalog 3810 chars",
+    "tables/economy-table47.xlsx · item F823 · atoms ['3'] · catalog 831 chars",
+    "tables/sport-table07.xlsx · item F889 · atoms ['5'] · catalog 1111 chars",
+    "tables/sport-table08.xlsx · item F947 · atoms ['6'] · catalog 720 chars"
+   ],
+   "Counting | hedgehog: answer value in no table cell": [
+    "tables/labor-table13.xlsx · item F813 · answer atoms ['18']",
+    "tables/education-table29.xlsx · item F1508 · answer atoms ['6']",
+    "tables/society-table43.xlsx · item L520 · answer atoms ['5']",
+    "tables/society-table43.xlsx · item L521 · answer atoms ['9']",
+    "tables/society-table43.xlsx · item L522 · answer atoms ['5']"
+   ]
+  }
+ }
+}

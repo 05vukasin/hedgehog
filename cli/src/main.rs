@@ -29,7 +29,8 @@ const USAGE: &str = "usage:
   hedgehog bench --synthetic [--case NAME]
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
   hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic,eu] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
-                     (eu, the hand-labelled European sample, is opt-in and always scored whole)
+                     (eu, the hand-labelled European sample, is opt-in and always scored whole;
+                      public:<name> scores <data>/public/<name>/labels.tsv + tables.tsv, see eval/public/README.md)
   hedgehog pack-model <dir>   (row_coarse.json + row_fine.json → row_model.bin)
   hedgehog features --out FILE.csv [--corpus deco,synthetic,statsheets,strudel] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N] [--level cell|row]
 
@@ -386,7 +387,7 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
     }
     let an = analyzer(&analyzer_name).ok_or(format!("unknown analyzer `{analyzer_name}`"))?;
     let root = eval::data_root();
-    let mut tsv = String::from("corpus\tsource\tfiles\tsheets\tcells\tfull_pooled\tfull_file\tcoarse_pooled\tcoarse_file\taccuracy\ttable_f1_iou50\ttable_f1_iou80\ttable_f1_iou100\n");
+    let mut tsv = String::from("corpus\tsource\tfiles\tsheets\tcells\tfull_pooled\tfull_file\tcoarse_pooled\tcoarse_file\taccuracy\ttable_f1_iou50\ttable_f1_iou80\ttable_f1_iou100\theader_tables\theader_exact\n");
     for name in &corpora {
         let t = Instant::now();
         let (corpus, sp) = match name.as_str() {
@@ -397,6 +398,16 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
             // Hand-labelled European open-data sheets (tools/benchmarks/eu_labels.json). No model
             // ever trains on them, so the whole corpus is scored whatever `--split` says.
             "eu" => (eval::labelled::load(&root.join("irregular").join("eu_labelled"), "eu"), Split::All),
+            // Public benchmark corpora converted by eval/public/convert_*.py into
+            // <data>/public/<name>/{labels,tables}.tsv; never trained on, scored whole, coarse roles.
+            other if other.starts_with("public:") => {
+                let n = &other["public:".len()..];
+                let c = eval::labelled::load(&root.join("public").join(n), n).map(|mut c| {
+                    c.coarse_roles = true;
+                    c
+                });
+                (c, Split::All)
+            }
             other => return Err(format!("unknown corpus `{other}`")),
         };
         let corpus = corpus.map_err(|e| e.to_string())?;
@@ -412,7 +423,7 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
             let (fp, ff) = r.full.map_or((String::new(), String::new()), |(a, b)| (format!("{:.4}", a), format!("{:.4}", b)));
             let tf = |k: usize| r.tables.and_then(|t| t[k].f1()).map_or(String::new(), |f| format!("{f:.4}"));
             tsv.push_str(&format!(
-                "{name}\t{}\t{}\t{}\t{}\t{fp}\t{ff}\t{:.4}\t{:.4}\t{:.4}\t{}\t{}\t{}\n",
+                "{name}\t{}\t{}\t{}\t{}\t{fp}\t{ff}\t{:.4}\t{:.4}\t{:.4}\t{}\t{}\t{}\t{}\t{}\n",
                 r.source,
                 r.files,
                 r.sheets,
@@ -422,7 +433,9 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
                 r.accuracy,
                 tf(0),
                 tf(1),
-                tf(2)
+                tf(2),
+                r.header_depth.0,
+                r.header_depth.1
             ));
         }
     }
