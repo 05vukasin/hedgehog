@@ -288,3 +288,35 @@ fn missing_value_token_is_no_section() {
     assert_eq!(group(&t, "Men"), "Gender");
     assert!(t.columns.iter().all(|c| c.values.iter().all(|v| *v != Out::Text("no data".into()))), "{:?}", names(&t));
 }
+
+/// MiMoTable 1237(2): a group label with no row of its own below it (the last line of the
+/// table) is not lost: it goes to Notes.
+#[test]
+fn group_label_heading_nothing_goes_to_notes() {
+    let path: PathBuf = std::env::temp_dir().join(format!("hh_outline_lonely_{}.xlsx", std::process::id()));
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet();
+    let bold = Format::new().set_bold();
+    for (c, h) in ["Item", "Budget", "Spent"].iter().enumerate() {
+        ws.write_string(0, c as u16, *h).unwrap();
+    }
+    let rows = [("Office", true), ("Paper", false), ("Pens", false), ("Travel", true), ("Train", false), ("Hotel", false), ("Pending items", true)];
+    for (k, (label, group)) in rows.iter().enumerate() {
+        let r = 1 + k as u32;
+        if *group {
+            ws.write_string_with_format(r, 0, *label, &bold).unwrap();
+        } else {
+            ws.write_string(r, 0, *label).unwrap();
+            ws.write_number(r, 1, 120.5 + k as f64).unwrap();
+            ws.write_number(r, 2, 80.25 + k as f64).unwrap();
+        }
+    }
+    wb.save(&path).unwrap();
+    let book = open(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let n = normalize_workbook(&book, &Options::default());
+    let t = &n.tables[0];
+    let in_table = t.columns.iter().any(|c| c.values.contains(&Out::Text("Pending items".into())));
+    let in_notes = n.notes.iter().any(|x| x.text == "Pending items");
+    assert!(in_table || in_notes, "lost: {:?}", n.notes);
+}

@@ -1195,6 +1195,9 @@ fn build_table(
     let mut row_types: Vec<RowType> = Vec::new();
     let mut row_group: Vec<Option<usize>> = Vec::new();
     let mut paths: Vec<Vec<String>> = Vec::new();
+    // The source rows of each path's group labels, and the label cell of every group-header row.
+    let mut paths_rows: Vec<Vec<u32>> = Vec::new();
+    let mut group_cells: Vec<(usize, u32)> = Vec::new();
     // The current group path and the rows of its group headers; `run` collects consecutive
     // group-header rows (label, row) until the next data row places them in the path.
     let mut path: Vec<String> = Vec::new();
@@ -1364,6 +1367,7 @@ fn build_table(
                 }
                 if let Some(i) = label_cell {
                     group_label_col = Some(cells[i].col);
+                    group_cells.push((i, *row));
                 }
                 tr.add(T::GroupHeaderRowsToColumn, 1);
                 group_labels.push(label.clone());
@@ -1474,13 +1478,21 @@ fn build_table(
                 }
             }
             paths.push(path.clone());
+            paths_rows.push(path_rows.clone());
             cur_path = Some(paths.len() - 1);
         }
         // A kept total row belongs only to the groups that contain its whole source: a subtotal
         // to its group, a grand total (or a total over several groups) to none of them. A source
         // range reaching into the header (a year header read as a number, B17) starts at the body.
+        // A total that names its innermost group (`Total capital DEL` under `Capital DEL`) closes it.
+        let names_group = path.last().is_some_and(|g| {
+            let g = norm_key(g);
+            g.chars().filter(|c| c.is_alphanumeric()).count() >= 3
+                && idxs.iter().any(|&i| matches!(&cells[i].value, Some(Value::Text(t)) if norm_key(t).contains(g.as_str())))
+        });
         let depth = match (level, row_total.get(row).and_then(|t| t.top)) {
             _ if matches!(rt, RowType::Data | RowType::Average | RowType::OfWhich) => path.len(),
+            _ if names_group => path.len(),
             (Some(TotalLevel::GrandTotal), _) => 0,
             (_, Some(top)) => path_rows.iter().take_while(|&&h| h <= top.max(body_top)).count(),
             _ => path.len(),
@@ -1489,6 +1501,7 @@ fn build_table(
             0 => None,
             d if d < path.len() => {
                 paths.push(path[..d].to_vec());
+                paths_rows.push(path_rows[..d].to_vec());
                 Some(paths.len() - 1)
             }
             _ => cur_path,
@@ -1654,6 +1667,7 @@ fn build_table(
     })();
     if let Some((_, _, _, label)) = &section_in_header {
         paths.push(vec![label.clone()]);
+        paths_rows.push(Vec::new());
         let idx = paths.len() - 1;
         for (j, g) in row_group.iter_mut().enumerate() {
             if g.is_some() {
@@ -1665,6 +1679,15 @@ fn build_table(
         }
         group_labels.push(label.clone());
         tr.add(T::GroupHeaderRowsToColumn, 1);
+    }
+    // A group label that heads no row of the table (only removed totals or nothing below it,
+    // `Subtotal` alone on its row) is not lost: it goes to Notes.
+    let used: HashSet<u32> = row_group.iter().flatten().flat_map(|&g| paths_rows[g].iter().copied()).collect();
+    for &(i, row) in &group_cells {
+        if !used.contains(&row) {
+            owner[i] = OWN_NOTES;
+            notes.push(note(i, "other"));
+        }
     }
     let mut heads: Vec<(Vec<HeaderPart>, String)> = Vec::with_capacity(ncols);
     for k in 0..ncols {
