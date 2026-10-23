@@ -1,7 +1,10 @@
 # Audited misses: a miss counts as audited only with evidence checked against the source file (raw cells).
-# reason: gold_wrong | not_in_file | outside_knowledge. Verified by hand on 2026-10-23 (eval/accuracy, branch accuracy).
+# reason: gold_wrong | not_in_file | outside_knowledge | ambiguous_question (two reasonable readings of the question give
+# different answers; both shown). The MiMoTable rows verified by hand on 2026-10-23 (branch accuracy), the dev ones re-checked
+# 2026-10-24 (branch audit; en-0142 removed: in the shifted row 13 the basic salary is derivable, Gross H13 - Performance F13 -
+# Commission G13 = 9400 - 1100 - 300 = 8000 as in every other row, so the gold 120000 = 15 x 8000 is right); the rest from the review of the 190 C audit candidates
+# against the source cells on 2026-10-24 (branch audit). Audited items leave the denominator of the after-audit score.
 dataset	item_id	measure	atom	reason	evidence
-mimotable	en-0142	C	120000	gold_wrong	Sheet12!E2:E16 holds 14 x 8000 and one shifted text cell E13='Information Department' (row 13 is shifted one column right); the column sums to 112000; the gold 120000 assumes 15 x 8000
 mimotable	en-0137	C	-41.67%	gold_wrong	Management Cost: Jan 2022 (Sheet3!J2) = 120, May 2023 (J18) = 174.95: growth +45.79 %; -41.67 % = (70 - 120) / 120 uses May 2022 (J6 = 70)
 mimotable	en-0331	C	5.64	gold_wrong	highest Transaction Total Price is K21 = 564000 in units of 10,000 yuan (header I1/K1 '(10,000 yuan)') = 5.64 billion yuan, not 5.64 million
 mimotable	en-0178	C	1435.24	gold_wrong	Unreceived Amount Sheet1!G2:G22 (21 records) averages 1301.63 (the agent's answer); the gold 1435.24 is not this average
@@ -9,3 +12,33 @@ mimotable	en-0408	C	41.38	gold_wrong	Number of Floors D2:D50: 47 cells with a nu
 mimotable	en-0640	L	Weekday Overtime	gold_wrong	Overtime Fee by type (Sheet51 F/I): Weekend Overtime 9488 > Weekday Overtime 8687 > Public Holiday 6103; the highest is Weekend Overtime (Administration Department)
 mimotable	en-0270	C	49,771.6	gold_wrong	(holdout) Order Amount G of rows with Paid L='✔Yes' (11 orders) sums to 46945.82 (the agent's answer), not 49771.6
 mimotable	en-0566	C	125	not_in_file	Sheet1 'Planned Sales Amount' B3:B14 are empty (no values, no cached formula results); 'Planned' occurs only in A1; Sheet2/Sheet3 hold book sales by distributor without a plan
+hitab	8e02d726bd749fb8cdbb9f9158538f66	C	0.730469	gold_wrong	15_117_tab2.xlsx: ARRA-funded R&D in FY 2010 + 2011 = C4 + C5 = 1,775,273 of C4:C8 = 2,376,636 = 0.746969; the gold 0.730469 = C5 / C4 (2011 over 2010)
+hitab	9f273370951dead981788bcb1c9bd903	C	4.1	gold_wrong	174_85_tab3.xlsx: companies with 25,000 or more employees employ E42 = 7,745 of E4 = 18,915 thousand domestic employees = 40.9 %; the gold 4.1 is C12, the R&D intensity of transportation equipment
+hitab	a26ae67eff821dd8815180d2473d1f3a	C	11.7	gold_wrong	1007.xlsx: the sector with the most black female workers is Health care and social assistance (E20 = 32.8, the maximum of E6:E24); the gold 11.7 = E20 - I20 is the gap to other female workers
+hitab	c1036272604531a09e7f15b12bba3852	C	14	gold_wrong	1179.xlsx: Prince Edward Island, total correctional services, percent change from 2016/2017 G6 = -25 (a decline of 25); the gold 14 is Saskatchewan G10 = -14
+hitab	c1b1e4621d9fc4ff188c89d67a0ad646	C	11.3	gold_wrong	121.xlsx: Ontario, percentage change 2014 J11 = -3.4 (fell 3.4 %); the gold 11.3 is Manitoba J12 = -11.3
+hitab	a42c418b775a2df876cfed20619b3ec6	C	0.4	gold_wrong	121.xlsx: Saskatchewan, percentage change 2014 J13 = -0.6; the gold 0.4 is Alberta J14 = -0.4
+hitab	a987a0930242546abb3e18bce117d3ce	C	0.7	gold_wrong	121.xlsx: Saskatchewan, percentage change 2013 I13 = +5.6 (sport jobs rose); the gold 0.7 is Alberta I14 = -0.7
+hitab	c45d394a8078c05eef243691edc6292e	C	0.800589	gold_wrong	1261.xlsx: Ontario net liability per capita 2011 F9 = 16,896, 2012 G9 = 17,734: (17,734 - 16,896) / 16,896 = 0.0496; the gold 0.800589 = (G9 - B9) / B9 is 2007 to 2012
+hitab	fd1b9e716a05415c00138ffca0176e44	C	1	gold_wrong	1410.xlsx: the 2011-2015 change is column K 'Percent change in total rate from 2011/2012 to 2015/2016' (Federal K19 = -6, provinces and territories K18 = -16); the gold 1 is J19 = -1, the 2014/2015 to 2015/2016 change
+hitab	ef76e7a0cb1d35531854700bd9b187d2	C	0.16	ambiguous_question	1500.xlsx: the question names no model: Model 1 (no controls) B7 = -0.16 -> 0.16 (gold); Model 2 (demographic controls) C7 = -0.07 -> 0.07 (Models 3-6: 0.01, 0.00, -0.01, 0.02)
+hitab	82c81421a7f18cc9a7129f03771858b1	C	21	gold_wrong	1556.xlsx: used only one type of media B7 (men) = B8 (women) = 24; the gold 21 is 'Four or five' D7 = D8 = 21
+hitab	cfd24fd44cc357d073cefe80e4aa3cb3	C	1001	ambiguous_question	1648.xlsx: 'how much are field of study accounted for' = Field of study component B10 = 5,255; 'after [the controls] how much cbd holders earn less' = Unexplained B12 = -1,001 (gold)
+hitab	8d635fa6db27aa71d616e2cccd611820	C	672	ambiguous_question	1848.xlsx: employees of police services 2019 vs 2018: total personnel H63 - H62 = 100,417 - 99,559 = 858; civilian personnel E63 - E62 = 31,699 - 31,027 = 672 (gold)
+hitab	4556e8c367fb31aad6eec0f44e16b249	C	82	gold_wrong	1947.xlsx 'original': victims who knew their killer = 100 - Stranger C26 (19.4 %) = 80.6 % of solved homicides with a known relationship (percent column C6:C28); the gold 82 = 100 - B27, the COUNT (18) of unknown-relationship victims
+hitab	ab061c7fbd09da8ac94859a28b337a50	C	26	gold_wrong	2003.xlsx: Sherbrooke, motor vehicle theft, percent change in rate 2014 to 2015 K11 = -41; the gold 26 is Saint John K8 = -26
+hitab	ae2e9da16dc3dbf015f49a6b7990cff6	C	0.07 | 1.13	gold_wrong	2336.xlsx: mean absolute revision 2015 to 2017, E5:E17: minimum Saskatchewan E12 = 0.03, maximum Yukon E15 = 1.13; the gold minimum 0.07 is Manitoba E11
+hitab	f09cb5c19db3b2728b09ad63a2eb3dd3	C	1.3 | 6	gold_wrong	2361.xlsx: comparison group rates 2012, H5:H33: minimum Edmonton H29 = 1.3, maximum 'Manitoba, other' H24 = 7.8; the gold maximum 6.0 is New Brunswick H8
+hitab	8820e18b02d7521046c55cf01cef605d	C	9.9	ambiguous_question	2412.xlsx: overqualified in 2016 = start + persistent B7 + B9 = 4.6 + 5.3 = 9.9 (gold); in 2006 = end + persistent B8 + B9 = 9.7 + 5.3 = 15.0
+hitab	8b77fbfc125bd106ce019a55e53cbad7	C	129	gold_wrong	2672.xlsx: releasable violent victimization rates C5:C28: the highest is Saskatoon C23 = 142, not Halifax C6 = 129 (and the question asks for the area)
+hitab	69afe4a7a0d27cbb6082a418d24098ba	C	118	gold_wrong	2672.xlsx: releasable rates C5:C28 sorted: Saskatoon C23 = 142, Halifax C6 = 129, Winnipeg C21 = 118; the second highest is Halifax (129), the gold 118 is the third
+hitab	24cdb4939b984d8b4e0bef53869561cd	C	5.966667	gold_wrong	2674.xlsx: total violent victimization rate, ever homeless: Yes I61 = 358, No I60 = 71; 358 / 71 = 5.04 times; the gold 5.966667 = 358 / 60 (no cell holds 60 in that row)
+hitab	72b073d87be54b32adeffd7a28a0a8f4	C	13.8 | 6.8	gold_wrong	2703.xlsx: perceived social disorder, neither cyberbullied nor cyberstalked: C8 = 6.8 (bivariate), C13 = 5.9 (adjusted); the gold's 13.8 is B8, the mental health condition indicator
+hitab	82d1a3118233601d7a2fa4f956576062	C	0.068098	not_in_file	2738.xlsx holds only the aboriginal identity population (B5:E10: females 232,800 + males 245,160 = 477,960); the number of all children in Canada (the denominator: 477,960 / 0.068098 = 7.02 million) is in no cell
+hitab	4877147fa31351106f6cf4616e8ba9e9	C	45.5	gold_wrong	608.xlsx: the question asks 1990; the top-10 women's occupations in the 1990 column B20:B32 sum to 38.0; the gold 45.5 sums the 2016 column C20:C32
+hitab	66ec193ad200738540f6f69200f60a5c	C	0.663176	gold_wrong	632.xlsx: dwelling in need of major repair Yes B29 + D29 = 8,600 + 10,700 = 19,300 of 57,300 (B28:D29) = 0.336824; the gold 0.663176 = 38,000 / 57,300 is the 'No' share
+hitab	b3086dd8c892891ae6284b6888a4f509	C	10.3	gold_wrong	639.xlsx: CA, multi-unit owners without vs with a mortgage C7 - C8 = 92.0 - 82.1 = 9.9; the gold 10.3 uses C5 = 92.4 (Owner-Detached, No mortgage)
+hitab	fc6e19246f7db6013911830eace56fff	C	3.333333	ambiguous_question	733.xlsx: First Nations on reserves vs non-aboriginal, respiratory tract infection: totals C33 / I33 = 1.5 / 0.4 = 3.75; urban E33 / K33 = 1.0 / 0.3 = 3.33 (gold)
+hitab	059b08ae19c543435738dd7e579ca5f6	C	5.7	ambiguous_question	911.xlsx: two 'MFP growth' rows: row 11 B11 = 1.6 -> C11 = -2.7, a slowdown of 4.3; addendum row 18 (without natural capital) 1.6 -> -4.1, 5.7 (gold)
+hitab	e8bc7f6064e64a7b79b49900b4f98416	C	71.8	gold_wrong	914.xlsx: women who took an online protective measure B26 = 28.2 %; the gold 71.8 = 100 - 28.2 is the share that did not
+mimotable	en-0029	C	43,997	ambiguous_question	PileSingleCalculation.xlsx: the project with serial number 8 (row 11, '9-Story Slab Residential') has building area I11 = 8,112; the Plot 08# project (rows 6-7) has I6 + I7 = 15,514 + 28,483 = 43,997 (gold)

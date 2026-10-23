@@ -22,6 +22,7 @@ build under `../scratch-archive/accuracy/work/<sha256[:12] of the binary>/`), th
 | `invariants.py` | M: misleading-output invariants |
 | `scoreboard.py` | F, S, L, C, M, K, miss clusters, audit, RESULTS.md |
 | `audit.tsv` | audited misses with evidence |
+| `reviewed.tsv` | reviewed audit candidates that are not auditable: their oracle-limit / library cause with evidence |
 | `k_baseline.json` | K baseline (catalog tokens per file), written with `scoreboard.py --update-k` |
 
 ## Split
@@ -154,5 +155,8 @@ name (a data row taken as the header), a plain number as a header; M6 an outline
 
 A C or L miss on a file that has an M violation is clustered under that violation (most specific first), else
 under the measure's own cause. `audit.tsv` lists misses that are not hedgehog's: `gold_wrong`, `not_in_file`,
-`outside_knowledge`, each with evidence checked against the source cells. Scores are reported raw and after
-audit (audited misses leave the denominator). Never audit a miss without evidence.
+`outside_knowledge`, `ambiguous_question` (two reasonable readings give different answers; both shown), each with
+evidence checked against the source cells (independent reader, eval/fidelity/source.py). Scores are reported raw
+and after audit (audited items leave the denominator; a pass on an audited item does not count). Never audit a
+miss without evidence. `reviewed.tsv` lists gold/question candidates checked the same way and found NOT auditable
+(the gold is right and in the file): they stay misses under the oracle-limit / library cause recorded there.

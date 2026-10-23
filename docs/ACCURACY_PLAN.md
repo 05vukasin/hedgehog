@@ -16,8 +16,10 @@ official confirmation.
 | K | **Compact** — catalog stays small | tokens per file, per question | no regressions |
 
 A miss is allowed only when it is **audited** as one of: the benchmark's gold answer is wrong; the file
-does not contain the information; the question needs knowledge outside the file. Every audited miss is
-listed with its evidence in `eval/accuracy/audit.tsv` (reviewed, never silent).
+does not contain the information; the question needs knowledge outside the file; the question is ambiguous
+(two reasonable readings give different answers). Every audited miss is listed with its evidence (source
+cells + computation) in `eval/accuracy/audit.tsv` (reviewed, never silent); candidates found not auditable
+stay misses with their cause in `eval/accuracy/reviewed.tsv`.
 
 ## Honest data split
 
