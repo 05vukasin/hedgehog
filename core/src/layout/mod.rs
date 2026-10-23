@@ -181,8 +181,7 @@ pub fn labelled_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Val
     };
     let lead = v.iter().take_while(|x| label(x)).count();
     let tail = v.iter().rev().take_while(|x| label(x)).count();
-    lead >= 1
-        && lead <= NUMBERING_MAX_LABELS
+    (1..=NUMBERING_MAX_LABELS).contains(&lead)
         && tail <= NUMBERING_MAX_LABELS
         && lead + tail < v.len()
         && column_numbering(v[lead..v.len() - tail].iter().copied())
