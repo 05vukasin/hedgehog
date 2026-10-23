@@ -118,12 +118,32 @@ struct Cand {
     boolean: Option<bool>,
     /// Censored / suppressed / see-note text: not a number, but no evidence against one.
     annotation: bool,
+    /// `num` read from an accounting negative missing its closing parenthesis (`(11,134`).
+    lone_paren: bool,
 }
 
 impl Cand {
     /// Anything read (a value without readings is the same as `Cand::default()`).
     fn has_reading(&self) -> bool {
         self.num.is_some() || self.date.is_some() || self.boolean.is_some() || self.annotation
+    }
+}
+
+/// A number, or an accounting negative written without its closing parenthesis (`(11,134`, as
+/// StatCan tables have it): `(` then a number and no `)` reads as that number in parentheses.
+/// The second value says the parenthesis was missing (the column lists those cells in a warning).
+fn parse_num_lenient(t: &str, nh: crate::values::NumberHint) -> (Option<ParsedNumber>, bool) {
+    if let Some(p) = parse_number(t, nh) {
+        return (Some(p), false);
+    }
+    let s = t.trim();
+    let lone = s.strip_prefix('(').is_some_and(|r| r.trim_start().starts_with(|c: char| c.is_ascii_digit())) && !s.contains(')');
+    if !lone {
+        return (None, false);
+    }
+    match parse_number(&format!("{s})"), nh) {
+        Some(p) if p.negative == Some(NegativeStyle::Parens) && !p.leading_zero => (Some(p), true),
+        _ => (None, false),
     }
 }
 
@@ -213,7 +233,7 @@ fn type_column_untimed(
                 let mut cand = Cand::default();
                 let c = &mut cand;
                 if num_miss <= allowed_num && lead0 == 0 {
-                    c.num = parse_number(t, nh);
+                    (c.num, c.lone_paren) = parse_num_lenient(t, nh);
                     if let Some(p) = &c.num {
                         if p.leading_zero {
                             lead0 += 1;
@@ -318,7 +338,7 @@ fn type_column_untimed(
                         None => Cand::default(),
                     };
                     if kind == Kind::Num {
-                        c.num = parse_number(t, nh);
+                        (c.num, c.lone_paren) = parse_num_lenient(t, nh);
                     } else {
                         c.date = parse_date(t, hints.date_order);
                     }
@@ -354,6 +374,7 @@ fn type_column_untimed(
     let mut ambiguous = 0usize;
     let mut unparsed: Vec<String> = Vec::new();
     let mut annotated: Vec<String> = Vec::new();
+    let mut lone_parens: Vec<String> = Vec::new();
     let mut marks: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
     let mut has_time = false;
     let mut all_int = true;
@@ -425,6 +446,9 @@ fn type_column_untimed(
                                 matches!(p.negative, Some(NegativeStyle::Parens | NegativeStyle::TrailingMinus)) as usize,
                             );
                             ambiguous += p.ambiguous as usize;
+                            if c.1.lone_paren {
+                                lone_parens.push(format!("{} '{}'", a1(rows[i], col), display(v)));
+                            }
                             Out::Num(p.normalized())
                         }
                         _ => fallback(tr),
@@ -520,6 +544,14 @@ fn type_column_untimed(
             dtype.as_str(),
             annotated.len(),
             list(&annotated)
+        ));
+    }
+    if !lone_parens.is_empty() {
+        warnings.push(format!(
+            "column '{name}' ({}): {} value(s) with an opening parenthesis but no closing one read as negative: {}",
+            dtype.as_str(),
+            lone_parens.len(),
+            list(&lone_parens)
         ));
     }
     if ambiguous > 0 {

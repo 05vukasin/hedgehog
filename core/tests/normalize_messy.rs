@@ -334,6 +334,39 @@ fn empty_and_tableless_workbooks() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// StatCan writes some negatives without the closing parenthesis (`(11,134`, HiTab statcan/1261):
+/// read as negatives (the column stays numeric) and listed in a warning; a stray `(` before a word
+/// stays text.
+#[test]
+fn lone_opening_parenthesis_is_a_negative() {
+    let dir = tmp_dir("lone_paren");
+    let src = dir.join("p.xlsx");
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.write_string(0, 0, "Net liabilities per capita, dollars").unwrap();
+    ws.write_string(1, 0, "Province").unwrap();
+    ws.write_string(1, 1, "2007").unwrap();
+    ws.write_string(1, 2, "Note").unwrap();
+    let vals = ["13,505", "9,593", "11,070", "8,347", "(11,134", "2,330", "(14,652", "(10,630", "(6,208", "6,888"];
+    for (i, v) in vals.iter().enumerate() {
+        let r = 2 + i as u32;
+        ws.write_string(r, 0, format!("Province {i}")).unwrap();
+        ws.write_string(r, 1, *v).unwrap();
+        ws.write_string(r, 2, if i == 3 { "(see note" } else { "ok" }).unwrap();
+    }
+    wb.save(&src).unwrap();
+    let out = normalize_file(&src, &dir, &Options::default()).unwrap();
+    let book = open(&out.xlsx_path).unwrap();
+    let t = &book.sheets[1];
+    assert_eq!(get(t, 1, 1), num(13505.0).as_ref());
+    assert_eq!(get(t, 5, 1), num(-11134.0).as_ref());
+    assert_eq!(get(t, 9, 1), num(-6208.0).as_ref());
+    assert_eq!(get(t, 4, 2), text("(see note").as_ref());
+    let m = &out.manifest_json;
+    assert!(m.contains("4 value(s) with an opening parenthesis but no closing one read as negative: B7 '(11,134'"), "{m}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn unparsed_values_are_kept_and_reported() {
     let dir = tmp_dir("unparsed");
