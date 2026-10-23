@@ -542,6 +542,8 @@ class TableProg:
         for c in sorted(t.label_cols):
             hg = q.col_grounded(t.headers[c])
             for desc, m, rg in [("all data rows", D, 0)] + [(d, mm & D, r) for d, mm, r in sets]:
+                if f"{t.headers[c]}=" in desc or f"{t.headers[c]}!=" in desc:
+                    continue  # distinct values of the filtered column itself: 1 by construction
                 vals = {str(r[c]) for r, k in zip(t.rows, m) if k and c < len(r) and r[c] not in (None, "")}
                 if vals:
                     self._add(float(len(vals)), (rg, int(hg)), ("count distinct", desc, ("label", c), m))

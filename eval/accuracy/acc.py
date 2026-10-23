@@ -2,7 +2,8 @@
 
 Model-free and deterministic. Tool outputs come from eval/public/run_hedgehog.py (cells.tsv, normalize
 --csv --keep-totals + manifest, catalog.txt) under $HH_PUBLIC_WORK (default here:
-../scratch-archive/accuracy/work, so a scoreboard run never mixes with eval/public's own outputs).
+../scratch-archive/accuracy/work/<binary sha256[:12]>, so a scoreboard run never mixes builds, nor with
+eval/public's own outputs).
 
 Gold atoms (one item -> several atoms; each atom is measured by L or by C):
 
@@ -32,9 +33,27 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 PROJECT = REPO.parent
-os.environ.setdefault("HH_PUBLIC_WORK", str(PROJECT / "scratch-archive" / "accuracy" / "work"))
 sys.path.insert(0, str(REPO / "eval" / "public"))
 sys.path.insert(0, str(HERE))
+
+
+def _default_work() -> str:
+    """../scratch-archive/accuracy/work/<sha256[:12] of the hedgehog binary>: outputs of one build never mix
+    with another's (run_hedgehog.py keeps a file's outputs once written)."""
+    import hashlib
+    from common import hedgehog_bin
+    h = hashlib.sha256()
+    try:
+        with open(hedgehog_bin(), "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        tag = h.hexdigest()[:12]
+    except OSError:
+        tag = "nobinary"
+    return str(PROJECT / "scratch-archive" / "accuracy" / "work" / tag)
+
+
+os.environ.setdefault("HH_PUBLIC_WORK", _default_work())
 
 import agent_mimotable as AM  # noqa: E402
 import score as PS  # noqa: E402  (eval/public/score.py)

@@ -50,11 +50,13 @@ def value_change(src: str, stored) -> str:
         if int(iso.group(3)) != day:
             return "date text parsed with another day" + (" (day 1)" if iso.group(3) == "01" else "")
         return "date text changed"
+    if re.fullmatch(r"\(\d{1,3}\)", s) and isinstance(stored, (int, float)) and stored < 0:
+        return "item number '(n)' read as negative"
     p = parse_number(s)
     if isinstance(stored, (int, float)) and p is None and re.match(r"^\d{4}-\d{2}-\d{2}", s):
         return "date became a number (serial)"
     if isinstance(stored, (int, float)) and 20000 <= float(stored) <= 70000 and float(stored) == int(stored) and \
-            not p:
+            (not p or s == str(int(stored))):
         return "date left as Excel serial"
     if p is not None and isinstance(stored, str):
         return "number kept as text"
@@ -65,19 +67,37 @@ def value_change(src: str, stored) -> str:
     return "text changed"
 
 
-def source_hits(raw: dict, atom: "PS.Atom", date: dict | None) -> list[tuple]:
+def source_hits(raw: dict, atom: "PS.Atom", date: dict | None, tables=None) -> list[tuple]:
     out = []
     for (sh, r, c), v in raw.items():
         if date is not None:
             if _date_text_match(v, date):
                 out.append((sh, r, c, v))
+            elif tables is not None and re.fullmatch(r"[2-6]\d{4}", str(v).strip()) and _date_text_match(f"date:{v}", date):
+                # a whole number that is this date as an Excel serial, in a column named like a date
+                loc = PS.locate(tables, sh, r, c)
+                if not isinstance(loc, str) and re.search(r"(?i)\bdate\b|\bday\b|日期", loc[0].headers[loc[2]]):
+                    out.append((sh, r, c, v))
         elif atom.matches_value(v):
             out.append((sh, r, c, v))
     return out
 
 
+def _serial_iso(s: str) -> str | None:
+    """`hedgehog cells` writes a date cell as date:<Excel serial>."""
+    import datetime as dt
+    m = re.fullmatch(r"date:(\d+(?:\.\d+)?)", s.strip())
+    if not m:
+        return None
+    try:
+        return (dt.date(1899, 12, 30) + dt.timedelta(days=int(float(m.group(1))))).isoformat()
+    except (OverflowError, ValueError):
+        return None
+
+
 def _date_text_match(v: str, d: dict) -> bool:
     s = str(v)
+    s = _serial_iso(s) or s
     m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
     if m:
         return int(m.group(2)) == d["m"] and int(m.group(3)) == d["d"] and (not d.get("y") or int(m.group(1)) == d["y"])
@@ -89,17 +109,18 @@ def _date_text_match(v: str, d: dict) -> bool:
 
 
 def table_date_match(v, d: dict) -> bool:
-    if not isinstance(v, str):
+    if not isinstance(v, str) or not d.get("m"):
         return False
     m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", v)
-    return bool(m) and int(m.group(2)) == d["m"] and int(m.group(3)) == d["d"] and (not d.get("y") or int(m.group(1)) == d["y"])
+    return bool(m) and int(m.group(2)) == d["m"] and (d.get("d") is None or int(m.group(3)) == d["d"]) and \
+        (not d.get("y") or int(m.group(1)) == d["y"])
 
 
 def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
     """One MiMoTable / RealHiTBench L atom."""
     date = {k: a[k] for k in ("m", "d", "y") if k in a} if a["kind"] == "date" else None
     at = PS.Atom(a["text"], "number" if a["kind"] == "number" else "text")
-    hits = source_hits(raw, at, date)
+    hits = source_hits(raw, at, date, tables)
     if not hits:
         return {"text": a["text"], "attempted": False}
     rec = {"text": a["text"], "attempted": True}
@@ -112,8 +133,78 @@ def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
         r = PS.reach_tables(tables, [at], qw)
         rec["pass"] = r["cell"] and (r["loose"] or at.num is None)
         rec["level"] = "loose" if r["loose"] else "cell" if r["cell"] else "none"
+    if rec["pass"] and date is None and at.num is None:
+        # a text answer found only in columns without a name (col_X): the agent cannot tell what it is
+        cols = [t.headers[j] for t in tables for row in t.rows for j, v in enumerate(row) if at.matches_value(v)]
+        if cols and all(re.match(r"^col_[A-Z]+$", h.split(" / ")[-1]) for h in cols):
+            rec["pass"] = False
+            rec["cause"], rec["evidence"] = "answer column has no header (col_X)", f"{a['text']!r} only in {sorted(set(cols))[:3]}"
+            return rec
     if not rec["pass"]:
         rec["cause"], rec["evidence"] = miss_signature(it, tables, hits, at, date)
+    return rec
+
+
+def question_keys(it: dict, raw: dict) -> list[tuple]:
+    """Text cells of the source that the question quotes (codes, names, item numbers such as "(4)"):
+    an agent looks them up, so they must reach the tables unchanged. Only cells of 3+ characters with a
+    letter or digit (or a bracketed item number), at word boundaries in the question."""
+    q = " " + norm_text(it["question"]) + " "
+    qraw = it["question"]
+    out, seen = [], set()
+    for (sh, r, c), v in raw.items():
+        sv = str(v).strip()
+        if not sv or sv in seen or parse_number(sv) is not None and not re.fullmatch(r"\(\d{1,3}\)", sv):
+            continue
+        if re.fullmatch(r"\(\d{1,3}\)", sv):
+            hit = re.search(r"(?<![\w(])" + re.escape(sv) + r"(?![\w)])", qraw) is not None
+        else:
+            n = norm_text(sv)
+            hit = len(n) >= 3 and len(n) <= 60 and bool(re.search(r"\d", n) or len(n.split()) >= 2) and f" {n} " in q
+        if hit:
+            seen.add(sv)
+            out.append((sh, r, c, sv))
+    return out[:6]
+
+
+def _key_date(sv: str):
+    from invariants import _md
+    m = re.match(r"^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$", sv.strip())
+    if m:
+        return {"y": int(m.group(1)), "m": int(m.group(2)), "d": int(m.group(3))}
+    my = re.fullmatch(r"(?i)(" + "|".join(MONTHS) + r")\.?,?\s+((?:19|20)\d\d)", sv.strip())
+    if my:
+        return {"m": MONTHS.index(my.group(1).lower()) + 1, "d": None, "y": int(my.group(2))}
+    md = _md(sv)
+    if md:
+        y = re.search(r"(?<!\d)((?:19|20)\d\d)(?!\d)", sv)
+        return {"m": md[0], "d": md[1], "y": int(y.group(1)) if y else None}
+    return None
+
+
+def check_key(it, key, tables, catalog: str) -> dict:
+    """A question key passes when a table cell, a column header, a table title or the catalog holds it
+    unchanged; a date key also when a cell holds the same date (ISO)."""
+    sh, r, c, sv = key
+    at = PS.Atom(sv, "text")
+    d = _key_date(sv)
+    exact = re.fullmatch(r"\(\d{1,3}\)", sv) is not None  # "(4)" must stay "(4)": norm_text would equal -4
+    in_cells = any((not exact and at.matches_value(v)) or str(v).strip() == sv for t in tables for row in t.rows for v in row) or \
+        (d is not None and any(table_date_match(v, d) for t in tables for row in t.rows for v in row))
+    found = in_cells or (not exact and (PS.in_header_or_title(tables, at) or (bool(at.norm) and f" {at.norm} " in f" {norm_text(catalog)} ")))
+    rec = {"text": sv, "attempted": True, "key": True, "pass": found}
+    if found and not in_cells:
+        # found only as column names "X", "X (2)", "X (3)": a row of equal values was taken as the header
+        for t in tables:
+            reps = [h for h in t.headers if re.fullmatch(re.escape(sv) + r"( \(\d+\))?", h)]
+            if len(reps) >= 3:
+                rec["pass"] = False
+                rec["cause"] = "question key: only columns told apart by (2), (3) carry it"
+                rec["evidence"] = f"{sv!r} names {len(reps)} columns of {t.id}: {reps[:3]} (a row of values taken as the header, or lost parents)"
+                return rec
+    if not found:
+        rec["cause"], rec["evidence"] = miss_signature(it, tables, [(sh, r, c, sv)], at, None)
+        rec["cause"] = "question key: " + rec["cause"]
     return rec
 
 
@@ -130,8 +221,11 @@ def miss_signature(it, tables, hits, at, date) -> tuple[str, str]:
             continue
         t, i, j = loc
         stored = t.rows[i][j] if j < len(t.rows[i]) else None
-        ok = ((table_date_match(stored, date) or (isinstance(stored, str) and _date_text_match(stored, date)))
-              if date is not None else at.matches_value(stored))
+        if re.fullmatch(r"\(\d{1,3}\)", str(v).strip()):
+            ok = str(stored).strip() == str(v).strip()
+        else:
+            ok = ((table_date_match(stored, date) or (isinstance(stored, str) and _date_text_match(stored, date)))
+                  if date is not None else at.matches_value(stored))
         if not ok:
             sigs.append((f"value changed: {value_change(v, stored)}", f"{a1}={v!r} -> {stored!r} ({t.id} '{t.headers[j]}')"))
             continue
@@ -232,6 +326,10 @@ def run_item(it: dict) -> dict:
             if a["cls"] != "L":
                 continue
             out["atoms"].append(check_atom(it, a, tables, raw))
+        if it["atoms"]:
+            catalog = "\n".join(cat for (_, _, cat, _) in loaded)
+            for k in question_keys(it, raw):
+                out["atoms"].append(check_key(it, k, tables, catalog))
     att = [a for a in out["atoms"] if a["attempted"]]
     out["attempted"] = bool(att)
     out["pass"] = bool(att) and all(a["pass"] for a in att)

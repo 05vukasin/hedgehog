@@ -162,7 +162,13 @@ def m_index(mrows: list[dict]) -> dict:
     return by
 
 
+GENERIC = ("outside program space", "only loosely grounded", "only ungrounded", "value in a cell, no grounded")
+
+
 def cluster_of(ds: str, files: list[str], own: str, mind: dict) -> str:
+    """The miss's own cause; a generic C cause gets the file's most specific M violation attached."""
+    if not own.startswith(GENERIC):
+        return own
     kinds = set().union(*[mind.get((ds, f), set()) for f in files]) if files else set()
     for k in M_PRIORITY:
         if k in kinds:
@@ -364,7 +370,11 @@ def main() -> None:
         (HERE / "k_baseline.json").write_text(json.dumps({"tokenizer": res["K"]["tokenizer"], "per_dataset": res["K"]["per_dataset"]}, indent=1) + "\n")
     if side == "dev":
         (HERE / "RESULTS.md").write_text(md(res, a.examples))
-        (HERE / "results.json").write_text(json.dumps(res, indent=1, ensure_ascii=False, default=str))
+        (WORK / "results-full.json").write_text(json.dumps(res, indent=1, ensure_ascii=False, default=str))
+        slim = json.loads(json.dumps(res, default=str))  # committed: counts and a few examples per cluster
+        for m in ("L", "C"):
+            slim[m]["clusters"] = {k: {"misses": len(v), "examples": v[:a.examples]} for k, v in res[m]["clusters"].items()}
+        (HERE / "results.json").write_text(json.dumps(slim, indent=1, ensure_ascii=False, default=str))
         (WORK / "oracle-dev.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False, default=str) + "\n" for r in crows))
         print(md(res, a.examples).split("## Per dataset")[0])
     else:
