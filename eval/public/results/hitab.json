@@ -1,0 +1,301 @@
+{
+ "dataset": "hitab",
+ "items": 7324,
+ "files": 1519,
+ "tokenizer": "tiktoken o200k_base",
+ "cost": {
+  "files": 1519,
+  "hedgehog": {
+   "chars": {
+    "n": 1519,
+    "median": 2077,
+    "p90": 3408,
+    "max": 6026,
+    "sum": 3356637,
+    "mean": 2209.7676102699143
+   },
+   "tokens": {
+    "n": 1519,
+    "median": 677,
+    "p90": 1219,
+    "max": 2438,
+    "sum": 1142873,
+    "mean": 752.3851217906517
+   },
+   "secs": {
+    "n": 1519,
+    "median": 0.012,
+    "p90": 0.0138,
+    "max": 0.0248,
+    "sum": 18.4431,
+    "mean": 0.012141606319947335
+   },
+   "rss_mb": {
+    "n": 1519,
+    "median": 16.95703125,
+    "p90": 17.203125,
+    "max": 17.69140625,
+    "sum": 25763.7578125,
+    "mean": 16.96099921823568
+   },
+   "normalize_secs": {
+    "n": 1519,
+    "median": 0.0124,
+    "p90": 0.0143,
+    "max": 0.028,
+    "sum": 19.0781,
+    "mean": 0.012559644502962476
+   }
+  },
+  "pandas": {
+   "secs": {
+    "n": 1519,
+    "median": 0.0724,
+    "p90": 0.0963,
+    "max": 0.2811,
+    "sum": 115.4213,
+    "mean": 0.07598505595786702
+   },
+   "rss_mb": {
+    "n": 1519,
+    "median": 70.8984375,
+    "p90": 71.05078125,
+    "max": 84.55078125,
+    "sum": 107725.2421875,
+    "mean": 70.91852678571429
+   }
+  },
+  "markitdown": {
+   "chars": {
+    "n": 1519,
+    "median": 1856,
+    "p90": 3693,
+    "max": 8549,
+    "sum": 3284764,
+    "mean": 2162.451612903226
+   },
+   "tokens": {
+    "n": 1519,
+    "median": 709,
+    "p90": 1634,
+    "max": 4521,
+    "sum": 1325954,
+    "mean": 872.9124423963134
+   },
+   "secs": {
+    "n": 1519,
+    "median": 0.0442,
+    "p90": 0.0634,
+    "max": 0.3381,
+    "sum": 72.0972,
+    "mean": 0.04746359447004608
+   },
+   "rss_mb": {
+    "n": 1519,
+    "median": 113.34375,
+    "p90": 113.640625,
+    "max": 124.625,
+    "sum": 172296.546875,
+    "mean": 113.42761479591837
+   }
+  },
+  "failures": {
+   "hedgehog": {},
+   "pandas": {},
+   "markitdown": {}
+  },
+  "failure_examples": {}
+ },
+ "reach_task": {
+  "groups": {
+   "computed": {
+    "items": 1520,
+    "needs_query": 1520,
+    "ops_known": 1520,
+    "hh_ops_clean_known": 1207,
+    "pd_ops_clean_known": 46
+   },
+   "header_answer": {
+    "items": 1358,
+    "verbatim": 1281,
+    "hh_catalog": 1074,
+    "md_text": 1279,
+    "hh_cell": 1199,
+    "hh_loose": 893,
+    "hh_strict": 619,
+    "pd_cell": 1279,
+    "pd_loose": 1101,
+    "pd_strict": 725,
+    "answer_not_in_file": 77
+   },
+   "lookup": {
+    "items": 4446,
+    "verbatim": 4446,
+    "hh_catalog": 602,
+    "md_text": 4446,
+    "hh_cell": 4405,
+    "hh_loose": 4287,
+    "hh_strict": 2991,
+    "pd_cell": 4446,
+    "pd_loose": 3627,
+    "pd_strict": 59
+   },
+   "ALL": {
+    "items": 7324,
+    "verbatim": 5727,
+    "hh_catalog": 1676,
+    "md_text": 5725,
+    "hh_cell": 5604,
+    "hh_loose": 5180,
+    "hh_strict": 3610,
+    "pd_cell": 5725,
+    "pd_loose": 4728,
+    "pd_strict": 784,
+    "needs_query": 1520,
+    "ops_known": 1520,
+    "hh_ops_clean_known": 1207,
+    "pd_ops_clean_known": 46,
+    "answer_not_in_file": 77
+   }
+  },
+  "examples": {
+   "lookup | hedgehog: answer not in catalog": [
+    "clean/nsf/0_1_nsf21326-tab001.xlsx · item e3ea71e57afb31f0b257426444523c3e · atoms ['154983.0'] · catalog 2467 chars",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 957ff1802f7171dfe85593e08a8eb8c6 · atoms ['120824.0'] · catalog 1329 chars",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 15ef07a1e7916da2207b2a0bad45bf22 · atoms ['374685.0'] · catalog 1329 chars",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 068e85ed06c5b22bb4aeb913e8e1d4f2 · atoms ['9.6'] · catalog 1329 chars",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 5c146e18a1e3b336c33c7411414b0cee · atoms ['4.2'] · catalog 1329 chars",
+    "clean/nsf/103_54_nsf19316-tab001.xlsx · item 09c3d348ea76b11d305d71fe30e310aa · atoms ['355821.0'] · catalog 4080 chars"
+   ],
+   "header_answer | hedgehog: answer not in catalog": [
+    "clean/nsf/167_83_tab3.xlsx · item 7f2244643790ba2f53002289725d4fe0 · atoms ['non-s&e'] · catalog 954 chars",
+    "clean/statcan/1001.xlsx · item 96db851bc4d88b027ffa428dea62e748 · atoms ['cameroon', \"cote d'ivoire\", 'senegal'] · catalog 1500 chars",
+    "clean/statcan/1011.xlsx · item ba6d4c42e3c9603be5f1aec93c6abb4b · atoms ['ethiopia', 'saint vincent and the grenadines', 'grenada', 'saint lucia'] · catalog 364 chars",
+    "clean/statcan/102.xlsx · item 4f5ba7d7143630317b8db3e30db1dfaa · atoms ['french-language workers'] · catalog 2737 chars",
+    "clean/statcan/102.xlsx · item 671932699ecd8c4978cd6ffe5fc8b862 · atoms ['french-language workers'] · catalog 2737 chars",
+    "clean/statcan/102.xlsx · item 8a4582532a5dd62fc6ee1066981009fc · atoms ['french-language workers'] · catalog 2737 chars"
+   ],
+   "header_answer | hedgehog: answer value in no table cell": [
+    "clean/statcan/1011.xlsx · item ba6d4c42e3c9603be5f1aec93c6abb4b · answer atoms ['ethiopia', 'saint vincent and the grenadines', 'grenada', 'saint lucia']",
+    "clean/statcan/102.xlsx · item 4f5ba7d7143630317b8db3e30db1dfaa · answer atoms ['french-language workers']",
+    "clean/statcan/102.xlsx · item 671932699ecd8c4978cd6ffe5fc8b862 · answer atoms ['french-language workers']",
+    "clean/statcan/102.xlsx · item 8a4582532a5dd62fc6ee1066981009fc · answer atoms ['french-language workers']",
+    "clean/statcan/102.xlsx · item 83b60aac2b4c4f955538c1be3e7617a9 · answer atoms ['french-language workers']",
+    "clean/statcan/104.xlsx · item 481eaa706962145140a0c437259d32f0 · answer atoms ['french-language workers']"
+   ],
+   "lookup | hedgehog: answer value in no table cell": [
+    "clean/statcan/1011.xlsx · item 7e5333b3993953bc25a2b8a2a5b36dec · answer atoms ['53.1']",
+    "clean/statcan/107.xlsx · item 5506c027681a08cc866f751bbf961754 · answer atoms ['15.9']",
+    "clean/statcan/107.xlsx · item 22eb6b9c7606c171be8318dc8f434738 · answer atoms ['42.6']",
+    "clean/statcan/107.xlsx · item 6d380aeef634bc37118a5920d6008836 · answer atoms ['30.5']",
+    "clean/statcan/107.xlsx · item 4b28221dfb98e5ed8aa10badca7f29cf · answer atoms ['40.5']",
+    "clean/statcan/107.xlsx · item ab3e7deca763b7987cc26bc53a51aaad · answer atoms ['42.1']"
+   ]
+  }
+ },
+ "link": {
+  "lookups": 4446,
+  "tools": {
+   "hedgehog": {
+    "n": 4446,
+    "found": 4405,
+    "value: equal": 4389,
+    "col_exact_n": 4405,
+    "col_exact": 4018,
+    "col_lenient_n": 4405,
+    "col_lenient": 4357,
+    "row_exact_n": 4399,
+    "row_exact": 2932,
+    "row_lenient_n": 4399,
+    "row_lenient": 3258,
+    "row_leaf_n": 4399,
+    "row_leaf": 3990,
+    "both_n": 4399,
+    "both_exact": 2690,
+    "both_lenient": 3219,
+    "not_found": 41,
+    "not_found: row not in any table": 41,
+    "value: kept as text": 12,
+    "value: source not a number": 4
+   },
+   "pandas": {
+    "n": 4446,
+    "found": 4446,
+    "value: equal": 511,
+    "col_exact_n": 4446,
+    "col_exact": 0,
+    "col_lenient_n": 4446,
+    "col_lenient": 36,
+    "row_exact_n": 4440,
+    "row_exact": 1834,
+    "row_lenient_n": 4440,
+    "row_lenient": 1945,
+    "row_leaf_n": 4440,
+    "row_leaf": 4222,
+    "both_n": 4440,
+    "both_exact": 0,
+    "both_lenient": 6,
+    "value: kept as text": 3931,
+    "value: source not a number": 4
+   }
+  },
+  "examples": {
+   "hedgehog: row labels differ": [
+    "clean/nsf/0_1_nsf21326-tab001.xlsx !B22: gold ['other', 'total'] vs ['Total (using the former definition of development)']",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !C9: gold ['2016', 'all industries'] vs ['All industries']",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !B9: gold ['2016', 'all industries'] vs ['All industries']",
+    "clean/nsf/113_55_fs17-ib-19314-tab008.xlsx !B6: gold ['all institutions', 'top 10 nonprofit institutions', 'patient-centered outcomes research institute'] vs ['Patient-Centered Outcomes Research Institute']",
+    "clean/nsf/120_57_herd16-ib-19303-tab002.xlsx !D4: gold ['-'] vs ['Totalb']",
+    "clean/nsf/120_57_herd16-ib-19303-tab002.xlsx !G4: gold ['-'] vs ['Totalb']"
+   ],
+   "hedgehog: column header differs": [
+    "clean/nsf/129_62_np16-ib-19308-tab003.xlsx !B6: gold ['source of funds', 'total'] vs 'Source of funds ($millions) / Total'",
+    "clean/nsf/129_62_np16-ib-19308-tab003.xlsx !B12: gold ['source of funds', 'total'] vs 'Source of funds ($millions) / Total'",
+    "clean/nsf/163_81_tab2.xlsx !H25: gold ['all r&d expenditures'] vs 'All R&D expenditures (2)'",
+    "clean/nsf/189_89_tab2.xlsx !D5: gold ['company-performed r&d per r&d employee', 'domestic'] vs 'Companyperformed R&D per R&D employee / Domestic'",
+    "clean/nsf/189_89_tab2.xlsx !E5: gold ['company-performed r&d per r&d employee', 'foreign'] vs 'Companyperformed R&D per R&D employee / Foreign'",
+    "clean/nsf/208_99_tab2.xlsx !I12: gold ['intramural performersa', 'amount'] vs 'Intramural performersa / Amount (2)'"
+   ],
+   "hedgehog: cell not in a table (row not in any table)": [
+    "clean/statcan/1011.xlsx original!B22 = '53.1'",
+    "clean/statcan/107.xlsx original!B5 = '15.9'",
+    "clean/statcan/107.xlsx original!B6 = '42.6'",
+    "clean/statcan/107.xlsx original!B13 = '30.5'",
+    "clean/statcan/107.xlsx original!B16 = '40.5'",
+    "clean/statcan/107.xlsx original!B17 = '42.1'"
+   ],
+   "hedgehog: value kept as text": [
+    "clean/statcan/1261.xlsx !B4: source '13,505' stored '13,505'",
+    "clean/statcan/1261.xlsx !B8: source '11,992' stored '11,992'",
+    "clean/statcan/1261.xlsx !B9: source '9,849' stored '9,849'",
+    "clean/statcan/1261.xlsx !G9: source '17,734' stored '17,734'",
+    "clean/statcan/1261.xlsx !B12: source '(11,134' stored '(11,134'",
+    "clean/statcan/1261.xlsx !G12: source '(5,874' stored '(5,874'"
+   ],
+   "pandas: column header differs": [
+    "clean/nsf/0_1_nsf21326-tab001.xlsx !B22: gold ['2017 actual'] vs 'Unnamed: 1'",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !C9: gold ['software r&d'] vs 'Unnamed: 2'",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !B9: gold ['total business r&d'] vs 'Unnamed: 1'",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !C13: gold ['software r&d'] vs 'Unnamed: 2'",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !B13: gold ['total business r&d'] vs 'Unnamed: 1'",
+    "clean/nsf/103_54_nsf19316-tab001.xlsx !I5: gold ['2015'] vs 'Unnamed: 8'"
+   ],
+   "pandas: row labels differ": [
+    "clean/nsf/0_1_nsf21326-tab001.xlsx !B22: gold ['other', 'total'] vs ['Total (using the former definition of development)', '153932', '156777', '2845']",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !C9: gold ['2016', 'all industries'] vs ['All industries', '374685']",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !B9: gold ['2016', 'all industries'] vs ['All industries', '120824']",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !C13: gold ['2006-16 annual growth rate (%)a', 'all industries'] vs ['All industries', '4.2']",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx !B13: gold ['2006-16 annual growth rate (%)a', 'all industries'] vs ['All industries', '9.6']",
+    "clean/nsf/104_54_nsf19316-tab002.xlsx !I17: gold ['large companies', '25,000 or more'] vs ['25,000 or more']"
+   ],
+   "pandas: value kept as text": [
+    "clean/statcan/100.xlsx !B9: source '52.1' stored '52.1'",
+    "clean/statcan/100.xlsx !C9: source '60.6' stored '60.6'",
+    "clean/statcan/100.xlsx !D9: source '55.0' stored '55.0'",
+    "clean/statcan/100.xlsx !E9: source '58.1' stored '58.1'",
+    "clean/statcan/1004.xlsx !C7: source '50.8' stored '50.8'",
+    "clean/statcan/1004.xlsx !C6: source '34.8' stored '34.8'"
+   ]
+  }
+ }
+}

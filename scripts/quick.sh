@@ -10,6 +10,7 @@
 #   golden     mini golden on ~20 small real files, eval/quick/files.txt vs golden.tsv ($HEDGEHOG_DATA)
 #   noise      noise smoke: 1 seed per family at t = 0.5, vs eval/quick/noise.tsv
 #   info       quick mode of the info scoreboard, when eval/info/score.py exists
+#   public     14 HiTab tables of the public benchmark (eval/public/quick.py): value-label linking counts
 #
 # Builds use the `quick` profile (Cargo.toml: dependencies optimized, hedgehog's own crates
 # unoptimized and incremental, so a rebuild after an edit takes seconds) in target-quick/
@@ -21,7 +22,7 @@ set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 UPDATE=0
-ONLY=snapshots,golden,noise,info
+ONLY=snapshots,golden,noise,info,public
 while [ $# -gt 0 ]; do
   case $1 in
     --update) UPDATE=1 ;;
@@ -193,6 +194,33 @@ if want info; then
     fi
   fi
   finish info "${rc:-0}" "$t0"
+fi
+
+# --- 5. public benchmark slice (HiTab, metric B) ------------------------------------------------
+if want public; then
+  t0=$(now)
+  rc=0
+  if [ -z "$HEDGEHOG_DATA" ] || [ ! -d "$HEDGEHOG_DATA/public/hitab" ]; then
+    echo "public: skipped (no HiTab data; eval/public/README.md)"
+  else
+    log=$WORK/public.log
+    BIN=${HEDGEHOG_BIN:-}
+    if [ -z "$BIN" ]; then
+      run "$log" cargo build --offline --profile quick -p hh_cli -q
+      rc=$?
+      BIN=$CARGO_TARGET_DIR/quick/hedgehog
+    fi
+    if [ $rc -ne 0 ]; then
+      echo "public: build FAILED"; tail -30 "$log" | sed 's/^/  /'
+    else
+      args=(--bin "$BIN" --data "$HEDGEHOG_DATA" --tmp "$WORK")
+      [ $UPDATE = 1 ] && args+=(--update)
+      run "$log" python3 -I "$ROOT/eval/public/quick.py" "${args[@]}"
+      rc=$?
+      grep -E "^public|^  " "$log"
+    fi
+  fi
+  finish public "${rc:-0}" "$t0"
 fi
 
 # --- summary ---------------------------------------------------------------------------------------

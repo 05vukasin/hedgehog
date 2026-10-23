@@ -67,7 +67,7 @@ that for every step and keep each step's output in `target-logs/<step>.log`.
 
 #### Tier 0: `make quick`
 
-`scripts/quick.sh` runs four parts and prints one result line each (timings go to stderr, so the
+`scripts/quick.sh` runs five parts and prints one result line each (timings go to stderr, so the
 rest of the output is identical on every run):
 
 | Part | What it checks | Stored result | Needs |
@@ -75,6 +75,7 @@ rest of the output is identical on every run):
 | snapshots | `agent/tests/snapshots.rs`: one small workbook per agent-facing feature, built in the test (total, of-which and average rows, subtotals above groups; wide years and text periods; `<id> - <name>` and ID + name columns; several files with `f1`/`f2` and JOIN KEYS; union views; the quality line; signs; units from titles; booleans; notes on empty results; SQL dialect and total-label hints; footnote marks; EU/US/Latin-1 CSV numbers; side-by-side and stacked tables) — its `open_file` catalog and 1–3 query results | `agent/tests/snapshots/<feature>.txt` | nothing (also runs in CI) |
 | golden | the `open_file` catalog (one `hedgehog mcp` session) and the `hedgehog normalize` manifest of 22 small real files: finance, statistics offices, registers, xlsx/xls/ods/CSV, EU and US | `eval/quick/files.txt`, `golden.tsv` (table count, catalog and manifest hashes) | `$HEDGEHOG_DATA` |
 | noise | `noise_eval --seeds 1 --intensities 0.5`: one workbook per noise family (21), rules and model path; fails on a crash or a family that passed before | `eval/quick/noise.tsv` | `$HEDGEHOG_DATA` (its `clean/` tables) |
+| public | the public-benchmark slice (`eval/public/quick.py`): 14 trimmed HiTab tables through `hedgehog` (cells, normalize, `open_file`), their 78 lookup questions scored for value-label linking (cell found, number equal, column header exact, row labels exact / leaf); fails when a count drops or a catalog grows > 5 % | `eval/public/quick.tsv` | `$HEDGEHOG_DATA/public/hitab` ([eval/public/README.md](../eval/public/README.md)) |
 | info | the info scoreboard (`eval/info/score.py --question`) on 17 small cases (with the naive-query traps of pt-social-report, uk-ons-labour and enron-henry-hub), two lines: the catalog as usual, and with each case's prompt as `open_file`'s `question` (B150; the line gives the size change). Fails when a case loses a check that is in the catalog or one query away, a trap check fails, or a catalog grows > 5 % | `eval/quick/info.tsv`, `eval/quick/info_question.tsv` | `$HEDGEHOG_DATA` |
 
 A difference fails with a readable line diff: the snapshot lines that changed, or for the golden

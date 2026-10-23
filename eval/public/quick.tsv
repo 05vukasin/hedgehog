@@ -1,0 +1,15 @@
+table	lookups	found	value_equal	col_exact	row_exact	row_leaf	catalog_chars
+statcan/100	4	4	4	2	4	4	1545
+statcan/1004	5	5	5	5	0	5	2291
+statcan/1008	4	4	4	4	4	4	3447
+statcan/1028	12	12	12	12	12	12	2657
+statcan/103	4	4	4	1	4	4	3184
+statcan/1033	10	10	10	10	10	10	2153
+statcan/1044	4	4	4	2	4	4	3484
+statcan/1056	9	9	9	9	7	7	2918
+nsf/102_53_nsf19315-tab001	4	4	4	4	2	4	1329
+nsf/127_62_np16-ib-19308-tab001	5	5	5	5	5	5	4208
+nsf/128_62_np16-ib-19308-tab002	6	6	6	6	3	6	3982
+nsf/131_64_sdr17-ib-19307-tab001	4	4	4	4	1	4	3095
+statcan/102	0	0	0	0	0	0	2737
+statcan/107	7	0	0	0	0	0	363

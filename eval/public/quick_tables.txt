@@ -1,0 +1,14 @@
+statcan/100
+statcan/1004
+statcan/1008
+statcan/1028
+statcan/103
+statcan/1033
+statcan/1044
+statcan/1056
+nsf/102_53_nsf19315-tab001
+nsf/127_62_np16-ib-19308-tab001
+nsf/128_62_np16-ib-19308-tab002
+nsf/131_64_sdr17-ib-19307-tab001
+statcan/102
+statcan/107
