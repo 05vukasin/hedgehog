@@ -148,7 +148,8 @@ class Table:
         self.parent_cols: set[int] = set()
 
     def labels(self, i: int, skip: int | None = None) -> list[str]:
-        return [str(self.rows[i][c]) for c in sorted(self.label_cols) if c != skip and c < len(self.rows[i])
+        """Row labels as text whatever their stored type (a year label 2015 stored as a number reads '2015')."""
+        return [label_text(self.rows[i][c]) for c in sorted(self.label_cols) if c != skip and c < len(self.rows[i])
                 and self.rows[i][c] not in (None, "")]
 
     def col_clean(self, c: int) -> tuple[bool, bool]:
@@ -163,6 +164,29 @@ class Table:
                     mixed = True
                     break
         return numeric, not mixed
+
+
+def label_text(v) -> str:
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def _year_stub_cols(cols: list[dict], keep: list[int], label_cols: set[int]) -> set[int]:
+    """Number columns of years (all values whole numbers 1900-2100) in the row stub: only label columns or
+    other such year columns to their left. A year that labels the row (a section '2015' under an age
+    group) is a row label stored as a number, not a measure."""
+    out = set()
+    for k, i in enumerate(keep):
+        c = cols[i]
+        if k in label_cols:
+            continue
+        lo, hi = c.get("min"), c.get("max")
+        if c.get("dtype") == "integer" and isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and 1900 <= lo <= hi <= 2100:
+            out.add(k)
+            continue
+        break  # the first measure column ends the stub
+    return out
 
 
 def _cast(v: str):
@@ -208,7 +232,8 @@ def hh_load(dataset: str, rel: str):
             rts = [str(r[rt_i]) for r in body] if rt_i is not None else None
             keep = [i for i, c in enumerate(cols) if c["role"] in ("data", "group")]
             label_cols = {k for k, i in enumerate(keep) if cols[i]["role"] == "group" or cols[i]["dtype"] in ("text", "string")}
-            numeric = {k for k, i in enumerate(keep) if cols[i]["dtype"] in NUMERIC_HH}
+            label_cols |= _year_stub_cols(cols, keep, label_cols)
+            numeric = {k for k, i in enumerate(keep) if cols[i]["dtype"] in NUMERIC_HH and k not in label_cols}
             rows = [[r[i] if i < len(r) else None for i in keep] for r in body]
             tables.append(Table(t["id"], t["source"]["sheet"], [names[i] for i in keep], rows, src, rts, label_cols,
                                 numeric, [cols[i].get("source_column") for i in keep]))

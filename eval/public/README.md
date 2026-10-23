@@ -84,7 +84,9 @@ when it shows decimals); a percent answer also matches its fraction (hedgehog st
 time written `H:MM[:SS]` (hedgehog writes time-of-day cells as `09:30:00`) is a typed value: it compares with a
 numeric answer as the day fraction the source stores (`common.clock_fraction`; 09:30:00 = 0.395833). The numbers of a hedgehog catalog are its free-text numbers plus
 every cell of its CSV sample rows read as CSV (`score.catalog_numbers`; a number right after a comma is not a
-free-text number, so `0.6,20,5` used to hide the 20).
+free-text number, so `0.6,20,5` used to hide the 20). Row labels compare as text whatever their stored type, and a
+column of years (whole numbers 1900-2100) in the row stub, left of the first measure, is a label column (a
+section '2015' under an age group; HiTab's year row labels).
 
 ### A. Structure (where labels exist)
 

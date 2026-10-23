@@ -52,6 +52,18 @@ class Operands(unittest.TestCase):
         self.assertEqual(S.operands_by_question([t], {"driving"}), (1, 1))
 
 
+class RowLabels(unittest.TestCase):
+    def test_numeric_labels_read_as_text(self):
+        t = table(["Age", "Year", "Mean"], [["Aged 2 to 8", 2015.0, 104]], numeric={2})
+        t.label_cols = {0, 1}
+        self.assertEqual(t.labels(0, 2), ["Aged 2 to 8", "2015"])
+
+    def test_year_column_in_the_stub_is_a_label(self):
+        cols = [{"role": "group", "dtype": "text"}, {"role": "data", "dtype": "integer", "min": 2004, "max": 2015},
+                {"role": "data", "dtype": "integer", "min": 36, "max": 128}, {"role": "data", "dtype": "integer", "min": 2000, "max": 2010}]
+        self.assertEqual(S._year_stub_cols(cols, [0, 1, 2, 3], {0}), {1})  # a year column after a measure stays a measure
+
+
 class CatalogNumbers(unittest.TestCase):
     CAT = ("T1  'x' ← 'A'!A1:F3 · 3 rows\n    columns (6): a b c d e f\n    all 3 rows (CSV):\n    a,b,c,d,e,f\n"
            "    1,M435,20,-3.5,\"1,234\",13:00:00\n    2,\"Smith, J\",\"-12,345.67\",0.25,7%,x\n"
