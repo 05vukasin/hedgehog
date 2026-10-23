@@ -123,7 +123,12 @@ pub fn serial_to_ymd(serial: f64) -> Option<(i32, u8, u8)> {
     if !serial.is_finite() || !(1.0..2958466.0).contains(&serial) {
         return None;
     }
-    Some(civil_from_days(serial.floor() as i64 - UNIX_EPOCH_SERIAL))
+    // Serials 1 … 59 are 1900-01-01 … 1900-02-28 (Excel counts the fictitious 1900-02-29 as 60
+    // and its epoch 1899-12-30 only holds from March 1900 on); 60 is shown as 1900-02-29, read
+    // here as 1900-02-28.
+    let days = serial.floor() as i64;
+    let days = if days < 60 { days + 1 } else { days };
+    Some(civil_from_days(days - UNIX_EPOCH_SERIAL))
 }
 
 /// True for numbers that look like Excel serial dates in everyday data: 1954-10-03 (20000)
@@ -573,9 +578,13 @@ fn parse_tokens(t: &[Tok], order: Option<DateOrder>, trailing_dot: bool) -> Opti
         // March 12, 2024 / March 2024 / Mar-24 / mart 2024.
         [Word(w), rest @ ..] => {
             let m = month_word(w)?;
+            // "March 25" (a space, no year) is a day of March, not March 2025: no date. A
+            // two-digit year needs a mark: "Mar-24", "Mar/24", "Jul '99", "mart 24.".
+            let spaced = matches!(rest, [Sep(' '), ..]) || matches!(rest, [Num { .. }, ..]);
             let rest = skip_seps(rest);
             match rest {
                 [Num { v: y, len: 4 }] => month(*y as i32, m as u32),
+                [Num { v: d, len: 2 }] if spaced && !trailing_dot && (1..=31).contains(d) => None,
                 [Num { v: y, len: 2 }] => month(year_of(*y, 2)?, m as u32),
                 [Num { v: d, len: dl }, rest @ ..] if *dl <= 2 => {
                     let rest = skip_seps(rest);
@@ -774,6 +783,11 @@ mod tests {
         assert_eq!(serial_to_ymd(61.0), Some((1900, 3, 1)));
         assert_eq!(serial_to_ymd(2958465.0), Some((9999, 12, 31)));
         assert_eq!(serial_to_ymd(0.0), None);
+        // January and February 1900: Excel's serial 1 is 1900-01-01 (it was read as 1899-12-31)
+        assert_eq!(serial_to_ymd(1.0), Some((1900, 1, 1)));
+        assert_eq!(serial_to_ymd(1.5), Some((1900, 1, 1)));
+        assert_eq!(serial_to_ymd(59.0), Some((1900, 2, 28)));
+        assert_eq!(serial_to_ymd(60.0), Some((1900, 2, 28)));
         assert_eq!(serial_to_ymd(f64::NAN), None);
         for s in [61.0, 10000.0, 36526.0, 45292.0, 60000.0] {
             let (y, m, d) = serial_to_ymd(s).unwrap();
@@ -882,6 +896,14 @@ mod tests {
             assert_eq!((d.year, d.month, d.precision), (y, m, DatePrecision::Month), "{s:?}");
         }
         assert_eq!(parse_date("12 March", None), None);
+        // A day of a month without a year is no date (it was read as March 2025, 2026, …).
+        for s in ["March 25", "March 26", "November 16", "Oct 15", "march 01"] {
+            assert_eq!(parse_date(s, None), None, "{s:?}");
+        }
+        for (s, y) in [("Mar 99", 1999), ("Mar.24", 2024), ("Mar/24", 2024)] {
+            let d = parse_date(s, None).unwrap_or_else(|| panic!("{s:?}"));
+            assert_eq!((d.year, d.month, d.precision), (y, 3, DatePrecision::Month), "{s:?}");
+        }
         assert_eq!(parse_date("Marchx 2024", None), None);
         assert_eq!(parse_date("Total 2024", None), None);
     }
