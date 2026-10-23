@@ -5,6 +5,7 @@
 #   make quick-update              accept tier 0 changes (then review the diff of the snapshot files)
 #   make merge-check AREA=agent    tier 2, when merging a branch: AREA=agent|core|docs (~5-10 min)
 #   make full                      tier 3, once per batch or before a release (~1-2 h)
+#   make score                     model-free accuracy scoreboard F/S/L/C/M/K on the dev split (eval/accuracy)
 #
 #   make inspect FILE=path/to/file.xlsx            what hedgehog makes of a file, what an agent gets
 #   make llm     FILE=...                          same, summary phrased by the LLM in .env
@@ -37,7 +38,7 @@ capped = mkdir -p $(LOGS) && : > $(LOGS)/$(2).log && echo "== $(2)" && \
 # One step at a time (memory), even under make -j.
 .NOTPARALLEL:
 
-.PHONY: help inspect llm ask compare manifest batch tables build cli test bench check-file \
+.PHONY: score score-holdout help inspect llm ask compare manifest batch tables build cli test bench check-file \
         quick quick-update merge-check check-area full clippy golden benchmarks node-test py-test
 
 help:
@@ -139,3 +140,18 @@ full:
 	@$(call capped,4G,check-cases,env HEDGEHOG_BIN=$(HH) python3 -I eval/agents/check_cases.py)
 	@$(MAKE) --no-print-directory node-test py-test
 	@echo "full: OK; run the agent comparison too if the change affects answers (eval/agents/README.md)"
+
+# Model-free accuracy scoreboard (docs/ACCURACY_PLAN.md, eval/accuracy/README.md): hedgehog over the public
+# QA files with the current build (outputs per build under ../scratch-archive/accuracy/work/<sha>), then
+# F/S/L/C/M/K on the dev split -> eval/accuracy/RESULTS.md + results.json. score-holdout: release only.
+SCORE_PY   ?= $(firstword $(wildcard ../scratch-archive/public-bench/swap/venv-markitdown/bin/python) python3)
+SCORE_WORK  = $(abspath ../scratch-archive/accuracy/work)
+score:
+	@export HH_PUBLIC_WORK=$(SCORE_WORK)/$$(sha256sum $(HH) | cut -c1-12) HEDGEHOG_BIN=$(HH); \
+	$(call capped,3G,score-hh,bash -c 'for d in mimotable realhitbench hitab; do python3 -I eval/public/run_hedgehog.py $$d --workers 2 || exit 1; done') && \
+	$(call capped,3G,score,$(SCORE_PY) -I eval/accuracy/scoreboard.py $(ARGS))
+
+score-holdout:
+	@export HH_PUBLIC_WORK=$(SCORE_WORK)/$$(sha256sum $(HH) | cut -c1-12) HEDGEHOG_BIN=$(HH); \
+	$(call capped,3G,score-hh,bash -c 'for d in mimotable realhitbench hitab; do python3 -I eval/public/run_hedgehog.py $$d --workers 2 || exit 1; done') && \
+	$(call capped,3G,score-holdout,$(SCORE_PY) -I eval/accuracy/scoreboard.py --holdout)

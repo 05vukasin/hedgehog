@@ -40,4 +40,8 @@ listed with its evidence in `eval/accuracy/audit.tsv` (reviewed, never silent).
 - Done: public model-free suite (eval/public); five library fixes (row-label paths 66.7 → 77.1 % on HiTab).
 - Running: cell-fidelity gate + fixes (branch `fidelity`), incl. the 9 library causes found in the MiMoTable
   agent run (e.g. "March 25" read as 2025-03-01).
-- Next: computation-reachability oracle, holdout split, `make score`, then the fix loop.
+- Done (branch `accuracy`): the measurement side in `eval/accuracy/` - seeded file-level dev/holdout split,
+  computation-reachability oracle (validated against HiTab gold operands, a decoy test and a hand-checked
+  sample), L with question keys, M invariants, `make score` (dev baseline in eval/accuracy/RESULTS.md),
+  audit.tsv seeded with the verified wrong-gold MiMoTable items.
+- Next: the fix loop on the largest miss clusters.
