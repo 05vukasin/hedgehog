@@ -411,13 +411,36 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         d += 1;
     }
     if !rows[start + d..end].iter().any(|r| r.n_measure() > 0) {
-        // Text-only table (or no body): the first row is a header if it is wide and all text.
-        let r = &rows[start];
-        let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
+        // Text-only table (or no body): the first row is a header if it is wide and all text;
+        // so is the first such row under up to two sparser rows of parent labels (`2012 | 2013 |
+        // 2014` over `Fitch | S&P | Moody's` over `Company | Type of Audit | Month | …`,
+        // RealHiTBench labor-table50).
         let width = rect.right - rect.left + 1;
-        let ok =
-            end - start >= 2 && r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32;
-        return ok as usize;
+        let wide_text = |r: &Row| {
+            let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
+            r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
+        };
+        let parent = |k: usize| {
+            let r = &rows[k];
+            r.n() >= 2
+                && r.n_measure() == 0
+                && r.n_text() + (r.n_num() - r.n_measure()) == r.n()
+                && rows[k + 1].row == r.row + 1
+                && r.n() * 2 <= rows[k + 1].n()
+        };
+        let mut j = start;
+        // A wide row of parent labels (merged over their groups) counts as a parent too when a
+        // wide all-text row twice as dense follows.
+        while PARENT_HEADER_ROWS
+            && j < start + 2
+            && j + 2 < end
+            && parent(j)
+            && (!wide_text(&rows[j]) || wide_text(&rows[j + 1]))
+        {
+            j += 1;
+        }
+        let ok = end - j >= 2 && wide_text(&rows[j]);
+        return if ok { j - start + 1 } else { 0 };
     }
     if d == 0 {
         // Prior: nearly every table has a header. A wide all-text first row counts, and so does

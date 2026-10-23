@@ -324,3 +324,40 @@ fn a_lone_label_over_the_label_column_is_its_header() {
     let t = with_column(&n, "Reference area");
     assert_eq!(t.src_rows.len(), 10, "{:?}", names(t));
 }
+
+/// RealHiTBench labor-table50: a text-only table under three header rows, `2012 | 2013 | 2014`
+/// over `Fitch | S&P | Moody's` (merged over their groups) over `Company | Type of Audit | Month |
+/// …`. All three are the header (the table had none: `Moody's`, `Company` were in no table).
+#[test]
+fn parent_label_rows_over_a_text_only_table() {
+    let n = normalize("text_only_parents", |ws| {
+        let m = Format::new();
+        for (y, year) in [2012, 2013].iter().enumerate() {
+            let c0 = 1 + 9 * y as u16;
+            ws.merge_range(0, c0, 0, c0 + 8, &year.to_string(), &m).unwrap();
+            for (a, agency) in ["Fitch", "S&P", "Moody's"].iter().enumerate() {
+                let c = c0 + 3 * a as u16;
+                ws.merge_range(1, c, 1, c + 2, agency, &m).unwrap();
+                for (k, h) in ["Type of Audit", "Month", "Company Rating"].iter().enumerate() {
+                    ws.write_string(2, c + k as u16, *h).unwrap();
+                }
+            }
+        }
+        ws.write_string(2, 0, "Company").unwrap();
+        let months = ["MARCH", "JULY", "MAY", "AUGUST", "JUNE"];
+        for i in 0..6u32 {
+            ws.write_string(3 + i, 0, format!("Company {}", i + 1)).unwrap();
+            for c in 1..=18u16 {
+                let v = match c % 3 {
+                    1 => if (i + c as u32) % 4 == 0 { "-" } else { "FULL" },
+                    2 => months[((i + c as u32) % 5) as usize],
+                    _ => ["GOOD", "NORMAL", "BAD"][((i + c as u32) % 3) as usize],
+                };
+                ws.write_string(3 + i, c, v).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "Company");
+    assert!(t.columns.iter().any(|c| c.name == "2013 / Moody's / Company Rating"), "{:?}", names(t));
+    assert_eq!(t.src_rows.len(), 6);
+}
