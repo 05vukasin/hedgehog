@@ -163,10 +163,33 @@ def m_index(mrows: list[dict]) -> dict:
 
 
 GENERIC = ("outside program space", "only loosely grounded", "only ungrounded", "value in a cell, no grounded")
+C_FAMILIES = ("library", "oracle-limit", "gold/question")
+# Earlier C oracle runs, kept as the first rows of "C oracle versions" in RESULTS.md: v1 (the oracle as merged
+# on branch accuracy, commit adf5e71) and v2 on the build of the v1 baseline, for a same-build comparison.
+C_HISTORY = [
+    {"label": "v1 (baseline, adf5e71), build 48678052eded", "pass": 1124, "items": 2264, "raw": 49.6, "after_audit": 49.8,
+     "agree_subset": 705, "agree_exact": 402, "replayable": 1489,
+     "decoys": {"decimal": (283, 2840), "integer 11-100": (190, 838), "integer <= 10": (277, 720), "integer > 100": (24, 936)},
+     "families": "not classified: outside program space 507, only loosely grounded 435, value in a cell 120, other 73"},
+    {"label": "v2, build 48678052eded", "pass": 1178, "items": 2264, "raw": 52.0, "after_audit": 52.1,
+     "agree_subset": 776, "agree_exact": 458, "replayable": 1489,
+     "decoys": {"decimal": (190, 2840), "integer 11-100": (157, 838), "integer <= 10": (263, 720), "integer > 100": (19, 936)},
+     "families": "every miss classified"},
+    {"label": "v1 (adf5e71), build 5cd30e3711be", "pass": 1135, "items": 2264, "raw": 50.1, "after_audit": 50.2,
+     "agree_subset": 705, "agree_exact": 402, "replayable": 1489,
+     "decoys": {"decimal": (283, 2840), "integer 11-100": (198, 838), "integer <= 10": (282, 720), "integer > 100": (24, 936)},
+     "families": "not classified"},
+]
+
+
+def m_hint(ds: str, files: list[str], mind: dict) -> str:
+    kinds = set().union(*[mind.get((ds, f), set()) for f in files]) if files else set()
+    return next((k for k in M_PRIORITY if k in kinds), "")
 
 
 def cluster_of(ds: str, files: list[str], own: str, mind: dict) -> str:
-    """The miss's own cause; a generic C cause gets the file's most specific M violation attached."""
+    """The miss's own cause; a generic C cause gets the file's most specific M violation attached (C causes
+    with a family - library / oracle-limit / gold/question - keep theirs; the M hint goes to the evidence)."""
     if not own.startswith(GENERIC):
         return own
     kinds = set().union(*[mind.get((ds, f), set()) for f in files]) if files else set()
@@ -215,6 +238,12 @@ def score(side: str, examples: int, structure: bool, binary: str) -> dict:
                 it = items.get((ds, r["id"]), {})
                 cl = cluster_of(ds, it.get("files", []), own, mind)
                 ev = bad[0].get("evidence") or "; ".join(bad[0].get("witnesses", [])[:1]) or bad[0].get("weak_example", "") if bad else ""
+                if bad and bad[0].get("family"):
+                    if bad[0].get("source_witness"):
+                        ev = f"{ev}; witness via source headers: {bad[0]['witnesses'][0]}"
+                    mh = m_hint(ds, it.get("files", []), mind)
+                    if mh:
+                        ev = f"{ev} (file has: {mh[3:]})"
                 clusters[cl].append({"dataset": ds, "id": r["id"], "file": (it.get("files") or ["?"])[0],
                                      "atom": bad[0].get("text", "") if bad else "", "evidence": ev})
         tot_n = sum(p["items"] for p in per.values())
@@ -230,6 +259,7 @@ def score(side: str, examples: int, structure: bool, binary: str) -> dict:
     res["C"]["oracle"] = {ds: oracle.summarize([r for r in crows if r["dataset"] == ds]) for ds in DATASETS}
     res["C"]["validation"] = oracle.validate(crows, False)
     res["C"]["decoys_by_magnitude"] = decoy_buckets(crows, items)
+    res["C"]["families"] = c_families(res["C"]["clusters"])
     mk = Counter(r["inv"] for r in mrows)
     res["M"] = {"violations": len(mrows), "files": len({(r["dataset"], r["file"]) for r in mrows}),
                 "per_dataset": {ds: dict(Counter(r["inv"] for r in mrows if r["dataset"] == ds)) for ds in DATASETS},
@@ -248,6 +278,16 @@ def score(side: str, examples: int, structure: bool, binary: str) -> dict:
     res["seconds"] = round(time.time() - t0)
     res["_crows"] = crows
     return res
+
+
+def c_families(clusters: dict) -> dict:
+    """Misses per family and cause (an item counts under its first missed atom's cause)."""
+    fam = {f: {} for f in C_FAMILIES}
+    fam["unclassified"] = {}
+    for k, v in clusters.items():
+        f = next((x for x in C_FAMILIES if k.startswith(x + ": ")), "unclassified")
+        fam[f][k[len(f) + 2:] if f != "unclassified" else k] = len(v)
+    return fam
 
 
 def decoy_buckets(crows, items) -> dict:
@@ -310,6 +350,8 @@ def md(res: dict, examples: int) -> str:
     for m, label in (("L", "L lookup"), ("C", "C computation")):
         a = res[m]["per"]["ALL"]
         L.append(f"| {label} | {a['pass']}/{a['items']} = {a['raw']} % | {a['after_audit']} % ({a['audited']} audited) | {TARGETS[m]} | {a['items'] - a['pass'] - a['audited']} |")
+    fam = res["C"].get("families") or {}
+    L.append("| C misses by family | " + ", ".join(f"{f} {sum(v.values())}" for f, v in fam.items()) + " | | unclassified 0 | |")
     L.append(f"| M misleading | {res['M']['violations']} violations in {res['M']['files']} files | | {TARGETS['M']} | {res['M']['violations']} |")
     K = res["K"]
     kk = ", ".join(f"{ds} {v['mean']:.0f}" for ds, v in K["per_dataset"].items())
@@ -324,9 +366,32 @@ def md(res: dict, examples: int) -> str:
     for k in kinds:
         L.append(f"| {k} | " + " | ".join(str(res["M"]["per_dataset"][ds].get(k, 0)) for ds in DATASETS) + " |")
     if res["side"] == "dev":
+        a, v = res["C"]["per"]["ALL"], res["C"]["validation"]
+        dm = res["C"]["decoys_by_magnitude"]
+        dfmt = lambda d: ", ".join(f"{k} {100 * x[0] / max(1, x[1]):.1f} %" for k, x in sorted(d.items()))
+        L += ["", "## C oracle versions", "",
+              "Same split, same gold. v2 adds wholes, ranges, arg-extremes, adjacent years and complements, tightens "
+              "the pair guards and classifies every miss; the decoy rate is the share of gold x 1.1 / x 0.9 decoys the "
+              "oracle reaches (lower is stricter).", "",
+              "| Oracle | C raw | After audit | HiTab agreement (subset / exact of replayable) | Decoys reachable | Misses |",
+              "|---|---|---|---|---|---|"]
+        for b in C_HISTORY:
+            L.append(f"| {b['label']} | {b['pass']}/{b['items']} = {b['raw']} % | {b['after_audit']} % | {b['agree_subset']} / {b['agree_exact']} of {b['replayable']} | {dfmt(b['decoys'])} | {b['families']} |")
+        L += [f"| v2, this build | {a['pass']}/{a['items']} = {a['raw']} % | {a['after_audit']} % | "
+              f"{v.get('replayable_agree_subset', 0)} / {v.get('replayable_agree', 0)} of {v.get('replayable', 0)} | "
+              f"{dfmt({k: (x['decoys_reachable'], x['decoys']) for k, x in dm.items()})} | "
+              + ", ".join(f"{f} {sum(x.values())}" for f, x in fam.items()) + " |"]
+        L += ["", "## C misses by family and cause", "",
+              "Every C miss has exactly one cause (eval/accuracy/causes.py): **library** (hedgehog's tables lose or change "
+              "what the computation needs: fix in hedgehog), **oracle-limit** (a program shape the oracle does not enumerate, "
+              "or an operand the question names only loosely), **gold/question** (audit candidates: listed for review, never "
+              "audited automatically).", "", "| Family | Cause | Misses |", "|---|---|---|"]
+        for f, causes_ in fam.items():
+            for k, n in sorted(causes_.items(), key=lambda kv: -kv[1]):
+                L.append(f"| {f} | {k} | {n} |")
         for m in ("L", "C"):
             L += ["", f"## {m} misses by cause cluster", "", "| Cluster | Misses | Example |", "|---|---|---|"]
-            for k, v in list(res[m]["clusters"].items())[:20]:
+            for k, v in list(res[m]["clusters"].items())[:20 if m == "L" else 40]:
                 ex = v[0]
                 L.append(f"| {k} | {len(v)} | {ex['dataset']} {ex['id']} · {Path(ex['file']).name} · `{str(ex['atom'])[:30]}` · {str(ex['evidence'])[:140].replace('|', '/')} |")
         L += ["", "## M violations: examples", ""]
@@ -348,6 +413,14 @@ def md(res: dict, examples: int) -> str:
     for k, b in sorted(res["C"]["decoys_by_magnitude"].items()):
         L.append(f"| {k} | {b['atoms']} | {b['reachable']} ({100 * b['reachable'] / b['atoms']:.0f} %) | {b['decoys']} | "
                  f"{b['decoys_reachable']} ({100 * b['decoys_reachable'] / max(1, b['decoys']):.0f} %) |")
+    if res["side"] == "dev":
+        cand = [(k, x) for k, v in res["C"]["clusters"].items() if k.startswith("gold/question: ") for x in v]
+        L += ["", f"## C audit candidates (gold/question: {len(cand)}, for review; not audited)", "",
+              "| Cause | Item | File | Gold | Evidence |", "|---|---|---|---|---|"]
+        for k, x in cand[:40]:
+            L.append(f"| {k[15:]} | {x['dataset']} {x['id']} | {Path(x['file']).name} | `{str(x['atom'])[:20]}` | {str(x['evidence'])[:160].replace('|', '/')} |")
+        if len(cand) > 40:
+            L.append(f"| ... | {len(cand) - 40} more in results.json / {WORK.name}/results-full.json | | | |")
     L += ["", "## Audited misses", ""]
     for m in ("L", "C"):
         for ds, i, why in res[m]["audited"]:
