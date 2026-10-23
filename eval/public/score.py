@@ -118,6 +118,9 @@ class Table:
         self.numeric_cols, self.letters = numeric_cols, letters
         self.by_src = {r: i for i, r in enumerate(src_rows)} if src_rows else {}
         self.title = ""
+        # Columns naming a row's parent in an outline (hedgehog's `<label>_parent`): row labels,
+        # but not the row's own label for the total-row check of `col_clean`.
+        self.parent_cols: set[int] = set()
 
     def labels(self, i: int, skip: int | None = None) -> list[str]:
         return [str(self.rows[i][c]) for c in sorted(self.label_cols) if c != skip and c < len(self.rows[i])
@@ -128,7 +131,8 @@ class Table:
         numeric = c in self.numeric_cols
         mixed = False
         for i, row in enumerate(self.rows):
-            lab = " ".join(norm_text(x) for x in self.labels(i, c))
+            lab = " ".join(norm_text(str(self.rows[i][k])) for k in sorted(self.label_cols - self.parent_cols)
+                           if k != c and k < len(self.rows[i]) and self.rows[i][k] not in (None, ""))
             if TOTAL_RX.search(lab) and (self.row_types is None or self.row_types[i] == "data"):
                 if c < len(row) and row[c] not in (None, ""):
                     mixed = True
@@ -184,6 +188,7 @@ def hh_load(dataset: str, rel: str):
             tables.append(Table(t["id"], t["source"]["sheet"], [names[i] for i in keep], rows, src, rts, label_cols,
                                 numeric, [cols[i].get("source_column") for i in keep]))
             tables[-1].title = t["source"].get("title") or ""
+            tables[-1].parent_cols = {k for k, i in enumerate(keep) if (cols[i].get("derived") or {}).get("kind") == "parent"}
     return meta, raw, catalog, tables
 
 

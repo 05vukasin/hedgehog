@@ -334,6 +334,80 @@ fn empty_and_tableless_workbooks() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Labelled numbers above a table (`Total Income | 9666 | Total Expenditure | 7266`, MiMoTable
+/// cash journals): a key/value table of their own, numbered after the other tables; a date and an
+/// e-mail address beside labels stay notes.
+#[test]
+fn key_value_cells_outside_tables() {
+    let dir = tmp_dir("key_value");
+    let src = dir.join("kv.xlsx");
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.write_string(0, 1, "Cash Journal").unwrap();
+    ws.write_string(1, 1, "Contact:").unwrap();
+    ws.write_string(1, 2, "cash@example.com").unwrap();
+    for (k, (label, v)) in [("Total Income", 9666.0), ("Total Expenditure", 7266.0), ("Total Remaining", 2400.0)].iter().enumerate() {
+        ws.write_string(1, 5 + 3 * k as u16, *label).unwrap();
+        ws.write_number(1, 6 + 3 * k as u16, *v).unwrap();
+    }
+    for (c, h) in ["No.", "Project", "Amount"].iter().enumerate() {
+        ws.write_string(3, 1 + c as u16, *h).unwrap();
+    }
+    for i in 0..6u32 {
+        ws.write_number(4 + i, 1, (i + 1) as f64).unwrap();
+        ws.write_string(4 + i, 2, format!("Project {i}")).unwrap();
+        ws.write_number(4 + i, 3, 100.0 * (i + 1) as f64).unwrap();
+    }
+    wb.save(&src).unwrap();
+    let out = normalize_file(&src, &dir, &Options::default()).unwrap();
+    let book = open(&out.xlsx_path).unwrap();
+    let names = names(&book);
+    let kv = names.iter().position(|n| n.ends_with("_key_value_cells")).unwrap_or_else(|| panic!("{names:?}"));
+    assert!(names[kv].starts_with("T2_"), "{names:?}");
+    let t = &book.sheets[kv];
+    assert_eq!(get(t, 0, 0), text("key").as_ref());
+    assert_eq!(get(t, 1, 0), text("Total Income").as_ref());
+    assert_eq!(get(t, 1, 1), num(9666.0).as_ref());
+    assert_eq!(get(t, 3, 2), text("M2").as_ref());
+    assert!(get(t, 4, 0).is_none(), "three pairs only");
+    let m = &out.manifest_json;
+    assert!(m.contains("cash@example.com"), "the e-mail stays a note: {m}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// StatCan writes some negatives without the closing parenthesis (`(11,134`, HiTab statcan/1261):
+/// read as negatives (the column stays numeric) and listed in a warning; a stray `(` before a word
+/// stays text.
+#[test]
+fn lone_opening_parenthesis_is_a_negative() {
+    let dir = tmp_dir("lone_paren");
+    let src = dir.join("p.xlsx");
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.write_string(0, 0, "Net liabilities per capita, dollars").unwrap();
+    ws.write_string(1, 0, "Province").unwrap();
+    ws.write_string(1, 1, "2007").unwrap();
+    ws.write_string(1, 2, "Note").unwrap();
+    let vals = ["13,505", "9,593", "11,070", "8,347", "(11,134", "2,330", "(14,652", "(10,630", "(6,208", "6,888"];
+    for (i, v) in vals.iter().enumerate() {
+        let r = 2 + i as u32;
+        ws.write_string(r, 0, format!("Province {i}")).unwrap();
+        ws.write_string(r, 1, *v).unwrap();
+        ws.write_string(r, 2, if i == 3 { "(see note" } else { "ok" }).unwrap();
+    }
+    wb.save(&src).unwrap();
+    let out = normalize_file(&src, &dir, &Options::default()).unwrap();
+    let book = open(&out.xlsx_path).unwrap();
+    let t = &book.sheets[1];
+    assert_eq!(get(t, 1, 1), num(13505.0).as_ref());
+    assert_eq!(get(t, 5, 1), num(-11134.0).as_ref());
+    assert_eq!(get(t, 9, 1), num(-6208.0).as_ref());
+    assert_eq!(get(t, 4, 2), text("(see note").as_ref());
+    let m = &out.manifest_json;
+    assert!(m.contains("4 value(s) with an opening parenthesis but no closing one read as negative: B7 '(11,134'"), "{m}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn unparsed_values_are_kept_and_reported() {
     let dir = tmp_dir("unparsed");

@@ -25,6 +25,55 @@ pub struct Grid<'a> {
     /// The sheet's parsed formulas and references, built on first use: the model's total features
     /// and the total detection both need them (B131).
     deps: OnceLock<crate::totals::DependencyIndex>,
+    /// Lowercase words of the sheet's text cells and whether they read as English, built on first
+    /// use: whether a hyphenated header word is written joined elsewhere, and how to read it.
+    words: OnceLock<Vocab>,
+}
+
+/// The words of a sheet's text cells ([`Grid::has_word`], [`Grid::is_english`]).
+struct Vocab {
+    words: rustc_hash::FxHashSet<String>,
+    english: bool,
+}
+
+/// Function words that mark English text, and those of the other languages hedgehog meets most
+/// (German, Italian, French, Spanish, Dutch, Polish, Czech, Slovak, Croatian, Serbian, Slovenian,
+/// Hungarian, Portuguese, Scandinavian).
+const ENGLISH_WORDS: [&str; 12] =
+    ["the", "and", "of", "for", "to", "with", "from", "by", "total", "all", "other", "number"];
+/// Single letters are left out: they are also section codes ("I", "U") in English sheets.
+const OTHER_WORDS: [&str; 51] = [
+    "und", "der", "die", "das", "von", "mit", "nach", "insgesamt", "oder", "zum", "zur", "dem",
+    "di", "del", "della", "delle", "dei", "totale", "nel", "et", "le", "la", "les", "du", "des",
+    "el", "los", "las", "het", "voor", "na", "do", "od", "dla", "oraz", "ogółem", "wg", "ve", "za",
+    "ze", "celkem", "ukupno", "skupaj", "és", "az", "összesen", "og", "och", "em", "não", "så",
+];
+
+impl Vocab {
+    fn new(sheet: &Sheet) -> Vocab {
+        let mut words = rustc_hash::FxHashSet::default();
+        let (mut en, mut other) = (0usize, 0usize);
+        for c in &sheet.cells {
+            let Some(crate::model::Value::Text(t)) = &c.value else { continue };
+            for w in t.split(|ch: char| !ch.is_alphabetic()).filter(|w| !w.is_empty()) {
+                let w = w.to_lowercase();
+                if ENGLISH_WORDS.contains(&w.as_str()) {
+                    en += 1;
+                } else if OTHER_WORDS.contains(&w.as_str()) {
+                    other += 1;
+                }
+                if w.chars().count() >= 4 {
+                    words.insert(w);
+                }
+            }
+        }
+        // Few words with letters beyond Latin-1 too: a bilingual Polish / English sheet (GUS) has
+        // more English function words, but an eighth or more of its words have "ł", "ą", "ż"…;
+        // French place names on an English sheet ("Montréal", "Îles") stay within Latin-1.
+        let foreign = words.iter().filter(|w| w.chars().any(|c| c as u32 > 0xff)).count();
+        let english = en > other && foreign * 20 < words.len();
+        Vocab { words, english }
+    }
 }
 
 #[inline]
@@ -44,6 +93,7 @@ impl<'a> Grid<'a> {
             cols: OnceLock::new(),
             totals: OnceLock::new(),
             deps: OnceLock::new(),
+            words: OnceLock::new(),
         }
     }
 
@@ -54,6 +104,22 @@ impl<'a> Grid<'a> {
             CellIndex::Sorted { .. } => self.deps.get()?.formula(row, col),
             CellIndex::Hashed(_) => None,
         }
+    }
+
+    /// Whether `word` (lowercase, 4 letters or more) is a word of some text cell of the sheet.
+    pub(crate) fn has_word(&self, word: &str) -> bool {
+        self.vocab().words.contains(word)
+    }
+
+    /// Whether the sheet's text reads as English: more English function words than those of other
+    /// languages, and few words with letters beyond Latin-1 (an in-word hyphen there is a compound,
+    /// "French-language"; in German a soft wrap, "Aufenthalts-dauer").
+    pub(crate) fn is_english(&self) -> bool {
+        self.vocab().english
+    }
+
+    fn vocab(&self) -> &Vocab {
+        self.words.get_or_init(|| Vocab::new(self.sheet))
     }
 
     /// The sheet's dependency index ([`crate::totals::DependencyIndex::new`]), built once.
@@ -446,5 +512,44 @@ mod tests {
         assert_eq!(g.cells_in(Rect { top: 1, left: 1, bottom: 3, right: 1 }), vec![3]);
         let small = Rect { top: 0, left: 0, bottom: 3, right: 1 };
         assert_eq!(g.cells_in(small), vec![4, 2, 3, 0]);
+    }
+
+    #[test]
+    fn vocabulary() {
+        let text = |r: u32, t: &str| {
+            let mut c = cell(r, 0);
+            c.value = Some(Value::Text(t.into()));
+            c
+        };
+        let sheet = |texts: &[&str]| Sheet {
+            name: "s".into(),
+            cells: texts.iter().enumerate().map(|(i, t)| text(i as u32, t)).collect(),
+            merges: vec![],
+            formats: vec![],
+        };
+        let en = sheet(&[
+            "Number of workers by language, 2016",
+            "French-language workers",
+            "Gaspésie Îles-de-la-Madeleine",
+            "Total",
+        ]);
+        let g = Grid::new(&en);
+        assert!(g.is_english());
+        assert!(g.has_word("workers") && !g.has_word("frenchlanguage"));
+        let it = sheet(&["Famiglie per tipo di sistema di riscaldamento", "Riscal-damento"]);
+        let g = Grid::new(&it);
+        assert!(!g.is_english());
+        assert!(g.has_word("riscaldamento"));
+        let de = sheet(&["Ankünfte und Übernachtungen nach Herkunft", "Aufenthalts-dauer"]);
+        assert!(!Grid::new(&de).is_english());
+        // Bilingual Polish / English (GUS): the Polish words are the more frequent ones.
+        let pl = sheet(&[
+            "Ludność w wieku przedprodukcyjnym, na 1000 ludności",
+            "Population of the age of working, per 1000 population",
+            "Małżeństwa Marriages",
+            "Uro-dzenia żywe Live births",
+            "Gęstość zaludnienia Population density",
+        ]);
+        assert!(!Grid::new(&pl).is_english());
     }
 }

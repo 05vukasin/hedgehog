@@ -123,6 +123,9 @@ pub(crate) fn differing_parts(texts: &[String]) -> Vec<String> {
 }
 
 fn eligible(t: &Table) -> bool {
+    if t.is_key_value() {
+        return false; // listed on its own catalog line
+    }
     t.columns.len() <= MAX_TABLE_COLUMNS && t.columns.iter().any(|c| c.role == ColRole::SrcRow)
 }
 

@@ -8,43 +8,43 @@
   "hedgehog": {
    "chars": {
     "n": 1519,
-    "median": 2077,
-    "p90": 3408,
+    "median": 2108,
+    "p90": 3469,
     "max": 6026,
-    "sum": 3356637,
-    "mean": 2209.7676102699143
+    "sum": 3424986,
+    "mean": 2254.763660302831
    },
    "tokens": {
     "n": 1519,
-    "median": 677,
-    "p90": 1219,
+    "median": 684,
+    "p90": 1222,
     "max": 2438,
-    "sum": 1142873,
-    "mean": 752.3851217906517
+    "sum": 1156999,
+    "mean": 761.6846609611587
    },
    "secs": {
     "n": 1519,
-    "median": 0.012,
-    "p90": 0.0138,
-    "max": 0.0248,
-    "sum": 18.4431,
-    "mean": 0.012141606319947335
+    "median": 0.0116,
+    "p90": 0.0133,
+    "max": 0.0292,
+    "sum": 17.9308,
+    "mean": 0.01180434496379197
    },
    "rss_mb": {
     "n": 1519,
-    "median": 16.95703125,
-    "p90": 17.203125,
-    "max": 17.69140625,
-    "sum": 25763.7578125,
-    "mean": 16.96099921823568
+    "median": 17.1015625,
+    "p90": 17.37890625,
+    "max": 17.765625,
+    "sum": 25981.859375,
+    "mean": 17.10458155036208
    },
    "normalize_secs": {
     "n": 1519,
-    "median": 0.0124,
-    "p90": 0.0143,
-    "max": 0.028,
-    "sum": 19.0781,
-    "mean": 0.012559644502962476
+    "median": 0.0122,
+    "p90": 0.0138,
+    "max": 0.0292,
+    "sum": 18.8984,
+    "mean": 0.012441342988808425
    }
   },
   "pandas": {
@@ -112,17 +112,17 @@
     "items": 1520,
     "needs_query": 1520,
     "ops_known": 1520,
-    "hh_ops_clean_known": 1207,
+    "hh_ops_clean_known": 1225,
     "pd_ops_clean_known": 46
    },
    "header_answer": {
     "items": 1358,
     "verbatim": 1281,
-    "hh_catalog": 1074,
+    "hh_catalog": 1149,
     "md_text": 1279,
-    "hh_cell": 1199,
-    "hh_loose": 893,
-    "hh_strict": 619,
+    "hh_cell": 1276,
+    "hh_loose": 971,
+    "hh_strict": 688,
     "pd_cell": 1279,
     "pd_loose": 1101,
     "pd_strict": 725,
@@ -131,11 +131,11 @@
    "lookup": {
     "items": 4446,
     "verbatim": 4446,
-    "hh_catalog": 602,
+    "hh_catalog": 596,
     "md_text": 4446,
-    "hh_cell": 4405,
-    "hh_loose": 4287,
-    "hh_strict": 2991,
+    "hh_cell": 4442,
+    "hh_loose": 4326,
+    "hh_strict": 3034,
     "pd_cell": 4446,
     "pd_loose": 3627,
     "pd_strict": 59
@@ -143,17 +143,17 @@
    "ALL": {
     "items": 7324,
     "verbatim": 5727,
-    "hh_catalog": 1676,
+    "hh_catalog": 1745,
     "md_text": 5725,
-    "hh_cell": 5604,
-    "hh_loose": 5180,
-    "hh_strict": 3610,
+    "hh_cell": 5718,
+    "hh_loose": 5297,
+    "hh_strict": 3722,
     "pd_cell": 5725,
     "pd_loose": 4728,
     "pd_strict": 784,
     "needs_query": 1520,
     "ops_known": 1520,
-    "hh_ops_clean_known": 1207,
+    "hh_ops_clean_known": 1225,
     "pd_ops_clean_known": 46,
     "answer_not_in_file": 77
    }
@@ -161,35 +161,32 @@
   "examples": {
    "lookup | hedgehog: answer not in catalog": [
     "clean/nsf/0_1_nsf21326-tab001.xlsx · item e3ea71e57afb31f0b257426444523c3e · atoms ['154983.0'] · catalog 2467 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 957ff1802f7171dfe85593e08a8eb8c6 · atoms ['120824.0'] · catalog 1329 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 15ef07a1e7916da2207b2a0bad45bf22 · atoms ['374685.0'] · catalog 1329 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 068e85ed06c5b22bb4aeb913e8e1d4f2 · atoms ['9.6'] · catalog 1329 chars",
-    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 5c146e18a1e3b336c33c7411414b0cee · atoms ['4.2'] · catalog 1329 chars",
-    "clean/nsf/103_54_nsf19316-tab001.xlsx · item 09c3d348ea76b11d305d71fe30e310aa · atoms ['355821.0'] · catalog 4080 chars"
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 957ff1802f7171dfe85593e08a8eb8c6 · atoms ['120824.0'] · catalog 1476 chars",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 15ef07a1e7916da2207b2a0bad45bf22 · atoms ['374685.0'] · catalog 1476 chars",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 068e85ed06c5b22bb4aeb913e8e1d4f2 · atoms ['9.6'] · catalog 1476 chars",
+    "clean/nsf/102_53_nsf19315-tab001.xlsx · item 5c146e18a1e3b336c33c7411414b0cee · atoms ['4.2'] · catalog 1476 chars",
+    "clean/nsf/103_54_nsf19316-tab001.xlsx · item 09c3d348ea76b11d305d71fe30e310aa · atoms ['355821.0'] · catalog 3631 chars"
    ],
    "header_answer | hedgehog: answer not in catalog": [
-    "clean/nsf/167_83_tab3.xlsx · item 7f2244643790ba2f53002289725d4fe0 · atoms ['non-s&e'] · catalog 954 chars",
-    "clean/statcan/1001.xlsx · item 96db851bc4d88b027ffa428dea62e748 · atoms ['cameroon', \"cote d'ivoire\", 'senegal'] · catalog 1500 chars",
-    "clean/statcan/1011.xlsx · item ba6d4c42e3c9603be5f1aec93c6abb4b · atoms ['ethiopia', 'saint vincent and the grenadines', 'grenada', 'saint lucia'] · catalog 364 chars",
-    "clean/statcan/102.xlsx · item 4f5ba7d7143630317b8db3e30db1dfaa · atoms ['french-language workers'] · catalog 2737 chars",
-    "clean/statcan/102.xlsx · item 671932699ecd8c4978cd6ffe5fc8b862 · atoms ['french-language workers'] · catalog 2737 chars",
-    "clean/statcan/102.xlsx · item 8a4582532a5dd62fc6ee1066981009fc · atoms ['french-language workers'] · catalog 2737 chars"
-   ],
-   "header_answer | hedgehog: answer value in no table cell": [
-    "clean/statcan/1011.xlsx · item ba6d4c42e3c9603be5f1aec93c6abb4b · answer atoms ['ethiopia', 'saint vincent and the grenadines', 'grenada', 'saint lucia']",
-    "clean/statcan/102.xlsx · item 4f5ba7d7143630317b8db3e30db1dfaa · answer atoms ['french-language workers']",
-    "clean/statcan/102.xlsx · item 671932699ecd8c4978cd6ffe5fc8b862 · answer atoms ['french-language workers']",
-    "clean/statcan/102.xlsx · item 8a4582532a5dd62fc6ee1066981009fc · answer atoms ['french-language workers']",
-    "clean/statcan/102.xlsx · item 83b60aac2b4c4f955538c1be3e7617a9 · answer atoms ['french-language workers']",
-    "clean/statcan/104.xlsx · item 481eaa706962145140a0c437259d32f0 · answer atoms ['french-language workers']"
+    "clean/nsf/126_6_nsf21309-tab003.xlsx · item c9818c5da5b03c5884ef46f3b6f72dcd · atoms [\"earn credits for a bachelor's degree\"] · catalog 1106 chars",
+    "clean/statcan/1001.xlsx · item 96db851bc4d88b027ffa428dea62e748 · atoms ['cameroon', \"cote d'ivoire\", 'senegal'] · catalog 1502 chars",
+    "clean/statcan/1011.xlsx · item ba6d4c42e3c9603be5f1aec93c6abb4b · atoms ['ethiopia', 'saint vincent and the grenadines', 'grenada', 'saint lucia'] · catalog 842 chars",
+    "clean/statcan/1087.xlsx · item cf1b50f3c30e18558d57c2e158b9a02a · atoms ['transportation and warehousing', 'manufacturing'] · catalog 1079 chars",
+    "clean/statcan/1087.xlsx · item f863f1bf7397b207042f8b00a7795121 · atoms ['health care and social assistance', 'professional, scientific and technical s'] · catalog 1079 chars",
+    "clean/statcan/1118.xlsx · item a74d199800bf3c2b4a63aa24e1f0d007 · atoms ['new brunswick', '25.1'] · catalog 1764 chars"
    ],
    "lookup | hedgehog: answer value in no table cell": [
-    "clean/statcan/1011.xlsx · item 7e5333b3993953bc25a2b8a2a5b36dec · answer atoms ['53.1']",
-    "clean/statcan/107.xlsx · item 5506c027681a08cc866f751bbf961754 · answer atoms ['15.9']",
-    "clean/statcan/107.xlsx · item 22eb6b9c7606c171be8318dc8f434738 · answer atoms ['42.6']",
-    "clean/statcan/107.xlsx · item 6d380aeef634bc37118a5920d6008836 · answer atoms ['30.5']",
-    "clean/statcan/107.xlsx · item 4b28221dfb98e5ed8aa10badca7f29cf · answer atoms ['40.5']",
-    "clean/statcan/107.xlsx · item ab3e7deca763b7987cc26bc53a51aaad · answer atoms ['42.1']"
+    "clean/statcan/1261.xlsx · item 7f3108bdad4843faa9aeda660f0c069b · answer atoms ['11134']",
+    "clean/statcan/1261.xlsx · item 8cfbd7488ed9afd123caba1f5dd363e7 · answer atoms ['5874']",
+    "clean/statcan/1261.xlsx · item 36702407df6d613d27d3f1df0a312c35 · answer atoms ['13436.0']",
+    "clean/statcan/1261.xlsx · item 7b8790ad458505d31a2f4c67824c29dd · answer atoms ['11654.0']"
+   ],
+   "header_answer | hedgehog: answer value in no table cell": [
+    "clean/statcan/1309.xlsx · item a9dfe651e3c3df6c267d7d1ada589316 · answer atoms ['none']",
+    "clean/statcan/1505.xlsx · item d7e51994aa741f0f0ad94f6049cce15c · answer atoms ['yes']",
+    "clean/statcan/1505.xlsx · item 2500259d47fd4260ab50a9a6805acadf · answer atoms ['yes']",
+    "clean/statcan/1845.xlsx · item 322c66b0a10ee225e34a1415d7624a14 · answer atoms ['women']",
+    "clean/statcan/2674.xlsx · item b46143fb76fe2099aa578715dfb24f5e · answer atoms ['none']"
    ]
   }
  },
@@ -198,25 +195,26 @@
   "tools": {
    "hedgehog": {
     "n": 4446,
-    "found": 4405,
-    "value: equal": 4389,
-    "col_exact_n": 4405,
-    "col_exact": 4018,
-    "col_lenient_n": 4405,
-    "col_lenient": 4357,
-    "row_exact_n": 4399,
-    "row_exact": 2932,
-    "row_lenient_n": 4399,
-    "row_lenient": 3258,
-    "row_leaf_n": 4399,
-    "row_leaf": 3990,
-    "both_n": 4399,
-    "both_exact": 2690,
-    "both_lenient": 3219,
-    "not_found": 41,
-    "not_found: row not in any table": 41,
-    "value: kept as text": 12,
-    "value: source not a number": 4
+    "found": 4441,
+    "value: equal": 4430,
+    "col_exact_n": 4441,
+    "col_exact": 4159,
+    "col_lenient_n": 4441,
+    "col_lenient": 4392,
+    "row_exact_n": 4435,
+    "row_exact": 3418,
+    "row_lenient_n": 4435,
+    "row_lenient": 3781,
+    "row_leaf_n": 4435,
+    "row_leaf": 4023,
+    "both_n": 4435,
+    "both_exact": 3239,
+    "both_lenient": 3741,
+    "value: different": 4,
+    "value: kept as text": 3,
+    "value: source not a number": 4,
+    "not_found": 5,
+    "not_found: column not in the row's table": 5
    },
    "pandas": {
     "n": 4446,
@@ -244,7 +242,7 @@
     "clean/nsf/0_1_nsf21326-tab001.xlsx !B22: gold ['other', 'total'] vs ['Total (using the former definition of development)']",
     "clean/nsf/102_53_nsf19315-tab001.xlsx !C9: gold ['2016', 'all industries'] vs ['All industries']",
     "clean/nsf/102_53_nsf19315-tab001.xlsx !B9: gold ['2016', 'all industries'] vs ['All industries']",
-    "clean/nsf/113_55_fs17-ib-19314-tab008.xlsx !B6: gold ['all institutions', 'top 10 nonprofit institutions', 'patient-centered outcomes research institute'] vs ['Patient-Centered Outcomes Research Institute']",
+    "clean/nsf/113_55_fs17-ib-19314-tab008.xlsx !B6: gold ['all institutions', 'top 10 nonprofit institutions', 'patient-centered outcomes research institute'] vs ['Patient-Centered Outcomes Research Institute', 'Top 10 nonprofit institutions']",
     "clean/nsf/120_57_herd16-ib-19303-tab002.xlsx !D4: gold ['-'] vs ['Totalb']",
     "clean/nsf/120_57_herd16-ib-19303-tab002.xlsx !G4: gold ['-'] vs ['Totalb']"
    ],
@@ -252,25 +250,27 @@
     "clean/nsf/129_62_np16-ib-19308-tab003.xlsx !B6: gold ['source of funds', 'total'] vs 'Source of funds ($millions) / Total'",
     "clean/nsf/129_62_np16-ib-19308-tab003.xlsx !B12: gold ['source of funds', 'total'] vs 'Source of funds ($millions) / Total'",
     "clean/nsf/163_81_tab2.xlsx !H25: gold ['all r&d expenditures'] vs 'All R&D expenditures (2)'",
-    "clean/nsf/189_89_tab2.xlsx !D5: gold ['company-performed r&d per r&d employee', 'domestic'] vs 'Companyperformed R&D per R&D employee / Domestic'",
-    "clean/nsf/189_89_tab2.xlsx !E5: gold ['company-performed r&d per r&d employee', 'foreign'] vs 'Companyperformed R&D per R&D employee / Foreign'",
-    "clean/nsf/208_99_tab2.xlsx !I12: gold ['intramural performersa', 'amount'] vs 'Intramural performersa / Amount (2)'"
+    "clean/nsf/208_99_tab2.xlsx !I12: gold ['intramural performersa', 'amount'] vs 'Intramural performersa / Amount (2)'",
+    "clean/nsf/208_99_tab2.xlsx !I20: gold ['intramural performersa', 'amount'] vs 'Intramural performersa / Amount (2)'",
+    "clean/nsf/40_159_tab1.xlsx !B3: gold ['business r&d performed'] vs 'Business R&D performed ($millions)'"
    ],
-   "hedgehog: cell not in a table (row not in any table)": [
-    "clean/statcan/1011.xlsx original!B22 = '53.1'",
-    "clean/statcan/107.xlsx original!B5 = '15.9'",
-    "clean/statcan/107.xlsx original!B6 = '42.6'",
-    "clean/statcan/107.xlsx original!B13 = '30.5'",
-    "clean/statcan/107.xlsx original!B16 = '40.5'",
-    "clean/statcan/107.xlsx original!B17 = '42.1'"
+   "hedgehog: value different": [
+    "clean/statcan/1261.xlsx !B12: source '(11,134' stored -11134",
+    "clean/statcan/1261.xlsx !G12: source '(5,874' stored -5874",
+    "clean/statcan/1261.xlsx !G14: source '(13,436' stored -13436",
+    "clean/statcan/1261.xlsx !G16: source '(11,654' stored -11654"
    ],
    "hedgehog: value kept as text": [
-    "clean/statcan/1261.xlsx !B4: source '13,505' stored '13,505'",
-    "clean/statcan/1261.xlsx !B8: source '11,992' stored '11,992'",
-    "clean/statcan/1261.xlsx !B9: source '9,849' stored '9,849'",
-    "clean/statcan/1261.xlsx !G9: source '17,734' stored '17,734'",
-    "clean/statcan/1261.xlsx !B12: source '(11,134' stored '(11,134'",
-    "clean/statcan/1261.xlsx !G12: source '(5,874' stored '(5,874'"
+    "clean/statcan/1377.xlsx !B4: source '7,239' stored '7,239'",
+    "clean/statcan/1377.xlsx !C4: source '6,998' stored '6,998'",
+    "clean/statcan/1377.xlsx !D4: source '2,852' stored '2,852'"
+   ],
+   "hedgehog: cell not in a table (column not in the row's table)": [
+    "clean/statcan/1912.xlsx original!B10 = '83.4'",
+    "clean/statcan/1912.xlsx original!B15 = '91.3'",
+    "clean/statcan/1912.xlsx original!B28 = '79.0'",
+    "clean/statcan/1912.xlsx original!B34 = '80.8'",
+    "clean/statcan/1912.xlsx original!B35 = '87.6'"
    ],
    "pandas: column header differs": [
     "clean/nsf/0_1_nsf21326-tab001.xlsx !B22: gold ['2017 actual'] vs 'Unnamed: 1'",

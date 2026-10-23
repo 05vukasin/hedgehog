@@ -362,7 +362,17 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
         // Rows just above the header (no blank row between) that the model calls header.
         let mut k = first;
         let mut top = t.header_top;
-        while k > 0 && rows[k - 1].role() == Role::Header && rows[k - 1].row + 1 == top {
+        // Not over a row holding a plain number (no year): metadata such as `Code: | 656839`
+        // (MiMoTable StockSituation4), never a parent header.
+        let plain_number = |row: u32| {
+            grid.row_cells(row).iter().any(|&i| {
+                let c = &grid.sheet.cells[i as usize];
+                t.rect.left <= c.col
+                    && c.col <= t.rect.right
+                    && matches!(c.value, Some(Value::Number(x)) if !(x.fract() == 0.0 && (1900.0..=2100.0).contains(&x)))
+            })
+        };
+        while k > 0 && rows[k - 1].role() == Role::Header && rows[k - 1].row + 1 == top && !plain_number(rows[k - 1].row) {
             k -= 1;
             top = rows[k].row;
         }

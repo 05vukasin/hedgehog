@@ -42,8 +42,15 @@ fn single_text(r: &Row) -> Option<&Entry> {
 /// Sparse row above a table: one text cell (anywhere), or one merged cell over most of the width
 /// starting at the left edge. A partial merge (e.g. "Revenue" over C:E) is a parent header instead.
 /// A lone label off the left edge, directly over a number in the next row, is a header cell of a
-/// narrow table ("Monthly volume" over its column), not a title.
-pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect, next: Option<&Row>) -> bool {
+/// narrow table ("Monthly volume" over its column), not a title; so is one over one or two section
+/// labels whose rows below have the number (`percentage` over `Q1. Food didn't last` over `Often
+/// true | 15.9`, a one-column statistics table).
+pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect, below: &[Row]) -> bool {
+    title_row(sheet, r, rect, below, TITLE_HEADER_OVER_NUMBER)
+}
+
+/// [`is_title_row`]; `direct`: a lone label directly over a number is a header cell too.
+fn title_row(sheet: &Sheet, r: &Row, rect: Rect, below: &[Row], direct: bool) -> bool {
     let width = rect.right - rect.left + 1;
     if width < 2 {
         return false;
@@ -54,14 +61,33 @@ pub(crate) fn is_title_row(sheet: &Sheet, r: &Row, rect: Rect, next: Option<&Row
     if is_total_label(text(sheet, e)) {
         return false;
     }
-    if TITLE_HEADER_OVER_NUMBER
-        && e.left > rect.left
-        && let Some(n) = next
-        && n.row == r.row + 1
-        && n.n_measure() > 0
-        && n.entries.iter().any(|x| x.left <= e.right && x.right >= e.left && x.kind == Kind::Num)
-    {
-        return false;
+    if e.left > rect.left {
+        // The next rows, skipping up to two section labels at the left edge (directly over a
+        // number only with `direct`: as a default worse on DECO dev, B-public).
+        let mut prev = r.row;
+        for (k, n) in below.iter().take(3).enumerate() {
+            if n.row != prev + 1 {
+                break;
+            }
+            if n.n_measure() > 0 {
+                if (k > 0 || direct)
+                    && n.entries.iter().any(|x| x.left <= e.right && x.right >= e.left && x.kind == Kind::Num)
+                {
+                    return false;
+                }
+                break;
+            }
+            // A section label: text at the left edge, nothing but missing marks beside it
+            // (`Region of birth: | ...`).
+            let mut cells = n.filled();
+            let section = k < 2
+                && cells.next().is_some_and(|x| x.kind == Kind::Text && x.left == rect.left && x.right < e.left)
+                && cells.all(|x| x.kind == Kind::Missing);
+            if !section {
+                break;
+            }
+            prev = n.row;
+        }
     }
     let span = e.right - e.left + 1;
     span == 1 || (e.left == rect.left && span as f32 >= TITLE_SPAN_FRAC * width as f32)
@@ -555,9 +581,11 @@ fn mark_inline_group_labels(sheet: &Sheet, rows: &[Row], body: Range<usize>, dat
     }
 }
 
+#[derive(Clone)]
 struct Seg {
     titles: Range<usize>,
-    /// Piece cut off by a change point (a narrow headerless table is still a table).
+    /// Piece cut off by a change point, or a long `label | number` list (a narrow headerless
+    /// table is still a table).
     split: bool,
     start: usize,
     header: usize,
@@ -574,6 +602,7 @@ fn segment(
     rect: Rect,
     cut: bool,
     numbers: bool,
+    sparse_pre: bool,
 ) -> Vec<Seg> {
     let mut segs = Vec::new();
     // Leading title rows belong to the first table.
@@ -585,7 +614,11 @@ fn segment(
             let mut o = 0;
             while o < MAX_PRE_HEADER_ROWS
                 && start + o + 2 < e
-                && (rows[start + o].n() <= 2 || is_key_value_row(sheet, &rows[start + o]))
+                && (rows[start + o].n() <= 2
+                    || is_key_value_row(sheet, &rows[start + o])
+                    // `sparse_pre`: any row with a third of the cells of the row below it
+                    // (`Stock D | Code: | 656839` over a 12-column header).
+                    || (sparse_pre && rows[start + o].n() * 3 <= rows[start + o + 1].n()))
             {
                 o += 1;
                 let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
@@ -631,7 +664,7 @@ fn segment(
         let mut seg_end = sp;
         while seg_end > body + 1
             && sp - seg_end < 2
-            && is_title_row(sheet, &rows[seg_end - 1], rect, rows.get(seg_end))
+            && is_title_row(sheet, &rows[seg_end - 1], rect, &rows[seg_end..])
             && !is_note_row(sheet, &rows[seg_end - 1])
         {
             seg_end -= 1;
@@ -683,12 +716,12 @@ fn sparse_register(rows: &[Row], seg: &Seg, body_start: usize) -> bool {
     per_col.values().filter(|&&n| n >= need).count() >= SPARSE_KEY_COLS
 }
 
-/// Emits a table for `seg` if it qualifies; returns false otherwise (caller makes it loose).
-fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
+/// The range of the table `seg` would be, if it qualifies as one (size, header, density).
+fn qualifies(rows: &[Row], seg: &Seg) -> Option<Rect> {
     let trows = &rows[seg.start..seg.end];
     let body_start = seg.start + seg.header;
     if trows.len() < MIN_TABLE_ROWS || body_start >= seg.end {
-        return false;
+        return None;
     }
     let mut rect = bounds(trows);
     // DECO counts title rows touching the table (no blank row between) as part of its range.
@@ -707,14 +740,14 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     rect.bottom = rect.bottom.max(trows.last().unwrap().row);
     let width = rect.right - rect.left + 1;
     if width < MIN_TABLE_COLS {
-        return false;
+        return None;
     }
     // Without a header, a narrow or short block is a key/value list or stray numbers, not a table.
     if seg.header == 0 && ((width < HEADERLESS_MIN_COLS && !seg.split) || (seg.end - seg.start) < HEADERLESS_MIN_ROWS) {
-        return false;
+        return None;
     }
     if seg.header > 0 && seg.end - body_start < MIN_BODY_ROWS {
-        return false;
+        return None;
     }
     // Blank spacer columns (between row labels and numbers) don't count against the density.
     let mut spans: Vec<(u32, u32)> =
@@ -735,8 +768,17 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         .map(|e| (e.right.min(rect.right) - e.left + 1) as f64 * (e.bottom.min(rect.bottom) - e.row + 1) as f64)
         .sum();
     if filled / area < MIN_TABLE_DENSITY as f64 && !sparse_register(rows, seg, body_start) {
-        return false;
+        return None;
     }
+    Some(rect)
+}
+
+/// Emits a table for `seg` if it qualifies; returns false otherwise (caller makes it loose).
+fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
+    let Some(mut rect) = qualifies(rows, seg) else { return false };
+    let trows = &rows[seg.start..seg.end];
+    let body_start = seg.start + seg.header;
+
 
     for r in &rows[seg.titles.clone()] {
         set(out, r, if is_note_row(sheet, r) { Role::Note } else { Role::Title });
@@ -918,58 +960,109 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         out.loose.push(region);
         return;
     }
-    let mut s = 0;
-    while s + 1 < rows.len()
-        && s < MAX_TITLE_ROWS
-        && is_title_row(sheet, &rows[s], region.rect, rows.get(s + 1))
-        && !(s >= 1 && is_label_over_header(sheet, rows, s, rows.len(), region.rect))
-    {
-        s += 1;
-    }
-    let mut e = rows.len();
-    while e > s + 1 && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1])) {
-        e -= 1;
-    }
-    // A block of single text lines below a blank row at the end of the region (the footnotes,
-    // sources and contacts under a statistics-database export's one or two data rows, B53):
-    // notes, not body rows of the table above them.
-    let mut k = e;
-    while k > s + 1 && rows[k - 1].n() == 1 {
-        k -= 1;
-    }
-    // The lines start at the region's left edge, one of them reads as a sentence or source line,
-    // and the row above the gap is a data row with numbers.
-    let lines = &rows[k..e];
-    if e - k >= NOTE_BLOCK_MIN_ROWS
-        && rows[k].row > rows[k - 1].bottom() + 1
-        && rows[k - 1].n_measure() >= 2
-        && lines.iter().all(|r| r.left() == region.rect.left)
-        && lines.iter().any(|r| single_text(r).is_some_and(|x| text(sheet, x).trim().chars().count() >= NOTE_BLOCK_LONG))
-    {
-        e = k;
-    }
-    let numbers = out.column_numbers;
-    let h0 = header_depth(sheet, rows, s, e, region.rect, numbers);
-    let hsig = if h0 > 0 { signature(sheet, &rows[s + h0 - 1]) } else { Vec::new() };
-    let cuts = super::changepoint::boundaries(sheet, rows, s + h0, e, &hsig);
-    let mut segs = Vec::new();
-    let mut ps = s;
-    for pe in cuts.iter().copied().chain(std::iter::once(e)) {
-        if ps == s {
-            segs.extend(segment(sheet, rows, 0..s, s, pe, region.rect, false, numbers));
-        } else {
-            // Title rows at the top of a piece belong to its table.
-            let mut q = ps;
-            while q + 2 < pe
-                && q - ps < 2
-                && is_title_row(sheet, &rows[q], region.rect, rows.get(q + 1))
-                && !is_note_row(sheet, &rows[q])
-            {
-                q += 1;
-            }
-            segs.extend(segment(sheet, rows, ps..q, q, pe, region.rect, true, numbers));
+    // The rows' titles, body end and table segments; `direct`: a lone label directly over a
+    // number is a header cell, not a title; `sparse_pre`: a sparse metadata row above a header
+    // is skipped.
+    let plan = |direct: bool, sparse_pre: bool| {
+        let mut s = 0;
+        while s + 1 < rows.len()
+            && s < MAX_TITLE_ROWS
+            && title_row(sheet, &rows[s], region.rect, &rows[s + 1..], direct)
+            && !(s >= 1 && is_label_over_header(sheet, rows, s, rows.len(), region.rect))
+        {
+            s += 1;
         }
-        ps = pe;
+        let mut e = rows.len();
+        while e > s + 1 && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1])) {
+            e -= 1;
+        }
+        // A block of single text lines below a blank row at the end of the region (the footnotes,
+        // sources and contacts under a statistics-database export's one or two data rows, B53):
+        // notes, not body rows of the table above them.
+        let mut k = e;
+        while k > s + 1 && rows[k - 1].n() == 1 {
+            k -= 1;
+        }
+        // The lines start at the region's left edge, one of them reads as a sentence or source line,
+        // and the row above the gap is a data row with numbers.
+        let lines = &rows[k..e];
+        if e - k >= NOTE_BLOCK_MIN_ROWS
+            && rows[k].row > rows[k - 1].bottom() + 1
+            && rows[k - 1].n_measure() >= 2
+            && lines.iter().all(|r| r.left() == region.rect.left)
+            && lines.iter().any(|r| single_text(r).is_some_and(|x| text(sheet, x).trim().chars().count() >= NOTE_BLOCK_LONG))
+        {
+            e = k;
+        }
+        let numbers = out.column_numbers;
+        let h0 = header_depth(sheet, rows, s, e, region.rect, numbers);
+        let hsig = if h0 > 0 { signature(sheet, &rows[s + h0 - 1]) } else { Vec::new() };
+        let cuts = super::changepoint::boundaries(sheet, rows, s + h0, e, &hsig);
+        let mut segs = Vec::new();
+        let mut ps = s;
+        for pe in cuts.iter().copied().chain(std::iter::once(e)) {
+            if ps == s {
+                segs.extend(segment(sheet, rows, 0..s, s, pe, region.rect, false, numbers, sparse_pre));
+            } else {
+                // Title rows at the top of a piece belong to its table.
+                let mut q = ps;
+                while q + 2 < pe
+                    && q - ps < 2
+                    && is_title_row(sheet, &rows[q], region.rect, &rows[q + 1..])
+                    && !is_note_row(sheet, &rows[q])
+                {
+                    q += 1;
+                }
+                segs.extend(segment(sheet, rows, ps..q, q, pe, region.rect, true, numbers, sparse_pre));
+            }
+            ps = pe;
+        }
+        (e, segs)
+    };
+    let (mut e, mut segs) = plan(false, false);
+    // No table at all: try again with a lone label over the value column as its header
+    // (`percent` over `Total | 30`, a one-value-column statistics table, HiTab statcan/1655;
+    // `% Decrease` over one summary value beside a table, RealHiTBench society-table49).
+    // Tables `segs` would emit, at most `width` columns wide.
+    let any_table = |segs: &[Seg], width: u32| {
+        segs.iter().any(|sg| {
+            let mut sg = sg.clone();
+            trim_tail(sheet, rows, &mut sg);
+            qualifies(rows, &sg).is_some_and(|r| r.right - r.left < width)
+        })
+    };
+    // Only narrow tables this way: a lone label over a wide row is a section label.
+    if !TITLE_HEADER_OVER_NUMBER && !any_table(&segs, u32::MAX) {
+        let (e2, segs2) = plan(true, false);
+        if any_table(&segs2, 3) {
+            (e, segs) = (e2, segs2);
+        }
+    }
+    // Or past a sparse row over a much wider header (MiMoTable StockSituation4: a stock's name
+    // and code over its trades).
+    if !any_table(&segs, u32::MAX) {
+        let (e2, segs2) = plan(false, true);
+        if any_table(&segs2, u32::MAX) {
+            (e, segs) = (e2, segs2);
+        }
+    }
+    // Still none: a long headerless list of `label | number` rows (a decomposition, a list of
+    // indicators; HiTab statcan/1328) is a two-column table, not a key/value block of metadata.
+    if !any_table(&segs, u32::MAX) {
+        for sg in &mut segs {
+            let body = &rows[sg.start..sg.end];
+            let pairs = body
+                .iter()
+                .filter(|r| {
+                    let mut it = r.filled();
+                    matches!((it.next(), it.next(), it.next()), (Some(a), Some(b), None)
+                        if a.kind == Kind::Text && a.left == region.rect.left && b.kind == Kind::Num && !b.label_num)
+                })
+                .count();
+            if sg.header == 0 && region.width() == 2 && pairs >= HEADERLESS_MIN_ROWS && pairs * 5 >= body.len() * 4 {
+                sg.split = true;
+            }
+        }
     }
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
