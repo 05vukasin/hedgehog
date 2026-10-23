@@ -54,7 +54,7 @@ $S 3G $L/score.log $SWAP_DIR/venv-markitdown/bin/python -I eval/public/score.py 
 
 The fetch scripts are idempotent (`--record` pins the checksum of a file seen for the first time).
 `run_hedgehog.py` uses `$HEDGEHOG_BIN` or `target-master/release/hedgehog`; the results in RESULTS.md come from
-the release build of master `2bd5e4e`. `run_structure.py` needs a build of this branch (the `public:` corpora).
+the release build of branch `fix-public` (baseline in the summary: master `2bd5e4e`). `run_structure.py` needs a build with the `public:` corpora.
 Tool outputs go to `$HH_PUBLIC_WORK` (default `../scratch-archive/public-bench/`). Runtime on a laptop:
 about a minute per dataset for hedgehog, a few minutes for the baselines, two minutes for scoring.
 
