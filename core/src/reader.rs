@@ -148,7 +148,8 @@ fn open_sheets(path: &Path) -> Result<Sheets<BufReader<File>>, calamine::Error> 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadOptions {
     /// Cell formats (`Sheet::formats`, xlsx / xlsm only). Costs an extra look at every cell tag
-    /// (about 15–35% more read time) and 4 bytes per cell.
+    /// (about 15–35% more read time) and 4 bytes per cell. Files up to [`FORMATS_MAX_BYTES`] get
+    /// them anyway (the indent of row labels, `<label>_parent` in normalize).
     pub formats: bool,
     /// Size, cell and time limits for untrusted files.
     pub limits: Limits,
@@ -166,8 +167,13 @@ pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
     open_with(path, ReadOptions::default())
 }
 
+/// Files up to this size are read with their cell formats whatever [`ReadOptions::formats`] says.
+pub const FORMATS_MAX_BYTES: u64 = 2 << 20;
+
 pub fn open_with(path: impl AsRef<Path>, opts: ReadOptions) -> Result<Workbook, Error> {
     let path = path.as_ref();
+    let small = || std::fs::metadata(path).is_ok_and(|m| m.len() <= FORMATS_MAX_BYTES);
+    let opts = ReadOptions { formats: opts.formats || small(), ..opts };
     let limits = &opts.limits;
     if is_delimited_text(path) {
         let t = std::time::Instant::now();

@@ -157,13 +157,14 @@ pub struct Column {
 }
 
 impl Column {
-    /// A column computed from the column on its left (`<name>_period`, `<name>_key`): a data
-    /// column with no source column and no header cells.
+    /// A column computed from the column on its left (`<name>_period`, `<name>_key`,
+    /// `<name>_parent`): a data column with no source column and no header cells.
     pub fn is_derived(&self) -> bool {
         self.role == ColRole::Data && self.source_col.is_none() && self.original_header.is_empty()
     }
 
-    /// What a derived column holds (`period` or `key`), from its name; `None` for other columns.
+    /// What a derived column holds (`period`, `key` or `parent`), from its name; `None` for other
+    /// columns.
     pub fn derived_kind(&self) -> Option<&'static str> {
         if !self.is_derived() {
             return None;
@@ -173,6 +174,8 @@ impl Column {
             Some("period")
         } else if base.ends_with("_key") {
             Some("key")
+        } else if base == "parent" || base.ends_with("_parent") {
+            Some("parent")
         } else {
             None
         }
@@ -242,10 +245,11 @@ pub enum T {
     RowLabelsCopied,
     PeriodColumnsAdded,
     KeyColumnsAdded,
+    ParentColumnsAdded,
 }
 
 impl T {
-    pub const ALL: [T; 36] = [
+    pub const ALL: [T; 37] = [
         T::NumbersFromText,
         T::PercentFromText,
         T::CurrencyStripped,
@@ -282,6 +286,7 @@ impl T {
         T::RowLabelsCopied,
         T::PeriodColumnsAdded,
         T::KeyColumnsAdded,
+        T::ParentColumnsAdded,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -322,6 +327,7 @@ impl T {
             T::RowLabelsCopied => "row_labels_copied",
             T::PeriodColumnsAdded => "period_columns_added",
             T::KeyColumnsAdded => "key_columns_added",
+            T::ParentColumnsAdded => "parent_columns_added",
         }
     }
 }

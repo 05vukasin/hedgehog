@@ -135,3 +135,82 @@ fn grids_beside_and_below_get_the_summary_row_labels() {
     // No data row ended up in Notes as a "repeated header".
     assert!(n.notes.iter().all(|x| x.kind != "repeated_header"), "{:?}", n.notes);
 }
+
+/// HiTab (NSF, StatCan): an outline of row labels by indentation, parents with their own values
+/// (`All institutions` > `Top 10` > `PCORI`; `Diagnosed mood or anxiety disorder` > `Mood
+/// disorder`). Each row gets its parent's label in `<label>_parent`, right after the label column;
+/// a group header (no values) starts afresh and stays in the group column.
+#[test]
+fn indented_row_labels_get_their_parent() {
+    let path: PathBuf = std::env::temp_dir().join(format!("hh_outline_{}.xlsx", std::process::id()));
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet();
+    let ind = |n: u8| Format::new().set_indent(n);
+    ws.write_string(0, 0, "Table 8. Federal R&D obligations, by institution").unwrap();
+    for (c, h) in ["Institution", "2016", "2017"].iter().enumerate() {
+        ws.write_string(2, c as u16, *h).unwrap();
+    }
+    let rows: [(&str, u8, bool); 9] = [
+        ("All institutions", 0, true),
+        ("Top 10 nonprofit institutions", 1, true),
+        ("Patient-Centered Outcomes Research Institute", 2, true),
+        ("Mayo Clinic", 2, true),
+        ("All other nonprofit institutions", 1, true),
+        ("By region", 0, false),
+        ("Northeast", 1, true),
+        ("South", 1, true),
+        ("West", 1, true),
+    ];
+    for (k, (label, level, values)) in rows.iter().enumerate() {
+        let r = 3 + k as u32;
+        ws.write_string_with_format(r, 0, *label, &ind(*level)).unwrap();
+        if *values {
+            ws.write_number(r, 1, 100.0 + k as f64).unwrap();
+            ws.write_number(r, 2, 200.0 + k as f64).unwrap();
+        }
+    }
+    wb.save(&path).unwrap();
+    let book = open(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let n = normalize_workbook(&book, &Options::default());
+    let t = &n.tables[0];
+    let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
+    let at = names.iter().position(|&c| c == "Institution_parent").unwrap_or_else(|| panic!("{names:?}"));
+    assert_eq!(names[at - 1], "Institution");
+    assert_eq!(t.columns[at].derived_kind(), Some("parent"));
+    let text = |c: usize, r: usize| match &t.columns[c].values[r] {
+        Out::Text(s) => s.clone(),
+        Out::Null => String::new(),
+        v => format!("{v:?}"),
+    };
+    let row = |label: &str| (0..t.rows()).find(|&r| text(at - 1, r) == label).unwrap_or_else(|| panic!("{label}"));
+    assert_eq!(text(at, row("All institutions")), "");
+    assert_eq!(text(at, row("Top 10 nonprofit institutions")), "All institutions");
+    assert_eq!(text(at, row("Mayo Clinic")), "Top 10 nonprofit institutions");
+    assert_eq!(text(at, row("All other nonprofit institutions")), "All institutions");
+    // Under the group header `By region` the rows have no parent row; the group column has it.
+    assert_eq!(text(at, row("South")), "");
+    let g = t.columns.iter().position(|c| c.role == ColRole::Group).expect("group column");
+    assert_eq!(text(g, row("South")), "By region");
+}
+
+/// Labels at one indent level get no parent column.
+#[test]
+fn flat_row_labels_get_no_parent_column() {
+    let path: PathBuf = std::env::temp_dir().join(format!("hh_flat_{}.xlsx", std::process::id()));
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet();
+    for (c, h) in ["Region", "2016", "2017"].iter().enumerate() {
+        ws.write_string(0, c as u16, *h).unwrap();
+    }
+    for k in 0..5u32 {
+        ws.write_string(1 + k, 0, format!("Region {k}")).unwrap();
+        ws.write_number(1 + k, 1, k as f64).unwrap();
+        ws.write_number(1 + k, 2, 2.0 * k as f64).unwrap();
+    }
+    wb.save(&path).unwrap();
+    let book = open(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let n = normalize_workbook(&book, &Options::default());
+    assert!(n.tables[0].columns.iter().all(|c| !c.name.ends_with("_parent")));
+}

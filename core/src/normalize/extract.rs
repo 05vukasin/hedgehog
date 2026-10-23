@@ -338,6 +338,54 @@ fn block_label_columns(slots: &[Vec<Slot>], block_of: &[u32], skip: &HashSet<usi
 }
 
 /// Header + group column name for "Region: North"-style labels, if all labels share the prefix.
+/// One row label of a table's body in source order (see [`outline_parents`]).
+struct OutlineRow {
+    /// Indent level of the label cell's style (0..=15).
+    indent: u8,
+    /// Leading spaces of the label text.
+    spaces: u8,
+    label: String,
+    /// Output row, `None` for a group header or a removed total row.
+    out: Option<usize>,
+    /// A group-header row (its label goes to the group column).
+    group: bool,
+}
+
+/// The parent label of each output data row: the nearest row above it whose label is indented
+/// less, within the same group (a group header starts afresh). Indent levels come from the cell
+/// styles, or from leading spaces when no label has a style indent. `None` when the labels are not
+/// indented at two levels at least, or fewer than two rows (and a tenth of the rows) have a parent.
+fn outline_parents(outline: &[OutlineRow], n: usize) -> Option<Vec<Option<String>>> {
+    let style = outline.iter().any(|o| o.indent > 0);
+    let level = |o: &OutlineRow| if style { o.indent } else { o.spaces };
+    let mut levels: Vec<u8> = outline.iter().filter(|o| !o.group).map(level).collect();
+    levels.sort_unstable();
+    levels.dedup();
+    if levels.len() < 2 {
+        return None;
+    }
+    let mut parents: Vec<Option<String>> = vec![None; n];
+    let mut stack: Vec<(u8, usize)> = Vec::new();
+    for (k, o) in outline.iter().enumerate() {
+        if o.group {
+            stack.clear();
+            continue;
+        }
+        let l = level(o);
+        while stack.last().is_some_and(|&(sl, _)| sl >= l) {
+            stack.pop();
+        }
+        if let (Some(&(_, p)), Some(out)) = (stack.last(), o.out)
+            && out < n
+        {
+            parents[out] = Some(outline[p].label.clone());
+        }
+        stack.push((l, k));
+    }
+    let with = parents.iter().filter(|p| p.is_some()).count();
+    (with >= 2 && with * 10 >= n).then_some(parents)
+}
+
 fn group_prefix(labels: &[&str]) -> Option<String> {
     let mut prefix: Option<(String, String)> = None;
     for l in labels {
@@ -1034,6 +1082,22 @@ fn build_table(
         text_rows.into_iter().filter(|&(_, n)| data_rows >= 4 && 2 * n > data_rows).map(|(c, _)| c).collect()
     };
     let mut key_cols: HashSet<usize> = HashSet::new();
+    // Outline of the row labels (B-public): the label column's cells with their indent (cell style)
+    // and leading spaces, in order, for the `<label>_parent` column built after the loop.
+    // Only for a real label column (text on most data rows).
+    let label_col = label_cols.iter().copied().min();
+    let mut outline: Vec<OutlineRow> = Vec::new();
+    let outline_row = |idxs: &[usize], out: Option<usize>, group: bool| -> Option<OutlineRow> {
+        let i = idxs.iter().copied().find(|&i| Some(cells[i].col) == label_col)?;
+        let Some(Value::Text(t)) = &cells[i].value else { return None };
+        let label = t.trim();
+        if label.is_empty() {
+            return None;
+        }
+        let indent = grid.sheet.formats.get(i).and_then(|f| f.unpack()).map_or(0, |f| f.indent);
+        let spaces = t.chars().take_while(|&c| c == ' ' || c == '\u{a0}').count().min(255) as u8;
+        Some(OutlineRow { indent, spaces, label: label.to_string(), out, group })
+    };
     // Block of each output row: the rows between two total rows (removed or kept).
     let mut block_of: Vec<u32> = Vec::new();
     let mut block = 0u32;
@@ -1112,6 +1176,7 @@ fn build_table(
                 tr.add(T::GroupHeaderRowsToColumn, 1);
                 group_labels.push(label.clone());
                 run.push((label, *row));
+                outline.extend(outline_row(idxs, None, true));
                 continue;
             }
             RowKind::RepeatedHeader => {
@@ -1160,6 +1225,7 @@ fn build_table(
             block += 1;
         }
         if rt != RowType::Data && !opts.keep_totals {
+            outline.extend(outline_row(idxs, None, false));
             tr.add(T::TotalRowsRemoved, 1);
             removed_totals.push((*row, rt, idxs.clone()));
             continue;
@@ -1248,6 +1314,7 @@ fn build_table(
             slots[k].push(s);
         }
         src_rows.push(*row);
+        outline.extend(outline_row(idxs, (rt == RowType::Data).then(|| src_rows.len() - 1), false));
         row_types.push(rt);
         block_of.push(if rt == RowType::Data { block } else { u32::MAX });
         if rt != RowType::Data {
@@ -1423,6 +1490,36 @@ fn build_table(
             footnote_marks: typed.footnote_marks,
             values: typed.values,
         });
+    }
+
+    // B-public: the parent of each row in an indented outline of row labels (`Mood disorder`
+    // under `Diagnosed mood or anxiety disorder`, both with values): `<label>_parent`, right
+    // after the label column.
+    if let Some(parents) = outline_parents(&outline, src_rows.len())
+        && let Some(at) = data_cols.iter().position(|c| c.source_col.is_some() && c.source_col == label_col)
+    {
+        let base = &data_cols[at].name;
+        let unnamed = base.strip_prefix("col_").is_some_and(|l| !l.is_empty() && l.bytes().all(|b| b.is_ascii_uppercase()));
+        let name = if unnamed { "parent".to_string() } else { format!("{base}_parent") };
+        let values: Vec<Out> = parents.into_iter().map(|p| p.map_or(Out::Null, |p| Out::Text(fit(p, &mut tr)))).collect();
+        tr.add(T::ParentColumnsAdded, 1);
+        data_cols.insert(
+            at + 1,
+            Column {
+                name,
+                role: ColRole::Data,
+                source_col: None,
+                original_header: Vec::new(),
+                dtype: Dtype::Text,
+                unit: None,
+                currency: None,
+                decimal: None,
+                date_order: None,
+                ambiguous: 0,
+                footnote_marks: Vec::new(),
+                values,
+            },
+        );
     }
 
     // Group column from group-header rows.

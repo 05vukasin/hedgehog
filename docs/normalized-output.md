@@ -163,6 +163,13 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
     characters on average) whose values differ only in case, spaces, punctuation or diacritics
     (`Mc Kay` / `McKay`, `On-system` / `On-System`) holds one spelling per group, the most frequent;
     `GROUP BY "<name>_key"` counts the spellings together. The table's `warnings` name the groups.
+  - **`<name>_parent`**: the row label column of an outline indented at two levels or more (the
+    cells' indent style, or leading spaces when no label has one): each data row's parent, the
+    nearest row above it whose label is indented less (`Mood disorder` under `Diagnosed mood or
+    anxiety disorder`, both rows with values), empty for a top-level row. A group-header row
+    (`group` column) starts afresh. Added when at least two rows, and a tenth of them, have a
+    parent; an unnamed label column (`col_A`) gives `parent`. Files up to 2 MB are read with their
+    cell formats for this.
 - **`_row_type`** (only with `keep_totals`): `data`, `subtotal`, `total`, `average` or `of_which`.
   Only `data` rows add up to the table's figures: a `total` or `subtotal` row sums data rows, an
   `average` row averages them, an `of_which` row is a part of the row above it.
@@ -471,7 +478,7 @@ Every key below is present in every table's `transformations`, with a count (oft
 | `note_rows_moved`, `title_rows_moved` | Rows inside the table range moved to `Notes` |
 | `empty_columns_removed` | Columns with neither header nor values |
 | `row_labels_copied` | Label columns copied from a table beside or above whose rows this table repeats (a daily grid under a summary that names the rows once) |
-| `period_columns_added`, `key_columns_added` | Derived `<name>_period` and `<name>_key` columns |
+| `period_columns_added`, `key_columns_added`, `parent_columns_added` | Derived `<name>_period`, `<name>_key` and `<name>_parent` columns |
 
 ## Repeatable output
 

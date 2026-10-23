@@ -29,8 +29,8 @@ fn xlsx_formats_reach_cells_and_features() {
     wb.save(&path).unwrap();
 
     let plain = hh_core::reader::open(&path).unwrap();
-    // The embedded model reads no formatting features, so a plain open skips them.
-    assert!(plain.sheets[0].formats.is_empty());
+    // A small file is read with its formats (row-label indents), whatever the options say.
+    assert_eq!(plain.sheets[0].formats.len(), plain.sheets[0].cells.len());
     let book = hh_core::reader::open_with(&path, hh_core::reader::ReadOptions { formats: true, ..Default::default() }).unwrap();
     std::fs::remove_file(&path).ok();
     let sheet = &book.sheets[0];
