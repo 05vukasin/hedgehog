@@ -1797,17 +1797,19 @@ fn weak_name(name: &str, repeated: &HashSet<&str>) -> bool {
     name.strip_prefix("col_").is_some_and(|l| l.bytes().all(|b| b.is_ascii_uppercase())) || repeated.contains(name_base(name))
 }
 
-/// Names (without the duplicate suffix) used by three or more source columns of `t` and by at
-/// least a third of them (a unit row). Header values that recur in a wide block (the same clock
-/// times on every day of a week, "09:00:00" three times over fifteen columns) are names.
+/// Names (without the duplicate suffix) used by three or more source columns of `t` (a unit row).
+/// Clock times and dates are header values, not units: the same times on every day of a week
+/// ("09:00:00" three times) still name their columns.
 fn repeated_names(t: &Table) -> HashSet<&str> {
     let mut seen: HashMap<&str, usize> = HashMap::new();
-    let mut cols = 0;
     for c in t.columns.iter().filter(|c| c.source_col.is_some()) {
         *seen.entry(name_base(&c.name)).or_default() += 1;
-        cols += 1;
     }
-    seen.into_iter().filter(|&(_, n)| n >= 3 && n * 3 >= cols).map(|(s, _)| s).collect()
+    let moment = |s: &str| {
+        let b = s.as_bytes();
+        (b.len() == 8 && b[2] == b':' && b[5] == b':') || (b.len() >= 10 && b[4] == b'-' && b[7] == b'-' && b[..4].iter().all(u8::is_ascii_digit))
+    };
+    seen.into_iter().filter(|&(s, n)| n >= 3 && !moment(s)).map(|(s, _)| s).collect()
 }
 
 /// B86: stacked blocks of one statistical table (levels, then "% change on the previous year",
