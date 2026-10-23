@@ -19,7 +19,17 @@ pub fn detect_custom_number_format(format: &str) -> CellFormat {
     let mut prev = ' ';
     let mut hms = false;
     let mut ap = false;
+    // hedgehog: `aaa` / `aaaa` (East Asian weekday names, `[$-804]aaa;@`) show a date.
+    let mut a_run = 0u8;
     for s in format.chars() {
+        if matches!(s, 'a' | 'A') && !escaped && !is_quote && brackets == 0 {
+            a_run += 1;
+            if a_run >= 3 {
+                return CellFormat::DateTime;
+            }
+        } else {
+            a_run = 0;
+        }
         match (s, escaped, is_quote, ap, brackets) {
             (_, true, ..) => escaped = false, // if escaped, ignore
             // `\` escapes, `_` skips width, `*` fills; the next char is always a literal, not a format token.

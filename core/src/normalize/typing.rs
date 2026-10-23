@@ -64,8 +64,13 @@ pub fn fmt_num(v: f64) -> String {
     s
 }
 
-/// `2024-03-31` or `2024-03-31 10:30:00` for an Excel serial.
+/// `2024-03-31` or `2024-03-31 10:30:00` for an Excel serial; a time of day without a date (a
+/// serial in [0, 1), from an `h:mm` cell) is `10:30:00`, not the fraction `0.4375`.
 pub fn iso(serial: f64) -> String {
+    if (0.0..1.0).contains(&serial) {
+        let secs = ((serial * 86400.0).round() as u32).min(86399);
+        return format!("{:02}:{:02}:{:02}", secs / 3600 % 24, secs / 60 % 60, secs % 60);
+    }
     let Some((y, m, d)) = serial_to_ymd(serial) else { return fmt_num(serial) };
     let frac = serial - serial.floor();
     if frac.abs() < 1e-9 {
