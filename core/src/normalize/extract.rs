@@ -487,7 +487,7 @@ fn section_rows(
         }
         let deeper = level(j) > level(i);
         let apart = (fmt(i).bold && !fmt(j).bold) || (caps(i) && !caps(j)) || merged(*row);
-        let heading = fmt(i).bold || caps(i) || matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with(':'));
+        let heading = caps(i) || matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with(':'));
         let next_section = !values(next) && (out.contains(&next_row) || matches!(roles[j], Role::GroupHeader)) && level(j) >= level(i);
         if deeper || (apart && values(next)) || (heading && next_section) {
             out.insert(*row);
