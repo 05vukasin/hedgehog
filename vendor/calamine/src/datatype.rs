@@ -731,6 +731,17 @@ impl ExcelDateTime {
         self.value
     }
 
+    /// hedgehog: the serial in the 1900 date system. A 1904 workbook (Mac Excel, `date1904`,
+    /// the DATEMODE record) counts days from 1904-01-01: its dates are 1462 days later than the
+    /// same serial in a 1900 workbook. Times of day (serial < 1) and durations stay as they are.
+    pub fn as_f64_1900(&self) -> f64 {
+        if self.is_1904 && self.is_datetime() && self.value >= 1.0 {
+            self.value + 1462.0
+        } else {
+            self.value
+        }
+    }
+
     /// Convert an Excel serial datetime to standard date components.
     ///
     /// Datetimes in Excel are serial dates with days counted from an epoch

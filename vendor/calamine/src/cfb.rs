@@ -532,7 +532,11 @@ impl XlsEncoding {
             }
         };
 
-        s.push_str(&self.encoding.decode(&bytes).0);
+        // hedgehog: a BIFF8 string (its flags byte gave `high_byte`) is UTF-16LE, compressed or
+        // not, whatever the CODEPAGE record says; decoding its expanded bytes as cp1252 put a NUL
+        // after every character ("P\0e\0o\0…") in files that declare codepage 1252.
+        let encoding = if high_byte.is_some() { UTF_16LE } else { self.encoding };
+        s.push_str(&encoding.decode(&bytes).0);
         (l, ub)
     }
 

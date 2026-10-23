@@ -11,6 +11,9 @@
 #   noise      noise smoke: 1 seed per family at t = 0.5, vs eval/quick/noise.tsv
 #   info       quick mode of the info scoreboard, when eval/info/score.py exists
 #   public     14 HiTab tables of the public benchmark (eval/public/quick.py): value-label linking counts
+#   fidelity   cell fidelity of 27 small files (eval/fidelity/check.py quick): every source cell read
+#              independently and compared with normalize's output; per-file failure counts may only
+#              drop (eval/fidelity/quick.tsv). Needs the readers' venv (eval/fidelity/setup.sh)
 #
 # Builds use the `quick` profile (Cargo.toml: dependencies optimized, hedgehog's own crates
 # unoptimized and incremental, so a rebuild after an edit takes seconds) in target-quick/
@@ -22,7 +25,7 @@ set -uo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 UPDATE=0
-ONLY=snapshots,golden,noise,info,public
+ONLY=snapshots,golden,noise,info,public,fidelity
 while [ $# -gt 0 ]; do
   case $1 in
     --update) UPDATE=1 ;;
@@ -221,6 +224,37 @@ if want public; then
     fi
   fi
   finish public "${rc:-0}" "$t0"
+fi
+
+# --- 6. cell fidelity (eval/fidelity, model-free) ---------------------------------------------
+if want fidelity; then
+  t0=$(now)
+  rc=0
+  FPY=${HH_FIDELITY_VENV:+$HH_FIDELITY_VENV/bin/python}
+  [ -n "$FPY" ] || FPY=$(find_up scratch-archive/fidelity/venv/bin/python || true)
+  if [ -z "$HEDGEHOG_DATA" ] || [ ! -d "$HEDGEHOG_DATA" ]; then
+    echo "fidelity: skipped (no test data; set HEDGEHOG_DATA)"
+  elif [ -z "$FPY" ] || [ ! -x "$FPY" ]; then
+    echo "fidelity: skipped (no readers venv; run eval/fidelity/setup.sh)"
+  else
+    log=$WORK/fidelity.log
+    BIN=${HEDGEHOG_BIN:-}
+    if [ -z "$BIN" ]; then
+      run "$log" cargo build --offline --profile quick -p hh_cli -q
+      rc=$?
+      BIN=$CARGO_TARGET_DIR/quick/hedgehog
+    fi
+    if [ $rc -ne 0 ]; then
+      echo "fidelity: build FAILED"; tail -30 "$log" | sed 's/^/  /'
+    else
+      args=(quick --bin "$BIN" --data "$HEDGEHOG_DATA" --tmp "$WORK")
+      [ $UPDATE = 1 ] && args+=(--update)
+      run "$log" "$FPY" -I "$ROOT/eval/fidelity/check.py" "${args[@]}"
+      rc=$?
+      grep -E "^fidelity|^  " "$log"
+    fi
+  fi
+  finish fidelity "${rc:-0}" "$t0"
 fi
 
 # --- summary ---------------------------------------------------------------------------------------

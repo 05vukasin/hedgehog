@@ -38,7 +38,8 @@ fn us() {
             ("$(500)", -500.0, Some("USD")),
             ("($1,200.00)", -1200.0, Some("USD")),
             ("$1.2M", 1.2e6, Some("USD")),
-            ("1.2MM", 1.2e6, None),
+            // "MM" is million after a currency only: "1.2MM" alone may be millimetres (B-fidelity)
+            ("$1.2MM", 1.2e6, Some("USD")),
             ("$5k", 5000.0, Some("USD")),
             ("USD 1,000.00", 1000.0, Some("USD")),
             ("US$ 99.99", 99.99, Some("USD")),

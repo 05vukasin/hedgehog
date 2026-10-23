@@ -590,7 +590,7 @@ pub fn unit(word: &str) -> Option<&'static str> {
 
 const SCALES: &[(f64, &[&str])] = &[
     (1e3, &[
-        "k", "th", "thousand", "thousands", "hilj", "hilj.", "hiljada", "hiljade", "hiljadu", "tis", "tis.", "хиљ", "хиљ.",
+        "k", "thousand", "thousands", "hilj", "hilj.", "hiljada", "hiljade", "hiljadu", "tis", "tis.", "хиљ", "хиљ.",
         "хиљада", "хиљаде", "tsd", "tsd.", "tausend", "mille", "tys", "tys.",
     ]),
     (1e6, &[
@@ -610,7 +610,7 @@ const SCALES: &[(f64, &[&str])] = &[
 /// lowercase `m`/`mm` are length units.
 pub fn scale(word: &str) -> Option<f64> {
     match word {
-        "M" | "MM" => return Some(1e6),
+        "M" => return Some(1e6),
         "B" => return Some(1e9),
         "m" | "mm" | "b" => return None,
         _ => {}
@@ -621,7 +621,13 @@ pub fn scale(word: &str) -> Option<f64> {
 fn classify_suffix(word: &str, p: &mut ParsedNumber, currency_context: bool) -> Option<()> {
     // Each kind of suffix may appear once.
     // After a currency, lowercase "m" is million, not metres: "£2.5m", "$3m".
-    let as_scale = if word == "m" && p.currency.is_some() { Some(1e6) } else { scale(word) };
+    // "MM" is million only after a currency ("$0.50 MM"): "1.0MM", "32MM" in a thickness or size
+    // column are millimetres, and a value is better kept as text than multiplied by a million.
+    // Likewise "B": "1194B" is a tank number, "$4B" four billion.
+    if matches!(word, "MM" | "B") && p.currency.is_none() {
+        return None;
+    }
+    let as_scale = if matches!(word, "m" | "MM") && p.currency.is_some() { Some(1e6) } else { scale(word) };
     if let Some(f) = as_scale {
         (p.scale == 1.0).then(|| p.scale = f)
     } else if let Some(m) = currency_match(word).filter(|m| !m.wordlike || currency_context) {
@@ -1012,7 +1018,14 @@ mod tests {
         assert_eq!(val("1,2 mlrd"), Some(1.2e9));
         assert_eq!(val("4bn"), Some(4e9));
         assert_eq!(val("1,5 милиона"), Some(1.5e6));
-        assert_eq!(val("5MM"), Some(5e6));
+        // "MM" alone is ambiguous (million / millimetre): no number; after a currency, million
+        assert_eq!(val("5MM"), None);
+        assert_eq!(val("1.0MM"), None);
+        assert_eq!(val("$5MM"), Some(5e6));
+        assert_eq!(val("1194B"), None);
+        assert_eq!(val("$4B"), Some(4e9));
+        // "th" is an ordinal ("26th"), not thousand
+        assert_ne!(val("26th"), Some(26000.0));
         let p = auto("1,5 mil. RSD").unwrap();
         assert_eq!((p.scale, p.currency), (1e6, Some("RSD")));
         let p = auto("$1.2bn").unwrap();

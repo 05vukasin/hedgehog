@@ -6,6 +6,7 @@
 #   make merge-check AREA=agent    tier 2, when merging a branch: AREA=agent|core|docs (~5-10 min)
 #   make full                      tier 3, once per batch or before a release (~1-2 h)
 #   make score                     model-free accuracy scoreboard F/S/L/C/M/K on the dev split (eval/accuracy)
+#   make fidelity                  cell fidelity on every corpus vs eval/fidelity/baseline.tsv (~5 min; before any LLM eval)
 #
 #   make inspect FILE=path/to/file.xlsx            what hedgehog makes of a file, what an agent gets
 #   make llm     FILE=...                          same, summary phrased by the LLM in .env
@@ -39,7 +40,7 @@ capped = mkdir -p $(LOGS) && : > $(LOGS)/$(2).log && echo "== $(2)" && \
 .NOTPARALLEL:
 
 .PHONY: score score-holdout help inspect llm ask compare manifest batch tables build cli test bench check-file \
-        quick quick-update merge-check check-area full clippy golden benchmarks node-test py-test
+        quick quick-update merge-check check-area full clippy golden benchmarks node-test py-test fidelity
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -105,6 +106,13 @@ benchmarks: cli
 	@$(call capped,2500M,benchmark-model,$(HH) benchmark --analyzer model --threads 2)
 	@$(call capped,2500M,benchmark-layout,$(HH) benchmark --analyzer layout --threads 2)
 
+# Cell fidelity on every corpus (eval/fidelity, model-free, ~5 min): failure counts may only drop
+# (eval/fidelity/baseline.tsv; FIDELITY_UPDATE=1 writes the current counts). Run before any LLM eval.
+FIDELITY_PY ?= $(abspath ../scratch-archive/fidelity/venv/bin/python)
+fidelity: cli
+	@test -x $(FIDELITY_PY) || eval/fidelity/setup.sh >/dev/null
+	@$(call capped,4G,fidelity,env HH_FIDELITY_WORK=$(LOGS)/fidelity-work $(FIDELITY_PY) -I eval/fidelity/check.py full --bin $(HH) $(if $(FIDELITY_UPDATE),--update))
+
 node-test:
 	@$(call capped,2500M,node,sh -c 'cd node && npm run build && npm test && npm run typecheck')
 
@@ -115,14 +123,14 @@ check-area:
 	@case "$(AREA)" in core|agent|docs) ;; *) echo 'usage: make merge-check AREA=agent|core|docs'; exit 2;; esac
 
 # Tier 2: when merging a branch; AREA is what it touched.
-#   core  (core/: layout, values, totals, normalize) -> core + agent + cli tests, clippy, golden, both analyzers
+#   core  (core/: layout, values, totals, normalize) -> core + agent + cli tests, clippy, golden, both analyzers, cell fidelity
 #   agent (agent/, cli/)                              -> agent + cli tests, clippy, Node
 #   docs  (docs/, eval notes, README)                 -> tier 0 only
 merge-check: check-area
 	@$(MAKE) --no-print-directory quick
 ifeq ($(AREA),core)
 	@$(call capped,4G,test-core,cargo test --release -p hh_core -p hh_agent -p hh_cli)
-	@$(MAKE) --no-print-directory clippy golden benchmarks
+	@$(MAKE) --no-print-directory clippy golden benchmarks fidelity
 endif
 ifeq ($(AREA),agent)
 	@$(call capped,4G,test-agent,cargo test --release -p hh_agent -p hh_cli)

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use hh_core::reader::{open_with, Limits, ReadOptions};
+use hh_core::model::Value;
 
 fn tmp(name: &str) -> PathBuf {
     // One folder per call: tests run in parallel and several use the same file name.
@@ -460,4 +461,63 @@ fn normalizing_many_tables_does_not_run_out_of_file_descriptors() {
     std::fs::remove_dir_all(&out).ok();
     let r = r.unwrap();
     assert!(r.tables >= 1500, "{}", r.tables);
+}
+
+/// A BIFF8 workbook stream: `extra_globals` after the BOF, one sheet "S" holding `cells`
+/// (cell records).
+fn biff_sheet(extra_globals: &[u8], cells: &[Vec<u8>]) -> Vec<u8> {
+    let mut globals = bof(0x0005);
+    globals.extend_from_slice(extra_globals);
+    let sheet_name = b"S";
+    let boundsheet_len = 4 + 8 + sheet_name.len();
+    let eof = record(0x000A, &[]);
+    let sheet_pos = globals.len() + boundsheet_len + eof.len();
+    let mut bs = (sheet_pos as u32).to_le_bytes().to_vec();
+    bs.extend_from_slice(&[0, 0, sheet_name.len() as u8, 0]);
+    bs.extend_from_slice(sheet_name);
+    globals.extend(record(0x0085, &bs));
+    globals.extend(&eof);
+    let mut s = globals;
+    s.extend(bof(0x0010));
+    for c in cells {
+        s.extend_from_slice(c);
+    }
+    s.extend(&eof);
+    s.resize(s.len().max(4096).div_ceil(512) * 512, 0);
+    s
+}
+
+#[test]
+fn xls_biff8_strings_ignore_a_cp1252_codepage() {
+    // A BIFF8 file whose CODEPAGE record says 1252 (written by other tools than Excel): its
+    // strings are still UTF-16, compressed to one byte per character. They were decoded as
+    // cp1252 after being widened, so every character was followed by a NUL ("P\0o\0p\0…").
+    let codepage = record(0x0042, &1252u16.to_le_bytes());
+    let mut label = vec![0, 0, 0, 0, 0, 0]; // row 0, col 0, xf 0
+    label.extend_from_slice(&[4, 0, 0, b'P', b'o', b'p', 0xe9]); // cch 4, compressed
+    let mut wide = vec![1, 0, 0, 0, 0, 0];
+    wide.extend_from_slice(&[2, 0, 1, b'O', 0, 0x0e, 0x04]); // cch 2, UTF-16: "OЎ"
+    let b = cfb("Workbook", &biff_sheet(&codepage, &[record(0x0204, &label), record(0x0204, &wide)]), |_| {});
+    let wb = open_default("cp1252.xls", &b).unwrap();
+    let cells = &wb.sheets[0].cells;
+    assert_eq!(cells[0].value, Some(Value::Text("Popé".into())), "{cells:?}");
+    assert_eq!(cells[1].value, Some(Value::Text("OЎ".into())), "{cells:?}");
+}
+
+#[test]
+fn xls_1904_dates_are_1900_serials() {
+    // A 1904 workbook (DATEMODE 1) counts days from 1904-01-01: its serial 45292 is 2028-01-02,
+    // which is 46754 in the 1900 system hedgehog uses. It was read as 2024-01-01, four years and
+    // a day early. A time of day (serial < 1) stays a time.
+    let globals = [record(0x0022, &1u16.to_le_bytes()), record(0x00E0, &[0, 0, 14, 0])].concat();
+    let num = |col: u8, x: f64| {
+        let mut d = vec![0, 0, col, 0, 0, 0];
+        d.extend_from_slice(&x.to_le_bytes());
+        record(0x0203, &d)
+    };
+    let b = cfb("Workbook", &biff_sheet(&globals, &[num(0, 45292.0), num(1, 0.5)]), |_| {});
+    let wb = open_default("d1904.xls", &b).unwrap();
+    let cells = &wb.sheets[0].cells;
+    assert_eq!(cells[0].value, Some(Value::DateTime(46754.0)), "{cells:?}");
+    assert_eq!(cells[1].value, Some(Value::DateTime(0.5)), "{cells:?}");
 }
