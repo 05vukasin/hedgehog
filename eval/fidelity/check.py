@@ -245,8 +245,10 @@ class HH:
                     continue
                 srccols = [(i, col_index(c["source_column"]), c) for i, c in enumerate(cols)
                            if c.get("source_column") and i < len(head)]
+                # Group columns, and the outline columns of group and row labels (`group_parent`, `<label>_parent`):
+                # labels written once in the sheet.
                 labcols = [i for i, c in enumerate(cols) if not c.get("source_column") and not c["name"].startswith("_")
-                           and not c.get("derived") and i < len(head)]
+                           and (not c.get("derived") or (c.get("derived") or {}).get("kind") == "parent") and i < len(head)]
                 if kv:
                     ik = next((i for i, c in enumerate(cols) if c["name"] == "key"), None)
                     iv = next((i for i, c in enumerate(cols) if c["name"] == "value"), None)
