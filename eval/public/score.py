@@ -36,8 +36,8 @@ from pathlib import Path
 
 csv.field_size_limit(1 << 30)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (HERE, TOKENIZER, col_letter, count_tokens, data_dir, norm_text, parse_number,  # noqa: E402
-                    read_jsonl, words, work_dir, _NUMBER)
+from common import (HERE, TOKENIZER, clock_fraction, col_letter, count_tokens, data_dir, norm_text,  # noqa: E402
+                    parse_number, read_jsonl, words, work_dir, _NUMBER)
 from run_hedgehog import key_of  # noqa: E402
 
 DATASETS = ("mimotable", "realhitbench", "hitab")
@@ -76,7 +76,7 @@ class Atom:
             x = v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
             if x is None:
                 p = parse_number(v)
-                x = p[0] if p else None
+                x = p[0] if p else clock_fraction(v)  # a clock time compares as the day fraction the source stores
             return x is not None and num_eq(self.num, float(x))
         return bool(self.norm) and norm_text(v) == self.norm
 
@@ -98,6 +98,7 @@ def text_numbers(text: str) -> list[float]:
         if p:
             out.append(p[0])
     return out
+
 
 
 def is_numeric_value(v) -> bool:
@@ -281,7 +282,9 @@ def operands_by_question(tables: list[Table], qwords: set[str]) -> tuple[int, in
             if not (words(h) & qwords):
                 continue
             vals = [r[c] for r in t.rows if c < len(r) and r[c] not in (None, "")]
-            if not vals or sum(is_numeric_value(v) or parse_number(v) is not None for v in vals) < 0.5 * len(vals):
+            # numeric-looking: numbers, and clock times (typed values; hedgehog writes them "09:30:00")
+            if not vals or sum(is_numeric_value(v) or parse_number(v) is not None or clock_fraction(v) is not None
+                               for v in vals) < 0.5 * len(vals):
                 continue
             n += 1
             numeric, unmixed = t.col_clean(c)

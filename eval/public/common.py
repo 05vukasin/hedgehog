@@ -115,6 +115,29 @@ def parse_number(s) -> tuple[float, int, bool] | None:
     return (-v if neg else v), _decimals_of(t), pct
 
 
+_CLOCK = re.compile(r"^(\d{1,2}):([0-5]\d)(?::([0-5]\d)(?:\.\d+)?)?$")
+
+
+def clock_fraction(s) -> float | None:
+    """A clock time or duration written "H:MM" / "HH:MM:SS" (hedgehog writes time-of-day cells that way) as a
+    fraction of a day, the value the source stores (09:30:00 -> 0.395833). Hours up to 47 (Excel's elapsed time
+    shows 24:00:00 and above); anything else (ratios "1:2" with one-digit minutes, dates) is None."""
+    if not isinstance(s, str):
+        return None
+    m = _CLOCK.match(s.strip())
+    if not m or int(m.group(1)) > 47:
+        return None
+    return (int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3) or 0)) / 86400.0
+
+
+def typed_number(v) -> float | None:
+    """A typed value as a number: a number, or a clock time as its day fraction (else None)."""
+    p = parse_number(v)
+    if p:
+        return p[0]
+    return clock_fraction(v)
+
+
 def _decimals_of(t: str) -> int:
     if "e" in t.lower():
         return 6
