@@ -170,6 +170,12 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
     (`group` column) starts afresh. Added when at least two rows, and a tenth of them, have a
     parent; an unnamed label column (`col_A`) gives `parent`. Files up to 2 MB are read with their
     cell formats for this.
+- **Key/value tables**: labelled numbers outside every other table of a sheet (`Total Income |
+  9666 | Total Expenditure | 7266` above a cash journal, an assumptions block beside a model) form
+  one table per sheet, titled `key/value cells`, numbered after all other tables of the file:
+  `key` (the one or two text cells left of the number), `value`, `cell` (the number's address).
+  A number followed by another number (a row of data), a year, and text or date values stay in
+  Notes; a sheet needs two pairs. Agents list these tables on one `KEY/VALUE` catalog line.
 - **`_row_type`** (only with `keep_totals`): `data`, `subtotal`, `total`, `average` or `of_which`.
   Only `data` rows add up to the table's figures: a `total` or `subtotal` row sums data rows, an
   `average` row averages them, an `of_which` row is a part of the row above it.

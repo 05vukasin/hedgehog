@@ -1,7 +1,7 @@
 # file	tables	catalog_sha	manifest_sha
-irregular/enron/albert_meyers__1__1-25act.xlsx	12	0942e41325df7a20	5f5ac94326b401e4
+irregular/enron/albert_meyers__1__1-25act.xlsx	14	5f7922e079e6adc8	cdb9f91c9c87949f
 irregular/deco/completed/andrea_ring__3__HHmonthlyavg.xlsx	10	f6efb3fe274d6fcf	e8985ebe087ac2d1
-irregular/us_sec_edgar/001_USB_10K_2022-12-31_bank.xlsx	193	2f5ef20cc3120998	38c783b380629eb9
+irregular/us_sec_edgar/001_USB_10K_2022-12-31_bank.xlsx	199	c640d0d847a054e8	296de62635345bce
 irregular/rs_budget/002_loznica-rashodi-2020.xlsx	1	df9e79c6c79609ac	a763d71123e9e788
 clean/data_gov_rs/pancevo_budzet_2020_prihodi.xlsx	1	68ee046505215083	2f9f6caf242ff73d
 irregular/uk_hmt/001_PESA_2026_CP_Chapter_2_tables.xlsx	5	eb947edb64477313	beb9689ffa1f2dfb

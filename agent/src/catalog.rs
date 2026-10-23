@@ -1600,7 +1600,10 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
 
     let infos: Vec<RowInfo> = tm(1, || norm.tables.iter().map(|t| row_info(norm, t)).collect());
     // `keep`: the tables to list (all of them without a question).
+    // Key/value tables have their own line (KEY/VALUE), not a block.
+    let listed = |keep: &[bool]| -> Vec<bool> { keep.iter().zip(&norm.tables).map(|(&k, t)| k && !t.is_key_value()).collect() };
     let full = |keep: &[bool]| -> Vec<Block> {
+        let keep = &listed(keep)[..];
         let mut out = Vec::new();
         let mut layouts: HashMap<Vec<(String, &'static str)>, String> = HashMap::new();
         let mut shapes: HashMap<Vec<&'static str>, (String, Vec<String>)> = HashMap::new();
@@ -1770,6 +1773,7 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
     // with every column name; `room_cap`: at most this many characters of titles and column names
     // for the other tables.
     let brief = |avail: usize, keep: &[bool], shown: &[bool], prio: &[bool], room_cap: Option<usize>, mode: BriefMode| -> Vec<String> {
+        let keep = &listed(keep)[..];
         let what = match mode {
             BriefMode::Plain => "tables listed briefly",
             BriefMode::Others => "other tables, one line each",
@@ -2215,6 +2219,17 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         ));
     } else {
         tail.push("no tables detected; read values with the cells tool".into());
+    }
+    // B-public: key/value cells outside the tables, one short line for all of them.
+    let kv: Vec<&Table> = norm.tables.iter().filter(|t| t.is_key_value()).collect();
+    if let Some(first) = kv.first() {
+        let list: Vec<String> = kv.iter().take(3).map(|t| format!("{} ({}, {})", t.id(), t.rows(), short(&t.source_sheet, 20))).collect();
+        let more = if kv.len() > 3 { format!(" +{}", kv.len() - 3) } else { String::new() };
+        tail.push(format!(
+            "KEY/VALUE {}{more}: labelled numbers outside the tables — SELECT key, value, cell FROM {}",
+            list.join(", "),
+            first.id()
+        ));
     }
     // B20: the long views (views.rs).
     let longs: Vec<String> = norm.tables.iter().filter_map(|t| crate::views::table_view(t).map(|lv| lv.name)).collect();

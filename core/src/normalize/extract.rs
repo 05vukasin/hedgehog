@@ -2266,6 +2266,10 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     let mut items = collapse_row_totals(items);
     items.sort_by_key(|t| (t.row, t.col));
 
+    // B-public: key/value cells outside every table (`Total Income | 9666 | Total Expenditure |
+    // 7266` above a cash journal, a summary block beside a table) become a table of their own.
+    let kv_table = key_value_table(grid, &lay, &mut owner, out.tables.len() + 1, opts);
+
     // Everything not yet placed → Notes; titles / notes are attached to the nearest table.
     let mut nav_cells: Vec<(u32, u32)> = Vec::new();
     for (i, c) in cells.iter().enumerate() {
@@ -2338,6 +2342,10 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
             *notes_keys.entry(x.row).or_default() += 1;
         }
     }
+    if let Some(t) = kv_table {
+        info.tables.push(t.n);
+        out.tables.push(t);
+    }
     // Titles / notes per table, then output names.
     let tables = &mut out.tables[first..];
     for t in tables.iter_mut() {
@@ -2397,6 +2405,156 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     out.totals.extend(items);
     out.notes.extend(notes);
     out.sheets.push(info);
+}
+
+/// Key/value pairs found among the cells no table took: on one row, a number (not followed by
+/// another number: that is a row of data) with the text cells just left of it (at most two, since the last value) as its key; dates and text values (the
+/// publication date, an e-mail address of a statistics release) stay notes. Needs two pairs on the
+/// sheet at least; keys are short labels, not notes. The table has the columns `key`, `value` and
+/// `cell` (the value's address), one row per pair, in sheet order.
+fn key_value_table(grid: &Grid, lay: &SheetLayout, owner: &mut [u8], n: usize, opts: &Options) -> Option<Table> {
+    let cells = &grid.sheet.cells;
+    // (key cells, value cell)
+    let mut pairs: Vec<(Vec<usize>, usize)> = Vec::new();
+    let mut i = 0;
+    while i < cells.len() {
+        let row = cells[i].row;
+        let mut j = i;
+        while j < cells.len() && cells[j].row == row {
+            j += 1;
+        }
+        let mut texts: Vec<usize> = Vec::new();
+        let mut last_col: Option<u32> = None;
+        for k in i..j {
+            let c = &cells[k];
+            if owner[k] != OWN_NONE || lay.roles[k] == Role::Note {
+                texts.clear();
+                last_col = None;
+                continue;
+            }
+            // Cells of a pair sit close together: at most two blank columns between them.
+            if last_col.is_some_and(|l| c.col > l + 3) {
+                texts.clear();
+            }
+            last_col = Some(c.col);
+            let number = match &c.value {
+                Some(Value::Number(_)) => true,
+                Some(Value::Text(x)) => crate::values::parse_number(x, Default::default()).is_some_and(|p| !p.leading_zero),
+                _ => false,
+            };
+            // A number with another number right after it is a row of data, not a pair.
+            let run = number
+                && cells[k + 1..j].iter().take(1).any(|d| {
+                    d.col <= c.col + 3
+                        && match &d.value {
+                            Some(Value::Number(_)) => true,
+                            Some(Value::Text(x)) => crate::values::parse_number(x, Default::default()).is_some(),
+                            _ => false,
+                        }
+                });
+            // A year beside a label is a period label (`POLSKA | 2021`), not a value.
+            let year = matches!(c.value, Some(Value::Number(x)) if x.fract() == 0.0 && (1900.0..=2100.0).contains(&x));
+            match &c.value {
+                _ if run || year => texts.clear(),
+                _ if number && !texts.is_empty() => {
+                    pairs.push((std::mem::take(&mut texts), k));
+                }
+                // The text value of a `Key:` label (an e-mail address): neither key nor value here.
+                Some(Value::Text(_))
+                    if texts.last().is_some_and(|&t| matches!(&cells[t].value, Some(Value::Text(x)) if x.trim_end().ends_with(':'))) =>
+                {
+                    texts.clear();
+                }
+                Some(Value::Text(x)) if !number => {
+                    let x = x.trim();
+                    let label = !x.is_empty()
+                        && x.chars().count() <= 60
+                        && x.chars().any(char::is_alphabetic)
+                        && !crate::layout::is_note_label(x)
+                        && !is_nav_link(x);
+                    if label {
+                        texts.push(k);
+                        if texts.len() > 2 {
+                            texts.remove(0);
+                        }
+                    } else {
+                        texts.clear();
+                    }
+                }
+                _ => texts.clear(),
+            }
+        }
+        i = j;
+    }
+    if pairs.len() < 2 {
+        return None;
+    }
+    let mut tr = Transforms::default();
+    let text_of = |k: usize| cells[k].value.as_ref().map(display).unwrap_or_default().trim().to_string();
+    let keys: Vec<Out> = pairs
+        .iter()
+        .map(|(ks, _)| Out::Text(fit(ks.iter().map(|&k| text_of(k)).collect::<Vec<_>>().join(" / "), &mut tr)))
+        .collect();
+    let slots: Vec<Slot> = pairs.iter().map(|&(_, v)| cells[v].value.as_ref().map_or(Slot::Empty, Slot::Val)).collect();
+    let rows: Vec<u32> = pairs.iter().map(|&(_, v)| cells[v].row).collect();
+    let typed = type_column("value", 0, &slots, &rows, ColumnHints::default(), &mut |_, _, _| ColumnHints::default(), &mut tr);
+    let mut rect = Rect { top: u32::MAX, left: u32::MAX, bottom: 0, right: 0 };
+    for (ks, v) in &pairs {
+        for &k in ks.iter().chain(std::iter::once(v)) {
+            owner[k] = OWN_TABLE;
+            let c = &cells[k];
+            rect = Rect { top: rect.top.min(c.row), left: rect.left.min(c.col), bottom: rect.bottom.max(c.row), right: rect.right.max(c.col) };
+        }
+    }
+    let column = |name: &str, role: ColRole, dtype: Dtype, values: Vec<Out>| Column {
+        name: name.to_string(),
+        role,
+        source_col: None,
+        original_header: Vec::new(),
+        dtype,
+        unit: None,
+        currency: None,
+        decimal: None,
+        date_order: None,
+        ambiguous: 0,
+        footnote_marks: Vec::new(),
+        values,
+    };
+    let mut columns = vec![
+        column("key", ColRole::Data, Dtype::Text, keys),
+        Column {
+            unit: typed.unit,
+            currency: typed.currency,
+            decimal: typed.decimal,
+            date_order: typed.date_order,
+            ..column("value", ColRole::Data, typed.dtype, typed.values)
+        },
+    ];
+    columns.extend([
+        column("cell", ColRole::Data, Dtype::Text, pairs.iter().map(|&(_, v)| Out::Text(a1(cells[v].row, cells[v].col))).collect()),
+        column(SRC_ROW, ColRole::SrcRow, Dtype::Integer, rows.iter().map(|&r| Out::Num(r as f64 + 1.0)).collect()),
+    ]);
+    if opts.keep_totals {
+        columns.push(column(ROW_TYPE, ColRole::RowType, Dtype::Text, rows.iter().map(|_| Out::Text("data".into())).collect()));
+    }
+    let mut warnings = typed.warnings;
+    warnings.push("key/value cells outside the other tables, one row per value; `cell` is the value's address".to_string());
+    Some(Table {
+        n,
+        sheet: String::new(),
+        source_sheet: grid.sheet.name.clone(),
+        rect,
+        header_top: rect.top,
+        header_rows: 0,
+        title: Some((super::KEY_VALUE_TITLE.to_string(), (cells[pairs[0].0[0]].row, cells[pairs[0].0[0]].col))),
+        notes: Vec::new(),
+        confidence: 0.6,
+        columns,
+        row_types: vec![RowType::Data; rows.len()],
+        src_rows: rows,
+        transforms: tr,
+        warnings,
+    })
 }
 
 /// Flattened name of the table column read from source column `col`.

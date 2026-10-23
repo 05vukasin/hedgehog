@@ -388,7 +388,18 @@ impl TotalItem {
     }
 }
 
+/// Title of the table of key/value cells found outside the other tables of a sheet.
+pub const KEY_VALUE_TITLE: &str = "key/value cells";
+
 impl Table {
+    /// The table of key/value cells outside the other tables of its sheet (columns `key`,
+    /// `value`, `cell`): numbers with their labels, listed briefly by agents.
+    pub fn is_key_value(&self) -> bool {
+        self.header_rows == 0
+            && self.title.as_ref().is_some_and(|t| t.0 == KEY_VALUE_TITLE)
+            && self.columns.first().is_some_and(|c| c.name == "key")
+    }
+
     pub fn id(&self) -> String {
         format!("T{}", self.n)
     }
@@ -646,12 +657,61 @@ pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
             }
         }
     }
+    key_value_tables_last(&mut out);
     let t0 = std::time::Instant::now();
     for t in &mut out.tables {
         derive::add_columns(t);
     }
     trace("derive", t0);
     out
+}
+
+/// The tables of key/value cells ([`Table::is_key_value`]) take the last numbers of the file,
+/// so the other tables keep the numbers they have without them.
+fn key_value_tables_last(out: &mut Normalized) {
+    if !out.tables.iter().any(Table::is_key_value) {
+        return;
+    }
+    let mut order: Vec<usize> = (0..out.tables.len()).filter(|&k| !out.tables[k].is_key_value()).collect();
+    order.extend((0..out.tables.len()).filter(|&k| out.tables[k].is_key_value()));
+    // Old table number → new.
+    let mut new_n = vec![0usize; out.tables.len() + 1];
+    for (k, &old) in order.iter().enumerate() {
+        new_n[out.tables[old].n] = k + 1;
+    }
+    let mut tables: Vec<Option<Table>> = std::mem::take(&mut out.tables).into_iter().map(Some).collect();
+    for &old in &order {
+        let mut t = tables[old].take().expect("each table once");
+        let n = new_n[t.n];
+        if n != t.n {
+            // The output name again, as `process_sheet` makes it (the prefix's length changed).
+            let prefix = format!("T{n}_");
+            let base = t.title.as_ref().map(|x| extract::slug(&x.0, 31 - prefix.len())).filter(|s| !s.is_empty());
+            let base = base
+                .or_else(|| Some(extract::slug(&t.source_sheet, 31 - prefix.len())).filter(|s| !s.is_empty()))
+                .unwrap_or_else(|| "table".to_string());
+            t.sheet = format!("{prefix}{base}");
+        }
+        t.n = n;
+        out.tables.push(t);
+    }
+    let map = |x: &mut Option<usize>| {
+        if let Some(n) = x.as_mut()
+            && let Some(&m) = new_n.get(*n)
+            && m > 0
+        {
+            *n = m;
+        }
+    };
+    out.notes.iter_mut().for_each(|x| map(&mut x.table));
+    out.totals.iter_mut().for_each(|x| map(&mut x.table));
+    for s in &mut out.sheets {
+        for n in &mut s.tables {
+            if let Some(&m) = new_n.get(*n).filter(|&&m| m > 0) {
+                *n = m;
+            }
+        }
+    }
 }
 
 /// [`normalize_workbook`], or an error when [`Options::deadline`] passed before it finished.

@@ -334,6 +334,47 @@ fn empty_and_tableless_workbooks() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Labelled numbers above a table (`Total Income | 9666 | Total Expenditure | 7266`, MiMoTable
+/// cash journals): a key/value table of their own, numbered after the other tables; a date and an
+/// e-mail address beside labels stay notes.
+#[test]
+fn key_value_cells_outside_tables() {
+    let dir = tmp_dir("key_value");
+    let src = dir.join("kv.xlsx");
+    let mut wb = XWorkbook::new();
+    let ws = wb.add_worksheet();
+    ws.write_string(0, 1, "Cash Journal").unwrap();
+    ws.write_string(1, 1, "Contact:").unwrap();
+    ws.write_string(1, 2, "cash@example.com").unwrap();
+    for (k, (label, v)) in [("Total Income", 9666.0), ("Total Expenditure", 7266.0), ("Total Remaining", 2400.0)].iter().enumerate() {
+        ws.write_string(1, 5 + 3 * k as u16, *label).unwrap();
+        ws.write_number(1, 6 + 3 * k as u16, *v).unwrap();
+    }
+    for (c, h) in ["No.", "Project", "Amount"].iter().enumerate() {
+        ws.write_string(3, 1 + c as u16, *h).unwrap();
+    }
+    for i in 0..6u32 {
+        ws.write_number(4 + i, 1, (i + 1) as f64).unwrap();
+        ws.write_string(4 + i, 2, format!("Project {i}")).unwrap();
+        ws.write_number(4 + i, 3, 100.0 * (i + 1) as f64).unwrap();
+    }
+    wb.save(&src).unwrap();
+    let out = normalize_file(&src, &dir, &Options::default()).unwrap();
+    let book = open(&out.xlsx_path).unwrap();
+    let names = names(&book);
+    let kv = names.iter().position(|n| n.ends_with("_key_value_cells")).unwrap_or_else(|| panic!("{names:?}"));
+    assert!(names[kv].starts_with("T2_"), "{names:?}");
+    let t = &book.sheets[kv];
+    assert_eq!(get(t, 0, 0), text("key").as_ref());
+    assert_eq!(get(t, 1, 0), text("Total Income").as_ref());
+    assert_eq!(get(t, 1, 1), num(9666.0).as_ref());
+    assert_eq!(get(t, 3, 2), text("M2").as_ref());
+    assert!(get(t, 4, 0).is_none(), "three pairs only");
+    let m = &out.manifest_json;
+    assert!(m.contains("cash@example.com"), "the e-mail stays a note: {m}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// StatCan writes some negatives without the closing parenthesis (`(11,134`, HiTab statcan/1261):
 /// read as negatives (the column stays numeric) and listed in a warning; a stray `(` before a word
 /// stays text.
