@@ -13,7 +13,7 @@ c80505323fba2e24	613548	irregular/enron/daren_farmer__5511__accrued0922.xlsx
 663c43d611eda391	12075	irregular/enron/benjamin_rogers__925__NY Gen model..xlsx
 c6bbee91c103b6c8	11802	irregular/enron/chris_germany__1834__NewPower_sales2011.xlsx
 938f084222c9bd8e	56	irregular/enron/chris_germany__2999__4-6-2000 enroncestransactions.xlsx
-f68a7594040f8b15	285	irregular/enron/cooper_richey__4242__enron.xlsx
+8e9f42d1f41aac25	285	irregular/enron/cooper_richey__4242__enron.xlsx
 1f189c834efe1a78	211	irregular/enron/daren_farmer__5095__Tufco_May01.xlsx
 a201abb487f00f96	4991	irregular/enron/daren_farmer__5653__EnronAvails0101.xlsx
 bf483a89c4acc64b	13649	irregular/enron/daren_farmer__6650__Consolidated_2000.xlsx
