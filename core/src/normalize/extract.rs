@@ -1797,13 +1797,17 @@ fn weak_name(name: &str, repeated: &HashSet<&str>) -> bool {
     name.strip_prefix("col_").is_some_and(|l| l.bytes().all(|b| b.is_ascii_uppercase())) || repeated.contains(name_base(name))
 }
 
-/// Names (without the duplicate suffix) used by three or more source columns of `t` (a unit row).
+/// Names (without the duplicate suffix) used by three or more source columns of `t` and by at
+/// least a third of them (a unit row). Header values that recur in a wide block (the same clock
+/// times on every day of a week, "09:00:00" three times over fifteen columns) are names.
 fn repeated_names(t: &Table) -> HashSet<&str> {
     let mut seen: HashMap<&str, usize> = HashMap::new();
+    let mut cols = 0;
     for c in t.columns.iter().filter(|c| c.source_col.is_some()) {
         *seen.entry(name_base(&c.name)).or_default() += 1;
+        cols += 1;
     }
-    seen.into_iter().filter(|&(_, n)| n >= 3).map(|(s, _)| s).collect()
+    seen.into_iter().filter(|&(_, n)| n >= 3 && n * 3 >= cols).map(|(s, _)| s).collect()
 }
 
 /// B86: stacked blocks of one statistical table (levels, then "% change on the previous year",
