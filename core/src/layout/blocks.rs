@@ -358,8 +358,10 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
         && rows[s].n() >= 2
         && super::tables::is_header_row(&rows[s], &rows[s + 1..])
         && rows[s + 1..].iter().take(MAX_HEADER_ROWS).any(|r| r.n_measure() > 0);
+    // A row of years or dates is a header row too (`Apr 2012 | Oct 2012 | …` over `Number | %`,
+    // the pair separated from its body by a blank row).
     let header_only = rows.len() <= MAX_HEADER_ROWS
-        && rows.iter().all(|r| r.n_measure() == 0 && r.n_text() >= 1)
+        && rows.iter().all(|r| r.n_measure() == 0 && (r.n_text() >= 1 || r.n_num() >= 2))
         && rows.last().is_some_and(|r| r.n() >= 2);
     let body = if starts_with_header { s + 1 } else { s };
     let mut counts: BTreeMap<u32, (u32, u32)> = BTreeMap::new();

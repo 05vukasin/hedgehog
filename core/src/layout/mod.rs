@@ -169,13 +169,33 @@ pub fn column_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value
     n >= 3
 }
 
-/// A header of period numbers: a text label, then a column numbering (`Year | 1 | 2 | 3 | …`, the
-/// years of a project model, B46). Given the row's filled cells' values from left to right.
+/// A header of period numbers: text labels, then a column numbering (`Year | 1 | 2 | 3 | …`, the
+/// years of a project model, B46; `WP ID | Teaching Group | Condition | 1 | 2 | …`, the days of a
+/// month after `Product | Total | 1 | 2 | …`), and possibly labels after it (`Name | 1 | … | 12 |
+/// Annual Average`). At most [`NUMBERING_MAX_LABELS`] labels on either side. Given the row's
+/// filled cells' values from left to right.
 pub fn labelled_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value>) -> bool {
+    let v: Vec<&crate::model::Value> = values.collect();
+    let label = |x: &&crate::model::Value| {
+        matches!(x, crate::model::Value::Text(t) if !t.trim().is_empty()) && column_number(x).is_none()
+    };
+    let lead = v.iter().take_while(|x| label(x)).count();
+    let tail = v.iter().rev().take_while(|x| label(x)).count();
+    (1..=NUMBERING_MAX_LABELS).contains(&lead)
+        && tail <= NUMBERING_MAX_LABELS
+        && lead + tail < v.len()
+        && column_numbering(v[lead..v.len() - tail].iter().copied())
+}
+
+/// [`labelled_numbering`] with exactly one label, before the numbers (`Year | 1 | 2 | 3 | …`).
+pub fn labelled_numbering_single<'a>(values: impl Iterator<Item = &'a crate::model::Value>) -> bool {
     let mut it = values.peekable();
     matches!(it.next(), Some(crate::model::Value::Text(t)) if !t.trim().is_empty() && column_number(&crate::model::Value::Text(t.clone())).is_none())
         && column_numbering(it)
 }
+
+/// Labels before (and after) the column numbers of a [`labelled_numbering`] header.
+const NUMBERING_MAX_LABELS: usize = 4;
 
 /// Text near the top of a table → Title; marked or below a table → Note; the rest → Other.
 fn classify_loose(sheet: &Sheet, out: &mut Out) {

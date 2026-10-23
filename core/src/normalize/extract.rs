@@ -471,6 +471,50 @@ impl UniqueNames {
     }
 }
 
+/// Columns of one table with the same name, each without a header cell above its own (a parent
+/// label merged over only part of its group, `Main Income` over F:G of F:I; written once at the
+/// left of its group): each takes the nearest label to its left on the header rows above as its
+/// parent (`Main Income / This Year`), the header-path convention, instead of a counter (`This
+/// Year (2)`). Only when that tells all of them apart; otherwise the counter stays.
+fn parent_names_for_duplicates(head: &[Vec<Head>], heads: &mut [(Vec<HeaderPart>, String)], grid: &Grid, tr: &mut Transforms) {
+    let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+    for (k, (parts, label)) in heads.iter().enumerate() {
+        if !parts.is_empty() {
+            by_name.entry(label.to_lowercase()).or_default().push(k);
+        }
+    }
+    let taken: HashSet<String> = heads.iter().map(|(_, l)| l.to_lowercase()).collect();
+    let mut groups: Vec<Vec<usize>> = by_name.into_values().filter(|ks| ks.len() >= 2).collect();
+    groups.sort_unstable();
+    for ks in groups {
+        // The header row of each column's topmost own label: parents come from the rows above it.
+        let top_row = |k: usize| (0..head.len()).find(|&hr| head[hr][k].is_some());
+        let mut names: Vec<String> = Vec::with_capacity(ks.len());
+        for &k in &ks {
+            let Some(top) = top_row(k) else { break };
+            let mut parents: Vec<(String, (u32, u32))> = Vec::new();
+            for row in &head[..top] {
+                if let Some(p) = row[..k].iter().rev().find_map(|h| h.as_ref()) {
+                    parents.push(p.clone());
+                }
+            }
+            if parents.is_empty() {
+                break;
+            }
+            let prefix = clean_name(grid, &parents);
+            names.push(format!("{prefix} / {}", heads[k].1));
+        }
+        let distinct: HashSet<String> = names.iter().map(|n| n.to_lowercase()).collect();
+        if names.len() != ks.len() || distinct.len() != names.len() || distinct.iter().any(|n| taken.contains(n)) {
+            continue;
+        }
+        for (&k, name) in ks.iter().zip(names) {
+            heads[k].1 = name;
+            tr.add(T::HeaderCellsForwardFilled, 1);
+        }
+    }
+}
+
 struct Built {
     table: Table,
     /// Source rows that stayed in the table's data.
@@ -1522,6 +1566,7 @@ fn build_table(
         };
         heads.push((parts, label));
     }
+    parent_names_for_duplicates(&head, &mut heads, grid, &mut tr);
     let type_one = |k: usize| -> (Typed, Transforms) {
         let col = r.left + k as u32;
         let first = opts.locale.map(|l| l.hints()).unwrap_or_default();

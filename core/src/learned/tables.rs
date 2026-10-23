@@ -226,12 +226,39 @@ fn merge_header_only(
         while let Some(prev) = out.last() {
             let p = prev.rect;
             let same_cols = p.left.abs_diff(t.rect.left) <= 1 && p.right.abs_diff(t.rect.right) <= 1;
-            let adjacent = p.bottom < t.rect.top && t.rect.top - p.bottom <= 2;
+            // A vertical merge of the upper header may hang into the next table's first row
+            // (`Number` over A2:A6, the next table's unit row 6).
+            let adjacent = p.bottom <= t.rect.top && t.rect.top - p.bottom <= 2;
             if !(same_cols && adjacent) {
                 break;
             }
-            let rows = rows_in(grid, p, roles, raw, rules);
-            let all_header = !rows.is_empty() && rows.iter().all(|r| r.role() == Role::Header);
+            // Its rows from its header down to the next table; title rows above its header do not
+            // count against it.
+            let from = if prev.header_rows > 0 { prev.header_top } else { p.top };
+            let rows: Vec<RowInfo> =
+                rows_in(grid, p, roles, raw, rules).into_iter().filter(|r| r.row >= from && r.row < t.rect.top).collect();
+            // A row inside the span of a vertical merge that starts on a header row above it
+            // (`Number` over A2:A6) is part of the header block whatever the model says of its
+            // other cells (a row of fuel prices under `Gasoline | Diesel`, MiMoTable 8PumpMachinery).
+            let mut merged_to: Option<u32> = None;
+            let all_header = !rows.is_empty()
+                && rows.iter().all(|r| {
+                    let inside = merged_to.is_some_and(|b| r.row <= b);
+                    let header = r.role() == Role::Header;
+                    if header {
+                        for &i in grid.row_cells(r.row) {
+                            let c = &grid.sheet.cells[i as usize];
+                            if let Some(m) = grid.merge_at(c.row, c.col)
+                                && m.top == c.row
+                                && m.left == c.col
+                                && m.bottom > m.top
+                            {
+                                merged_to = Some(merged_to.map_or(m.bottom, |b| b.max(m.bottom)));
+                            }
+                        }
+                    }
+                    header || inside
+                });
             if !all_header {
                 break;
             }

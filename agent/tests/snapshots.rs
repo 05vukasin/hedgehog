@@ -779,6 +779,58 @@ fn question_focus() {
     s.check();
 }
 
+/// Header rows the catalog used to miss (columns `col_<letter>`): a row of dates over `Number | %`
+/// separated from the body by a blank row; labels then column numbers (`WP ID | Group | 1 | 2 | …`);
+/// a `Key: | … | Key: | value` line over a wide header row.
+#[test]
+fn header_rows() {
+    let mut s = Snap::new("header_rows");
+    let mut wb = Workbook::new();
+    let ws = sheet(&mut wb, "Strength");
+    ws.write(0, 0, "Table 16 - Strength by age").unwrap();
+    ws.write(2, 3, "Return to Contents").unwrap();
+    for k in 0..3u16 {
+        ws.write(3, 3 + 2 * k, format!("{}", 2014 + k)).unwrap();
+        ws.write(4, 3 + 2 * k, "Number").unwrap();
+        ws.write(4, 4 + 2 * k, "%").unwrap();
+    }
+    let ages = [S("All Services"), S("Under 18"), S("18 and 19"), S("20-24"), S("25-29"), S("30-34")];
+    let mut body = Vec::new();
+    for (i, a) in ages.iter().enumerate() {
+        rows(ws, 6 + i as u32, if i == 0 { 0 } else { 1 }, &[vec![*a]]);
+        let mut r = Vec::new();
+        for k in 0..3 {
+            r.push(N(1000.0 + (37 * i + 11 * k) as f64));
+            r.push(N(1.5 + (i + k) as f64));
+        }
+        body.push(r);
+    }
+    rows(ws, 6, 3, &body);
+    let ws = sheet(&mut wb, "Scores");
+    let mut sc = vec![vec![S("WP ID"), S("Group"), S("Condition"), N(1.0), N(2.0), N(3.0), N(4.0)]];
+    for i in 0..6 {
+        sc.push(vec![N(92.0 + i as f64), N(4.0), S(if i % 2 == 0 { "CAI" } else { "Lecture" }), N(1.0), N((i % 3) as f64), N(2.0), N(-1.0)]);
+    }
+    rows(ws, 0, 0, &sc);
+    let ws = sheet(&mut wb, "Projects");
+    ws.write(0, 1, "Project Statistics Table").unwrap();
+    rows(ws, 2, 2, &[vec![S("Project Name:")]]);
+    rows(ws, 2, 5, &[vec![S("Number of Clients:"), N(5.0)]]);
+    let mut p = vec![
+        ["No.", "Contract Number", "Client", "Client Unit", "Contact", "Project", "Quantity", "Days", "Status"].map(S).to_vec(),
+    ];
+    for (i, u) in ["ZhongHang", "Cheng Wei", "BaBaiJiu", "Xiao Lian", "DongNan"].iter().enumerate() {
+        let (no, days) = (i as f64 + 1.0, 70.0 + 7.0 * i as f64);
+        let (c, k) = (["DH1", "DH2", "DH3", "DH4", "DH5"][i], ["180-1", "180-2", "180-3", "180-4", "180-5"][i]);
+        p.push(vec![N(no), S(c), S("DaoKe"), S(u), S(k), S("Robot"), N(10.0 * no), N(days), S("Completed")]);
+    }
+    rows(ws, 3, 1, &p);
+    s.save("headers.xlsx", &mut wb);
+    s.open("headers.xlsx");
+    s.query("headers.xlsx", "SELECT \"Contract Number\", \"Client Unit\" FROM T3 LIMIT 2");
+    s.check();
+}
+
 #[test]
 fn diff_marks_changed_lines() {
     let d = diff("a\nb\nc\nd\ne\nf\ng\nh\n", "a\nb\nc\nD\ne\nf\ng\nh\n");
