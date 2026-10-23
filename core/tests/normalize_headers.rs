@@ -202,3 +202,33 @@ fn header_block_with_merges_down_to_the_unit_row() {
     assert!(t.columns.iter().any(|c| c.name == "Model"), "{:?}", names(t));
     assert_eq!(t.src_rows.len(), 12, "{:?}", names(t));
 }
+
+/// MiMoTable FinancialProfitAnalysisTable (en-0508, en-0509): section labels merged over only two of
+/// their four columns (`Main Income` over F:G of F:I). The repeated sub-headers take the nearest
+/// section label to their left as parent (`Main Income / This Year`) instead of a counter (`This
+/// Year (2)`), so a question's `This Year` of `Main Income` names one column.
+#[test]
+fn repeated_sub_headers_take_their_section_as_parent() {
+    let n = normalize("partial_merge_parents", |ws| {
+        let m = Format::new();
+        ws.write_string(0, 1, "Profit Statistics").unwrap();
+        for (g, section) in ["Main Income", "Main Cost", "Tax"].iter().enumerate() {
+            let c = 1 + 4 * g as u16;
+            ws.merge_range(2, c, 2, c + 1, section, &m).unwrap();
+            for (k, h) in ["Month", "Last Year", "This Year", "Growth"].iter().enumerate() {
+                ws.write_string(3, c + k as u16, *h).unwrap();
+            }
+            for i in 0..8u32 {
+                ws.write_number(4 + i, c, (i + 1) as f64).unwrap();
+                ws.write_number(4 + i, c + 1, 100.0 + (17 * i + 5 * g as u32) as f64).unwrap();
+                ws.write_number(4 + i, c + 2, 110.0 + (19 * i + 3 * g as u32) as f64).unwrap();
+                ws.write_number(4 + i, c + 3, 0.05 + 0.01 * i as f64).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "Main Income / This Year");
+    for name in ["Main Income / Month", "Main Cost / This Year", "Tax / This Year", "Tax / Growth"] {
+        assert!(t.columns.iter().any(|c| c.name == name), "no {name:?} in {:?}", names(t));
+    }
+    assert!(!names(t).iter().any(|n| n.ends_with(')')), "{:?}", names(t));
+}
