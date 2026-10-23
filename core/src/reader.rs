@@ -730,7 +730,7 @@ fn convert_ref(d: DataRef<'_>) -> Option<Value> {
         DataRef::Int(i) => Value::Number(i as f64),
         DataRef::Float(f) => Value::Number(f),
         DataRef::Bool(b) => Value::Bool(b),
-        DataRef::DateTime(dt) => Value::DateTime(dt.as_f64()),
+        DataRef::DateTime(dt) => Value::DateTime(dt.as_f64_1900()),
         DataRef::DateTimeIso(s) | DataRef::DurationIso(s) => Value::Text(s),
         DataRef::Error(e) => Value::Error(e.to_string()),
     })
@@ -744,7 +744,7 @@ fn convert(d: &Data) -> Option<Value> {
         Data::Int(i) => Value::Number(*i as f64),
         Data::Float(f) => Value::Number(*f),
         Data::Bool(b) => Value::Bool(*b),
-        Data::DateTime(dt) => Value::DateTime(dt.as_f64()),
+        Data::DateTime(dt) => Value::DateTime(dt.as_f64_1900()),
         // ODS gives ISO strings; keep them as text until the value normalizer parses dates.
         Data::DateTimeIso(s) | Data::DurationIso(s) => Value::Text(s.clone()),
         Data::Error(e) => Value::Error(e.to_string()),
