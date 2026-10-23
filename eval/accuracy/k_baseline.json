@@ -1,0 +1,26 @@
+{
+ "tokenizer": "tiktoken o200k_base",
+ "per_dataset": {
+  "hitab": {
+   "files": 1303,
+   "mean": 766.6,
+   "median": 684,
+   "p90": 1250,
+   "max": 2438
+  },
+  "mimotable": {
+   "files": 401,
+   "mean": 965.7,
+   "median": 870,
+   "p90": 1683,
+   "max": 4179
+  },
+  "realhitbench": {
+   "files": 536,
+   "mean": 774.2,
+   "median": 592,
+   "p90": 1547,
+   "max": 4408
+  }
+ }
+}
