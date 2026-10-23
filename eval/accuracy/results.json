@@ -19,8 +19,8 @@
   "tablesense": {
    "files": 1258,
    "cell_role_acc": null,
-   "table_f1_iou50": 0.6802,
-   "table_f1_iou80": 0.5527,
+   "table_f1_iou50": 0.6901,
+   "table_f1_iou80": 0.5725,
    "header_exact": null
   }
  },
@@ -35,24 +35,24 @@
    },
    "mimotable": {
     "items": 273,
-    "pass": 253,
+    "pass": 261,
     "audited": 0,
-    "raw": 92.7,
-    "after_audit": 92.7
+    "raw": 95.6,
+    "after_audit": 95.6
    },
    "realhitbench": {
     "items": 1556,
-    "pass": 1334,
+    "pass": 1345,
     "audited": 0,
-    "raw": 85.7,
-    "after_audit": 85.7
+    "raw": 86.4,
+    "after_audit": 86.4
    },
    "ALL": {
     "items": 5634,
-    "pass": 4957,
+    "pass": 4976,
     "audited": 0,
-    "raw": 88.0,
-    "after_audit": 88.0
+    "raw": 88.3,
+    "after_audit": 88.3
    }
   },
   "clusters": {
@@ -83,7 +83,7 @@
     ]
    },
    "answer column has no header (col_X)": {
-    "misses": 107,
+    "misses": 103,
     "examples": [
      {
       "dataset": "mimotable",
@@ -105,32 +105,6 @@
       "file": "repo/data/english/spreadsheet/8PumpMachinery.xlsx",
       "atom": "Electric Single-stage Centrifugal Clean Water Pump",
       "evidence": "'Electric Single-stage Centrifugal Clean Water Pump' only in ['col_B']"
-     }
-    ]
-   },
-   "question key: cell not in any table (row not in any table)": {
-    "misses": 49,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0087",
-      "file": "repo/data/english/spreadsheet/CashJournal-IncomeandExpenditureTable3.xlsx",
-      "atom": "Cash Journal",
-      "evidence": "Sheet1!B1='Cash Journal'"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0520",
-      "file": "repo/data/english/spreadsheet/ProjectStatisticsTable1.xlsx",
-      "atom": "Proposed Duration",
-      "evidence": "Sheet1!K6='Proposed Duration'"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0546",
-      "file": "repo/data/english/spreadsheet/StudentRegistrationForm1.xlsx",
-      "atom": "Total Number of Students",
-      "evidence": "Sheet1!E7='Total Number of Students'"
      }
     ]
    },
@@ -186,8 +160,34 @@
      }
     ]
    },
+   "question key: cell not in any table (row not in any table)": {
+    "misses": 42,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0087",
+      "file": "repo/data/english/spreadsheet/CashJournal-IncomeandExpenditureTable3.xlsx",
+      "atom": "Cash Journal",
+      "evidence": "Sheet1!B1='Cash Journal'"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0546",
+      "file": "repo/data/english/spreadsheet/StudentRegistrationForm1.xlsx",
+      "atom": "Total Number of Students",
+      "evidence": "Sheet1!E7='Total Number of Students'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F183",
+      "file": "tables/productivity-table05.xlsx",
+      "atom": "Output per hour worked",
+      "evidence": "Table 6!H4='Output per hour worked'"
+     }
+    ]
+   },
    "number not grounded by labels or header": {
-    "misses": 32,
+    "misses": 33,
     "examples": [
      {
       "dataset": "realhitbench",
@@ -213,7 +213,7 @@
     ]
    },
    "cell not in any table (row not in any table)": {
-    "misses": 13,
+    "misses": 11,
     "examples": [
      {
       "dataset": "realhitbench",
@@ -235,32 +235,6 @@
       "file": "tables/business-table07.xlsx",
       "atom": "London",
       "evidence": "Businesses - Sports!N12='London'"
-     }
-    ]
-   },
-   "generic column header (col_X)": {
-    "misses": 11,
-    "examples": [
-     {
-      "dataset": "realhitbench",
-      "id": "F182",
-      "file": "tables/productivity-table05.xlsx",
-      "atom": "-3.20%",
-      "evidence": "Table 6!H109 in T3 column 'col_H'"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F533",
-      "file": "tables/environment-table08.xlsx",
-      "atom": "2020",
-      "evidence": "Table_3!A23 in T1 column 'col_A'"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F535",
-      "file": "tables/environment-table08.xlsx",
-      "atom": "2005",
-      "evidence": "Table_3!A8 in T1 column 'col_A'"
      }
     ]
    },
@@ -313,6 +287,32 @@
       "file": "repo/data/english/spreadsheet/Long-termLoanRepaymentPlan.xlsx",
       "atom": "Repayment OK",
       "evidence": "'Repayment OK' names 6 columns of T2: ['Repayment OK', 'Repayment OK (2)', 'Repayment OK (3)'] (a row of values taken as the header, or lost parents)"
+     }
+    ]
+   },
+   "generic column header (col_X)": {
+    "misses": 7,
+    "examples": [
+     {
+      "dataset": "realhitbench",
+      "id": "F182",
+      "file": "tables/productivity-table05.xlsx",
+      "atom": "-3.20%",
+      "evidence": "Table 6!H109 in T3 column 'col_H'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F1421",
+      "file": "tables/society-table36.xlsx",
+      "atom": "2020",
+      "evidence": "Sheet1!A6 in T1 column 'col_A'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F2229",
+      "file": "tables/society-table57.xlsx",
+      "atom": "2010",
+      "evidence": "Table_1a!A2 in T1 column 'col_A'"
      }
     ]
    },
@@ -420,25 +420,6 @@
      }
     ]
    },
-   "question key: value changed: date text parsed with another day (day 1)": {
-    "misses": 2,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0118",
-      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
-      "atom": "March 25",
-      "evidence": "Sheet1!F5='March 25' -> '2025-03-01' (T1 'Address / Care Date')"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0119",
-      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
-      "atom": "March 26",
-      "evidence": "Sheet1!F6='March 26' -> '2026-03-01' (T1 'Address / Care Date')"
-     }
-    ]
-   },
    "value changed: date left as Excel serial": {
     "misses": 2,
     "examples": [
@@ -477,18 +458,6 @@
      }
     ]
    },
-   "value changed: date text parsed with another day (day 1)": {
-    "misses": 1,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0116",
-      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
-      "atom": "March 26",
-      "evidence": "Sheet1!F6='March 26' -> '2026-03-01' (T1 'Address / Care Date')"
-     }
-    ]
-   },
    "question key: value changed: item number '(n)' read as negative": {
     "misses": 1,
     "examples": [
@@ -520,10 +489,10 @@
   "per": {
    "hitab": {
     "items": 1314,
-    "pass": 614,
+    "pass": 666,
     "audited": 0,
-    "raw": 46.7,
-    "after_audit": 46.7
+    "raw": 50.7,
+    "after_audit": 50.7
    },
    "mimotable": {
     "items": 206,
@@ -534,463 +503,853 @@
    },
    "realhitbench": {
     "items": 744,
-    "pass": 380,
+    "pass": 391,
     "audited": 0,
-    "raw": 51.1,
-    "after_audit": 51.1
+    "raw": 52.6,
+    "after_audit": 52.6
    },
    "ALL": {
     "items": 2264,
-    "pass": 1124,
+    "pass": 1187,
     "audited": 5,
-    "raw": 49.6,
-    "after_audit": 49.8
+    "raw": 52.4,
+    "after_audit": 52.5
    }
   },
   "clusters": {
-   "outside program space": {
-    "misses": 324,
+   "gold/question: question does not name an operand": {
+    "misses": 132,
     "examples": [
      {
       "dataset": "hitab",
-      "id": "02cb638212c0f01dc6f041b0ac42009a",
-      "file": "clean/nsf/103_54_nsf19316-tab001.xlsx",
-      "atom": "0.876264",
-      "evidence": ""
+      "id": "74d4ee7c9c8bd347793da1095a8cd4fe",
+      "file": "clean/nsf/109_55_fs17-ib-19314-tab004.xlsx",
+      "atom": "0.974958",
+      "evidence": "G4 column ['nsf']: no word of it in the question"
      },
      {
       "dataset": "hitab",
-      "id": "89b15914091a322c15dbf7e2c6a0903c",
-      "file": "clean/nsf/103_54_nsf19316-tab001.xlsx",
-      "atom": "0.053164",
-      "evidence": ""
+      "id": "47ba0cbe3b4c42e2d5e76c3fcb0311de",
+      "file": "clean/nsf/111_55_fs17-ib-19314-tab006.xlsx",
+      "atom": "0.921821",
+      "evidence": "I4 column ['usda']: no word of it in the question"
      },
      {
       "dataset": "hitab",
-      "id": "48c1fb4af5f317f1b9efba257efd0bb6",
-      "file": "clean/nsf/103_54_nsf19316-tab001.xlsx",
-      "atom": "0.070572",
-      "evidence": ""
+      "id": "df0890dd51311e9ef14d2951b7361889",
+      "file": "clean/nsf/131_64_sdr17-ib-19307-tab001.xlsx",
+      "atom": "0.248342",
+      "evidence": "B15 row ['worldwide', 'non-u.s. residing population']: no word of it in the question"
      }
     ]
    },
-   "only loosely grounded programs match": {
-    "misses": 221,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "2ef8b3d00cf29f1dd428aaa72667a4b8",
-      "file": "clean/nsf/110_55_fs17-ib-19314-tab005.xlsx",
-      "atom": "0.770448",
-      "evidence": "[110_55_fs17-ib-19314-tab005.xlsx:T1 sum(R&D) where Institution_parent='Top 20 HBCUs'] / [110_55_fs17-ib-19314-tab005.xlsx:T1 value(R&D) where row [All HBCUs]]"
-     },
-     {
-      "dataset": "hitab",
-      "id": "8281f309c9198ca5e7fff2e04152324b",
-      "file": "clean/nsf/152_72_tab4.xlsx",
-      "atom": "0.034739",
-      "evidence": "[152_72_tab4.xlsx:T1 sum(Other S&E activities) where all data rows] / [152_72_tab4.xlsx:T1 sum(All federal obligations) where all data rows]"
-     },
-     {
-      "dataset": "hitab",
-      "id": "8e02d726bd749fb8cdbb9f9158538f66",
-      "file": "clean/nsf/15_117_tab2.xlsx",
-      "atom": "0.730469",
-      "evidence": "[15_117_tab2.xlsx:T1 value((Current $millions) / ARRA-funded R&D expenditures) where row [row 1]] / [15_117_tab2.xlsx:T1 value((Current $millions) / ARRA-funded R&D expenditures) where row [row 0]]"
-     }
-    ]
-   },
-   "only loosely grounded programs match (file has: header missing)": {
-    "misses": 167,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "5a188fa0c7b3bcc0e23d588e2308cd8b",
-      "file": "clean/statcan/1010.xlsx",
-      "atom": "1.888889",
-      "evidence": "[1010.xlsx:T1 value(All families / percent) where row [Low income (market basket measure)]] / [1010.xlsx:T1 value(All families / percent) where row [Low income (market basket measure)]]"
-     },
-     {
-      "dataset": "hitab",
-      "id": "2718a8768a04d78b62484265f9c16848",
-      "file": "clean/statcan/1047.xlsx",
-      "atom": "21.9",
-      "evidence": "[1047.xlsx:T1 value(Immigrant class / Dependants / percent distribution) where row [percent / Knowledge-based industries]] + [1047.xlsx:T1 value(Immigrant class / Refugees / percent distribution) where row [percent / Knowledge-based industries]]"
-     },
-     {
-      "dataset": "hitab",
-      "id": "3eadeab9627ec478d5f97eeec9771fc0",
-      "file": "clean/statcan/1085.xlsx",
-      "atom": "2.952381",
-      "evidence": "[1085.xlsx:T1 value(Percentage of positions vacant for 90 days or more / percent) where row [University certificate or diploma above bachelor’s degree / Level of education required]] / [1085.xlsx:T1 value(Percentage of positions vacant for 90 days or more / percent) where row [No minimum level of education sought / Level of education required]]"
-     }
-    ]
-   },
-   "outside program space (file has: header missing)": {
-    "misses": 151,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "815e1b4f19e25a67c58c63384500f1c8",
-      "file": "clean/nsf/108_55_fs17-ib-19314-tab003.xlsx",
-      "atom": "0.365104",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "3387d7da20548589a055b770f9140e88",
-      "file": "clean/nsf/108_55_fs17-ib-19314-tab003.xlsx",
-      "atom": "0.939304",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "cc261c68c73908387afcca2fc4f53cef",
-      "file": "clean/statcan/1043.xlsx",
-      "atom": "76.4",
-      "evidence": ""
-     }
-    ]
-   },
-   "value in a cell, no grounded program": {
-    "misses": 68,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "4127e10f1def6a96d3ed7fdfca1b3795",
-      "file": "clean/nsf/128_62_np16-ib-19308-tab002.xlsx",
-      "atom": "2.1",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "9f273370951dead981788bcb1c9bd903",
-      "file": "clean/nsf/174_85_tab3.xlsx",
-      "atom": "4.1",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "3cab23d6c935a56fa52bb9534daf70e5",
-      "file": "clean/statcan/1032.xlsx",
-      "atom": "5.3",
-      "evidence": ""
-     }
-    ]
-   },
-   "value in a cell, no grounded program (file has: header missing)": {
-    "misses": 44,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "a04c53584d4ee85b190163cb7bc680e0",
-      "file": "clean/nsf/108_55_fs17-ib-19314-tab003.xlsx",
-      "atom": "0.036168",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "294d8b853a52656ecf5851bee2af633f",
-      "file": "clean/nsf/202_93_tab5.xlsx",
-      "atom": "0.361856",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "f0b24c5cacbac34ec7da2cfd5be2b044",
-      "file": "clean/statcan/1092.xlsx",
-      "atom": "40.6",
-      "evidence": ""
-     }
-    ]
-   },
-   "outside program space (file has: total row in data)": {
-    "misses": 21,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "58bf6a4afe738ef324931fe614a8fc4a",
-      "file": "clean/nsf/154_72_tab6.xlsx",
-      "atom": "0.879454",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "68ca1b9f149184882fe7cd8a22f2b626",
-      "file": "clean/nsf/154_72_tab6.xlsx",
-      "atom": "0.061968",
-      "evidence": ""
-     },
-     {
-      "dataset": "hitab",
-      "id": "e6055eaa7effdfac1f77797b72292173",
-      "file": "clean/nsf/154_72_tab6.xlsx",
-      "atom": "0.048209",
-      "evidence": ""
-     }
-    ]
-   },
-   "only ungrounded programs match": {
-    "misses": 21,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "6aaaf582a2179a28116434452a5f765a",
-      "file": "clean/statcan/1224.xlsx",
-      "atom": "24",
-      "evidence": "1224.xlsx:T1 avg(Departures / number) where all data rows"
-     },
-     {
-      "dataset": "hitab",
-      "id": "f8021686dae271ba2f76ed758c31e090",
-      "file": "clean/statcan/1241.xlsx",
-      "atom": "29",
-      "evidence": "1241.xlsx:T1 min(Total Crime Severity Index / index) where all data rows"
-     },
-     {
-      "dataset": "hitab",
-      "id": "5d5b431ca089bd478617c38cc8227d2b",
-      "file": "clean/statcan/49.xlsx",
-      "atom": "23700",
-      "evidence": "49.xlsx:T1 sum(First official language spoken / Total) where all data rows"
-     }
-    ]
-   },
-   "only loosely grounded programs match (file has: repeated header names)": {
-    "misses": 16,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "55e60981b04bbd728a04d7f9ff6571dc",
-      "file": "clean/statcan/1042.xlsx",
-      "atom": "77.1",
-      "evidence": "1042.xlsx:T1 max(Before legalization (2)) where col_A='Friends and family'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "a30f7a8ab93d959aa2c6de48c27fc760",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "5.2",
-      "evidence": "[1220.xlsx:T1 avg(Number of years since landing or filing a refugee claim (4)) where all data rows] - [1220.xlsx:T1 avg(Number of years since landing or filing a refugee claim (4)) where Group and cohort='2010']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "3a7bfc4836b12ae35659014ae8ebe68f",
-      "file": "clean/statcan/2728.xlsx",
-      "atom": "2.457831",
-      "evidence": "[2728.xlsx:T1 value(Non-medical only (NMO) (2)) where row [Daily smoker / Yes]] / [2728.xlsx:T1 value(Non-medical only (NMO) (2)) where row [Daily smoker / No]]"
-     }
-    ]
-   },
-   "only loosely grounded programs match (file has: total row in data)": {
-    "misses": 14,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "9c8037e023ebc0224d0d03da756eafb0",
-      "file": "clean/nsf/166_83_tab2.xlsx",
-      "atom": "0.624567",
-      "evidence": "[166_83_tab2.xlsx:T1 avg(2011) where Source of funds_parent='All federal R&D expenditures'] / [166_83_tab2.xlsx:T1 avg(2011) where all data rows]"
-     },
-     {
-      "dataset": "hitab",
-      "id": "986bc9a0aba0824371cdb077401ef1f9",
-      "file": "clean/statcan/1028.xlsx",
-      "atom": "4",
-      "evidence": "1028.xlsx:T1 avg(Percent change in community supervision rate from 2012/2013 to 2013/2014) where all data rows"
-     },
-     {
-      "dataset": "hitab",
-      "id": "1b180b0e4527d7ee681ba1846a77856d",
-      "file": "clean/statcan/1028.xlsx",
-      "atom": "0.186393",
-      "evidence": "[1028.xlsx:T1 value(Custody / number) where row [Provinces and territories - total]] / [1028.xlsx:T1 value(Total correctional services / number) where row [Provinces and territories - total]]"
-     }
-    ]
-   },
-   "only ungrounded programs match (file has: header missing)": {
-    "misses": 14,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "3c0d1e81662373f74b50df7286040cde",
-      "file": "clean/nsf/202_93_tab5.xlsx",
-      "atom": "0.349818",
-      "evidence": "202_93_tab5.xlsx:T2 min(value) where all data rows"
-     },
-     {
-      "dataset": "hitab",
-      "id": "cfd24fd44cc357d073cefe80e4aa3cb3",
-      "file": "clean/statcan/1648.xlsx",
-      "atom": "1001",
-      "evidence": "1648.xlsx:T1 min(Wages and salaries / coefficient) where all data rows"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0170",
-      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(45).xlsx",
-      "atom": "7",
-      "evidence": "WorkplaceGeneral(45).xlsx:T1 count(col_J) where all data rows"
-     }
-    ]
-   },
-   "outside program space (file has: measures mixed)": {
-    "misses": 11,
+   "oracle-limit: grounding: question paraphrases an operand": {
+    "misses": 130,
     "examples": [
      {
       "dataset": "hitab",
       "id": "7110432e27957602fd7a91838193b1ec",
       "file": "clean/nsf/129_62_np16-ib-19308-tab003.xlsx",
       "atom": "0.727113",
-      "evidence": ""
+      "evidence": "B5 row ['r&d']; shared words ['rd'] (file has: measures mixed)"
      },
      {
       "dataset": "hitab",
-      "id": "c087257fd93d3ee12d64339a5eb4c348",
-      "file": "clean/nsf/130_62_np16-ib-19308-tab004.xlsx",
-      "atom": "0.171939",
-      "evidence": ""
+      "id": "bbec70ee31aaa709f1df7299dc1a49d3",
+      "file": "clean/nsf/131_64_sdr17-ib-19307-tab001.xlsx",
+      "atom": "0.349767",
+      "evidence": "D5 row ['worldwide', 'u.s. residing population']; shared words ['residing']"
      },
      {
       "dataset": "hitab",
-      "id": "e1b9017e08d6a4d7d561fa2df983ac50",
-      "file": "clean/nsf/130_62_np16-ib-19308-tab004.xlsx",
-      "atom": "0.202989",
-      "evidence": ""
+      "id": "6facca706bbb5ae138d0633c5267a207",
+      "file": "clean/nsf/64_2_nsf21324-tab002.xlsx",
+      "atom": "0.166846",
+      "evidence": "B6 row ['r&d']; shared words ['rd'] (file has: measures mixed)"
      }
     ]
    },
-   "outside program space (file has: repeated header names)": {
-    "misses": 11,
+   "oracle-limit: grounding: column named only in part": {
+    "misses": 116,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "89149bbb0ce62b4fe7cf26e590a812e7",
+      "file": "clean/nsf/174_85_tab3.xlsx",
+      "atom": "0.413261",
+      "evidence": "B42 column ['domestic net sales (us$millions)a'] vs hedgehog 'Domestic net sales (US$millions)a'"
+     },
+     {
+      "dataset": "hitab",
+      "id": "4937b6a569d6ee55b18acec8bdd3cccb",
+      "file": "clean/nsf/193_90_tab2.xlsx",
+      "atom": "4116",
+      "evidence": "D4 column ['current $millions', '2015'] vs hedgehog 'Current $millions / 2015'"
+     },
+     {
+      "dataset": "hitab",
+      "id": "462012f6cea92295356cd0c228b16dec",
+      "file": "clean/statcan/1014.xlsx",
+      "atom": "1998",
+      "evidence": "E61 column ['civilian personnel', 'total', 'number'] vs hedgehog 'Civilian personnel / Total / number'"
+     }
+    ]
+   },
+   "oracle-limit: grounding: operation not named by the question": {
+    "misses": 78,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0026",
+      "file": "repo/data/english/spreadsheet/Teacher'sClassReschedulingRecordForm1.xlsx",
+      "atom": "2",
+      "evidence": "Teacher'sClassReschedulingRecordForm1.xlsx:T1 count rows where Day='Friday'"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0030",
+      "file": "repo/data/english/spreadsheet/PileSingleCalculation.xlsx",
+      "atom": "0",
+      "evidence": "PileSingleCalculation.xlsx:T1 range(Unit Price (Yuan/m3)) where all data rows"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0038",
+      "file": "repo/data/english/spreadsheet/ClientInformationFollow-upStatisticsTable.xlsx",
+      "atom": "6",
+      "evidence": "ClientInformationFollow-upStatisticsTable.xlsx:T1 avg(Serial Number) where all data rows"
+     }
+    ]
+   },
+   "gold/question: gold not reproduced from its operand cells": {
+    "misses": 56,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "48398cf056d256aa345afa2b22475583",
+      "file": "clean/statcan/1032.xlsx",
+      "atom": "4.581961",
+      "evidence": "gold 4.581961, aggregation ['div'], operands F20=4,581,961"
+     },
+     {
+      "dataset": "hitab",
+      "id": "4e07d458feff383ba363c6a729db75be",
+      "file": "clean/statcan/1103.xlsx",
+      "atom": "96.95",
+      "evidence": "gold 96.95, aggregation ['average'], operands D6=3.1, I6=3.6, G6=3.2, H6=3.6, F6=3.5, K6=2.9 (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "d14e24a3f2b9c66fd82d91008638b3ad",
+      "file": "clean/statcan/1104.xlsx",
+      "atom": "97.958333",
+      "evidence": "gold 97.958333, aggregation ['sum', 'average'], operands C7=1.5, I5=94.7, I6=1.4, F6=1.6, F5=94.5, L7=1.3 (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: grounding: implicit period (the question names no year)": {
+    "misses": 50,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "02cb638212c0f01dc6f041b0ac42009a",
+      "file": "clean/nsf/103_54_nsf19316-tab001.xlsx",
+      "atom": "0.876264",
+      "evidence": "I5 column ['2015']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "89b15914091a322c15dbf7e2c6a0903c",
+      "file": "clean/nsf/103_54_nsf19316-tab001.xlsx",
+      "atom": "0.053164",
+      "evidence": "I5 column ['2015']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "48c1fb4af5f317f1b9efba257efd0bb6",
+      "file": "clean/nsf/103_54_nsf19316-tab001.xlsx",
+      "atom": "0.070572",
+      "evidence": "I13 column ['2015']"
+     }
+    ]
+   },
+   "oracle-limit: shape: argmax / ranking over groups": {
+    "misses": 47,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0116",
+      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
+      "atom": "126",
+      "evidence": "question: On which day is the highest number of care sessions recorded?"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0144",
+      "file": "repo/data/english/spreadsheet/Sheet12(1).xlsx",
+      "atom": "8649.33",
+      "evidence": "question: Which department has the highest average pre-tax salary?"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0398",
+      "file": "repo/data/english/spreadsheet/Workbook1(1).xlsx",
+      "atom": "95",
+      "evidence": "gold equals some cell, none named; question: Among the students who received a ★★★★★ rating, what is the highest score in the Mathematics subject? "
+     }
+    ]
+   },
+   "oracle-limit: shape: conditional count": {
+    "misses": 39,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0196",
+      "file": "repo/data/english/spreadsheet/3333(87).xlsx",
+      "atom": "14",
+      "evidence": "question: How many companies in the table have addresses located in Beijing? "
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F88",
+      "file": "tables/employment-table19.xlsx",
+      "atom": "145345",
+      "evidence": "question: What is the total number of employed individuals in all industries?"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F412",
+      "file": "tables/economy-table08.xlsx",
+      "atom": "3849.08",
+      "evidence": "question: Calculate the average quarter number of debtors’ applications from 2013 to 2015."
+     }
+    ]
+   },
+   "oracle-limit: grounding: implicit whole (total row the question does not name)": {
+    "misses": 38,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "8281f309c9198ca5e7fff2e04152324b",
+      "file": "clean/nsf/152_72_tab4.xlsx",
+      "atom": "0.034739",
+      "evidence": "B6 row ['all hhe institutions']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "277d629dfed346ac2ce17062b6cf56fc",
+      "file": "clean/nsf/156_77_tab2.xlsx",
+      "atom": "0.222462",
+      "evidence": "B4 row ['all ffrdcs'] (file has: total row in data)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "61956e6cbad0974cddcd0a088d64ca35",
+      "file": "clean/nsf/161_80_tab2.xlsx",
+      "atom": "1.4",
+      "evidence": "D16 row ['constant 2009 $', 'total r&d, all performers']"
+     }
+    ]
+   },
+   "oracle-limit: grounding: an operand named only in part": {
+    "misses": 34,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0086",
+      "file": "repo/data/english/spreadsheet/CashJournal-IncomeandExpenditureTable3.xlsx",
+      "atom": "93.15",
+      "evidence": "[CashJournal-IncomeandExpenditureTable3.xlsx:T1 sum(Expenditure Details / Amount Involved) where all data rows] / [CashJournal-IncomeandExpenditureTable3.xlsx:T1 sum(Expenditure Details / Number of Invoices) where all data rows] (file has: total row in data)"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0480",
+      "file": "repo/data/english/spreadsheet/AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx",
+      "atom": "32",
+      "evidence": "[AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx:T1 value(Question Number) where row [6 questions (5 multiple choice, 1 subjective) / 32 points = 20+12 / Philosophical Life]] + ["
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0491",
+      "file": "repo/data/english/spreadsheet/ComparisonTableofPersonalDepositInterestRatesofVariousBanks(AdjustedonJuly6,2012).xlsx",
+      "atom": "10,000",
+      "evidence": "[ComparisonTableofPersonalDepositInterestRatesofVariousBanks(AdjustedonJuly6,2012).xlsx:T1 sum(Annual Interest Rate (%) / Hangzhou Bank) where all data rows] 100*/ [ComparisonTableofPersonalDepositInterestRatesofVariousBanks(AdjustedonJuly6"
+     }
+    ]
+   },
+   "oracle-limit: shape: ratio / share of unnamed operands": {
+    "misses": 28,
     "examples": [
      {
       "dataset": "realhitbench",
-      "id": "F1906",
-      "file": "tables/biology-table04.xlsx",
-      "atom": "158314.450361634",
-      "evidence": ""
+      "id": "F982",
+      "file": "tables/labor-table27.xlsx",
+      "atom": "9.43%",
+      "evidence": "question: Calculate the proportion of the restart count to the activation count for “Mobile Department” and express it as a percen"
      },
      {
       "dataset": "realhitbench",
-      "id": "F1908",
-      "file": "tables/biology-table04.xlsx",
-      "atom": "1044193.15",
-      "evidence": ""
+      "id": "F1186",
+      "file": "tables/economy-table94.xlsx",
+      "atom": "97.30",
+      "evidence": "question: What is the total percentage change for 'Unprocessed foodstuffs and feedstuffs' in years when the percentage was above 1"
      },
      {
       "dataset": "realhitbench",
-      "id": "F1921",
-      "file": "tables/biology-table07.xlsx",
-      "atom": "632922.853",
-      "evidence": ""
+      "id": "F1263",
+      "file": "tables/science-table06.xlsx",
+      "atom": "3343.45",
+      "evidence": "question: What is the total LLOQ of TFV in the samples? (Accurate to two decimal places)"
      }
     ]
    },
-   "only loosely grounded programs match (file has: measures mixed)": {
+   "oracle-limit: shape: sum over a conditional set": {
+    "misses": 26,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0219",
+      "file": "repo/data/english/spreadsheet/BHComponent(2).xlsx",
+      "atom": "305.208",
+      "evidence": "gold equals some cell, none named; question: What is the total flange weight of the BH component with the lightest total flange weight in the table?"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0220",
+      "file": "repo/data/english/spreadsheet/BHComponent(2).xlsx",
+      "atom": "1758.4",
+      "evidence": "gold equals some cell, none named; question: What are the total flange weight and total web weight of the component in row 7?"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0373",
+      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(35).xlsx",
+      "atom": "520",
+      "evidence": "gold equals some cell, none named; question: What is the total of Groceries, Entertainment Expenses, and Transportation Fees/Fuel on October 3rd?"
+     }
+    ]
+   },
+   "oracle-limit: shape: difference / change of aggregates": {
+    "misses": 26,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0359",
+      "file": "repo/data/english/spreadsheet/ProductionManufacturingForm(521).xlsx",
+      "atom": "656,000",
+      "evidence": "question: What is the average amount of records with an amount exceeding 500,000?"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0546",
+      "file": "repo/data/english/spreadsheet/StudentRegistrationForm1.xlsx",
+      "atom": "49",
+      "evidence": "question: What is the difference between the total number of students and the number of registered students?"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F302",
+      "file": "tables/economy-table03.xlsx",
+      "atom": "42",
+      "evidence": "question: How many employees have a taxable benefit exceeding 2000?"
+     }
+    ]
+   },
+   "library: header missing (generated column name)": {
+    "misses": 25,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0170",
+      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(45).xlsx",
+      "atom": "7",
+      "evidence": "WorkplaceGeneral(45).xlsx:T1 count(col_J) where all data rows (file has: header missing)"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F78",
+      "file": "tables/employment-table16.xlsx",
+      "atom": "65",
+      "evidence": "column '2023 / Agriculture and related industries / Wage and salary '; employment-table16.xlsx:T1 range(2023 / Agriculture and related industries / Wage and salary workers(1)) where Age and sex='range=16..19'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F155",
+      "file": "tables/injuries-table04.xlsx",
+      "atom": "1217",
+      "evidence": "column 'Event or exposure(1) / Transportation incidents(2)'; [injuries-table04.xlsx:T1 value(Event or exposure(1) / Transportation incidents(2)) where row [Total]] - [injuries-table04.xlsx:T1 value(Event or exposure(1) / Violence and other "
+     }
+    ]
+   },
+   "oracle-limit: shape: ratio / share (one column)": {
+    "misses": 24,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "3c2245521b17c0e6b1fdfd06b9dd0c15",
+      "file": "clean/nsf/10_112_tab1.xlsx",
+      "atom": "-0.072612",
+      "evidence": "2 operand cells named by the question; aggregation div"
+     },
+     {
+      "dataset": "hitab",
+      "id": "2d39e2a6bd87ab42a982e15565c097fa",
+      "file": "clean/nsf/10_112_tab1.xlsx",
+      "atom": "0.042528",
+      "evidence": "2 operand cells named by the question; aggregation div"
+     },
+     {
+      "dataset": "hitab",
+      "id": "7957a251f50b7584e196b07cc7170611",
+      "file": "clean/nsf/112_55_fs17-ib-19314-tab007.xlsx",
+      "atom": "0.009327",
+      "evidence": "2 operand cells named by the question; aggregation div"
+     }
+    ]
+   },
+   "oracle-limit: grounding: implicit whole (national total, both sexes)": {
+    "misses": 21,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "6c115a5fc18b7309b69ec989de2020fb",
+      "file": "clean/statcan/1226.xlsx",
+      "atom": "0.254642",
+      "evidence": "I21 row ['canada']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "ada0759c9401f0aba13336a2d9d32aad",
+      "file": "clean/statcan/1470.xlsx",
+      "atom": "371890",
+      "evidence": "D6 row ['canada'] (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "1d348c19d23e21dc26313918f393b67c",
+      "file": "clean/statcan/1798.xlsx",
+      "atom": "6.694656",
+      "evidence": "K19 row ['canada']"
+     }
+    ]
+   },
+   "library: hedgehog header naming": {
+    "misses": 20,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "a04c53584d4ee85b190163cb7bc680e0",
+      "file": "clean/nsf/108_55_fs17-ib-19314-tab003.xlsx",
+      "atom": "0.036168",
+      "evidence": "T1 'col_J' is 'TABLE 3. Federal science and engineering obligations to the 20 universities and colleges receiving the largest amounts, by type of activity:  FY 2017 / (Thousands of dollars)' in the source (Sheet1!J); witness via source headers: 108_55_fs17-ib-19314-tab003.xlsx:T1 value(TABLE 3. Federal science and engineering obligations to the 20 universities and colleges receiving the largest amounts, by type of activity:  FY 2017 / (Thousands of dollars)) where row [All institutions] (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "55e60981b04bbd728a04d7f9ff6571dc",
+      "file": "clean/statcan/1042.xlsx",
+      "atom": "77.1",
+      "evidence": "T1 'Before legalization (2)' is 'Table 4: Number and percentage of consumers who accessed cannabis from each source, by before or after legalization and cannabis expenditures, Canada (provinces only), 2018 and 2019 Table summary: This table displays the results of Number and percentage of consumers who accessed cannabis from each source Before legalization, After legalization, '000, % and 95% confidence interval (appearing as column headers).' in the source (original!C); T1 'Before legalization (3)' is 'Table 4: Number and percentage of consumers who accessed cannabis from each source, by before or after legalization and cannabis expenditures, Canada (provinces only), 2018 and 2019 Table summary: This table displays the results of Number and percentage of consumers who accessed cannabis from each source Before legalization, After legalization, '000, % and 95% confidence interval (appearing as column headers).' in the source (original!D); witness via source headers: 1042.xlsx:T1 value(Table 4: Number and percentage of consumers who accessed cannabis from each source, by before or after legalization and cannabis expenditures, Canada (provinces only), 2018 and 2019 Table summary: This table displays the results of Number and percentage of consumers who accessed cannabis from each source Before legalization, After legalization, '000, % and 95% confidence interval (appearing as column headers).) where row [$0 (nothing) / Friends and family] (file has: repeated header names)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "f33440121d84731aa21564536848e12f",
+      "file": "clean/statcan/1108.xlsx",
+      "atom": "53.5",
+      "evidence": "T1 '%' is 'Table 3: Percentage reporting impacts on life and limitations, household population with multiple sclerosis† aged 15 or older, Canada excluding territories, 2011 Table summary: This table displays the results of Percentage reporting impacts on life and limitations. The information is grouped by Impact on life/Limitation (appearing as row headers), % and 95% confidence interval, calculated using from and to units of measure (appearing as column headers). / %' in the source (original!B); witness via source headers: 1108.xlsx:T1 value(Table 3: Percentage reporting impacts on life and limitations, household population with multiple sclerosis† aged 15 or older, Canada excluding territories, 2011 Table summary: This table displays the results of Percentage reporting impacts on life and limitations. The information is grouped by Impact on life/Limitation (appearing as row headers), % and 95% confidence interval, calculated using from and to units of measure (appearing as column headers). / %) where row [Pain / Usually free of pain]"
+     }
+    ]
+   },
+   "oracle-limit: grounding: no operand named by the question": {
+    "misses": 18,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0064",
+      "file": "repo/data/english/spreadsheet/8PumpMachinery.xlsx",
+      "atom": "15",
+      "evidence": "8PumpMachinery.xlsx:T2 min(kw·h) where all data rows (file has: repeated header names)"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0396",
+      "file": "repo/data/english/spreadsheet/Workbook1(1).xlsx",
+      "atom": "40",
+      "evidence": "Workbook1(1).xlsx:T1 min(Mathematics) where all data rows"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0399",
+      "file": "repo/data/english/spreadsheet/Workbook1(1).xlsx",
+      "atom": "88.76",
+      "evidence": "Workbook1(1).xlsx:T1 avg(Chemistry) where all data rows"
+     }
+    ]
+   },
+   "oracle-limit: shape: sum of named cells (one column)": {
+    "misses": 17,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "c949b0e232c9b542cd5e8fc5ec1db21d",
+      "file": "clean/nsf/187_88_tab1.xlsx",
+      "atom": "1047850",
+      "evidence": "2 operand cells named by the question; aggregation sum"
+     },
+     {
+      "dataset": "hitab",
+      "id": "1b103b4656c03156b3da826035635ffa",
+      "file": "clean/nsf/3_102_tab2.xlsx",
+      "atom": "138544",
+      "evidence": "2 operand cells named by the question; aggregation sum"
+     },
+     {
+      "dataset": "hitab",
+      "id": "42e4acbd048532d4d0a49b7c6f02606b",
+      "file": "clean/statcan/1028.xlsx",
+      "atom": "139337",
+      "evidence": "2 operand cells named by the question; aggregation sum (file has: total row in data)"
+     }
+    ]
+   },
+   "oracle-limit: shape: average over a conditional set": {
+    "misses": 17,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0126",
+      "file": "repo/data/english/spreadsheet/1706967909341.xlsx",
+      "atom": "402384.6",
+      "evidence": "question: What is the average value of the \"Direct Cost (Yuan)\" for all projects in the table?"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0405",
+      "file": "repo/data/english/spreadsheet/Canuse20.xlsx",
+      "atom": "88.44",
+      "evidence": "question: What is Tang Bin's average score in all subjects in Class 1301?"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0453",
+      "file": "repo/data/english/spreadsheet/GoodsSalesandInventoryDataStatisticsTable.xlsx",
+      "atom": "174.56",
+      "evidence": "question: What is the average selling price of all products among all the data? "
+     }
+    ]
+   },
+   "oracle-limit: shape: date arithmetic": {
+    "misses": 16,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0071",
+      "file": "repo/data/english/spreadsheet/1241(3).xlsx",
+      "atom": "24",
+      "evidence": "gold equals some cell, none named; question: How many days of financial income and expenditure are recorded in the table? "
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F609",
+      "file": "tables/labor-table02.xlsx",
+      "atom": "24",
+      "evidence": "question: What day is the meeting?"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F832",
+      "file": "tables/economy-table32.xlsx",
+      "atom": "12",
+      "evidence": "question: Verify whether any invoices in the table have a missing or null “DueDate.” If so, provide the count of such invoices."
+     }
+    ]
+   },
+   "oracle-limit: shape: ratio / share (one row)": {
+    "misses": 11,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "f061a9b70367c7797e7c1314757a4c47",
+      "file": "clean/nsf/11_112_tab2.xlsx",
+      "atom": "0.85034",
+      "evidence": "4 operand cells named by the question; aggregation div"
+     },
+     {
+      "dataset": "hitab",
+      "id": "68ca1b9f149184882fe7cd8a22f2b626",
+      "file": "clean/nsf/154_72_tab6.xlsx",
+      "atom": "0.061968",
+      "evidence": "2 operand cells named by the question; aggregation div (file has: total row in data)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "66ff474265bfa054ff659cae719112e5",
+      "file": "clean/statcan/1476.xlsx",
+      "atom": "1.909774",
+      "evidence": "2 operand cells named by the question; aggregation div (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: group-by aggregate": {
+    "misses": 10,
+    "examples": [
+     {
+      "dataset": "realhitbench",
+      "id": "F184",
+      "file": "tables/productivity-table05.xlsx",
+      "atom": "97.73",
+      "evidence": "question: Calculate the average output per worker index from Q1 2015 to Q4 2015. The answer should be rounded to two decimal place (file has: header missing)"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F274",
+      "file": "tables/agriculture-table03.xlsx",
+      "atom": "49.53",
+      "evidence": "question: Determine the total cost if a person buys 5 pounds of each type of cherries available in the table. (file has: header missing)"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F740",
+      "file": "tables/labor-table07.xlsx",
+      "atom": "2012",
+      "evidence": "question: Compare the total hours worked in June 2012 to those in June 2016. Which year had higher hours, and by how much?"
+     }
+    ]
+   },
+   "oracle-limit: shape: difference (one column)": {
     "misses": 9,
     "examples": [
      {
       "dataset": "hitab",
-      "id": "29d75fddfb7895be35e1e80ae7739b9b",
-      "file": "clean/nsf/64_2_nsf21324-tab002.xlsx",
-      "atom": "0.464612",
-      "evidence": "[64_2_nsf21324-tab002.xlsx:T1 value(Total) where row [Higher education / Basic research]] / [64_2_nsf21324-tab002.xlsx:T1 value(Total) where row [Basic research / R&D]]"
+      "id": "5edbee08823923db22b6e9fa5ae87a84",
+      "file": "clean/statcan/1465.xlsx",
+      "atom": "10",
+      "evidence": "2 operand cells named by the question; aggregation diff (file has: header missing)"
      },
      {
       "dataset": "hitab",
-      "id": "83d03a35f242746cb5d5c472ad4d110b",
-      "file": "clean/statcan/1097.xlsx",
-      "atom": "386200",
-      "evidence": "1097.xlsx:T1 max(Weighted estimates / First Nations / unweighted number) where all data rows"
+      "id": "74c0cbfdb6d89b9b7c5bc25b022742b4",
+      "file": "clean/statcan/1680.xlsx",
+      "atom": "13.8",
+      "evidence": "2 operand cells named by the question; aggregation diff (file has: header missing)"
      },
      {
       "dataset": "hitab",
-      "id": "12c52276801421067fd02be445d6f8f4",
-      "file": "clean/statcan/20.xlsx",
-      "atom": "-4.5",
-      "evidence": "20.xlsx:T1 avg(Soybeans / thousand of acres) where Seeded area_parent='year-in=2008..2017' and Seeded area='% Difference'"
+      "id": "2860ca115bb3e06494910c9b31495c43",
+      "file": "clean/statcan/2322.xlsx",
+      "atom": "1.61",
+      "evidence": "2 operand cells named by the question; aggregation diff"
      }
     ]
    },
-   "only loosely grounded programs match (file has: number as header)": {
-    "misses": 8,
+   "oracle-limit: shape: lookup (one column)": {
+    "misses": 6,
     "examples": [
      {
       "dataset": "hitab",
-      "id": "a8fe9245380aadb538362fd09aae5e9a",
-      "file": "clean/statcan/2797.xlsx",
-      "atom": "3.05",
-      "evidence": "[2797.xlsx:T1 value(2018 / Total victims / percent) where row [Indigenous identity / Indigenous (First Nations, Métis, Inuit) person]] / [2797.xlsx:T1 value(2018 / Total victims / percent) where row [Indigenous identity / Non-Indigenous person]]"
+      "id": "f0b24c5cacbac34ec7da2cfd5be2b044",
+      "file": "clean/statcan/1092.xlsx",
+      "atom": "40.3",
+      "evidence": "2 operand cells named by the question; aggregation none (file has: header missing)"
      },
      {
-      "dataset": "mimotable",
-      "id": "en-0497",
-      "file": "repo/data/english/spreadsheet/GoodsInventoryReport.xlsx",
-      "atom": "1589",
-      "evidence": "[GoodsInventoryReport.xlsx:T2 avg(30-60 days: Inventory Amount) where all data rows] 100*/ [GoodsInventoryReport.xlsx:T2 avg(Over 360 days: Inventory Quantity) where all data rows]"
+      "dataset": "hitab",
+      "id": "8bfdb7925172870248feec6976ca62d2",
+      "file": "clean/statcan/1092.xlsx",
+      "atom": "18.7",
+      "evidence": "2 operand cells named by the question; aggregation none (file has: header missing)"
      },
      {
-      "dataset": "realhitbench",
-      "id": "F461",
-      "file": "tables/business-table03.xlsx",
-      "atom": "303",
-      "evidence": "[business-table03.xlsx:T4 sum(Current) where all data rows] - [business-table03.xlsx:T4 value(Current) where row [Workforce Dynamics / Recruitment Exceptions (current = Q2 2011-12, previous = Q1 2011-12)]]"
+      "dataset": "hitab",
+      "id": "aead2bcbee548f8e514cd77894ff908a",
+      "file": "clean/statcan/1108.xlsx",
+      "atom": "57",
+      "evidence": "3 operand cells named by the question; aggregation none"
      }
     ]
    },
-   "operand column text": {
-    "misses": 5,
+   "oracle-limit: shape: lookup (sign) (one cell)": {
+    "misses": 6,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "8b907717c6c53941a6eaa62785862959",
+      "file": "clean/statcan/1242.xlsx",
+      "atom": "24",
+      "evidence": "1 operand cells named by the question; aggregation opposite"
+     },
+     {
+      "dataset": "hitab",
+      "id": "955e0ccb9725ca7150c3e90cbd8dedc0",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.023",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c7d5bcb908707b186be84fd2e9ce4ef9",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.023",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: hypothetical (what-if)": {
+    "misses": 6,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0227",
+      "file": "repo/data/english/spreadsheet/64.xlsx",
+      "atom": "214,090",
+      "evidence": "question: If all inventory products are sold at the activity price, how much total profit can be obtained? "
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F380",
+      "file": "tables/education-table09.xlsx",
+      "atom": "505919.50",
+      "evidence": "question: If the participation in “Private Sector Public Funded” increased by 15% in the following year, what would the new total "
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F763",
+      "file": "tables/economy-table41.xlsx",
+      "atom": "2200",
+      "evidence": "question: If the 'Grand i10' had a 10% increase in its retail incentive, what would the new incentive value be for that model?"
+     }
+    ]
+   },
+   "library: number kept as text": {
+    "misses": 6,
     "examples": [
      {
       "dataset": "realhitbench",
       "id": "F347",
       "file": "tables/society-table84.xlsx",
       "atom": "76319",
-      "evidence": ""
+      "evidence": "reachable when numbers kept as text are parsed: [society-table84.xlsx:T1 sum(2005) where parent='Total work visas'] - [society-table84.xlsx:T1 sum(2014) where parent='Total work visas'] (file has: header missing)"
      },
      {
       "dataset": "realhitbench",
       "id": "F754",
       "file": "tables/manufacture-table06.xlsx",
       "atom": "64",
-      "evidence": ""
+      "evidence": "reachable when numbers kept as text are parsed: [manufacture-table06.xlsx:T1 value(Z6) where row [Optics & Focus / Number of Focus Point / 273]] - [manufacture-table06.xlsx:T1 value(Z50) where row [Optics & F"
      },
      {
       "dataset": "realhitbench",
-      "id": "F1258",
-      "file": "tables/science-table05.xlsx",
-      "atom": "1.51",
-      "evidence": ""
+      "id": "F1125",
+      "file": "tables/economy-table78.xlsx",
+      "atom": "12",
+      "evidence": "reachable when numbers kept as text are parsed: economy-table78.xlsx:T1 count(Local Price) where Variants='1-Month Premium' or Variants='3-Month Premium'"
      }
     ]
    },
-   "outside program space (file has: duplicate headers)": {
-    "misses": 4,
+   "library: header misnamed": {
+    "misses": 5,
     "examples": [
      {
       "dataset": "hitab",
-      "id": "d608ee27c786ef6c7fe21af936fe5620",
-      "file": "clean/nsf/163_81_tab2.xlsx",
-      "atom": "0.642754",
-      "evidence": ""
+      "id": "aef3fe35c6acb7697d2e128853927a6d",
+      "file": "clean/statcan/1817.xlsx",
+      "atom": "67",
+      "evidence": "D10: 'men' (named by the question) is not in hedgehog's column 'Average time spent (participants) / Men (ref.) / minutes' (T1) (file has: header missing)"
      },
      {
       "dataset": "hitab",
-      "id": "5e4143651d9b8f8da26c16c7ec36bb1f",
-      "file": "clean/nsf/163_81_tab2.xlsx",
-      "atom": "0.664156",
-      "evidence": ""
+      "id": "e27906b805a65c5f8a4a76e1d14d4be6",
+      "file": "clean/statcan/632.xlsx",
+      "atom": "16",
+      "evidence": "C7: 'men' (named by the question) is not in hedgehog's column '...' (T2) (file has: header missing)"
      },
      {
       "dataset": "hitab",
-      "id": "e5ab91cb80629abd65dac3904ff5f317",
-      "file": "clean/nsf/163_81_tab2.xlsx",
-      "atom": "0.658088",
-      "evidence": ""
+      "id": "da168859d2d0329900f4eabfbc8e0b7c",
+      "file": "clean/statcan/632.xlsx",
+      "atom": "60",
+      "evidence": "C19: 'men' (named by the question) is not in hedgehog's column '...' (T2) (file has: header missing)"
      }
     ]
    },
-   "value in a cell, no grounded program (file has: measures mixed)": {
+   "oracle-limit: shape: maximum (one column)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "21ff79c88b1d7136ec5b9955384c679d",
+      "file": "clean/statcan/2354.xlsx",
+      "atom": "16.3",
+      "evidence": "2 operand cells named by the question; aggregation max (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "4a71e9c64878074e8c5f4525488754e8",
+      "file": "clean/statcan/2652.xlsx",
+      "atom": "19",
+      "evidence": "15 operand cells named by the question; aggregation max"
+     },
+     {
+      "dataset": "hitab",
+      "id": "d107e86d5f83075d2f0b5d36573956cf",
+      "file": "clean/statcan/2748.xlsx",
+      "atom": "210",
+      "evidence": "5 operand cells named by the question; aggregation max (file has: total row in data)"
+     }
+    ]
+   },
+   "oracle-limit: shape: sum of named cells (one row)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "e5e753a2908291dbd8dca00d6322132d",
+      "file": "clean/statcan/2622.xlsx",
+      "atom": "75",
+      "evidence": "2 operand cells named by the question; aggregation sum"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c6a01ac148627822623df701f6b747d7",
+      "file": "clean/statcan/2622.xlsx",
+      "atom": "61",
+      "evidence": "2 operand cells named by the question; aggregation sum"
+     },
+     {
+      "dataset": "hitab",
+      "id": "e00b0745c9487142c5ef2bc8e0c78bab",
+      "file": "clean/statcan/2645.xlsx",
+      "atom": "19227",
+      "evidence": "2 operand cells named by the question; aggregation sum (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: extremes (one column)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "33ef59523252581cded448a6b9c668e0",
+      "file": "clean/statcan/2714.xlsx",
+      "atom": "77.2",
+      "evidence": "2 operand cells named by the question; aggregation max+min (file has: measures mixed)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "433cb1452cfdb3f448a814c8baafc04a",
+      "file": "clean/statcan/2714.xlsx",
+      "atom": "58.1",
+      "evidence": "2 operand cells named by the question; aggregation max+min (file has: measures mixed)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "9be0de7cca2b66e822dbb2dd463d003c",
+      "file": "clean/statcan/2714.xlsx",
+      "atom": "95.6",
+      "evidence": "2 operand cells named by the question; aggregation max+min (file has: measures mixed)"
+     }
+    ]
+   },
+   "oracle-limit: shape: lookup (one row)": {
     "misses": 4,
     "examples": [
      {
@@ -998,233 +1357,347 @@
       "id": "219482d8d82b8727b16d011a45c0aff3",
       "file": "clean/statcan/1097.xlsx",
       "atom": "29.3",
-      "evidence": ""
+      "evidence": "4 operand cells named by the question; aggregation none (file has: measures mixed)"
      },
      {
       "dataset": "hitab",
-      "id": "744727c68f5a4ebc1a88a5f36b47b877",
-      "file": "clean/statcan/1097.xlsx",
-      "atom": "17130",
-      "evidence": ""
+      "id": "3b2a23d8823f3fd2d2f0b9b9573190b9",
+      "file": "clean/statcan/1099.xlsx",
+      "atom": "88",
+      "evidence": "2 operand cells named by the question; aggregation none (file has: header missing)"
      },
      {
       "dataset": "hitab",
-      "id": "9be0de7cca2b66e822dbb2dd463d003c",
-      "file": "clean/statcan/2714.xlsx",
-      "atom": "95.6",
-      "evidence": ""
+      "id": "eaaf4fc356c023059d7d201103811dca",
+      "file": "clean/statcan/970.xlsx",
+      "atom": "6",
+      "evidence": "3 operand cells named by the question; aggregation none (file has: header missing)"
      }
     ]
    },
-   "value in a cell, no grounded program (file has: total row in data)": {
+   "library: label path lost": {
     "misses": 4,
     "examples": [
      {
       "dataset": "hitab",
-      "id": "6328988f48b030ffed5ad36fcbc3ead5",
-      "file": "clean/statcan/2593.xlsx",
-      "atom": "11",
-      "evidence": ""
+      "id": "d642e70e47974ad14592b505465a9132",
+      "file": "clean/statcan/1359.xlsx",
+      "atom": "3",
+      "evidence": "D7: 'men' (named by the question) is no label of hedgehog's row ['Men (ref.)'] (T1) (file has: header missing)"
      },
      {
       "dataset": "hitab",
-      "id": "c5955fb74fd342af028ee61c9794421b",
-      "file": "clean/statcan/2593.xlsx",
-      "atom": "4",
-      "evidence": ""
+      "id": "89400d436c7cad1b8838ce42678640ae",
+      "file": "clean/statcan/1816.xlsx",
+      "atom": "47.5",
+      "evidence": "B6: 'age' (named by the question) is no label of hedgehog's row ['Demographics', 'Age (years)'] (T1) (file has: header missing)"
      },
      {
       "dataset": "hitab",
-      "id": "d107e86d5f83075d2f0b5d36573956cf",
-      "file": "clean/statcan/2748.xlsx",
-      "atom": "210",
-      "evidence": ""
+      "id": "566778fc7210028ecb133ffb6c6c7ba3",
+      "file": "clean/statcan/2115.xlsx",
+      "atom": "0.39064",
+      "evidence": "E16: 'violent crime' (named by the question) is no label of hedgehog's row ['Assault - level 1 - common assault'] (T1)"
      }
     ]
    },
-   "only ungrounded programs match (file has: repeated header names)": {
-    "misses": 3,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0064",
-      "file": "repo/data/english/spreadsheet/8PumpMachinery.xlsx",
-      "atom": "15",
-      "evidence": "8PumpMachinery.xlsx:T2 min(kw·h) where all data rows"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F779",
-      "file": "tables/sport-table06.xlsx",
-      "atom": "4",
-      "evidence": "sport-table06.xlsx:T1 max(Actual Results (3)) where all data rows"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F1046",
-      "file": "tables/sport-table10.xlsx",
-      "atom": "14",
-      "evidence": "sport-table10.xlsx:T1 avg(2013-09-23 / place) where all data rows"
-     }
-    ]
-   },
-   "only loosely grounded programs match (file has: date day changed)": {
-    "misses": 3,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0115",
-      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
-      "atom": "16",
-      "evidence": "1257(4).xlsx:T1 avg(Contact Number / Remarks) where all data rows"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0118",
-      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
-      "atom": "11",
-      "evidence": "1257(4).xlsx:T1 value(Contact Number / Remarks) where row [\"Bai Ling\" / Bichon / Pure White]"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0119",
-      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
-      "atom": "21",
-      "evidence": "1257(4).xlsx:T1 value(Contact Number / Remarks) where row [\"Summer\" / Teddy / Pure White]"
-     }
-    ]
-   },
-   "only loosely grounded programs match (file has: Excel serial as number)": {
-    "misses": 2,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0163",
-      "file": "repo/data/english/spreadsheet/StockSituation4.xlsx",
-      "atom": "40,035",
-      "evidence": "StockSituation4.xlsx:T1 max(Total Amount) where all data rows"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0561",
-      "file": "repo/data/english/spreadsheet/TaobaoAffiliate-DataAnalysisToolTable-(1).xlsx",
-      "atom": "9114.80",
-      "evidence": "TaobaoAffiliate-DataAnalysisToolTable-(1).xlsx:T2 sum(Taobao Affiliate Baby Transaction Amount) where Time='year-month=2013-03' and Affiliate Nickname='taobaoss137'"
-     }
-    ]
-   },
-   "only loosely grounded programs match (file has: duplicate headers)": {
-    "misses": 2,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0508",
-      "file": "repo/data/english/spreadsheet/FinancialProfitAnalysisTable.xlsx",
-      "atom": "420",
-      "evidence": "FinancialProfitAnalysisTable.xlsx:T1 sum(This Year (2)) where Profit Statistics Table / Month='id=2' or Profit Statistics Table / Month='id=3'"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "L420",
-      "file": "tables/labor-table14.xlsx",
-      "atom": "3.50",
-      "evidence": "labor-table14.xlsx:T1 max(Sum Hours) where all data rows"
-     }
-    ]
-   },
-   "total row in data": {
-    "misses": 1,
+   "oracle-limit: shape: range (one column)": {
+    "misses": 4,
     "examples": [
      {
       "dataset": "hitab",
-      "id": "86923ea84b02a36bd7b5aa917844cb25",
-      "file": "clean/statcan/533.xlsx",
+      "id": "8bff4066954ac3347148dbe246e42bc8",
+      "file": "clean/statcan/629.xlsx",
+      "atom": "$11,280,409",
+      "evidence": "2 operand cells named by the question; aggregation range"
+     },
+     {
+      "dataset": "hitab",
+      "id": "3974a797733c5033d58fa4ce220c92c6",
+      "file": "clean/statcan/629.xlsx",
+      "atom": "$7,587,187",
+      "evidence": "2 operand cells named by the question; aggregation range"
+     },
+     {
+      "dataset": "hitab",
+      "id": "8b1e058e4814216e984368c2aa0732c7",
+      "file": "clean/statcan/647.xlsx",
       "atom": "2",
-      "evidence": ""
+      "evidence": "5 operand cells named by the question; aggregation range (file has: header missing)"
      }
     ]
    },
-   "outside program space (file has: date day changed)": {
-    "misses": 1,
+   "oracle-limit: shape: multi-step expression": {
+    "misses": 4,
     "examples": [
      {
       "dataset": "mimotable",
-      "id": "en-0116",
-      "file": "repo/data/english/spreadsheet/1257(4).xlsx",
-      "atom": "126",
-      "evidence": ""
+      "id": "en-0582",
+      "file": "repo/data/english/spreadsheet/ProductionManufacturingForm(580).xlsx",
+      "atom": "254,790",
+      "evidence": "question: If the selling price of each item is 150% of the inbound price, how much revenue can be generated from selling \"Men's Tr"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F1155",
+      "file": "tables/economy-table84.xlsx",
+      "atom": "0.13",
+      "evidence": "question: How much more expensive per cup equivalent are applesauce than fresh apples? (file has: header missing)"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F1403",
+      "file": "tables/society-table32.xlsx",
+      "atom": "69.50%",
+      "evidence": "question: What was the coverage of TT - Tetanus toxoid vaccination in 2020 with COVID? (file has: header missing)"
      }
     ]
    },
-   "value in a cell, no grounded program (file has: Excel serial as number)": {
-    "misses": 1,
+   "oracle-limit: shape: forecast / extrapolation": {
+    "misses": 3,
+    "examples": [
+     {
+      "dataset": "realhitbench",
+      "id": "F554",
+      "file": "tables/business-table07.xlsx",
+      "atom": "3903.61",
+      "evidence": "question: Based on the growth trend from 2005 to 2009, predict the number of businesses in “Sports Activities” for 2011 in the “So"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F1206",
+      "file": "tables/environment-table11.xlsx",
+      "atom": "1861.20",
+      "evidence": "question: How much would the total forecasted levy increase if Craven District Council's levy amount rises by 15%?"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "L28",
+      "file": "tables/economy-table133.xlsx",
+      "atom": "356.61",
+      "evidence": "question: Using the monthly CPI trend for \"Cereals and bakery products,\" what is the projected CPI value for January 2024 if the a"
+     }
+    ]
+   },
+   "oracle-limit: shape: difference (one row)": {
+    "misses": 2,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "1390b2451cbd630fce763751ada7a5a0",
+      "file": "clean/nsf/9_11_nsf21304-tab002.xlsx",
+      "atom": "11.6",
+      "evidence": "2 operand cells named by the question; aggregation diff"
+     },
+     {
+      "dataset": "hitab",
+      "id": "4277d4b99f492faf591e3678de03133c",
+      "file": "clean/statcan/1677.xlsx",
+      "atom": "0.033",
+      "evidence": "2 operand cells named by the question; aggregation diff"
+     }
+    ]
+   },
+   "oracle-limit: shape: minimum (one column)": {
+    "misses": 2,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "211654acd95237a0e107baed56f1325b",
+      "file": "clean/statcan/1030.xlsx",
+      "atom": "-8",
+      "evidence": "12 operand cells named by the question; aggregation min"
+     },
+     {
+      "dataset": "hitab",
+      "id": "e91b3be7fe39fc97a91db046ba7fefad",
+      "file": "clean/statcan/715.xlsx",
+      "atom": "0.74",
+      "evidence": "7 operand cells named by the question; aggregation min (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: maximum (one cell)": {
+    "misses": 2,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "f6f4bf5279a022b39ed191484409bc68",
+      "file": "clean/statcan/2746.xlsx",
+      "atom": "46.9",
+      "evidence": "1 operand cells named by the question; aggregation max"
+     },
+     {
+      "dataset": "hitab",
+      "id": "47d649c7f1340da2e54d3282295c1416",
+      "file": "clean/statcan/2746.xlsx",
+      "atom": "29.1",
+      "evidence": "1 operand cells named by the question; aggregation max"
+     }
+    ]
+   },
+   "gold/question: lookup answer is no cell of the file": {
+    "misses": 2,
     "examples": [
      {
       "dataset": "mimotable",
-      "id": "en-0468",
-      "file": "repo/data/english/spreadsheet/InterestTable.xlsx",
-      "atom": "417,000",
-      "evidence": ""
+      "id": "en-0029",
+      "file": "repo/data/english/spreadsheet/PileSingleCalculation.xlsx",
+      "atom": "43,997",
+      "evidence": "gold 43,997 of a lookup question is no source cell"
+     },
+     {
+      "dataset": "mimotable",
+      "id": "en-0197",
+      "file": "repo/data/english/spreadsheet/3333(87).xlsx",
+      "atom": "86",
+      "evidence": "gold 86 of a lookup question is no source cell"
      }
     ]
    },
-   "outside program space (file has: Excel serial as number)": {
-    "misses": 1,
+   "oracle-limit: grounding: row set not named by the question": {
+    "misses": 2,
     "examples": [
      {
       "dataset": "mimotable",
-      "id": "en-0495",
-      "file": "repo/data/english/spreadsheet/3333(80).xlsx",
-      "atom": "39",
-      "evidence": ""
+      "id": "en-0206",
+      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(41).xlsx",
+      "atom": "-8900",
+      "evidence": "WorkplaceGeneral(41).xlsx:T1 value(Entertainment) where row [row 25]"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F79",
+      "file": "tables/employment-table16.xlsx",
+      "atom": "35",
+      "evidence": "employment-table16.xlsx:T1 value(2023 / Agriculture and related industries / Unpaid family workers) where row [Total, 16 years and over]"
      }
     ]
    },
-   "only ungrounded programs match (file has: Excel serial as number)": {
+   "oracle-limit: shape: median": {
+    "misses": 2,
+    "examples": [
+     {
+      "dataset": "realhitbench",
+      "id": "F2141",
+      "file": "tables/religion-table03.xlsx",
+      "atom": "823",
+      "evidence": "question: What is the median weekly earnings for men who usually work 40 hours per week? (Final answer should be an integer.) (file has: header missing)"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F2144",
+      "file": "tables/religion-table03.xlsx",
+      "atom": "286",
+      "evidence": "question: What is the median weekly earnings for women who usually work 25 to 29 hours per week? (Final answer should be an intege (file has: header missing)"
+     }
+    ]
+   },
+   "library: operands split into two tables": {
     "misses": 1,
     "examples": [
      {
-      "dataset": "mimotable",
-      "id": "en-0613",
-      "file": "repo/data/english/spreadsheet/FanSituationAnalysisTable1.xlsx",
-      "atom": "2274",
-      "evidence": "FanSituationAnalysisTable1.xlsx:T1 range(October) where all data rows"
+      "dataset": "hitab",
+      "id": "2cdd22e9b0e33a312cb22869d026a3e9",
+      "file": "clean/nsf/85_43_nsf19325-tab003.xlsx",
+      "atom": "0.493585",
+      "evidence": "source column shared by B49->T3, B38->T2, B15->T1, B27->T2, B5->T1, B10->T1"
      }
     ]
    },
-   "only loosely grounded programs match (file has: '(n)' read as negative)": {
+   "oracle-limit: shape: relative change (one row)": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "33ae36cceae3104f881538ad5938430c",
+      "file": "clean/statcan/1087.xlsx",
+      "atom": "0.202751",
+      "evidence": "2 operand cells named by the question; aggregation diff+div (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: difference (a block)": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "a940f1c0e5818a0b7f027b17baff15c3",
+      "file": "clean/statcan/1688.xlsx",
+      "atom": "4.48",
+      "evidence": "2 operand cells named by the question; aggregation diff (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: share of a sum (one column)": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "57be786cbbcf0d8e4cac5cf109fe3091",
+      "file": "clean/statcan/2097.xlsx",
+      "atom": "0.291826",
+      "evidence": "4 operand cells named by the question; aggregation sum+div"
+     }
+    ]
+   },
+   "oracle-limit: shape: average of named cells (one row)": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "6dd1ff8deedf16978364b9977a84e18c",
+      "file": "clean/statcan/2645.xlsx",
+      "atom": "93.5",
+      "evidence": "2 operand cells named by the question; aggregation average (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: average+div (one column)": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "f219e2b8e69052efbbda829d3d538a29",
+      "file": "clean/statcan/2660.xlsx",
+      "atom": "0.098434",
+      "evidence": "2 operand cells named by the question; aggregation average+div (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: ratio / share (a block)": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "cf056065736f987a262f442451cbf7e9",
+      "file": "clean/statcan/2726.xlsx",
+      "atom": "2.156863",
+      "evidence": "4 operand cells named by the question; aggregation div"
+     }
+    ]
+   },
+   "oracle-limit: grounding: operand named only in part": {
     "misses": 1,
     "examples": [
      {
       "dataset": "realhitbench",
-      "id": "F190",
-      "file": "tables/activitytime-table01.xlsx",
-      "atom": "1.78",
-      "evidence": "[activitytime-table01.xlsx:T1 value(Average hours per day spent in primary activities 1 / Married mothers / Not employed) where row [Household activities]] / [activitytime-table01.xlsx:T1 value(Average hours per day spent in primary activities 1 / Married mothers / Employed full time) where row [Household activities]]"
+      "id": "F2668",
+      "file": "tables/science-table78.xlsx",
+      "atom": "2.33",
+      "evidence": "science-table78.xlsx:T1 avg(MFI fold change / Expt1) where col_A='LDPm (24h)' (file has: header missing)"
      }
     ]
    },
-   "outside program space (file has: number as header)": {
+   "library: total row mixed into the data": {
     "misses": 1,
     "examples": [
      {
       "dataset": "realhitbench",
-      "id": "F463",
-      "file": "tables/business-table03.xlsx",
-      "atom": "834.90",
-      "evidence": ""
-     }
-    ]
-   },
-   "value in a cell, no grounded program (file has: repeated header names)": {
-    "misses": 1,
-    "examples": [
-     {
-      "dataset": "realhitbench",
-      "id": "L541",
-      "file": "tables/science-table31.xlsx",
-      "atom": "69.67",
-      "evidence": ""
+      "id": "L282",
+      "file": "tables/economy-table27.xlsx",
+      "atom": "2",
+      "evidence": "reachable when total-labelled data rows are dropped: economy-table27.xlsx:T1 count(2024-Q3) where Time period (2)='2015, Millions, Euro' (file has: repeated header names)"
      }
     ]
    }
@@ -1260,21 +1733,49 @@
    "hitab": {
     "counts": {
      "items": 1314,
-     "reachable": 614,
+     "reachable": 666,
      "atoms": 1627,
-     "atoms_reachable": 813,
+     "atoms_reachable": 869,
      "decoys": 3254,
-     "decoys_reachable": 484,
-     "ungrounded_only": 15,
-     "loose_only": 350,
-     "single_witness": 424
+     "decoys_reachable": 362,
+     "miss_oracle-limit": 505,
+     "loose_only": 448,
+     "single_witness": 511,
+     "miss_library": 31,
+     "miss_gold/question": 222
     },
     "causes": {
-     "outside program space": 329,
-     "value in a cell, no grounded program": 119,
-     "only loosely grounded programs match": 350,
-     "only ungrounded programs match": 15,
-     "total row in data": 1
+     "oracle-limit: grounding: implicit period (the question names no year)": 53,
+     "library: hedgehog header naming": 16,
+     "gold/question: question does not name an operand": 160,
+     "oracle-limit: shape: ratio / share (one column)": 24,
+     "oracle-limit: shape: ratio / share (one row)": 11,
+     "oracle-limit: grounding: question paraphrases an operand": 159,
+     "oracle-limit: grounding: implicit whole (total row the question does not name)": 41,
+     "oracle-limit: grounding: column named only in part": 102,
+     "oracle-limit: shape: sum of named cells (one column)": 17,
+     "library: operands split into two tables": 1,
+     "oracle-limit: shape: difference (one row)": 2,
+     "oracle-limit: shape: minimum (one column)": 2,
+     "gold/question: gold not reproduced from its operand cells": 62,
+     "oracle-limit: shape: relative change (one row)": 1,
+     "oracle-limit: shape: lookup (one column)": 8,
+     "oracle-limit: shape: lookup (one row)": 11,
+     "oracle-limit: grounding: implicit whole (national total, both sexes)": 24,
+     "oracle-limit: shape: lookup (sign) (one cell)": 6,
+     "library: label path lost": 5,
+     "oracle-limit: shape: difference (one column)": 9,
+     "oracle-limit: shape: difference (a block)": 1,
+     "library: header misnamed": 9,
+     "oracle-limit: shape: share of a sum (one column)": 1,
+     "oracle-limit: shape: maximum (one column)": 5,
+     "oracle-limit: shape: sum of named cells (one row)": 5,
+     "oracle-limit: shape: average of named cells (one row)": 1,
+     "oracle-limit: shape: average+div (one column)": 1,
+     "oracle-limit: shape: extremes (one column)": 10,
+     "oracle-limit: shape: ratio / share (a block)": 2,
+     "oracle-limit: shape: maximum (one cell)": 2,
+     "oracle-limit: shape: range (one column)": 7
     }
    },
    "mimotable": {
@@ -1284,36 +1785,68 @@
      "atoms": 240,
      "atoms_reachable": 152,
      "decoys": 480,
-     "decoys_reachable": 32,
-     "single_witness": 77,
-     "ungrounded_only": 6,
-     "loose_only": 40
+     "decoys_reachable": 30,
+     "single_witness": 85,
+     "miss_oracle-limit": 78,
+     "loose_only": 41,
+     "miss_gold/question": 2,
+     "miss_library": 8
     },
     "causes": {
-     "only loosely grounded programs match": 40,
-     "outside program space": 29,
-     "value in a cell, no grounded program": 13,
-     "only ungrounded programs match": 6
+     "oracle-limit: grounding: operation not named by the question": 25,
+     "gold/question: lookup answer is no cell of the file": 2,
+     "oracle-limit: grounding: column named only in part": 4,
+     "library: hedgehog header naming": 7,
+     "oracle-limit: shape: sum over a conditional set": 10,
+     "oracle-limit: grounding: no operand named by the question": 5,
+     "oracle-limit: shape: date arithmetic": 1,
+     "oracle-limit: grounding: an operand named only in part": 6,
+     "oracle-limit: shape: argmax / ranking over groups": 15,
+     "oracle-limit: shape: average over a conditional set": 4,
+     "library: header missing (generated column name)": 1,
+     "oracle-limit: shape: conditional count": 2,
+     "oracle-limit: grounding: row set not named by the question": 1,
+     "oracle-limit: shape: hypothetical (what-if)": 1,
+     "oracle-limit: shape: difference / change of aggregates": 3,
+     "oracle-limit: shape: multi-step expression": 1
     }
    },
    "realhitbench": {
     "counts": {
      "items": 744,
-     "reachable": 380,
+     "reachable": 391,
      "atoms": 800,
-     "atoms_reachable": 404,
+     "atoms_reachable": 416,
      "decoys": 1600,
-     "decoys_reachable": 258,
-     "single_witness": 121,
-     "ungrounded_only": 24,
-     "loose_only": 124
+     "decoys_reachable": 251,
+     "single_witness": 122,
+     "miss_library": 41,
+     "loose_only": 141,
+     "miss_oracle-limit": 343
     },
     "causes": {
-     "only loosely grounded programs match": 124,
-     "outside program space": 196,
-     "value in a cell, no grounded program": 47,
-     "only ungrounded programs match": 24,
-     "operand column text": 5
+     "library: header missing (generated column name)": 30,
+     "oracle-limit: grounding: row set not named by the question": 2,
+     "oracle-limit: shape: conditional count": 39,
+     "oracle-limit: grounding: operation not named by the question": 58,
+     "oracle-limit: grounding: an operand named only in part": 30,
+     "oracle-limit: shape: group-by aggregate": 10,
+     "oracle-limit: shape: average over a conditional set": 14,
+     "oracle-limit: shape: difference / change of aggregates": 28,
+     "oracle-limit: grounding: no operand named by the question": 15,
+     "library: number kept as text": 6,
+     "oracle-limit: shape: sum over a conditional set": 22,
+     "oracle-limit: shape: argmax / ranking over groups": 47,
+     "oracle-limit: shape: hypothetical (what-if)": 5,
+     "oracle-limit: shape: forecast / extrapolation": 3,
+     "oracle-limit: shape: date arithmetic": 15,
+     "oracle-limit: grounding: column named only in part": 20,
+     "oracle-limit: shape: ratio / share of unnamed operands": 29,
+     "oracle-limit: shape: multi-step expression": 3,
+     "library: hedgehog header naming": 4,
+     "oracle-limit: shape: median": 2,
+     "oracle-limit: grounding: operand named only in part": 1,
+     "library: total row mixed into the data": 1
     }
    }
   },
@@ -1321,46 +1854,107 @@
    "hitab_atoms": 1627,
    "located": 1627,
    "replayable": 1489,
-   "replayable_reachable": 774,
-   "replayable_agree": 402,
-   "replayable_agree_superset": 436,
-   "replayable_agree_subset": 705,
+   "replayable_reachable": 827,
+   "replayable_agree": 458,
+   "replayable_agree_superset": 485,
+   "replayable_agree_subset": 776,
    "single_answer_replayable": 981,
-   "single_answer_reachable": 448,
-   "single_answer_agree_exact": 386,
+   "single_answer_reachable": 499,
+   "single_answer_agree_exact": 454,
    "not_replayable": 138,
-   "not_replayable_reachable": 39
+   "not_replayable_reachable": 42
   },
   "decoys_by_magnitude": {
    "decimal": {
     "atoms": 1420,
-    "reachable": 660,
+    "reachable": 718,
     "decoys": 2840,
-    "decoys_reachable": 283
+    "decoys_reachable": 190
    },
    "integer > 100": {
     "atoms": 468,
-    "reachable": 221,
+    "reachable": 230,
     "decoys": 936,
-    "decoys_reachable": 24
+    "decoys_reachable": 19
    },
    "integer 11-100": {
     "atoms": 419,
     "reachable": 249,
     "decoys": 838,
-    "decoys_reachable": 190
+    "decoys_reachable": 165
    },
    "integer <= 10": {
     "atoms": 360,
-    "reachable": 239,
+    "reachable": 240,
     "decoys": 720,
-    "decoys_reachable": 277
+    "decoys_reachable": 269
    }
+  },
+  "families": {
+   "library": {
+    "header missing (generated column name)": 25,
+    "hedgehog header naming": 20,
+    "number kept as text": 6,
+    "header misnamed": 5,
+    "label path lost": 4,
+    "operands split into two tables": 1,
+    "total row mixed into the data": 1
+   },
+   "oracle-limit": {
+    "grounding: question paraphrases an operand": 130,
+    "grounding: column named only in part": 116,
+    "grounding: operation not named by the question": 78,
+    "grounding: implicit period (the question names no year)": 50,
+    "shape: argmax / ranking over groups": 47,
+    "shape: conditional count": 39,
+    "grounding: implicit whole (total row the question does not name)": 38,
+    "grounding: an operand named only in part": 34,
+    "shape: ratio / share of unnamed operands": 28,
+    "shape: sum over a conditional set": 26,
+    "shape: difference / change of aggregates": 26,
+    "shape: ratio / share (one column)": 24,
+    "grounding: implicit whole (national total, both sexes)": 21,
+    "grounding: no operand named by the question": 18,
+    "shape: sum of named cells (one column)": 17,
+    "shape: average over a conditional set": 17,
+    "shape: date arithmetic": 16,
+    "shape: ratio / share (one row)": 11,
+    "shape: group-by aggregate": 10,
+    "shape: difference (one column)": 9,
+    "shape: lookup (one column)": 6,
+    "shape: lookup (sign) (one cell)": 6,
+    "shape: hypothetical (what-if)": 6,
+    "shape: maximum (one column)": 5,
+    "shape: sum of named cells (one row)": 5,
+    "shape: extremes (one column)": 5,
+    "shape: lookup (one row)": 4,
+    "shape: range (one column)": 4,
+    "shape: multi-step expression": 4,
+    "shape: forecast / extrapolation": 3,
+    "shape: difference (one row)": 2,
+    "shape: minimum (one column)": 2,
+    "shape: maximum (one cell)": 2,
+    "grounding: row set not named by the question": 2,
+    "shape: median": 2,
+    "shape: relative change (one row)": 1,
+    "shape: difference (a block)": 1,
+    "shape: share of a sum (one column)": 1,
+    "shape: average of named cells (one row)": 1,
+    "shape: average+div (one column)": 1,
+    "shape: ratio / share (a block)": 1,
+    "grounding: operand named only in part": 1
+   },
+   "gold/question": {
+    "question does not name an operand": 132,
+    "gold not reproduced from its operand cells": 56,
+    "lookup answer is no cell of the file": 2
+   },
+   "unclassified": {}
   }
  },
  "M": {
-  "violations": 2806,
-  "files": 892,
+  "violations": 2421,
+  "files": 881,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
@@ -1373,34 +1967,32 @@
    },
    "mimotable": {
     "M5 repeated header names": 45,
-    "M5 header missing": 443,
-    "M5 duplicate headers": 62,
+    "M5 header missing": 254,
+    "M5 duplicate headers": 58,
     "M1 total row in data": 10,
     "M3 measures mixed": 38,
     "M5 number as header": 6,
     "M2 percent mixed": 11,
-    "M4 date day changed": 41,
     "M4 Excel serial as number": 13,
     "M6 '(n)' read as negative": 1
    },
    "realhitbench": {
     "M6 '(n)' read as negative": 3,
-    "M5 header missing": 1086,
+    "M5 header missing": 963,
     "M3 measures mixed": 141,
     "M5 repeated header names": 78,
     "M1 total row in data": 4,
     "M5 duplicate headers": 22,
-    "M5 number as header": 42
+    "M5 number as header": 14
    }
   },
   "kinds": {
-   "M5 header missing": 2055,
+   "M5 header missing": 1743,
    "M3 measures mixed": 314,
    "M5 repeated header names": 141,
-   "M5 duplicate headers": 102,
+   "M5 duplicate headers": 98,
    "M1 total row in data": 74,
-   "M5 number as header": 50,
-   "M4 date day changed": 41,
+   "M5 number as header": 22,
    "M4 Excel serial as number": 14,
    "M2 percent mixed": 11,
    "M6 '(n)' read as negative": 4
@@ -1446,11 +2038,6 @@
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '1月': 1 percent cells (e.g. Sheet51!C8) and 9 plain (e.g. Sheet51!C2)",
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '2月': 1 percent cells (e.g. Sheet51!D8) and 8 plain (e.g. Sheet51!D2)"
    ],
-   "M4 date day changed": [
-    "mimotable repo/data/english/spreadsheet/1257(4).xlsx T1 Sheet1!F5 | source 'March 25' stored 2025-03-01",
-    "mimotable repo/data/english/spreadsheet/1257(4).xlsx T1 Sheet1!F6 | source 'March 26' stored 2026-03-01",
-    "mimotable repo/data/english/spreadsheet/1257(4).xlsx T1 Sheet1!F7 | source 'March 26' stored 2026-03-01"
-   ],
    "M6 '(n)' read as negative": [
     "mimotable repo/data/english/spreadsheet/3ListofStandards.xlsx T1 Bid List 3!A3 | source '(1)' stored -1 in '序号 / One' (10 such cells next to 54 plain item numbers)",
     "realhitbench tables/activitytime-table01.xlsx T1 Table A-6!F52 | source '(4)' stored -4 in 'Average hours per day spent in primary a' (1 such cells next to 3 plain item numbers)",
@@ -1470,16 +2057,16 @@
    },
    "mimotable": {
     "files": 401,
-    "mean": 965.7,
+    "mean": 969.4,
     "median": 870,
-    "p90": 1683,
+    "p90": 1713,
     "max": 4179
    },
    "realhitbench": {
     "files": 536,
-    "mean": 774.2,
-    "median": 592,
-    "p90": 1547,
+    "mean": 776.0,
+    "median": 596,
+    "p90": 1555,
     "max": 4408
    }
   },
@@ -1516,31 +2103,31 @@
    "id": "en-0118",
    "why": "'March 25' read as 2025-03-01",
    "caught": true,
-   "by": "L: question key: value changed: date text parsed with another day (day 1) | C: only loosely grounded programs match | M: M4 date day changed"
+   "by": "C: oracle-limit: grounding: column named only in part"
   },
   {
    "id": "en-0119",
    "why": "'March 26' read as 2026-03-01",
    "caught": true,
-   "by": "L: question key: value changed: date text parsed with another day (day 1) | C: only loosely grounded programs match | M: M4 date day changed"
+   "by": "C: oracle-limit: grounding: column named only in part"
   },
   {
    "id": "en-0519",
    "why": "header row missed after a key/value line: columns col_B...",
-   "caught": true,
-   "by": "L: answer column has no header (col_X); question key: cell not in any table (row not in any table); question key: cell not in any table (row not in any table) | M: M5 header missing"
+   "caught": false,
+   "by": ""
   },
   {
    "id": "en-0516",
    "why": "header row missed after a key/value line: columns col_B...",
-   "caught": true,
-   "by": "L: answer column has no header (col_X); question key: cell not in any table (row not in any table) | M: M5 header missing"
+   "caught": false,
+   "by": ""
   },
   {
    "id": "en-0508",
    "why": "sub-header 'This Year' not grouped under its section (Main Income)",
    "caught": true,
-   "by": "C: only loosely grounded programs match | M: M5 duplicate headers"
+   "by": "C: library: hedgehog header naming | M: M5 duplicate headers"
   },
   {
    "id": "en-0496",
@@ -1567,5 +2154,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 91
+ "seconds": 127
 }

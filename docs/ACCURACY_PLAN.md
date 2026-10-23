@@ -44,4 +44,8 @@ listed with its evidence in `eval/accuracy/audit.tsv` (reviewed, never silent).
   computation-reachability oracle (validated against HiTab gold operands, a decoy test and a hand-checked
   sample), L with question keys, M invariants, `make score` (dev baseline in eval/accuracy/RESULTS.md),
   audit.tsv seeded with the verified wrong-gold MiMoTable items.
+- Done (branch `oracle`): C oracle v2 - shares of a part in its whole (total rows / columns, arithmetic
+  wholes), ranges, arg-extremes, adjacent-year changes, complements, tighter pair guards (decoy rates per
+  answer type at or below v1); every C miss classified (library / oracle-limit / gold/question) with
+  evidence in eval/accuracy/causes.py, source header grounding for generated column names.
 - Next: the fix loop on the largest miss clusters.
