@@ -20,13 +20,13 @@ import unicodedata
 # hedgehog's documented normalisations (docs/normalized-output.md)
 
 # Missing tokens (docs: "-", "n/a", "..", ":", "x", "null", ...; core/src/values/missing.rs).
-_PLACEHOLDER = re.compile(r"^\s*([-–—−/.…:?*_\\])\1*\s*$")
+_PLACEHOLDER = re.compile(r"^\s*([-–—−/.…:?*_\\])(\s*\1)*\s*$")
 MISSING_WORDS = {
     "n/a", "na", "n.a.", "n.a", "null", "none", "nan", "nil", "x", "xx", "xxx", "-/-", "--/--", "(-)", "( - )", "n.p.",
     "nema", "nepoznato", "k.a.", "k. a.", "ka", "s.o.", "s/o", "s.d.", "s/d", "nd", "n.d.", "n/d", "n.v.", "nv", "ø",
     "keine angabe", "keine angaben", "ne", "#n/a", "tbd", "unknown", "nicht verfügbar", "not available", "missing",
     "n.e.", "ne.", "n.z.", "nz", "n.s.", "u", "z", "m", "c", "...", "..", ":", "-", "—", "–",
-    "not applicable", "n/app", "n.app.", "nicht zutreffend", "sans objet", "no aplica", "non applicabile",
+    "not applicable", "no data", "n/app", "n.app.", "nicht zutreffend", "sans objet", "no aplica", "non applicabile",
 }
 _BRACKET_CODE = re.compile(r"^\[[a-z]{1,4}\]$")  # ONS shorthand: [z] not applicable, [x] unavailable, [c] confidential
 EXCEL_ERRORS = {"#n/a", "#ref!", "#div/0!", "#value!", "#name?", "#num!", "#null!", "#spill!", "#calc!", "#getting_data", "#n/a!"}
@@ -97,6 +97,8 @@ def number_readings(s: str) -> list[tuple[float, str]]:
     neg = False
     if t.startswith("(") and t.endswith(")"):
         neg, t = True, t[1:-1].strip()
+    elif t.startswith("(") and ")" not in t:  # "(11,134": an accounting negative left open (StatCan)
+        neg, t = True, t[1:].strip()
     for _ in range(2):
         t2 = _CURRENCY.sub("", t).strip()
         if t2 != t:
@@ -544,6 +546,8 @@ def _cmp_text(src, hv: str, dtype: str, col: dict):
         return "ok", "footnote_mark_stripped"
     if norm_loose(s) == norm_loose(hv):
         return "text_changed", "punctuation_or_case"
+    if ws(hv).startswith(ws(s) + " ") and len(ws(s)) >= 2:
+        return "ok", "label_joined"  # a label split over rows, joined on each (documented, B72)
     if ws(hv) and ws(hv) in ws(s):
         return "text_changed", "truncated_or_cut"
     return "text_changed", "text_mismatch"

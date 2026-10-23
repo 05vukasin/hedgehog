@@ -1,0 +1,28 @@
+file	ok	value_changed	date_changed	text_changed	unplaced	misplaced	intentionally_dropped
+clean/microsoft/financial_sample.xlsx	11163	0	0	0	0	0	53
+clean/northwind/employees.csv	175	0	0	0	0	0	5
+irregular/eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods	3175	0	0	0	0	0	465
+irregular/eu_be_opendata/010_Module_2017_NL_02OCT18.XLS	1822	0	0	0	0	0	31
+irregular/eu_no_ssb/ssb_05111_semicolon_latin1.csv	376	0	0	0	0	0	12
+irregular/uk_gov/001_Community_and_Engagement_Survey_2025-26_volunteering_hours_by_type_ods.ods	123	0	0	0	0	0	0
+irregular/venron_spreadcluster/VEnron2/1162/1_Timewar_Jeff Calculations.xls	2480	0	0	0	0	0	37
+irregular/venron_spreadcluster/VEnron2/240/10_EOTT PL Tks 6-27.xls	2325	0	0	0	0	0	368
+irregular/venron_spreadcluster/VFUSE/1/11e86e5c-57ba-4efa-a310-464a186982dd.xls	168	0	0	0	0	0	0
+public/hitab/clean/statcan/1261.xlsx	106	0	0	0	0	0	0
+public/mimotable/repo/data/chinese/spreadsheet/股票交易记事本-流水-每日统计.xlsx	774	0	0	0	0	0	0
+public/mimotable/repo/data/chinese/spreadsheet/银行存款利率.xlsx	232	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/1216(3).xlsx	269	0	0	0	0	18	0
+public/mimotable/repo/data/english/spreadsheet/1257(4).xlsx	446	0	0	0	0	0	36
+public/mimotable/repo/data/english/spreadsheet/3333(80).xlsx	336	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/BankDepositInterestRates.xlsx	232	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/CoalMineProductionDailyReport.xlsx	303	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/LaserCuttingCostQuotationAnalysisTableTemplate1.xlsx	225	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/NationalSuperHigh-RiseBuildingCostStatistics(1999-2010).xlsx	499	0	0	0	0	0	94
+public/mimotable/repo/data/english/spreadsheet/ProjectStatisticsTable1.xlsx	128	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/Sheet14.xlsx	573	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/SummerStudyPlan1.xlsx	486	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/WorkplaceGeneral(1).xlsx	242	0	0	0	0	0	0
+public/mimotable/repo/data/english/spreadsheet/WorkplaceGeneral(20).xlsx	264	0	0	0	0	0	0
+public/realhitbench/tables/business-table03.xlsx	350	0	0	0	0	5	10
+public/realhitbench/tables/economy-table116.xlsx	406	0	0	0	0	0	0
+public/realhitbench/tables/labor-table08.xlsx	254	0	0	0	0	0	0

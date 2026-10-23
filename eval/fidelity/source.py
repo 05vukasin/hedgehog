@@ -54,6 +54,8 @@ def is_date_format(fmt: str) -> bool:
 
 
 def is_time_only_format(fmt: str) -> bool:
+    if re.search(r"\[(h+|m+|s+)\]", fmt or "", re.I):
+        return True  # elapsed time [h]:mm
     f = _BRACKET.sub("", _QUOTED.sub("", fmt.split(";")[0])).lower()
     return re.search(r"[hs]", f) is not None and re.search(r"[yd]", f) is None and "aaa" not in f
 
@@ -78,6 +80,8 @@ def serial_to_datetime(serial: float, epoch1904: bool = False):
 def _date_cell(serial: float, fmt: str, epoch1904: bool) -> Src | None:
     if serial == 0:
         return Src("date", dt.date(1899, 12, 31), fmt, 0)
+    if serial < 0:
+        return Src("number", serial, fmt)  # Excel shows ####
     d = serial_to_datetime(serial, epoch1904)
     if d is None:
         return None

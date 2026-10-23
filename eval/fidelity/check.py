@@ -4,7 +4,8 @@
     $PY -I eval/fidelity/check.py run --corpus mimotable [--bin target-master/release/hedgehog] [--workers 3]
     $PY -I eval/fidelity/check.py summary [--corpus a,b] [--out results.md]
     $PY -I eval/fidelity/check.py gate --baseline eval/fidelity/baseline.tsv [--update]
-    $PY -I eval/fidelity/check.py quick --bin ... --tmp DIR [--update]      # make quick: 30 files
+    $PY -I eval/fidelity/check.py quick --bin ... --tmp DIR [--update]      # make quick: 27 files
+    $PY -I eval/fidelity/check.py full --bin ... [--update]                  # make fidelity: all + gate
 
 Model-free and deterministic: no LLM, no network. Run it before any LLM evaluation: an LLM run
 should only measure reasoning, never a misread date, a lost value or a changed ID.
@@ -334,6 +335,8 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
                 if best is None or (best[0] != "ok" and cls == "ok"):
                     best = (cls, sub, info)
             cls, sub, info = best
+            if (cls, sub) == ("text_changed", "lost") and norm_loose(s.value) in hh.labels.get(sheet, ()):
+                cls, sub = "ok", "in_group_column"  # an inline group label: in the group column
             if sub == "percent_fraction" or ("%" in (s.fmt or "") and s.kind == "number"):
                 pct["fraction" if cls == "ok" else "x100" if sub == "percent_x100" else "other"] += 1
             colvals[(info["table"], info["col"] if "col" in info else "value")].append((s, info["value"], addr, info["dtype"]))
@@ -796,6 +799,18 @@ def cmd_quick(a) -> int:
     return 0
 
 
+def cmd_full(a) -> int:
+    """make fidelity: every corpus from scratch, the summary, then the gate against baseline.tsv."""
+    for c in CORPORA:
+        if not corpus_files(c):
+            print(f"{c}: no files on disk, skipped")
+            continue
+        cmd_run(argparse.Namespace(corpus=c, bin=a.bin, workers=a.workers, limit=None, files=None, fresh=True,
+                                   row_limit=a.row_limit))
+    cmd_summary(argparse.Namespace(corpus=None, out=None, top=25))
+    return cmd_gate(argparse.Namespace(baseline=a.baseline, corpus=None, update=a.update))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -822,10 +837,16 @@ def main() -> int:
     q.add_argument("--workers", type=int, default=3)
     q.add_argument("--row-limit", type=int, default=2_000)
     q.add_argument("--update", action="store_true")
+    f = sub.add_parser("full")
+    f.add_argument("--bin")
+    f.add_argument("--workers", type=int, default=3)
+    f.add_argument("--row-limit", type=int, default=10_000)
+    f.add_argument("--baseline", default=str(HERE / "baseline.tsv"))
+    f.add_argument("--update", action="store_true")
     a = ap.parse_args()
     if getattr(a, "data", None):
         os.environ["HEDGEHOG_DATA"] = str(Path(a.data).resolve())
-    return {"run": cmd_run, "summary": cmd_summary, "gate": cmd_gate, "quick": cmd_quick}[a.cmd](a)
+    return {"run": cmd_run, "summary": cmd_summary, "gate": cmd_gate, "quick": cmd_quick, "full": cmd_full}[a.cmd](a)
 
 
 if __name__ == "__main__":

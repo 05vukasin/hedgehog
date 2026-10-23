@@ -1,0 +1,42 @@
+# Tier-0 slice of the cell-fidelity gate (make quick): small files, relative to $HEDGEHOG_DATA.
+# Each one exercises a class the full run found; '#' starts a comment.
+# text dates without a year (March 25), weekday-formatted serials, key/value line above a header
+public/mimotable/repo/data/english/spreadsheet/1257(4).xlsx
+public/mimotable/repo/data/english/spreadsheet/SummerStudyPlan1.xlsx
+public/mimotable/repo/data/english/spreadsheet/ProjectStatisticsTable1.xlsx
+# merged row labels, inline group labels, a group row with a sentence (Chinese and English)
+public/mimotable/repo/data/english/spreadsheet/BankDepositInterestRates.xlsx
+public/mimotable/repo/data/chinese/spreadsheet/银行存款利率.xlsx
+# times of day, percent-formatted numbers, two sheets
+public/mimotable/repo/data/english/spreadsheet/3333(80).xlsx
+# multi-sheet daily reports with merged section labels
+public/mimotable/repo/data/english/spreadsheet/CoalMineProductionDailyReport.xlsx
+# text numbers with currencies and scale words, missing tokens, long text
+public/mimotable/repo/data/english/spreadsheet/NationalSuperHigh-RiseBuildingCostStatistics(1999-2010).xlsx
+public/mimotable/repo/data/english/spreadsheet/LaserCuttingCostQuotationAnalysisTableTemplate1.xlsx
+public/mimotable/repo/data/english/spreadsheet/WorkplaceGeneral(1).xlsx
+public/mimotable/repo/data/english/spreadsheet/WorkplaceGeneral(20).xlsx
+public/mimotable/repo/data/english/spreadsheet/Sheet14.xlsx
+# IDs with leading zeros (stock codes 002313), datetimes
+public/mimotable/repo/data/chinese/spreadsheet/股票交易记事本-流水-每日统计.xlsx
+# a data row absorbed into a two-row header (known, counted)
+public/mimotable/repo/data/english/spreadsheet/1216(3).xlsx
+# RealHiTBench: outline labels, weekday header formats, "not applicable"
+public/realhitbench/tables/economy-table116.xlsx
+public/realhitbench/tables/labor-table08.xlsx
+public/realhitbench/tables/business-table03.xlsx
+# HiTab: an unclosed parenthesis negative
+public/hitab/clean/statcan/1261.xlsx
+# xls: BIFF8 strings under a cp1252 codepage, a 1904 workbook, a tank number 1194B, Belgian xls
+irregular/venron_spreadcluster/VFUSE/1/11e86e5c-57ba-4efa-a310-464a186982dd.xls
+irregular/venron_spreadcluster/VEnron2/1162/1_Timewar_Jeff Calculations.xls
+irregular/venron_spreadcluster/VEnron2/240/10_EOTT PL Tks 6-27.xls
+irregular/eu_be_opendata/010_Module_2017_NL_02OCT18.XLS
+# ods
+irregular/eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods
+irregular/uk_gov/001_Community_and_Engagement_Survey_2025-26_volunteering_hours_by_type_ods.ods
+# csv: semicolon Latin-1 European numbers, US
+irregular/eu_no_ssb/ssb_05111_semicolon_latin1.csv
+clean/northwind/employees.csv
+# percents stored as fractions
+clean/microsoft/financial_sample.xlsx

@@ -1,7 +1,7 @@
 # file	tables	catalog_sha	manifest_sha
-irregular/enron/albert_meyers__1__1-25act.xlsx	14	5f7922e079e6adc8	cdb9f91c9c87949f
+irregular/enron/albert_meyers__1__1-25act.xlsx	14	5f7922e079e6adc8	2d7c89de9c316e66
 irregular/deco/completed/andrea_ring__3__HHmonthlyavg.xlsx	10	f6efb3fe274d6fcf	e8985ebe087ac2d1
-irregular/us_sec_edgar/001_USB_10K_2022-12-31_bank.xlsx	199	c640d0d847a054e8	296de62635345bce
+irregular/us_sec_edgar/001_USB_10K_2022-12-31_bank.xlsx	199	cfb98a44608aa29a	4f4e63daaee4bb64
 irregular/rs_budget/002_loznica-rashodi-2020.xlsx	1	df9e79c6c79609ac	a763d71123e9e788
 clean/data_gov_rs/pancevo_budzet_2020_prihodi.xlsx	1	68ee046505215083	2f9f6caf242ff73d
 irregular/uk_hmt/001_PESA_2026_CP_Chapter_2_tables.xlsx	5	eb947edb64477313	beb9689ffa1f2dfb
@@ -9,9 +9,9 @@ clean/microsoft/financial_sample.xlsx	1	80fae349f2489c1b	1fa1683cac5609ba
 irregular/us_bls/001_cpsaat30.xlsx	1	64e48d9b4778a9e3	a27845133b31b2bd
 irregular/us_census/001_0424mnsl-1.xlsx	1	13cd4254dbc4fa2b	d4e1b4f570734174
 irregular/eu_fr_insee/003_TCRD_018.xlsx	2	27cc20eb30fd0dba	ccd49617b4083bce
-irregular/eu_es_ine/001_2852.xlsx	1	3408affd30b9bc63	979dc92c71b126c3
+irregular/eu_es_ine/001_2852.xlsx	1	3408affd30b9bc63	d4ce2421ae85d5e3
 irregular/hr_dzs/002_prosjecne-mpc.xlsx	4	c42cd0131387232b	6f33f2d5a3c568d3
-irregular/eu_it_istat/ASI2025_D02_C01_Tavole.xlsx	36	c3450078b17a3a17	1f298e34f098a825
+irregular/eu_it_istat/ASI2025_D02_C01_Tavole.xlsx	36	c3450078b17a3a17	beaf28b86b54e6fd
 irregular/eu_de_opendata/006_arbeitslosenstatistik-august-2023.xlsx	1	38fcb99513f535cc	6ccbe98e1a192b34
 irregular/eu_at_statistik_austria/005_2_Verbraucherpreisindizes_ab_1990.ods	1	92da740778262b8e	b4fa8338e9200eff
 irregular/uk_gov/001_Community_and_Engagement_Survey_2025-26_volunteering_hours_by_type_ods.ods	3	2028b946daa04968	ea1e85e23a36582e

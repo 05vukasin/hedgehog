@@ -58,7 +58,7 @@ test what the change can affect, and run the full gate once at the end of a batc
 |---|---|---|---|
 | 0. Quick — `make quick` | after every edit | feature snapshots, mini golden on 22 real files, noise smoke, info scoreboard on 17 small cases without and with the question (`eval/quick/info.py`: no case may lose a check that's in the catalog or one query away, no trap check may fail, no catalog may grow > 5 %) (below); no LLM, no network, same output on every run | ~5 s with nothing to rebuild, ~15 s after an edit in `core/` (up to ~30 s on a busy machine), ~2–3 min cold |
 | 1. Targeted | after each small change | `cargo test -p <crate> <filter>` for the touched module; the specific files, eval cases (`check_cases.py --cases …`) or noise family (`noise_eval --families …`, `--repro`) the change is about | seconds to ~2 min |
-| 2. Merge — `make merge-check AREA=core\|agent\|docs` | when merging a branch | tests of the affected crates; clippy; golden check; only the benchmarks/noise families the changed area can affect (layout/totals/values → both benchmark analyzers; agent/ → agent tests + Node; docs/eval only → nothing heavy) | ~5–10 min |
+| 2. Merge — `make merge-check AREA=core\|agent\|docs` | when merging a branch | tests of the affected crates; clippy; golden check; only the benchmarks/noise families the changed area can affect (layout/totals/values → both benchmark analyzers and the full cell-fidelity run; agent/ → agent tests + Node; docs/eval only → nothing heavy) | ~10–15 min |
 | 3. Full verify — `make full` | once per batch, before a release or a published comparison | everything: `cargo test --workspace`, clippy, golden, both benchmark analyzers on all corpora, all noise families, the file sweep, `check_cases.py`, Node, Python, then the agent eval (by hand) | ~1–2 h |
 
 If tier 2 turns up a surprise, widen the test for that area only. Heavy jobs go through
@@ -67,7 +67,7 @@ that for every step and keep each step's output in `target-logs/<step>.log`.
 
 #### Tier 0: `make quick`
 
-`scripts/quick.sh` runs five parts and prints one result line each (timings go to stderr, so the
+`scripts/quick.sh` runs six parts and prints one result line each (timings go to stderr, so the
 rest of the output is identical on every run):
 
 | Part | What it checks | Stored result | Needs |
@@ -76,6 +76,7 @@ rest of the output is identical on every run):
 | golden | the `open_file` catalog (one `hedgehog mcp` session) and the `hedgehog normalize` manifest of 22 small real files: finance, statistics offices, registers, xlsx/xls/ods/CSV, EU and US | `eval/quick/files.txt`, `golden.tsv` (table count, catalog and manifest hashes) | `$HEDGEHOG_DATA` |
 | noise | `noise_eval --seeds 1 --intensities 0.5`: one workbook per noise family (21), rules and model path; fails on a crash or a family that passed before | `eval/quick/noise.tsv` | `$HEDGEHOG_DATA` (its `clean/` tables) |
 | public | the public-benchmark slice (`eval/public/quick.py`): 14 trimmed HiTab tables through `hedgehog` (cells, normalize, `open_file`), their 78 lookup questions scored for value-label linking (cell found, number equal, column header exact, row labels exact / leaf); fails when a count drops or a catalog grows > 5 % | `eval/public/quick.tsv` | `$HEDGEHOG_DATA/public/hitab` ([eval/public/README.md](../eval/public/README.md)) |
+| fidelity | the cell-fidelity slice (`eval/fidelity/check.py quick`, below): 27 small files (dates without a year, weekday and time formats, IDs, percents, merged labels, multi-sheet, csv / xls / ods); fails when a file gains a changed, unplaced or misplaced cell | `eval/fidelity/quick.tsv` | `$HEDGEHOG_DATA`, the readers' venv (`eval/fidelity/setup.sh`) |
 | info | the info scoreboard (`eval/info/score.py --question`) on 17 small cases (with the naive-query traps of pt-social-report, uk-ons-labour and enron-henry-hub), two lines: the catalog as usual, and with each case's prompt as `open_file`'s `question` (B150; the line gives the size change). Fails when a case loses a check that is in the catalog or one query away, a trap check fails, or a catalog grows > 5 % | `eval/quick/info.tsv`, `eval/quick/info_question.tsv` | `$HEDGEHOG_DATA` |
 
 A difference fails with a readable line diff: the snapshot lines that changed, or for the golden
@@ -95,6 +96,34 @@ the release builds in `target-master/`. Without `$HEDGEHOG_DATA` (or `../testdat
 noise parts are skipped. To add a feature snapshot, add a `#[test]` to `snapshots.rs` that writes
 its workbook, calls `s.open(…)` / `s.query(…)`, ends with `s.check()`, and run `make quick-update`;
 to add a real file, add it to `eval/quick/files.txt` (small, < 1 MB) and run `make quick-update`.
+
+### Cell fidelity: run before any LLM evaluation
+
+A misread date, a lost value or a changed ID must be caught by a cheap deterministic test, not
+by an LLM benchmark; an LLM run should only measure reasoning. `eval/fidelity/check.py` reads
+every non-empty source cell independently of hedgehog (openpyxl, xlrd, odfpy or the csv module,
+with the cell's number format; the pinned venv comes from `eval/fidelity/setup.sh`) and looks it
+up in `hedgehog normalize --csv --keep-totals` output through the manifest's cell mapping:
+
+- **values**: numbers equal (integers exactly, floats to 1e-9; percent cells as fractions),
+  dates the same day and second (serials left as numbers, day/month swaps, invented years,
+  collapsed date columns), text exactly after whitespace collapsing, IDs and leading zeros kept;
+  text numbers and dates are accepted only when the checker's own reading agrees;
+- **placement**: each cell is in a table, a header, a title or note on `Notes`, a total, a
+  key/value table or a group label; otherwise `unplaced`. Header cells of a table that got no
+  header (columns `col_<letter>`) and data rows read as a header row are `misplaced`;
+- **documented drops** (missing tokens such as `-` or `n/a`, Excel errors) are counted apart.
+
+```sh
+make fidelity                       # every corpus (public, agents, golden), ~5 min, vs eval/fidelity/baseline.tsv
+FIDELITY_UPDATE=1 make fidelity     # accept improved counts (review SUMMARY.md first)
+PY=../scratch-archive/fidelity/venv/bin/python
+$PY -I eval/fidelity/check.py run --corpus mimotable --bin target-master/release/hedgehog --files "1257(4).xlsx"
+$PY -I eval/fidelity/check.py summary    # SUMMARY.md / .json: counts per class, 3 examples per failure class
+```
+
+The quick slice runs in `make quick`, the full run in `make merge-check AREA=core`. Failure counts
+may only go down. Results go to `$HH_FIDELITY_WORK` (`target-logs/fidelity-work` under `make`).
 
 ## Fuzzing
 
