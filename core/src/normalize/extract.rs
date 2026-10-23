@@ -747,13 +747,41 @@ fn promote_header(
     let widest = rows.iter().filter(|(row, _)| (htop..body_top).contains(row)).map(|(_, idxs)| filled(idxs)).max().unwrap_or(0);
     let is_header = |idxs: &[usize]| idxs.iter().all(|&i| matches!(roles[i], Role::Header | Role::Title | Role::Note) || filled(&[i]) == 0);
     let mut found: Option<usize> = None;
+    // A table without header rows may start with one or two short key/value lines ("Project
+    // Name: | Number of Clients: | 7") above its real header row: they are skipped (and become
+    // title rows) instead of ending the search, so the header row below still names the columns.
+    let width = rows.iter().flat_map(|(_, idxs)| idxs.iter().map(|&i| cells[i].col)).collect::<HashSet<u32>>().len();
+    let mut skipped = 0;
     for (k, (_, idxs)) in rows.iter().enumerate().filter(|(_, (row, _))| *row >= body_top) {
         if idxs.iter().any(|&i| matches!(roles[i], Role::Data | Role::Total | Role::Other) && filled(&[i]) > 0) {
+            let n = filled(idxs);
+            if header_rows == 0 && skipped < 2 && width >= 6 && (n <= 3 || n * 3 <= width) {
+                skipped += 1;
+                continue;
+            }
             break;
         }
         let n = filled(idxs);
         // Distinct labels (not a unit or legend row: "EURO EURO EURO", "nichts vorhanden" × 6).
         let distinct: HashSet<String> = idxs.iter().filter_map(|&i| cells[i].value.as_ref().map(display)).filter(|s| !s.is_empty()).collect();
+        // Without header rows, a row the layout itself marked as header cells (it would end up
+        // on Notes as a repeated header, the columns named col_<letter>) is the header: "WP ID |
+        // Teaching Group | Condition | 1 | 2 | …" has numbers among its labels.
+        // Its labels must be distinct and include words (not a row of "x" placeholders).
+        let worded = distinct
+            .iter()
+            .filter(|t| t.chars().filter(|c| c.is_alphabetic()).count() >= 2 && crate::values::missing_token(t).is_none())
+            .count();
+        if header_rows == 0
+            && is_header(idxs)
+            && n >= 2
+            && distinct.len() * 10 >= n * 8
+            && worded >= 2
+            && idxs.iter().any(|&i| roles[i] == Role::Header)
+        {
+            found = Some(k);
+            break;
+        }
         if is_header(idxs)
             && n >= 3
             && n >= 2 * widest.max(1)
@@ -849,7 +877,12 @@ fn build_table(
             if is_nav_link(&it.text) {
                 // "zur Inhaltsübersicht": a link back to the contents, never the title.
                 it.kind = "other";
-            } else if title.is_none() && !it.text.is_empty() && !crate::layout::is_note_label(&it.text) {
+            } else if title.is_none()
+                && !it.text.is_empty()
+                && !crate::layout::is_note_label(&it.text)
+                // A key of a "Project Name: | …" line above the header is no title.
+                && !it.text.trim_end().ends_with([':', '：'])
+            {
                 title = Some((it.text.clone(), (it.row, it.col)));
             }
             notes.push(it);
@@ -1046,6 +1079,8 @@ fn build_table(
         (gap && !numbers && (1..=3).contains(&texts.len()) && table_word(texts[0])).then_some(*row)
     });
     let mut slots: Vec<Vec<Slot>> = vec![Vec::new(); ncols];
+    // Inline group labels (output row, column, value): see the fill-down below.
+    let mut inline_labels: Vec<(usize, usize, &Value)> = Vec::new();
     let mut src_rows: Vec<u32> = Vec::new();
     let mut row_types: Vec<RowType> = Vec::new();
     let mut row_group: Vec<Option<usize>> = Vec::new();
@@ -1167,10 +1202,18 @@ fn build_table(
                     .map(display)
                     .find(|s| !s.is_empty())
                     .unwrap_or_default();
+                let label_cell = idxs.iter().copied().find(|&i| cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty()));
                 for &i in idxs {
-                    owner[i] = OWN_TABLE;
+                    // Other content of a group row ("III. Discount | | Determined by adding
+                    // points …") is not part of the label: it goes to Notes, not nowhere.
+                    if Some(i) != label_cell && cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty()) {
+                        owner[i] = OWN_NOTES;
+                        notes.push(note(i, "other"));
+                    } else {
+                        owner[i] = OWN_TABLE;
+                    }
                 }
-                if let Some(&i) = idxs.iter().find(|&&i| cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty())) {
+                if let Some(i) = label_cell {
                     group_label_col = Some(cells[i].col);
                 }
                 tr.add(T::GroupHeaderRowsToColumn, 1);
@@ -1278,11 +1321,14 @@ fn build_table(
         let mut row_slots: Vec<Slot> = vec![Slot::Empty; ncols];
         for &i in idxs {
             owner[i] = OWN_TABLE;
-            if Some(i) == inline_label {
-                continue;
-            }
             let c = &cells[i];
             let k = (c.col - r.left) as usize;
+            if Some(i) == inline_label {
+                if let Some(v) = &c.value {
+                    inline_labels.push((src_rows.len(), k, v));
+                }
+                continue;
+            }
             if lay.roles[i] == Role::GroupHeader {
                 key_cols.insert(k);
             }
@@ -1323,6 +1369,16 @@ fn build_table(
     }
     if r.bottom + 1 > body_top {
         tr.add(T::BlankRowsRemoved, (r.bottom + 1 - body_top).saturating_sub(body_rows_seen) as usize);
+    }
+
+    // An inline group label also stays in its own column when that column holds row labels of
+    // other rows: left empty there, the fill-down below wrote the row above's label in its place
+    // ("I. Short-term Loans" on the row of "II. Medium and Long-term Loans"). A column of nothing
+    // but group labels stays out of the table, as before.
+    for &(j, k, v) in &inline_labels {
+        if slots[k].iter().enumerate().any(|(jj, s)| jj != j && matches!(s, Slot::Val(_))) {
+            slots[k][j] = Slot::Val(v);
+        }
     }
 
     // Group labels written once per block of rows between subtotals ("Belgium" on the first row
@@ -1620,7 +1676,7 @@ fn build_table(
         columns.push(plain(ROW_TYPE, ColRole::RowType, Dtype::Text, values));
     }
 
-    if t.header_rows == 0 {
+    if nh == 0 {
         warnings.push("no header row detected; columns are named col_<letter> after their source column".to_string());
     }
     if src_rows.is_empty() {
@@ -1639,7 +1695,8 @@ fn build_table(
             source_sheet: sheet.name.clone(),
             rect: t.rect,
             header_top: htop,
-            header_rows: t.header_rows,
+            // The header rows used (promote_header may move them below the layout's).
+            header_rows: nh as u32,
             title,
             notes: Vec::new(),
             confidence: t.confidence,
