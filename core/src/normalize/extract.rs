@@ -5,7 +5,7 @@
 use std::sync::OnceLock;
 use std::collections::{HashMap, HashSet};
 
-use super::headers::{clean_header, is_nav_link, not_additive};
+use super::headers::{clean_header_with, is_nav_link, not_additive};
 use super::typing::{Slot, Typed, display, fit, type_column};
 use super::{
     CellCounts, ColRole, Column, Dtype, Normalized, NoteItem, Options, Out, RowType, SheetInfo, T, Table, TotalItem,
@@ -375,13 +375,13 @@ pub(super) fn slug(s: &str, max: usize) -> String {
 }
 
 /// Flat column name from its header parts: each part cleaned from the raw cell text (footnote
-/// marks, line-break hyphenation, whitespace; see [`clean_header`]), repeats dropped, joined with
+/// marks, line-break hyphenation, whitespace; see [`clean_header_with`]), repeats dropped, joined with
 /// ` / `.
 fn clean_name(grid: &Grid, parts: &[(String, (u32, u32))]) -> String {
     let mut out: Vec<String> = Vec::with_capacity(parts.len());
     for (text, (r, c)) in parts {
         let cleaned = match grid.cell(*r, *c).and_then(|c| c.value.as_ref()) {
-            Some(Value::Text(raw)) => clean_header(raw),
+            Some(Value::Text(raw)) => clean_header_with(raw, &|w| grid.has_word(w), grid.is_english()),
             _ => text.clone(),
         };
         if !cleaned.is_empty() && out.last() != Some(&cleaned) {

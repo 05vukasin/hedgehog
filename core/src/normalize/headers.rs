@@ -33,11 +33,23 @@ const CONJUNCTIONS: [&str; 18] = [
 ];
 
 /// Right halves of real hyphenated compounds written without a line break ("Follow-up",
-/// "E-mail", "Pre-tax"): never joined.
+/// "E-mail", "Pre-tax"): never joined, also when wrapped at the hyphen.
 const COMPOUND_TAILS: [&str; 24] = [
     "up", "in", "on", "off", "out", "to", "by", "end", "based", "free", "level", "term", "time",
     "year", "date", "type", "related", "specific", "wide", "owned", "made", "mail", "tax", "food",
 ];
+
+/// Right halves of a word split by a hyphen without a line break that are a suffix, never a
+/// word on their own (German and English noun and adjective endings):
+/// "Nachlassverbindlich-keiten", "Accommod-ation".
+const SUFFIX_FRAGMENTS: [&str; 30] = [
+    "keit", "keiten", "heit", "heiten", "ung", "ungen", "schaft", "schaften", "lich", "liche",
+    "lichen", "licher", "tion", "tionen", "nisse", "igkeit", "igkeiten", "ität", "ation", "ations",
+    "tions", "sion", "sions", "ment", "ments", "ities", "ness", "ance", "ence", "ings",
+];
+
+/// Prefixes that keep their hyphen also when the compound is wrapped at it ("Self-\nemployed").
+const HYPHEN_HEADS: [&str; 3] = ["non", "self", "ex"];
 
 /// Prefixes of real hyphenated compounds ("Non-food", "Self-employed", "Co-op").
 const COMPOUND_HEADS: [&str; 12] = [
@@ -48,16 +60,26 @@ const COMPOUND_HEADS: [&str; 12] = [
 /// (`De-\nzember` → `Dezember`, `Kalender-\nfaktoren` → `Kalenderfaktoren`, `Sep-tember` →
 /// `September`), and footnote marks removed (`20221)` → `2022`, `Rate3)` → `Rate`, `Total²` →
 /// `Total`, `Einwohner*` → `Einwohner`). A part that is nothing but a mark is kept as it is.
+#[cfg(test)]
 pub(super) fn clean_header(raw: &str) -> String {
-    let joined = join_hyphenation(raw);
+    clean_header_with(raw, &|_| false, false)
+}
+
+/// [`clean_header`], where `known` says whether a lowercase word is written elsewhere on the sheet:
+/// then a hyphen inside it is a soft wrap and the word is joined ("Riscal-damento" on a sheet
+/// that also writes "riscaldamento" → "Riscaldamento"); `english`: the sheet reads as English, where an in-word
+/// hyphen is a compound ("French-language").
+pub(super) fn clean_header_with(raw: &str, known: &dyn Fn(&str) -> bool, english: bool) -> String {
+    let joined = join_hyphenation(raw, known, english);
     let text = clean(&joined).into_owned();
     let stripped = strip_footnote(&text);
     if stripped.is_empty() { text } else { stripped }
 }
 
-/// Joins words split by a hyphen at a line break, and words split by a hyphen without a break
-/// when the right half starts lowercase and the result is not a real compound.
-fn join_hyphenation(s: &str) -> String {
+/// Joins words split by a hyphen at a line break; a hyphen without a break when the halves are a
+/// month, a word and its suffix, a word `known` from elsewhere on the sheet, or (not in English)
+/// a capitalized word and a lowercase rest that is not a real compound.
+fn join_hyphenation(s: &str, known: &dyn Fn(&str) -> bool, english: bool) -> String {
     let chars: Vec<char> = s.chars().collect();
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
@@ -79,26 +101,42 @@ fn join_hyphenation(s: &str) -> String {
                 let right_key = norm_key(&right);
                 let left_key = norm_key(&left);
                 let separate = CONJUNCTIONS.contains(&right_key.as_str());
-                // A hyphen at a line break (or before a space, where the break was): the word goes on.
-                if (newline || gap) && lower && !separate {
+                // A hyphen at a line break (or before a space, where the break was): the word goes
+                // on, unless the halves are a real compound.
+                let compound = COMPOUND_TAILS.contains(&right_key.as_str())
+                    || COMPOUND_HEADS.contains(&left_key.as_str());
+                // At a line break only prefixes that keep their hyphen make a compound
+                // ("Self-\nemployed"); "inter-\nnational", "sub-\ntotal" are one word.
+                let wrapped_compound = COMPOUND_TAILS.contains(&right_key.as_str())
+                    || HYPHEN_HEADS.contains(&left_key.as_str());
+                if (newline || gap) && lower && !separate && !wrapped_compound {
                     // "Kalender-\nfaktoren" → "Kalenderfaktoren", "Benützungs- gebühren"
                     i = j;
                     continue;
                 }
                 if (newline || gap) && !separate {
-                    // "Abgaben-\nErtragsanteile" → "Abgaben-Ertragsanteile"
+                    // "Abgaben-\nErtragsanteile" → "Abgaben-Ertragsanteile"; a real compound
+                    // wrapped at its hyphen: "Self-\nemployed" → "Self-employed"
                     out.push('-');
                     i = j;
                     continue;
                 }
                 if !gap && lower && !separate {
+                    // An in-word hyphen: joined when the halves only make sense joined (a month
+                    // split by a soft wrap, "Sep-tember"; a word and its suffix,
+                    // "Nachlassverbindlich-keiten"; a word written joined elsewhere on the sheet),
+                    // and outside English when the result is not a real compound
+                    // ("Aufenthalts-dauer"). In English it is a compound: "French-language".
                     let month = is_period_label(&format!("{left}{right}"));
-                    let compound = COMPOUND_TAILS.contains(&right_key.as_str())
-                        || COMPOUND_HEADS.contains(&left_key.as_str())
-                        || right.chars().count() <= 2
-                        || left.chars().all(|c| !c.is_lowercase());
-                    if month || (!compound && left.chars().next().is_some_and(char::is_uppercase)) {
-                        // "Sep-tember", "Nachlassverbindlich-keiten"
+                    let suffix = SUFFIX_FRAGMENTS.contains(&right_key.as_str())
+                        && !COMPOUND_HEADS.contains(&left_key.as_str())
+                        && left.chars().count() >= 3;
+                    let soft_wrap = !english
+                        && !compound
+                        && right.chars().count() > 2
+                        && left.chars().any(char::is_lowercase)
+                        && left.chars().next().is_some_and(char::is_uppercase);
+                    if month || suffix || soft_wrap || known(&format!("{left}{right}").to_lowercase()) {
                         i = j;
                         continue;
                     }
@@ -469,6 +507,22 @@ mod tests {
             "Lohn- bzw. Gehaltssumme"
         );
         assert_eq!(clean_header("Revenue - Q1"), "Revenue - Q1");
+        assert_eq!(clean_header("Aufenthalts-dauer"), "Aufenthaltsdauer");
+        assert_eq!(clean_header("Self-\nemployed"), "Self-employed");
+        assert_eq!(clean_header("Follow-\nup"), "Follow-up");
+        assert_eq!(clean_header("inter-\nnational"), "international");
+        // On an English sheet in-word hyphens are compounds (public benchmark, HiTab statcan/102 B4).
+        let en = |s: &str| clean_header_with(s, &|_| false, true);
+        assert_eq!(en("French-language workers"), "French-language workers");
+        assert_eq!(en("Family-sponsored immigrants"), "Family-sponsored immigrants");
+        assert_eq!(en("Low-income"), "Low-income");
+        assert_eq!(en("Accommod-ation & food"), "Accommodation & food");
+        assert_eq!(en("Sep-tember"), "September");
+        assert_eq!(en("Kalender-\nfaktoren"), "Kalenderfaktoren");
+        // A word written joined elsewhere on the sheet is joined in any language.
+        let known = |w: &str| w == "riscaldamento";
+        assert_eq!(clean_header_with("Riscal-damento", &known, true), "Riscaldamento");
+        assert_eq!(clean_header_with("French-language", &known, true), "French-language");
     }
 
     #[test]
