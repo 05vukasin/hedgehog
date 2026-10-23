@@ -146,10 +146,13 @@ RESULTS.md lists them ("C misses by family and cause") and the audit candidates.
 
 Per normalized table (`invariants.py` docstring): M1 a total-labelled row among data rows whose number is the
 sum of its block (arithmetic, 0.1 %); M2 percent and plain numbers mixed in a column, percent scale mixed;
-M3 percent/rate rows and counts mixed in a column without a unit; M4 dates out of 1900-2100 (unless the source
+M3 percent/rate rows and counts mixed in a column without a unit (a row is percent/rate only when all its numbers
+stay within 105: a '%' in a name is none); M4 dates out of 1900-2100 (unless the source
 writes that year), dates collapsed, a source date text stored with another day, Excel serials left as numbers
 in a date column; M5 `col_X` columns, duplicate names whose header above was lost, 3+ adjacent columns with one
-name (a data row taken as the header), a plain number as a header; M6 an outline number "(4)" stored as −4.
+name (a data row taken as the header), a plain number as a header; M6 an outline number "(4)" stored as −4. The checker was reviewed by hand per class on a seeded sample against
+the source cells (2026-10-24; precision table in RESULTS.md, "M classes"); its false-positive classes are fixed
+and tested (`test_invariants.py`: `python3 -I -m unittest discover -s eval/accuracy -p 'test_*.py'`).
 
 ## Clusters and audit
 
