@@ -16,14 +16,30 @@ Filters (row sets), all grounded in the question text:
   - years (1900-2100) named in the question: equality on any column holding that year, the year of a
     date column; month names (English, "N月"): the month of a date column;
   - conjunctions of two such filters on different columns; IN-lists of the filters of one column;
-  - thresholds (> >= < <=) with a number of the question on a question-grounded numeric column (counts only).
+  - thresholds (> >= < <=) with a number of the question on a question-grounded numeric column (counts only);
+  - numeric ranges ("aged 18 to 34", "65 and over"): the rows whose label ranges tile the question's range (a
+    set: never a single-row lookup; a table with such rows names no row outside the range);
+  - the year next to the one named, when the question asks for a change ("up from fy 2016"): only as the
+    partner of the named year in a difference / growth, never an answer alone.
+Wholes: hedgehog's total / subtotal rows, total-labelled rows and columns, arithmetic wholes (a row equal to
+  the sum of the 2+ rows right below / above it, a column equal to the sum of the 2+ columns next to it), and
+  'All X' rows named by X. A whole the question does not name enters a program only as the denominator of a
+  share of a named part inside its block (|part| <= |whole|).
 Aggregates over a row set (data rows only: `_row_type` = data; total / subtotal / of-which rows are used
 only by single-row lookups, which may pick any row a filter names):
   value lookup (one row), sum, avg, min, max, range (max-min), count (non-empty), count of rows, count of
   distinct labels; for one looked-up row: sum / avg / min / max across its question-grounded numeric
-  columns and across all its numeric columns; rank of the value in its column (desc and asc).
+  columns, the named years' columns and all its numeric columns; rank of the value in its column (desc and
+  asc); argmax / argmin: the value of a named column (or the year label) in the row where a fully named
+  column is largest / smallest ("which ... has the highest ..."), the year of a row's largest / smallest
+  year column ("in which year"); the k-th largest / smallest ("second highest"); counts of rows where one
+  named column exceeds another; 100 - x of a percentage whose row label negates what the question asks.
 Binary programs over pairs of grounded values (lookups and aggregates): a-b, a+b, a/b, 100 a/b,
-(a-b)/b, 100 (a-b)/b; date lookups: difference in days.
+(a-b)/b, 100 (a-b)/b, 1 - a/b (complement share); date lookups: difference in days. Pair guards: a share
+divides a part by a whole unless the question asks for a ratio ("times", "ratio", "as a percentage of");
+growth compares two periods (or two entities with "than" / "compared" / "from A to B"), never a column of
+changes; "+" never sums overlapping row sets; two measures of one thing ('Mean' / 'S.D.') are no pair;
+IN-lists only as one set in two columns or as the part of a share; "how many times" is only a ratio.
 Columns: every numeric column (hedgehog's dtype integer / number / percent / currency); a column is
 question-grounded when its header shares a content word with the question (eval/public/common.words).
 
@@ -38,11 +54,9 @@ relative), or the gold is x truncated to its decimals (when it shows decimals); 
 matches its fraction; a scale word after a narrative number (million, ten thousand, ...) applies;
 a non-percent gold also matches a fraction when the question asks for a percent / rate / share.
 
-Miss causes (one signature per missed atom, first that applies):
-  operand cells not in any table (HiTab gold operands) / operand column text (reachable when numbers
-  kept as text are parsed) / total row in data (reachable when total-labelled data rows are dropped) /
-  only ungrounded programs match / value in no table (gold equals no cell and no program over any table) /
-  outside program space.
+Miss causes: every missed atom gets one family (library / oracle-limit / gold/question), a cause and an
+evidence string: causes.py (source header grounding for generated column names, HiTab's gold operand cells
+and header paths, the question's shape).
 
 Validation (--validate): (1) HiTab computed items: among those whose gold is reproduced from the gold
 operand cells by a formula of the program space, the share where the oracle's witnesses include one
@@ -104,7 +118,7 @@ _OPS = {
     "-": r"differ|more|less|fewer|higher|lower|greater|smaller|exceed|gap|minus|subtract|increase|decrease|change|"
          r"compar|than|between|grow|drop|rise|rose|fell|fall|gain|loss|surplus|deficit|remain|left|balance|"
          r"declin|reduc|差|多|少|增|减|变化|比|剩",
-    "+": r"total|sum|combined|together|plus|altogether|overall|合计|加|共",
+    "+": r"total|sum|combined|together|plus|altogether|合计|加|共",
     "/": r"ratio|times|percent|proportion|share|fraction|rate|\bper\b|%|out of|divid|account|比例|占|倍|率|百分",
     "growth": r"grow|increase|decrease|change|rose|rise|fell|fall|drop|declin|growth|\bup\b|\bdown\b|gain|loss|增长|下降|变化|增幅|降幅",
 }
@@ -117,8 +131,13 @@ _OP_OF = {"sum": "sum", "avg": "avg", "max": "max", "min": "min", "range": "rang
           "-": "-", "+": "+", "/": "/", "100*/": "/", "(a-b)/b": "growth", "100*(a-b)/b": "growth"}
 
 
+_TIMES_Q = re.compile(r"how many times|\btimes (as|more|less|higher|greater|larger|lower|that|than)|\bfold\b", re.I)
+
+
 def op_named(name: str, q: str) -> bool:
     k = _OP_OF.get(name)
+    if k in ("-", "growth") and _TIMES_Q.search(q):
+        return False  # "how many times ... than": a ratio, not a difference
     return True if k is None else bool(_OPS[k].search(q))
 
 
@@ -173,7 +192,12 @@ def decoys(atom: dict) -> list[dict]:
 # question parsing
 
 
+_SYN = {"men": "male", "man": "male", "males": "male", "women": "female", "woman": "female", "females": "female"}
+
+
 def stem(w: str) -> str:
+    if w in _SYN:
+        return _SYN[w]
     if len(w) > 4 and w.endswith("ies"):
         return w[:-3] + "y"
     if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
@@ -262,10 +286,19 @@ def _range_of(text: str):
 
 _CHANGE_Q = re.compile(r"\b(increas\w*|decreas\w*|chang\w*|grow\w*|growth|rose|rise[sn]?|fell|fall\w*|drop\w*|declin\w*|up|down|"
                        r"previous|prior|last|next|year earlier|a year before|compared)\b")
-_NEG = re.compile(r"\b(not|no|non|never|without|neither|nor|none)\b|n t\b")
+_NEG = re.compile(r"\b(not|no|never|without|neither|nor|none)\b|n t\b")
 
 
-_RATIO_Q = re.compile(r"\b(times|ratio|fold|multiple|as (much|many|high|large|likely)|relative|compared)\b")
+_CMPR_Q = re.compile(r"\b(than|compared|relative to|versus|vs)\b|\bfrom\b(?!\s+(fy\s+)?(19|20)\d\d)[^,?]+\bto\b")
+_STAT_WORDS = {"mean", "average", "median", "s d", "sd", "standard deviation", "standard error", "se", "cv", "n", "number",
+               "percent", "percentage", "%", "rate", "count", "lower", "upper", "low", "high", "lower bound", "upper bound",
+               "95 ci", "confidence interval", "min", "max", "minimum", "maximum", "total", "share", "proportion"}
+
+
+def _stat(seg: str) -> bool:
+    return _n(re.sub(r"\([^)]*\)", " ", seg)) in _STAT_WORDS
+_RATIO_Q = re.compile(r"\b(times|ratio|fold|multiple|as (much|many|high|large|likely)|relative|compared|per)\b|"
+                      r"\bas an? (percentage|proportion|share|fraction) of\b|\b(of|to) th(at|ose) of\b")
 
 
 def _in_range(lo, hi, qlo, qhi) -> bool:
@@ -282,6 +315,7 @@ class Question:
         self.norm = norm_text(_pre(q))
         self.stemmed = " " + " ".join(stem(w) for w in self.norm.split()) + " "
         self.words = {stem(w) for w in words(_pre(q))}
+        self.tokens = set(self.norm.split())
         self.cwords = cwords(q)
         self.nums = []
         for m in _NUMBER.finditer(q):
@@ -337,7 +371,7 @@ class Question:
         self.kth = ({"second": 2, "third": 3, "fourth": 4, "fifth": 5, "2nd": 2, "3rd": 3, "4th": 4, "5th": 5}[km.group(1)],
                     "max" if km.group(2) in ("highest", "largest", "biggest", "most", "greatest") else "min") if km else None
 
-    def entity(self, value) -> int:
+    def entity(self, value, strict=False) -> int:
         """0 no, 2 phrase at word boundaries, 1 all content words (2+)."""
         value = _pre(value)
         n = norm_text(value)
@@ -358,7 +392,10 @@ class Question:
         ws = {stem(w) for w in words(value)}
         if len(ws) >= 2 and _wmatch(ws, self.words) == ws:
             return 1
-        if len(ws) >= 2 and len(_wmatch(ws, self.words)) >= max(2, 0.6 * len(ws)):
+        ini = "".join(w[0] for w in n.split() if w not in ("and", "of", "the", "for", "on", "in", "de", "et"))
+        if len(ini) >= 3 and ini in self.tokens and len(n.split()) >= 3:
+            return 2  # an acronym of the label: "NASA" ~ "National Aeronautics and Space Administration"
+        if not strict and len(ws) >= 2 and len(_wmatch(ws, self.words)) >= max(2, 0.6 * len(ws)):
             return 1  # most content words: "poor or fair mental health" ~ "Negative (fair, poor)"
         return 0
 
@@ -508,6 +545,7 @@ class TableProg:
         t = self.t
         out = []
         labelish = sorted(t.label_cols | t.parent_cols | {c for c, d in enumerate(dtypes) if d in ("text", "string")})
+        partial = {}
         for c in labelish:
             seen = {}
             for i, r in enumerate(t.rows):
@@ -517,10 +555,15 @@ class TableProg:
                 key = str(v)
                 if key not in seen:
                     seen[key] = q.entity(key) if not isinstance(v, (int, float)) else (2 if int(v) in q.years and v == int(v) else 0)
+                    if seen[key] == 1 and not isinstance(v, (int, float)) and q.entity(key, strict=True) == 0:
+                        partial.setdefault(c, set()).add(key)
                 if seen[key]:
                     out.append((c, key, seen[key]))
                 elif isinstance(v, (int, float)) and v == int(v) and int(v) in q.adj_years:
                     out.append((c, f"adj-year={int(v)}", 0))
+        # a value named by most of its words ("National Laboratory") names nothing when several values of its
+        # column are named that way
+        out = [x for x in out if not (x[0] in partial and x[1] in partial[x[0]] and len(partial[x[0]]) >= 3)]
         # equality on years in any column (integer year columns), dates by year / month
         for c, d in enumerate(dtypes):
             if d in ("date", "datetime"):
@@ -743,14 +786,21 @@ class TableProg:
                     self._add(float(len(vals)), (rg, int(hg)), ("count distinct", desc, ("label", c), m))
         # single-row lookups (any row type) for rows a filter names
         rows = np.zeros(len(D), dtype=bool)
-        for _, m, _ in fl:
-            rows |= m
+        for d, m, _ in fl:
+            if "'range=" not in d:  # a range names its rows as a set, not one by one
+                rows |= m
         idx = list(np.nonzero(rows)[0][:MAX_LOOKUP_ROWS])
         # whole rows (denominators of shares), also when the question does not name them
         idx += [i for i in np.nonzero(self.wr & ~rows)[0][:30]]
-        nf = np.array([sum(bool(m[i]) for d, m, _ in fl if "'adj-year=" not in d) for i in idx], dtype=int) if len(idx) else []
+        nf = np.array([sum(bool(m[i]) for d, m, _ in fl if "'adj-year=" not in d and "'range=" not in d) for i in idx], dtype=int) if len(idx) else []
         na = np.array([sum(bool(m[i]) for d, m, _ in fl if "'adj-year=" in d) for i in idx], dtype=int) if len(idx) else []
+        inrange = np.zeros(len(D), dtype=bool)
+        for d, m, _ in fl:
+            if "'range=" in d:
+                inrange |= m
         for i, k, ka in zip(idx, nf, na):
+            if inrange.any() and not inrange[i] and k < 2 and not self.wr[i]:
+                continue  # the question's age range applies to this table: a row outside it is not the one named
             one = np.zeros(len(D), dtype=bool)
             one[i] = True
             lab = " / ".join(t.labels(i)[:3]) or f"row {i}"
@@ -793,7 +843,7 @@ class TableProg:
             if not adj and PCT_Q.search(q.text.lower()):
                 labn = " ".join(norm_text(t.rows[i][c]) for c in sorted(t.label_cols - t.parent_cols)
                                 if c < len(t.rows[i]) and t.rows[i][c] not in (None, ""))
-                if q.neg_q != bool(_NEG.search(labn)):
+                if not q.neg_q and _NEG.search(labn):
                     for j in np.nonzero((self.colg >= 1) & ok)[0]:
                         if self.pctcol[j]:
                             top = 1.0 if self.pctcol[j] == 1 else 100.0
@@ -907,6 +957,9 @@ class Programs:
         self.adjrow = fl[:, 2] if len(fl) else np.zeros(0, bool)
         self.adjcol = adjc
         self.adj = self.adjrow | adjc
+        self.chgcol = np.array([j >= 0 and bool(re.search(r"chang|growth|increase|decrease|differen|revision|\bchg\b|%\s*ch",
+                                                           self.tps[ti].t.headers[self.tps[ti].numcols[j]], re.I))
+                                for (ti, _), j in zip(ref, self.colj)], dtype=bool)
         self.hasyr = np.array([j >= 0 and bool(re.search(r"(?<!\d)(19|20)\d\d(?!\d)", self.tps[ti].t.headers[self.tps[ti].numcols[j]]))
                                for (ti, _), j in zip(ref, self.colj)], dtype=bool)
         self.vals = np.array(vals, dtype=float)
@@ -923,14 +976,21 @@ class Programs:
         nonval = np.array([n != "value" for n in names], dtype=bool)
         self.isval = ~nonval
         self.alldata = np.array([d == "all data rows" for d in descs], dtype=bool)
+        # operands of one period: a year in the row set (filter or label) or in the column
+        self.rtimed = np.array([bool(re.search(r"'(has-year|year|year-in|year-month|adj-year)=|'(19|20)\d\d'|(?<!\d)(19|20)\d\d(?!\d)", d))
+                                for d in descs], dtype=bool)
+        self.inlist = np.array([" or " in d for d in descs], dtype=bool)
         self.qobj = q
         self.descid = np.unique(np.array([f"{ti}\x00{self.tps[ti].meta[k][1]}" for ti, k in ref], dtype=object), return_inverse=True)[1] \
             if ref else np.zeros(0, int)
         # tight: the operation is named, and the row set and the column are named (an aggregate over all
         # data rows needs a fully named column; a count needs only its row set)
         iscount = np.array([_OP_OF.get(n) == "count" for n in names], dtype=bool)
+        iscount &= np.array([n != "count" for n in names], dtype=bool) | (self.colg >= 1)  # non-empty cells of a named column
         rowagg = np.array([n.startswith("row-") for n in names], dtype=bool)
         whole_count = np.array([n in ("count rows", "count distinct") and d == "all data rows" for n, d in zip(names, descs)], dtype=bool)
+        if _TIMES_Q.search(qt):
+            opg &= False  # "how many times ... than": only a ratio answers it
         self.tight = opg & (((self.rowg >= 1) & (self.colg >= 1)) | (self.whole & nonval & (self.colg == 2)) |
                             (iscount & (self.rowg >= 1)) | (whole_count & (self.colg >= 1)) |
                             (rowagg & (self.rowg >= 1))) & ~self.adj
@@ -999,8 +1059,10 @@ class Programs:
             for n, (x, y) in enumerate(zip(a, b)):
                 t = self.tps[self.ref[x][0]].t
                 sx, sy = t.headers[colkey[x]].split(" / "), t.headers[colkey[y]].split(" / ")
-                out[n] = (len(sx) == len(sy) and sum(p != q for p, q in zip(sx, sy)) == 1) or \
-                    (self.wcol[x] != self.wcol[y]) or (self.adjcol[x] != self.adjcol[y])
+                dif = [(p, q) for p, q in zip(sx, sy) if p != q] if len(sx) == len(sy) else []
+                if len(dif) == 1 and _stat(dif[0][0]) and _stat(dif[0][1]):
+                    continue  # 'Mean' and 'S.D.', 'number' and 'percent': two measures of one thing
+                out[n] = len(dif) == 1 or (self.wcol[x] != self.wcol[y]) or (self.adjcol[x] != self.adjcol[y])
             return out
         for grp in by_row.values():
             add(grp, one_segment)
@@ -1045,7 +1107,7 @@ class Programs:
         # whole row are fine)
         same_row = (self.descid[I] == self.descid[J]) & self.isval[I] & self.isval[J]
         ok &= ~(self.whole[I] & self.whole[J]) | same_row
-        ok &= ~(self.wcol[I] & self.wcol[J] & same_row)
+        ok &= ~(self.wcol[I] & self.wcol[J] & same_row & ((self.colg[I] < 2) | (self.colg[J] < 2)))
         k = self.kind[I]
         if op != "-":
             ok &= k == "vs"
@@ -1066,16 +1128,32 @@ class Programs:
         ok &= ~adj | ((self.adjcol[I] | self.adjcol[J]) & same_row) | ((self.adjrow[I] | self.adjrow[J]) & samecol)
         if op in ("+", "compl"):
             ok &= ~adj
+        # a set of rows the question lists (an IN-list) is an operand only as the part of a share of its whole
+        # (or one listed set in two named columns)
+        same_set = self.descid[I] == self.descid[J]
+        ok &= (~self.inlist[J] | same_set) & (~self.inlist[I] | same_set | ((op in ("/", "100*/", "compl")) & (wv[J] | self.wcol[J] | self.alldata[J])))
         if op == "compl":
             ok &= (same_row & self.wcol[J] & ~self.wcol[I]) | (samecol & wv[J] & ~wv[I])
             for n in np.nonzero(ok)[0]:  # the question asks for the share the part's label negates (or v.v.)
-                ok[n] = self.qobj.neg_q != self._negated(int(I[n]))
+                ok[n] = not self.qobj.neg_q and self._negated(int(I[n]))
         if op in ("/", "100*/") and not _RATIO_Q.search(self.qobj.norm):
             # one measure in two years: a ratio only when the question asks for one ("times", "ratio")
             ok &= ~(same_row & self.hasyr[I] & self.hasyr[J])
         if op in ("/", "100*/"):
             # a share divides a part by its whole, never the whole by a part
             ok &= ~(same_row & self.wcol[I] & ~self.wcol[J]) & ~(samecol & wv[I] & ~wv[J])
+            if not _RATIO_Q.search(self.qobj.norm):
+                # "what percent of X ...": the denominator is a whole (a total row / column, all rows)
+                ok &= self.whole[J] | self.wcol[J] | self.alldata[J] | self._named_whole(J)
+        if op in ("(a-b)/b", "100*(a-b)/b"):
+            ok &= ~(self.chgcol[I] | self.chgcol[J])  # the growth of a column of changes: not a question shape
+            if not _CMPR_Q.search(self.qobj.norm):
+                # a change over time compares two periods; two entities need "than" / "compared" / "from A to B"
+                # two periods: two year columns of one row set, or two year rows of one column
+                tm = (self.hasyr[I] & self.hasyr[J] & ~samecol) | (self.rtimed[I] & self.rtimed[J] & ~same_row) | adj
+                for n in np.nonzero(ok & ~tm & ~same_row)[0]:
+                    tm[n] = self._yrow(int(I[n])) and self._yrow(int(J[n]))
+                ok &= tm
         if op == "+":
             for n in np.nonzero(ok & samecol)[0]:  # a sum of two row sets that overlap counts rows twice
                 ok[n] = not self._overlap(int(I[n]), int(J[n]))
@@ -1087,6 +1165,29 @@ class Programs:
             for n in np.nonzero(ok & need)[0]:
                 ok[n] = self._inside(int(I[n]), int(J[n]))
         return ok
+
+    def _named_whole(self, J: np.ndarray) -> np.ndarray:
+        """Operands whose row set or column the question calls a whole ("all", "total" in its own label)."""
+        out = np.zeros(len(J), dtype=bool)
+        for n, b in enumerate(J):
+            ti, k = self.ref[int(b)]
+            d = self.tps[ti].meta[k][1]
+            out[n] = bool(re.search(r"\b(all|total|overall)\b", _n(d.split(" / ")[-1]))) or bool(self.wcol[int(b)])
+        return out
+
+    def _yrow(self, a: int) -> bool:
+        """Program a looks up one row that holds a year (a label or a year column): a period."""
+        ti, k = self.ref[a]
+        tp = self.tps[ti]
+        rows = np.nonzero(tp.meta[k][3])[0]
+        if len(rows) != 1:
+            return False
+        for v in tp.t.rows[int(rows[0])]:
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and v == int(v) and 1900 <= v <= 2100:
+                return True
+            if isinstance(v, str) and re.search(r"(?<!\d)(19|20)\d\d(?!\d)", v):
+                return True
+        return False
 
     def _negated(self, a: int) -> bool:
         ti, k = self.ref[a]
@@ -1271,26 +1372,6 @@ def replay_gold(it: dict, gold: dict) -> str | None:
     return None
 
 
-def classify_miss(it, atom, tables, q, res) -> str:
-    if it["dataset"] == "hitab" and it.get("cells"):
-        ops, why = hitab_gold_ops(it, tables)
-        if ops is None:
-            return "operand cells not in any table"
-    if res.get("strong"):
-        return "only loosely grounded programs match"
-    if res.get("weak"):
-        return "only ungrounded programs match"
-    tg = gold_targets(atom, it["question"])
-    for kw, label in (({"relaxed_text": True}, "operand column text"), ({"drop_total_labels": True}, "total row in data")):
-        r2 = Programs(tables, q, **kw).search(atom, it["question"], 1)
-        if r2["tight"]:
-            return label
-    allvals = np.array([_f_relaxed(v) for t in tables for r in t.rows for v in r], dtype=float)
-    if len(allvals) and match_mask(allvals, tg).any():
-        return "value in a cell, no grounded program"
-    return "outside program space"
-
-
 def run_item(it: dict) -> dict:
     tables = tables_of(it)
     q = Question(it["question"])
@@ -1309,7 +1390,14 @@ def run_item(it: dict) -> dict:
         if a.get("moved"):
             rec["moved"] = a["moved"]
         if not rec["reachable"]:
-            rec["cause"] = classify_miss(it, a, tables, q, r)
+            import causes  # noqa: PLC0415  (causes imports this module)
+            c = causes.classify(it, a, tables, q, r, progs)
+            rec["family"] = c["family"]
+            rec["cause"] = f"{c['family']}: {c['cause']}"
+            rec["evidence"] = c["evidence"]
+            if c.get("witness"):
+                rec["witnesses"] = [c["witness"]] + rec["witnesses"]
+                rec["source_witness"] = True
             if r.get("weak_example"):
                 rec["weak_example"] = r["weak_example"]
         dec = [progs.search(d, it["question"], 0)["tight"] > 0 for d in decoys(a)]
@@ -1356,8 +1444,8 @@ def summarize(rows: list[dict]) -> dict:
             s["decoys_reachable"] += a["decoys"][1]
             if not a["reachable"]:
                 causes[a["cause"]] += 1
-                s["ungrounded_only"] += a["cause"] == "only ungrounded programs match"
-                s["loose_only"] += a["cause"] == "only loosely grounded programs match"
+                s["miss_" + a.get("family", "unclassified")] += 1
+                s["loose_only"] += a["loose"] > 0
             else:
                 s["single_witness"] += a["tight"] == 1
     return {"counts": dict(s), "causes": dict(causes)}
