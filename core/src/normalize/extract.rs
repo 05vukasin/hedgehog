@@ -1401,12 +1401,47 @@ fn build_table(
     // table: each column's typing reads only its own values and the sheet's shared hints, B120),
     // then the columns assembled in order.
     // Per column: its header parts (text, cell) and its name.
+    // B-public: the first section label of the body written in the header's last row, in the
+    // label column (`Region of ancestry` beside the unit row's `percent`, or one label merged
+    // across the row, `Current $billions`), when the later sections are group-header rows: it
+    // heads the rows above the first group header (group column), not a column.
+    let section_in_header: Option<(usize, usize, bool, String)> = (|| {
+        let lc = label_col?;
+        if nh < 2 || group_labels.is_empty() || row_group.first() != Some(&None) || lc < r.left || lc > r.right {
+            return None;
+        }
+        let (hr, k0) = (nh - 1, (lc - r.left) as usize);
+        let (text, at) = head[hr][k0].as_ref()?;
+        if *at != (htop + hr as u32, lc) {
+            return None;
+        }
+        let others: Vec<&(String, (u32, u32))> =
+            head[hr].iter().enumerate().filter(|&(k, _)| k != k0).filter_map(|(_, h)| h.as_ref()).collect();
+        let whole = !others.is_empty() && others.iter().all(|h| h.1 == *at);
+        let units = !others.is_empty() && others.iter().all(|h| h.1.0 == at.0 && h.1 != *at && crate::layout::is_unit_text(&h.0));
+        (whole || units).then(|| (hr, k0, whole, text.clone()))
+    })();
+    if let Some((_, _, _, label)) = &section_in_header {
+        paths.push(vec![label.clone()]);
+        let idx = paths.len() - 1;
+        for (j, g) in row_group.iter_mut().enumerate() {
+            if g.is_some() {
+                break;
+            }
+            if row_types[j] == RowType::Data {
+                *g = Some(idx);
+            }
+        }
+        group_labels.push(label.clone());
+        tr.add(T::GroupHeaderRowsToColumn, 1);
+    }
     let mut heads: Vec<(Vec<HeaderPart>, String)> = Vec::with_capacity(ncols);
     for k in 0..ncols {
         let col = r.left + k as u32;
         let mut parts: Vec<(String, (u32, u32))> = Vec::new();
         let mut named: Vec<(String, (u32, u32))> = Vec::new();
-        for (hr, h) in head.iter().enumerate().filter_map(|(hr, row)| row[k].as_ref().map(|h| (hr, h))) {
+        let section = |hr: usize| section_in_header.as_ref().is_some_and(|s| s.0 == hr && (s.1 == k || s.2));
+        for (hr, h) in head.iter().enumerate().filter(|&(hr, _)| !section(hr)).filter_map(|(hr, row)| row[k].as_ref().map(|h| (hr, h))) {
             if parts.last().is_none_or(|p| p.0 != h.0) {
                 parts.push(h.clone());
             }

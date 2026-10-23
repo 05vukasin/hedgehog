@@ -214,3 +214,50 @@ fn flat_row_labels_get_no_parent_column() {
     let n = normalize_workbook(&book, &Options::default());
     assert!(n.tables[0].columns.iter().all(|c| !c.name.ends_with("_parent")));
 }
+
+/// HiTab statcan/1004: the first section label sits in the header's last row, beside the unit row
+/// (`Region of ancestry | percent`), the next ones are group-header rows (`Country of ancestry`).
+/// The first one heads its rows in the group column like the others and leaves the label
+/// column's name.
+#[test]
+fn first_section_label_in_the_header_row() {
+    let path: PathBuf = std::env::temp_dir().join(format!("hh_section_hdr_{}.xlsx", std::process::id()));
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet();
+    ws.write_string(0, 0, "Table 2.2: Percentage with a diploma, by region or country of ancestry").unwrap();
+    ws.write_string(2, 0, "Region or country of ancestry").unwrap();
+    ws.write_string(2, 1, "Women").unwrap();
+    ws.write_string(2, 2, "Men").unwrap();
+    ws.write_string(3, 0, "Region of ancestry").unwrap();
+    ws.merge_range(3, 1, 3, 2, "percent", &Format::new()).unwrap();
+    let mut r = 4;
+    for (sec, items) in [(None, ["Caribbean", "Africa", "Other regions"]), (Some("Country of ancestry"), ["Jamaica", "Haiti", "Nigeria"])] {
+        if let Some(s) = sec {
+            ws.write_string(r, 0, s).unwrap();
+            r += 1;
+        }
+        for (k, it) in items.iter().enumerate() {
+            ws.write_string(r, 0, *it).unwrap();
+            ws.write_number(r, 1, 50.0 + k as f64).unwrap();
+            ws.write_number(r, 2, 40.0 + k as f64).unwrap();
+            r += 1;
+        }
+    }
+    wb.save(&path).unwrap();
+    let book = open(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    let n = normalize_workbook(&book, &Options::default());
+    let t = &n.tables[0];
+    let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
+    assert!(names.contains(&"Region or country of ancestry"), "{names:?}");
+    assert!(names.contains(&"Women / percent"), "{names:?}");
+    let g = t.columns.iter().position(|c| c.role == ColRole::Group).expect("group column");
+    let l = names.iter().position(|&c| c == "Region or country of ancestry").unwrap();
+    let text = |c: usize, r: usize| match &t.columns[c].values[r] {
+        Out::Text(s) => s.clone(),
+        _ => String::new(),
+    };
+    let row = |label: &str| (0..t.rows()).find(|&r| text(l, r) == label).unwrap_or_else(|| panic!("{label}"));
+    assert_eq!(text(g, row("Africa")), "Region of ancestry");
+    assert_eq!(text(g, row("Haiti")), "Country of ancestry");
+}
