@@ -152,6 +152,40 @@ fn parse_num_lenient(t: &str, nh: crate::values::NumberHint) -> (Option<ParsedNu
     }
 }
 
+/// A column header that names a date: `Date`, `Care Date`, `Datum`, `Lieferdatum`, `Fecha de
+/// pago`, `Data`, `Дата`, `日期`, … (the last part of a ` / ` path).
+fn date_header(name: &str) -> bool {
+    let last = name.rsplit(" / ").next().unwrap_or(name).to_lowercase();
+    if ["日期", "日付", "날짜"].iter().any(|w| last.contains(w)) {
+        return true;
+    }
+    last.split(|c: char| !c.is_alphanumeric()).any(|w| {
+        matches!(w, "date" | "dates" | "datum" | "fecha" | "data" | "dato" | "dátum" | "datė" | "tarih" | "päivämäärä" | "дата" | "датум")
+            || (w.len() > 6 && w.ends_with("datum"))
+    })
+}
+
+/// Every value of the column is a number in the range of everyday Excel dates (1954-2064), at
+/// least two of them, not all round thousands.
+fn serial_values(slots: &[Slot], missing: &[Option<bool>]) -> bool {
+    let mut xs: Vec<f64> = Vec::new();
+    for (s, m) in slots.iter().zip(missing) {
+        match (s, m) {
+            (Slot::Val(Value::Number(x)), None) => xs.push(*x),
+            (Slot::Val(_), None) => return false,
+            _ => {}
+        }
+    }
+    xs.len() >= 2 && xs.iter().all(|&x| is_plausible_serial(x)) && crate::values::date::looks_like_serial_column(&xs)
+}
+
+/// `(4)`: a number of one to three digits in parentheses and nothing else, read as negative.
+fn is_bare_paren(t: &str, p: &ParsedNumber) -> bool {
+    let s = t.trim();
+    p.negative == Some(NegativeStyle::Parens)
+        && s.strip_prefix('(').and_then(|r| r.strip_suffix(')')).is_some_and(|d| (1..=3).contains(&d.len()) && d.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// Types one column. `rows[i]` is the source row of `slots[i]`, `col` the source column (both
 /// 0-based, for warnings). `first` are the hints for the typing pass (explicit locale or none);
 /// `refine` is asked for the final hints of a numeric / date column, given a sample of its text
@@ -220,6 +254,11 @@ fn type_column_untimed(
     // Readings of the text values that are not missing, by slot index in slot order; a text that
     // reads as nothing is left out (most texts of a text column: little memory per column, B134).
     let mut cands: Vec<(u32, Cand)> = Vec::new();
+    // Item numbers in parentheses (`(4)`: an outline number or a footnote reference) read as
+    // accounting negatives, by index into `cands`; and whether the column shows that it writes
+    // amounts that way (another negative, a thousands separator).
+    let mut bare_parens: Vec<usize> = Vec::new();
+    let mut accounting = false;
     for (i, s) in slots.iter().enumerate() {
         let Slot::Val(v) = s else { continue };
         if missing[i].is_some() {
@@ -230,6 +269,7 @@ fn type_column_untimed(
         match v {
             Value::Number(x) => {
                 is_num = true;
+                accounting |= *x < 0.0;
                 native.add(*x);
             }
             Value::DateTime(_) => is_date = true,
@@ -272,6 +312,13 @@ fn type_column_untimed(
                         }
                     }
                 }
+                if let Some(p) = &cand.num {
+                    if is_bare_paren(t, p) {
+                        bare_parens.push(cands.len());
+                    } else {
+                        accounting |= p.negative.is_some() || p.thousands_sep.is_some();
+                    }
+                }
                 if cand.has_reading() {
                     cands.push((i as u32, cand));
                 }
@@ -288,6 +335,17 @@ fn type_column_untimed(
         }
         if is_date { date_ok += 1 } else { date_miss += 1 }
         if is_bool { bool_ok += 1 } else { bool_miss += 1 }
+    }
+    // Without such evidence `(4)` is no amount: it stays text (and counts against a numeric
+    // column like any other text).
+    if !accounting {
+        for &k in &bare_parens {
+            if cands[k].1.num.take().is_some() {
+                num_ok -= 1;
+                num_miss += 1;
+                words_only = false;
+            }
+        }
     }
     let share = |k: usize| n > 0 && k as f64 >= TYPE_SHARE * n as f64;
     // Censored / suppressed cells neither count for nor against a numeric column (when there are
@@ -318,6 +376,10 @@ fn type_column_untimed(
         Kind::Text
     };
 
+    // Excel dates stored without a date format (plain serials 44301, 44302, …): a date column
+    // only when its header says date and every value is such a serial.
+    let kind = if kind == Kind::Num && date_header(name) && serial_values(slots, &missing) { Kind::Date } else { kind };
+
     // Pass 2 (numeric / date columns): final hints; re-parse only if they can change a value.
     let mut hints = first;
     if kind == Kind::Num || kind == Kind::Date {
@@ -344,6 +406,9 @@ fn type_column_untimed(
                     };
                     if kind == Kind::Num {
                         (c.num, c.lone_paren) = parse_num_lenient(t, nh);
+                        if !accounting && c.num.as_ref().is_some_and(|p| is_bare_paren(t, p)) {
+                            c.num = None;
+                        }
                     } else {
                         c.date = parse_date(t, hints.date_order);
                     }
