@@ -188,6 +188,24 @@ C_HISTORY = [
 ]
 
 
+# M classes checked by hand against the source cells (2026-10-24, branch audit): a seeded sample of 20 per class
+# (all when fewer) of the checker before the review, real problem (a library cause: hedgehog's output misleads)
+# vs checker false positive; the false-positive classes are fixed in invariants.py (test_invariants.py) and the
+# sample re-scored with the fixed checker. "header missing" (col_X) is not sampled (branch headers).
+M_REVIEW = [
+    # class, violations before / after the fix, sample, real, false positives, real kept / FP kept after, FP classes
+    ("M5 header missing", 1743, 1743, 0, 0, 0, None, None, "not sampled (col_X: branch headers)"),
+    ("M3 measures mixed", 314, 304, 20, 19, 1, 19, 0, "a '%' / 'rate' in a name ('Production %', 'Leading Rate', '坡度1%') on rows of larger numbers"),
+    ("M5 repeated header names", 141, 37, 20, 13, 7, 7, 0, "the source itself repeats the header (literal duplicates, one merged cell over text / mixed columns); lost real: report header lines, a summary line, a hidden calculation block"),
+    ("M5 duplicate headers", 98, 32, 20, 9, 11, 5, 0, "the 'header above' is a unit / title line over the stub column or a key/value row; lost real: unit rows taken as the header (tables also flagged 'header missing')"),
+    ("M1 total row in data", 74, 74, 20, 20, 0, 20, 0, ""),
+    ("M5 number as header", 22, 18, 20, 16, 4, 16, 0, "a rate parameter under a text header ('利润 / 0.25')"),
+    ("M4 Excel serial as number", 14, 13, 14, 13, 1, 13, 0, "'time' in 'full-time / dollars'"),
+    ("M2 percent mixed", 11, 11, 11, 11, 0, 11, 0, ""),
+    ("M6 '(n)' read as negative", 4, 4, 4, 4, 0, 4, 0, ""),
+]
+
+
 def m_hint(ds: str, files: list[str], mind: dict) -> str:
     kinds = set().union(*[mind.get((ds, f), set()) for f in files]) if files else set()
     return next((k for k in M_PRIORITY if k in kinds), "")
@@ -406,6 +424,16 @@ def md(res: dict, examples: int) -> str:
             for k, v in list(res[m]["clusters"].items())[:20 if m == "L" else 40]:
                 ex = v[0]
                 L.append(f"| {k} | {len(v)} | {ex['dataset']} {ex['id']} · {Path(ex['file']).name} · `{str(ex['atom'])[:30]}` · {str(ex['evidence'])[:140].replace('|', '/')} |")
+        L += ["", "## M classes: hand review of the checker (2026-10-24)", "",
+              "A seeded sample per class checked against the source cells: real problem (library: the output misleads) "
+              "or checker false positive. False-positive classes are fixed in invariants.py (tests: test_invariants.py); "
+              "precision before / after the fix on the same sample.", "",
+              "| Class | Before | After | Sample | Real | FP | Precision before | Real kept / FP kept after | FP class (fixed) |",
+              "|---|---|---|---|---|---|---|---|---|"]
+        for c, b, a2, n, tp, fp, tk, fk, why in M_REVIEW:
+            prec = f"{100 * tp / n:.0f} %" if n else "-"
+            after = f"{tk} / {fk}" if tk is not None else "-"
+            L.append(f"| {c} | {b} | {a2} | {n} | {tp} | {fp} | {prec} | {after} | {why} |")
         L += ["", "## M violations: examples", ""]
         for k in kinds:
             for e in res["M"]["examples"][k][:examples]:
