@@ -82,7 +82,9 @@ every run of non-alphanumerics → one space. Numbers (`common.parse_number`) re
 `(500)`, `%`; two numbers match when equal, or equal after rounding to the decimals the answer shows (only
 when it shows decimals); a percent answer also matches its fraction (hedgehog stores 15 % as 0.15). A clock
 time written `H:MM[:SS]` (hedgehog writes time-of-day cells as `09:30:00`) is a typed value: it compares with a
-numeric answer as the day fraction the source stores (`common.clock_fraction`; 09:30:00 = 0.395833).
+numeric answer as the day fraction the source stores (`common.clock_fraction`; 09:30:00 = 0.395833). The numbers of a hedgehog catalog are its free-text numbers plus
+every cell of its CSV sample rows read as CSV (`score.catalog_numbers`; a number right after a comma is not a
+free-text number, so `0.6,20,5` used to hide the 20).
 
 ### A. Structure (where labels exist)
 

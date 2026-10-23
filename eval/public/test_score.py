@@ -52,5 +52,41 @@ class Operands(unittest.TestCase):
         self.assertEqual(S.operands_by_question([t], {"driving"}), (1, 1))
 
 
+class CatalogNumbers(unittest.TestCase):
+    CAT = ("T1  'x' ← 'A'!A1:F3 · 3 rows\n    columns (6): a b c d e f\n    all 3 rows (CSV):\n    a,b,c,d,e,f\n"
+           "    1,M435,20,-3.5,\"1,234\",13:00:00\n    2,\"Smith, J\",\"-12,345.67\",0.25,7%,x\n"
+           "T2  'y' ← 'A'!A9:B9 · 1 row\n    first 1 rows (CSV, as in T2_all; rows with _row_type total are not in T2):\n"
+           "    k,v\n    total,4242\nNOTES 3 cells; e.g. A!A1: \"x\"")
+
+    def nums(self):
+        return S.catalog_numbers(self.CAT)
+
+    def test_unquoted_after_a_comma(self):
+        self.assertIn(20.0, self.nums())
+        self.assertNotIn(20.0, S.text_numbers(self.CAT))  # the free-text pattern skips it
+
+    def test_negative_and_decimal(self):
+        self.assertIn(-3.5, self.nums())
+        self.assertIn(0.25, self.nums())
+
+    def test_quoted_thousands_separator(self):
+        self.assertIn(1234.0, self.nums())
+        self.assertIn(-12345.67, self.nums())
+        self.assertNotIn(345.67, self.nums())
+
+    def test_quoted_text_with_comma_is_no_number(self):
+        self.assertNotIn(-12.0, self.nums())
+
+    def test_percent_and_clock(self):
+        self.assertIn(7.0, self.nums())
+        self.assertTrue(any(abs(x - 13 / 24) < 1e-9 for x in self.nums()))
+
+    def test_second_block_with_a_qualified_csv_line(self):
+        self.assertIn(4242.0, self.nums())
+
+    def test_lines_outside_csv_blocks_are_free_text(self):
+        self.assertIn(3.0, self.nums())  # "NOTES 3 cells"
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -101,6 +101,30 @@ def text_numbers(text: str) -> list[float]:
 
 
 
+_CSV_BLOCK = re.compile(r"rows \(CSV[^)]*\):\s*$")
+
+
+def catalog_numbers(text: str) -> list[float]:
+    """Numbers of a hedgehog catalog: `text_numbers` of the text, plus every cell of its CSV sample rows (the
+    lines after "all N rows (CSV):" / "first N rows (CSV, ...):"), read as CSV. The free-text pattern skips a
+    number right after a comma (it keeps "1,234" whole), so "0.6,20,5" hid the 20; a quoted "1,234" is one
+    cell. A clock cell counts as its day fraction."""
+    out = text_numbers(text)
+    rows, in_csv = [], False
+    for line in text.splitlines():
+        if in_csv and line.startswith("    ") and not line.startswith("     "):
+            rows.append(line[4:])
+            continue
+        in_csv = bool(_CSV_BLOCK.search(line))
+    for rec in csv.reader(rows):
+        for cell in rec:
+            p = parse_number(cell)
+            x = p[0] if p else clock_fraction(cell)
+            if x is not None:
+                out.append(x)
+    return out
+
+
 def is_numeric_value(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
@@ -462,7 +486,7 @@ def reachability(dataset: str, items: list[dict], group_key) -> dict:
         if not computed:
             c["verbatim"] += 1
             catalog = "\n".join(cat for (_, _, cat, _) in loaded)
-            cn, cnum = norm_text(catalog), text_numbers(catalog)
+            cn, cnum = norm_text(catalog), catalog_numbers(catalog)
             mds = [md_load(dataset, f) for f in files]
             mtext = "\n".join((m or {}).get("text") or "" for m in mds)
             mn, mnum = norm_text(mtext), text_numbers(mtext)
