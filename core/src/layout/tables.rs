@@ -1107,6 +1107,9 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
             }
         }
     }
+    if let Some(sg) = segs.first_mut() {
+        label_column_header(sheet, rows, sg);
+    }
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
     for seg in &segs {
@@ -1131,6 +1134,62 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         loose_rows.sort_by_key(|r| r.row);
         out.loose.push(Region { rect: bounds(&loose_rows), rows: loose_rows });
     }
+}
+
+/// A headerless `label | value` table whose last title row, directly above it, is one short label
+/// over the row-label column (`Reference area` over `Australia`, `· New South Wales | 681425574`,
+/// the OECD data explorer's export, RealHiTBench science-table02, geography-table03): that label
+/// is the header of the label column, not a title.
+fn label_column_header(sheet: &Sheet, rows: &[Row], seg: &mut Seg) {
+    // Only for a block that is a table already (a header must not make a list or a map one).
+    if seg.header > 0
+        || seg.titles.is_empty()
+        || seg.titles.end != seg.start
+        || seg.end <= seg.start + 1
+        || qualifies(rows, seg).is_none()
+    {
+        return;
+    }
+    let body = &rows[seg.start..seg.end];
+    let left = body.iter().map(|r| r.left()).min().unwrap_or(0);
+    // The column under it holds the rows' text labels, and the rows have numbers beside them.
+    let labels = body.iter().filter(|r| r.filled().any(|x| x.left == left && x.kind == Kind::Text)).count();
+    let numbers = body.iter().filter(|r| r.n_measure() > 0).count();
+    if labels * 5 < body.len() * 4 || numbers * 2 < body.len() {
+        return;
+    }
+    let label = |k: usize| -> Option<&str> {
+        let e = single_text(&rows[k])?;
+        let t = text(sheet, e);
+        let ok = e.left == left
+            && e.right == e.left
+            && is_short_label(t)
+            // no subtitle (`United States, 2017`) and no `Key:` line
+            && !t.contains([':', ','])
+            && !t.chars().any(|c| c.is_ascii_digit())
+            && !is_total_label(t)
+            && !is_note_label(t)
+            && !super::cells::is_unit_text(t);
+        ok.then_some(t)
+    };
+    let indented = |t: &str| t.starts_with(|c: char| !c.is_alphanumeric());
+    let first = body[0].filled().find(|x| x.left == left).map(|x| text(sheet, x)).unwrap_or("");
+    let mut k = seg.start - 1;
+    let Some(t) = label(k) else { return };
+    if rows[k].row + 1 != rows[seg.start].row {
+        return;
+    }
+    // A label over indented labels is their group (`Australia` over `· New South Wales`); the
+    // header is the label right above it.
+    if indented(first) && !indented(t) {
+        if k == seg.titles.start || rows[k - 1].row + 1 != rows[k].row || label(k - 1).is_none_or(indented) {
+            return;
+        }
+        k -= 1;
+    }
+    seg.titles = seg.titles.start..k;
+    seg.start = k;
+    seg.header = 1;
 }
 
 /// Outline-style key columns: a label column of the table holds a label only on the first row of

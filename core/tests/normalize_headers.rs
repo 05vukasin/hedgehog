@@ -299,3 +299,28 @@ fn numbered_row_over_a_date_header_keeps_the_dates() {
     let t = n.tables.iter().max_by_key(|t| t.src_rows.len()).unwrap();
     assert!(names(t).iter().any(|n| n.contains("2000-04-01")), "{:?}", names(t));
 }
+
+/// RealHiTBench science-table02, geography-table03 (OECD data explorer exports): `Reference area`
+/// alone right above a `label | value` list (or above its first group label) is the header of the
+/// label column, not a title (the column was `col_B`, so `Malta`, `Victoria` had no column name).
+#[test]
+fn a_lone_label_over_the_label_column_is_its_header() {
+    let n = normalize("reference_area", |ws| {
+        ws.write_string(0, 1, "Green areas - Local areas").unwrap();
+        ws.write_string(1, 1, "Combined unit of measure: Square kilometres").unwrap();
+        ws.write_string(3, 1, "Reference area").unwrap();
+        ws.write_string(4, 1, "Australia").unwrap();
+        let states = ["New South Wales", "Victoria", "Queensland", "South Australia", "Western Australia", "Tasmania"];
+        for (i, s) in states.iter().enumerate() {
+            ws.write_string(5 + i as u32, 1, format!("·\u{2007}\u{2007}{s}")).unwrap();
+            ws.write_number(5 + i as u32, 3, 1000.0 * (i as f64 + 1.5)).unwrap();
+        }
+        ws.write_string(11, 1, "Austria").unwrap();
+        for (i, s) in ["Burgenland", "Lower Austria", "Vienna", "Carinthia"].iter().enumerate() {
+            ws.write_string(12 + i as u32, 1, format!("·\u{2007}\u{2007}{s}")).unwrap();
+            ws.write_number(12 + i as u32, 3, 300.0 * (i as f64 + 2.5)).unwrap();
+        }
+    });
+    let t = with_column(&n, "Reference area");
+    assert_eq!(t.src_rows.len(), 10, "{:?}", names(t));
+}
