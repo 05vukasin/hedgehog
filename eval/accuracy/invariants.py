@@ -24,12 +24,16 @@ must be certain, not suspected):
   M5 header missing         a column named col_<letter> (no header found);
      duplicate headers      columns told apart only by a " (2)" suffix (the header lost its parent): the
                             parent is a header text in the row above, right of the table's first (stub)
-                            column, not a unit word, in a row without numbers in the table's columns;
+                            column, not a unit word, in a row without numbers in the table's columns; or
+                            a row above the header (no numbers) names the same-named columns apart
+                            (a unit row '元 元 元' taken as the header under '折旧费 大修理费 ...');
      repeated header names  3+ adjacent columns with one name, unless the source itself gives them one
                             header (the same text in every column, or one spanning cell over text or
                             mixed columns) and that header row is no data row (no placeholder or number
-                            in it, no numbers right above it); a spanning cell over number columns only
-                            counts (they lost the sub-header below it: "000'" / "%" / "95% CI");
+                            in it, no key/value label "Time Frame:" or date value, no numbers right above
+                            it); a spanning cell over number columns only counts (they lost the sub-header
+                            below it: "000'" / "%" / "95% CI"), and so does a text row just below that
+                            names them apart (the real header of a report block);
      number as header       a column header that is a plain number (not a year): a data row taken as
                             the header (a rate parameter 0 < x <= 1 under a text header, "Profit / 0.25",
                             is none).
@@ -51,6 +55,7 @@ MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", 
 PCT_LABEL = re.compile(r"%|\bpercent|\bper cent|\brate\b|\bshare\b|百分|比例|占比|比率")
 DATE_HDR = re.compile(r"\bdate\b|\bday\b|(?<!-)\btime\b|日期|时间", re.I)
 PLACEHOLDER = re.compile(r"^(f|x|na|n/a|\*+|\.{2,3}|-|—|–|~|e)$", re.I)
+DATE_VALUE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b")
 UNIT_ONLY = re.compile(r"^(m2|m²|m3|m³|km|kg|t|元|万元|yuan|%|\$|usd|eur|units?|pcs|个|件|台|吨|平米|元/平米)$", re.I)
 
 
@@ -117,9 +122,36 @@ def _lost_parent(t, raw: dict, j: int) -> str | None:
             n = norm_text(x)
             if parse_number(x) is not None or not re.search(r"[^\W\d_]", str(x)):
                 return None  # a number above: data of something else, not a header
-            if c <= first or UNIT_ONLY.match(str(x).strip()):
-                return None  # above the stub column (a unit or title line) or a bare unit: no parent
+            if c <= first or UNIT_ONLY.match(str(x).strip()) or re.search(r"[:：]\s*_*\s*$", str(x).strip()):
+                return None  # above the stub column (a unit or title line), a bare unit or a form label: no parent
             return f"{x!r}" if n and n not in used and n not in norm_text(t.headers[j]) else None
+    return None
+
+
+def _names_above(t, raw: dict, js: list[int]) -> str | None:
+    """Columns that share one name (a unit row taken as the header: '元', '元 (2)', ...): does a row above the
+    header (up to 6 rows, no numbers in the table's columns) give them 2+ distinct header texts that are no
+    units? Then hedgehog's header dropped the source's names."""
+    src = (getattr(t, "manifest", None) or {}).get("source", {})
+    hr = (src.get("header_range") or src.get("data_range") or "").split(":")[0]
+    letters = [t.letters[x] for x in js if x < len(t.letters)]
+    if not hr or not all(letters):
+        return None
+    try:
+        top, _ = _a1(hr)
+    except ValueError:
+        return None
+    cs = [_col_index(x) for x in letters]
+    span = [_col_index(x) for x in t.letters if x]
+    for r in range(top - 1, max(-1, top - 7), -1):
+        if any(parse_number(raw.get((t.sheet, r, c))) is not None for c in span):
+            continue
+        named = [str(raw.get((t.sheet, r, c)) or "").strip() for c in cs]
+        named = [x for x in named if x and not UNIT_ONLY.match(x) and not PLACEHOLDER.match(x) and re.search(r"[^\W\d_]", x)
+                 and not re.search(r"[:：]\s*_*\s*$", x)]  # form labels ("Date: ____") are no names
+        vals = set(named)
+        if len(vals) >= 2 and 2 * len(named) > len(cs):  # names over more than half of the columns
+            return ", ".join(repr(x) for x in sorted(vals)[:3])
     return None
 
 
@@ -154,6 +186,8 @@ def _source_names_run(t, raw: dict, j: int, k: int) -> bool:
         vals = [cell(r, c) for c in cs]
         if any(PLACEHOLDER.match(v) or parse_number(v) is not None for v in vals if v):
             return False  # placeholders / numbers as the header: a data row
+        if any(v.endswith((":", "：")) or DATE_VALUE.search(v) for v in vals if v):
+            return False  # a key/value label ("Time Frame:") or a date value as the header: a report line
         if len({v for v in vals if v}) >= 2:
             return False  # the source tells them apart
     if sum(parse_number(cell(top - 1, c)) is not None for c in cs) >= 2:
@@ -161,6 +195,13 @@ def _source_names_run(t, raw: dict, j: int, k: int) -> bool:
     last = [cell(bottom, c) for c in cs]
     if all(last) and len(set(last)) == 1:
         return True  # the source header row repeats the name in every column
+    span = [_col_index(x) for x in t.letters if x]
+    for r in range(bottom + 1, bottom + 5):  # a header row just below (the real header of a report block)
+        vals = [cell(r, c) for c in cs]
+        filled = [v for v in vals if v]
+        if len(set(filled)) >= 2 and 3 * len(filled) >= 2 * len(vals) and all(len(v) <= 60 for v in filled) and \
+                not any(parse_number(cell(r, c)) is not None for c in span):
+            return False
     # one spanning header: over number columns only, the columns lost a sub-header the source has below
     # it ("000'" / "%" / "95% CI", sizes S..4xl, number of adults 1..4); over text or mixed columns the
     # source names them with that one cell (a stub header over label columns, "Actual Results" over
@@ -317,6 +358,10 @@ def check_table(t, raw: dict) -> list[dict]:
             lost = _lost_parent(t, raw, j)
             if lost:
                 v("M5 duplicate headers", j, None, f"column '{h}': the header above ({lost}) is not in any column name")
+            else:
+                above = _names_above(t, raw, [x for x, b in enumerate(base) if b == base[j]])
+                if above:
+                    v("M5 duplicate headers", j, None, f"column '{h}': the source names these columns above the header ({above})")
         else:
             p = parse_number(leaf)
             parent = h.split(" / ")[-2] if " / " in h else ""

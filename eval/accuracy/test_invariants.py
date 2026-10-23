@@ -108,6 +108,20 @@ class M5DuplicateHeaders(unittest.TestCase):
                   ["text", NUM, NUM, NUM, NUM], first_row=6, header_range="A5:E5", colmeta=self.colmeta([None, "B5", "C5", "D5", "E5"]))
         self.assertNotIn("M5 duplicate headers", kinds(t, raw))
 
+    def test_unit_row_taken_as_header_under_named_columns(self):
+        # 8泵类机械: row 6 '元 元 元' was taken as the header; row 3 names the columns (折旧费, 大修理费, 经常修理费)
+        raw = {("S", 2, 1): "折旧费", ("S", 2, 2): "大修理费", ("S", 2, 3): "经常修理费", ("S", 4, 1): "定额",
+               ("S", 4, 4): "5.65", ("S", 5, 1): "元", ("S", 5, 2): "元", ("S", 5, 3): "元"}
+        t = table(["No", "元", "元 (2)", "元 (3)", "kg"], [["8-1", 2.66, 1.6, 3.85, 23.0]] * 2,
+                  ["text", NUM, NUM, NUM, NUM], first_row=7, header_range="A6:E6", colmeta=self.colmeta([None, "B6", "C6", "D6", "E6"]))
+        self.assertIn("M5 duplicate headers", kinds(t, raw))
+
+    def test_form_labels_above_are_no_names(self):
+        raw = {("S", 1, 1): "Date: ________", ("S", 1, 2): "Inv. By: ________"}
+        t = table(["Item", "UP", "UP (2)"], [["a", 1.0, 2.0]] * 2, ["text", NUM, NUM], first_row=4, header_range="A3:C3",
+                  colmeta=self.colmeta([None, "B3", "C3"]))
+        self.assertNotIn("M5 duplicate headers", kinds(t, raw))
+
 
 class M5RepeatedHeaderNames(unittest.TestCase):
     def test_lost_sub_header_under_a_spanning_header(self):
@@ -136,6 +150,21 @@ class M5RepeatedHeaderNames(unittest.TestCase):
         t = table(["Actual Results", "Actual Results (2)", "Actual Results (3)", "Actual Results (4)"],
                   [["USA", 0, 2, "Colombia"]] * 3, ["text", "integer", "integer", "text"], first_row=3, header_range="A1:D2")
         self.assertNotIn("M5 repeated header names", kinds(t, raw))
+
+    def test_report_key_value_line_taken_as_header(self):
+        # labor-table39: the report line 'Time Frame:' / '01/26/2012 06:10:22 PM' became the header
+        raw = {("S", 1, 0): "Time Frame:", ("S", 1, 3): "01/26/2012 06:10:22 PM"}
+        t = table(["Time Frame:", "Time Frame: (2)", "Time Frame: (3)", "01/26/2012 06:10:22 PM", "01/26/2012 06:10:22 PM (2)",
+                   "01/26/2012 06:10:22 PM (3)"], [["Sort By:", None, None, "User Name", None, None]] * 3,
+                  ["text"] * 6, first_row=3, header_range="A2:F2")
+        self.assertEqual(kinds(t, raw).count("M5 repeated header names"), 2)
+
+    def test_real_header_row_just_below(self):
+        # 生产制造 (531): a summary line ('订单数量' over 1000) was taken as the header; row 4 is the real one
+        raw = {("S", 1, 0): "订单数量", ("S", 2, 0): "1000", ("S", 3, 0): "生量已产", ("S", 3, 1): "(天)"}
+        t = table(["订单数量", "订单数量 (2)", "订单数量 (3)"], [["1000", None, None]], ["text", "text", "text"],
+                  first_row=3, header_range="A2:C2")
+        self.assertIn("M5 repeated header names", kinds(t, raw))
 
 
 if __name__ == "__main__":
