@@ -67,6 +67,12 @@ explain each in the commit.
    fast-forward master, `make node-test`, push, remove the worktree and branch, then update STAGES.md
    (status, merge commit, metrics after).
 
+## Milestones (owner's rule)
+
+When the running stages finish, the lead merges them, updates STAGES.md, confirms nothing is running
+(no agents, no capped jobs, no stray worktrees) and **stops** — the next stage starts only when the owner
+asks (often in a fresh chat, via the accuracy-loop skill).
+
 ## Agent brief template
 
 ```
