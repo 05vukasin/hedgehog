@@ -907,6 +907,28 @@ fn roll_over_header_dates(row_heads: &mut [Head], grid: &Grid) -> Option<(String
     Some((iso(from), iso(last.1)))
 }
 
+/// A row of distinct labels (at least two cells, two of them words; no measured number), at
+/// least half of its filled cells marked as header cells by the layout, some as data. The caller
+/// also wants it to span half the table's columns and to hold no `Key:` label (a form line).
+fn mixed_header_row(cells: &[crate::model::Cell], roles: &[Role], idxs: &[usize]) -> bool {
+    let filled: Vec<usize> = idxs.iter().copied().filter(|&i| cells[i].value.as_ref().is_some_and(|v| !display(v).trim().is_empty())).collect();
+    let header = filled.iter().filter(|&&i| roles[i] == Role::Header).count();
+    if filled.len() < 2 || header * 2 < filled.len() || header == filled.len() {
+        return false;
+    }
+    if filled.iter().any(|&i| matches!(&cells[i].value, Some(Value::Number(x)) if !(x.fract() == 0.0 && (1900.0..=2100.0).contains(x))))
+    {
+        return false;
+    }
+    let texts: Vec<String> = filled.iter().filter_map(|&i| cells[i].value.as_ref().map(display)).map(|t| t.trim().to_string()).collect();
+    let distinct: HashSet<&String> = texts.iter().collect();
+    let worded = distinct
+        .iter()
+        .filter(|t| t.chars().filter(|c| c.is_alphabetic()).count() >= 2 && crate::values::missing_token(t).is_none())
+        .count();
+    distinct.len() * 10 >= texts.len() * 8 && worded >= 2
+}
+
 /// Rows that together name the columns: the labels of each column joined over the rows are
 /// distinct for at least four in five columns, and at least two columns hold words (not a
 /// block of unit or placeholder rows).
@@ -1122,6 +1144,13 @@ fn promote_header_inner(
     let mut run: Vec<usize> = Vec::new();
     let mut block: Option<(usize, usize)> = None;
     for (k, (row, idxs)) in rows.iter().enumerate().filter(|(_, (row, _))| *row >= body_top) {
+        // Without header rows, a row of labels most of whose cells the layout marked as header
+        // cells (the rest as data: "Date | 18/06/99 | 18/12/99 | …", "Date | Day | BOL/BRAZ-POWER |
+        // …") is the header too: it would go to Notes as a repeated header.
+        if header_rows == 0 && found.is_none() && filled(idxs) * 2 >= width && !idxs.iter().any(|&i| key_text(i)) && mixed_header_row(cells, roles, idxs) {
+            found = Some(k);
+            break;
+        }
         if idxs.iter().any(|&i| matches!(roles[i], Role::Data | Role::Total | Role::Other) && filled(&[i]) > 0) {
             if header_rows == 0 && run.len() >= 2 && rows[*run.last().unwrap_or(&k)].0 + 2 >= *row {
                 block = header_block(&rows[run[0]..=run[run.len() - 1]], cells).then(|| (run[0], run[run.len() - 1]));
@@ -3427,6 +3456,23 @@ mod tests {
         let refs: Vec<&[Option<Value>]> = block.iter().map(|r| r.as_slice()).collect();
         let (cells, grouped) = grid_rows(&refs);
         assert!(!super::header_block(&grouped, &cells));
+    }
+
+    #[test]
+    fn a_label_row_the_layout_marked_partly_as_header() {
+        // EUSES "pfs_0409": "CC | Authority | DATE | NUMBERS | Kind of data | …" with some cells
+        // marked as data; without header rows it went to Notes as a repeated header.
+        let h = |s: &str| (Some(Value::Text(s.into())), Role::Header);
+        let d = |s: &str| (Some(Value::Text(s.into())), Role::Data);
+        let n = |x: f64| (Some(Value::Number(x)), Role::Data);
+        let mut rows = vec![vec![h("CC"), h("Authority"), d("Date from"), h("Numbers"), d("Kind of data")]];
+        for k in 0..6 {
+            rows.push(vec![d("AP"), d("ARIPO"), d("1984-11-01"), n(8400001.0 + k as f64), d("Patent")]);
+        }
+        assert_eq!(promote(&rows, 0, 0), (0, 1));
+        // A form line (`Committee: | Bill Dulle | …`) is no header.
+        rows[0] = vec![h("Committee:"), h("Bill Dulle"), d("bill@example.com"), h("314-613"), d("Ameren")];
+        assert_eq!(promote(&rows, 0, 0), (0, 0));
     }
 
     #[test]
