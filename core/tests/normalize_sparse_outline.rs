@@ -66,3 +66,41 @@ fn flat_labels_do_not_gain_outline_parents() {
         assert!(n.tables.iter().all(|t| t.columns.iter().all(|c| c.derived_kind() != Some("parent"))));
     }
 }
+
+/// StatCan/2674: a section contains indent-one No/Yes, and just three indent-two
+/// drug categories under Yes. The rest of the sheet uses indent one only.
+#[test]
+fn sparse_nested_outline_keeps_nearest_parent() {
+    for rules_only in [false, true] {
+        let path = std::env::temp_dir().join(format!("hh_sparse_nested_{}_{}.xlsx", std::process::id(), rules_only));
+        let mut wb = Workbook::new();
+        let ws = wb.add_worksheet();
+        for (c, h) in ["Characteristics", "Number", "Percent"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        ws.write_string_with_format(1, 0, "Used drugs during the month preceding the survey", &Format::new().set_bold()).unwrap();
+        let labels = ["No", "Yes", "Cannabis - not everyday", "Cannabis - everyday", "Other drug - at least once"];
+        for (k, label) in labels.iter().enumerate() {
+            let r = 2 + k as u32;
+            ws.write_string_with_format(r, 0, *label, &Format::new().set_indent(if k < 2 { 1 } else { 2 })).unwrap();
+            ws.write_number(r, 1, [465.0, 145.0, 80.0, 63.0, 46.0][k]).unwrap();
+            ws.write_number(r, 2, [17.0, 71.0, 52.0, 144.0, 235.0][k]).unwrap();
+        }
+        ws.write_string_with_format(7, 0, "Alcohol consumption", &Format::new().set_bold()).unwrap();
+        for k in 0..40u32 {
+            ws.write_string_with_format(8 + k, 0, format!("Category {k}"), &Format::new().set_indent(1)).unwrap();
+            ws.write_number(8 + k, 1, 347.0 + k as f64).unwrap();
+            ws.write_number(8 + k, 2, 16.0 + k as f64).unwrap();
+        }
+        wb.save(&path).unwrap();
+        let book = open(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let n = normalize_workbook(&book, &Options { rules_only, keep_totals: true, ..Options::default() });
+        let t = n.tables.iter().find(|t| t.src_rows.contains(&5)).unwrap();
+        let parent = t.columns.iter().find(|c| c.name == "Characteristics_parent").unwrap();
+        let child = t.src_rows.iter().position(|r| *r == 5).unwrap();
+        assert_eq!(parent.values[child], Out::Text("Yes".into()));
+        let next = t.src_rows.iter().position(|r| *r == 8).unwrap();
+        assert_eq!(parent.values[next], Out::Null);
+    }
+}
