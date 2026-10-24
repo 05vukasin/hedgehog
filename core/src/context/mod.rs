@@ -291,7 +291,13 @@ impl<'g> Context<'g> {
             // Column order is grouped: earlier columns' distinct values are no longer needed.
             // Keep the component in the key because components may interleave within a column.
             if last_col.is_some_and(|((_, col), _)| col != cell.col) {
-                seen_values.clear();
+                // Clearing touches capacity: do not retain a tall column's allocation across
+                // many sparse columns. Otherwise its cost is bounded by this column's entries.
+                if seen_values.capacity() > seen_values.len().saturating_mul(8) {
+                    seen_values = HashSet::default();
+                } else {
+                    seen_values.clear();
+                }
             }
             let key = (comp, cell.col);
             let slot = match last_col {
