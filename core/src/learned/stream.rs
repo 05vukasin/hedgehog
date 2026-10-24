@@ -72,6 +72,7 @@ pub(super) struct Streamed {
 pub(super) fn run(grid: &Grid, model: &RowModel) -> (SheetLayout, Option<Streamed>) {
     let trace = crate::normalize::trace_ms;
     let n = grid.sheet.cells.len();
+    let profile = std::time::Instant::now();
     let (lay, ctx, values, (totals, cands)) = if n < crate::eval::export::PARALLEL_MIN_CELLS {
         let t = std::time::Instant::now();
         let lay = crate::layout::analyze_for_model(grid);
@@ -100,9 +101,11 @@ pub(super) fn run(grid: &Grid, model: &RowModel) -> (SheetLayout, Option<Streame
             let t = std::time::Instant::now();
             let ctx = Context::new(grid);
             let tc = t.elapsed();
+            let wait = std::time::Instant::now();
             let (lay, tl) = join(lay.join());
             let (values, tv) = join(values.join());
             let (totals, tt) = join(totals.join());
+            trace("prof.pass1.remaining_join_wait", wait.elapsed());
             trace("M.layout", tl);
             trace("M.context", tc);
             trace("M.values", tv);
@@ -110,6 +113,7 @@ pub(super) fn run(grid: &Grid, model: &RowModel) -> (SheetLayout, Option<Streame
             (lay, ctx, values, totals)
         })
     };
+    trace("prof.pass1.wall", profile.elapsed());
     let t = std::time::Instant::now();
     let lt = LayoutTotals::new(grid, &lay, &cands);
     drop(cands);
@@ -152,6 +156,7 @@ fn stream<'g>(
     min_chunk_cells: usize,
     keep: bool,
 ) -> Option<(Streamed, Vec<u64>)> {
+    let profile = std::time::Instant::now();
     let names = base_names();
     debug_assert_eq!(names.len(), NB);
     let base: rustc_hash::FxHashMap<&str, usize> = names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
@@ -195,6 +200,8 @@ fn stream<'g>(
     let cursors = ctx.cursors(&starts);
     let rows = &rows;
     let src = &src;
+    crate::normalize::trace("prof.stream.setup", profile);
+    let profile = std::time::Instant::now();
     let outs: Vec<(Streamed, Vec<u64>)> = if spans.len() == 1 {
         let cur = cursors.into_iter().next().expect("one cursor");
         vec![walk(src, model, values.fork(), cur, rows, spans[0], keep)]
@@ -208,9 +215,14 @@ fn stream<'g>(
                     s.spawn(move || walk(src, model, v, cur, rows, span, keep))
                 })
                 .collect();
-            handles.into_iter().map(|h| join(h.join())).collect()
+            let wait = std::time::Instant::now();
+            let out = handles.into_iter().map(|h| join(h.join())).collect();
+            crate::normalize::trace("prof.stream.join_wait", wait);
+            out
         })
     };
+    crate::normalize::trace("prof.stream.execute_wall", profile);
+    let profile = std::time::Instant::now();
     let mut all = Streamed { segs: Vec::new(), pred: Vec::new(), guard: Vec::new() };
     let mut kept = Vec::new();
     for (o, k) in outs {
@@ -219,6 +231,7 @@ fn stream<'g>(
         all.guard.extend(o.guard);
         kept.extend(k);
     }
+    crate::normalize::trace("prof.stream.assemble", profile);
     Some((all, kept))
 }
 

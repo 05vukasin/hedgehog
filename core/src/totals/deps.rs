@@ -31,6 +31,7 @@ const MARK_BUDGET: usize = 20_000_000;
 
 impl DependencyIndex {
     pub fn new(grid: &Grid) -> Self {
+        let profile = std::time::Instant::now();
         let sheet = grid.sheet;
         let mut formulas = Vec::new();
         let mut by_pos = HashMap::new();
@@ -41,6 +42,8 @@ impl DependencyIndex {
             }
         }
 
+        crate::normalize::trace("prof.deps.parse", profile);
+        let profile = std::time::Instant::now();
         // Column → [(row, cell index)] sorted by row (cells are row-major).
         let mut columns: HashMap<u32, Vec<(u32, usize)>> = HashMap::new();
         for (i, c) in sheet.cells.iter().enumerate() {
@@ -49,6 +52,8 @@ impl DependencyIndex {
         let mut col_keys: Vec<u32> = columns.keys().copied().collect();
         col_keys.sort_unstable();
 
+        crate::normalize::trace("prof.deps.columns", profile);
+        let profile = std::time::Instant::now();
         let mut marks = vec![0u8; sheet.cells.len()];
         let mut budget = MARK_BUDGET;
         'outer: for f in &formulas {
@@ -72,6 +77,7 @@ impl DependencyIndex {
                 }
             }
         }
+        crate::normalize::trace("prof.deps.mark", profile);
         DependencyIndex { sheet_name: sheet.name.clone(), formulas, by_pos, marks }
     }
 

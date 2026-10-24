@@ -183,6 +183,7 @@ fn components(grid: &Grid) -> Vec<Vec<Entry>> {
         }
         grid.merge_at(row, col).and_then(|r| merge_node.get(&(r.top, r.left)).copied())
     };
+    let profile = std::time::Instant::now();
     for (i, c) in sheet.cells.iter().enumerate() {
         if let Some(r) = grid.merge_at(c.row, c.col)
             && let Some(&k) = merge_node.get(&(r.top, r.left))
@@ -199,6 +200,8 @@ fn components(grid: &Grid) -> Vec<Vec<Entry>> {
             }
         }
     }
+    crate::normalize::trace("prof.blocks.cell_unions", profile);
+    let profile = std::time::Instant::now();
     // Merged areas: look at the ring around each rect (O(perimeter), never O(area)).
     for (k, r) in sheet.merges.iter().enumerate() {
         let me = (n + k) as u32;
@@ -227,7 +230,11 @@ fn components(grid: &Grid) -> Vec<Vec<Entry>> {
             }
         }
     }
+    crate::normalize::trace("prof.blocks.merge_rings", profile);
+    let profile = std::time::Instant::now();
     let entries = entries_of(grid);
+    crate::normalize::trace("prof.blocks.entries", profile);
+    let profile = std::time::Instant::now();
     // Each entry's component, numbered in order of first appearance; then the entries are moved
     // into one vector per component, sized exactly (no growth by doubling on large sheets).
     let mut number: HashMap<u32, u32> = HashMap::new();
@@ -250,6 +257,8 @@ fn components(grid: &Grid) -> Vec<Vec<Entry>> {
         })
         .collect();
     drop(dsu);
+    crate::normalize::trace("prof.blocks.group_numbering", profile);
+    let profile = std::time::Instant::now();
     if sizes.len() == 1 {
         return vec![entries];
     }
@@ -257,6 +266,7 @@ fn components(grid: &Grid) -> Vec<Vec<Entry>> {
     for (e, g) in entries.into_iter().zip(group_of) {
         groups[g as usize].push(e);
     }
+    crate::normalize::trace("prof.blocks.distribute", profile);
     groups
 }
 
@@ -504,12 +514,14 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
 /// Connected components, then gap-tolerant merging into regions.
 pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
     let mut out = regions_inner(grid);
+    let profile = std::time::Instant::now();
     for r in &mut out {
         for row in &mut r.rows {
             mark_rules(grid.sheet, row);
             drop_stray_years(grid.sheet, row);
         }
     }
+    crate::normalize::trace("prof.blocks.postclassify", profile);
     out
 }
 
@@ -578,7 +590,13 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
 }
 
 fn regions_inner(grid: &Grid) -> Vec<Region> {
-    let mut blocks: Vec<Region> = components(grid).into_iter().map(make_region).collect();
+    let profile = std::time::Instant::now();
+    let components = components(grid);
+    crate::normalize::trace("prof.blocks.components", profile);
+    let profile = std::time::Instant::now();
+    let mut blocks: Vec<Region> = components.into_iter().map(make_region).collect();
+    crate::normalize::trace("prof.blocks.make_regions", profile);
+    let profile = std::time::Instant::now();
     // Ruling lines and stray years before the blocks' profiles decide the gap merges.
     for b in &mut blocks {
         for row in &mut b.rows {
@@ -586,9 +604,11 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
             drop_stray_years(grid.sheet, row);
         }
     }
+    crate::normalize::trace("prof.blocks.classify", profile);
     if blocks.len() <= 1 {
         return blocks;
     }
+    let profile = std::time::Instant::now();
     blocks.sort_by_key(|b| (b.rect.top, b.rect.left));
     let capped = |r: &Rect| {
         (r.top.saturating_sub(2)..r.top).any(|row| {
@@ -612,6 +632,8 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
         }
     };
 
+    crate::normalize::trace("prof.blocks.profiles", profile);
+    let profile = std::time::Instant::now();
     // Spacer columns: pairwise on raw blocks that share rows (every horizontal rule needs that).
     let by_left = ByLeft::new(&profiles);
     let mut near = Vec::new();
@@ -708,6 +730,8 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
         }
     }
 
+    crate::normalize::trace("prof.blocks.gap_merging", profile);
+    let profile = std::time::Instant::now();
     let mut groups: BTreeMap<u32, Vec<Entry>> = BTreeMap::new();
     let mut size = vec![0u32; blocks.len()];
     for i in 0..blocks.len() {
@@ -724,6 +748,7 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
     }
     out.extend(groups.into_values().map(make_region));
     out.sort_by_key(|r| (r.rect.top, r.rect.left));
+    crate::normalize::trace("prof.blocks.rebuild", profile);
     out
 }
 

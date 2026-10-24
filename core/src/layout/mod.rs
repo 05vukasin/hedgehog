@@ -78,8 +78,12 @@ fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLay
     };
     let t = std::time::Instant::now();
     let (sigs, search) = changepoint::time_spent();
+    let mut profile = [std::time::Duration::ZERO; 3];
     for region in regions {
-        tables::analyze_region(sheet, region, &mut out);
+        tables::analyze_region(sheet, region, &mut out, &mut profile);
+    }
+    for (name, took) in ["prof.regions.split_probes", "prof.regions.planning_including_cp", "prof.regions.emit"].into_iter().zip(profile) {
+        trace(name, took);
     }
     let (sigs2, search2) = changepoint::time_spent();
     let (sigs, search) = (sigs2.saturating_sub(sigs), search2.saturating_sub(search));

@@ -60,9 +60,14 @@ pub struct Totals<'g> {
 impl<'g> Totals<'g> {
     /// First pass; also returns the detected total candidates.
     pub fn new(grid: &'g Grid<'g>) -> (Totals<'g>, Vec<crate::totals::TotalCandidate>) {
+        let profile = std::time::Instant::now();
         let deps = grid.deps();
+        crate::normalize::trace("prof.model_totals.deps_access", profile);
+        let profile = std::time::Instant::now();
         // As the learned row model was trained: every total keyword counts, incidental or not.
         let crate::totals::Detection { candidates: cands, keyword_rows, .. } = detect_rows(grid, deps, false);
+        crate::normalize::trace("prof.model_totals.detect_r0", profile);
+        let profile = std::time::Instant::now();
         let mut verified = rustc_hash::FxHashMap::default();
         for cand in &cands {
             if let Some(i) = grid.cell_index(cand.row, cand.col) {
@@ -74,6 +79,7 @@ impl<'g> Totals<'g> {
                 verified.insert(i, v);
             }
         }
+        crate::normalize::trace("prof.model_totals.verify", profile);
         (Totals { grid, deps, keyword_rows, verified }, cands)
     }
 
