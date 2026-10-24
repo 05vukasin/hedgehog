@@ -60,6 +60,14 @@ class UnnamedStub(unittest.TestCase):
         e = table(["Selected", "Int#", "col_C", "col_D", "Newborn Lives Saved"], [[None] + r[1:] for r in rows],
                   rng="A5:E8", data="A6:E8")
         self.assertTrue(L.unnamed_stub(e, 3, raw), "an empty named column to its left")
+        f = table(["Selected", "Int#", "col_C", "col_D", "Newborn Lives Saved"], [["x"] + r[1:] for r in rows],
+                  rng="A5:E8", data="A6:E8")
+        f.label_cols = {0, 2, 3}
+        self.assertTrue(L.unnamed_stub(f, 3, raw), "a flag column ('x' marks, placement keeps them) to its left")
+        g = table(["Selected", "Int#", "col_C", "col_D", "Newborn Lives Saved"], [["Planned"] + r[1:] for r in rows[:1]]
+                  + [["Done"] + rows[1][1:]], rng="A5:E8", data="A6:E8")
+        g.label_cols = {0, 2, 3}
+        self.assertFalse(L.unnamed_stub(g, 3, raw), "a named text column of labels to its left")
         raw[("S", 4, 3)] = "Intervention"
         self.assertFalse(L.unnamed_stub(t, 3, raw))
 

@@ -190,32 +190,6 @@
      }
     ]
    },
-   "cell not in any table (column not in the row's table)": {
-    "misses": 9,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "06a6599454cbe21871bcc734ce8fe460",
-      "file": "clean/statcan/1912.xlsx",
-      "atom": "83.4",
-      "evidence": "original!B10='83.4'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "502edfc0bbb656ebf6c8b6ba0b531576",
-      "file": "clean/statcan/1912.xlsx",
-      "atom": "91.3",
-      "evidence": "original!B15='91.3'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "054a9a79be5c365283c80fb8d96e7f19",
-      "file": "clean/statcan/1912.xlsx",
-      "atom": "79.0",
-      "evidence": "original!B28='79.0'"
-     }
-    ]
-   },
    "cell not in any table (row not in any table)": {
     "misses": 9,
     "examples": [
@@ -242,6 +216,32 @@
      }
     ]
    },
+   "cell not in any table (column not in the row's table)": {
+    "misses": 7,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "06a6599454cbe21871bcc734ce8fe460",
+      "file": "clean/statcan/1912.xlsx",
+      "atom": "83.4",
+      "evidence": "original!B10='83.4'"
+     },
+     {
+      "dataset": "hitab",
+      "id": "502edfc0bbb656ebf6c8b6ba0b531576",
+      "file": "clean/statcan/1912.xlsx",
+      "atom": "91.3",
+      "evidence": "original!B15='91.3'"
+     },
+     {
+      "dataset": "hitab",
+      "id": "054a9a79be5c365283c80fb8d96e7f19",
+      "file": "clean/statcan/1912.xlsx",
+      "atom": "79.0",
+      "evidence": "original!B28='79.0'"
+     }
+    ]
+   },
    "question key: only columns told apart by (2), (3) carry it": {
     "misses": 6,
     "examples": [
@@ -250,7 +250,7 @@
       "id": "en-0549",
       "file": "repo/data/english/spreadsheet/Long-termLoanRepaymentPlan.xlsx",
       "atom": "Repayment OK",
-      "evidence": "'Repayment OK' names 6 columns of T2: ['Repayment OK', 'Repayment OK (2)', 'Repayment OK (3)'] (a row of values taken as the header, or lost parents)"
+      "evidence": "'Repayment OK' names 6 columns of T3: ['Repayment OK', 'Repayment OK (2)', 'Repayment OK (3)'] (a row of values taken as the header, or lost parents)"
      },
      {
       "dataset": "realhitbench",
@@ -265,6 +265,32 @@
       "file": "tables/society-table01.xlsx",
       "atom": "2005/06",
       "evidence": "'2005/06' names 3 columns of T1: ['2005/06', '2005/06 (2)', '2005/06 (3)'] (a row of values taken as the header, or lost parents)"
+     }
+    ]
+   },
+   "generic column header (col_X)": {
+    "misses": 4,
+    "examples": [
+     {
+      "dataset": "realhitbench",
+      "id": "F182",
+      "file": "tables/productivity-table05.xlsx",
+      "atom": "-3.20%",
+      "evidence": "Table 6!H109 in T3 column 'col_H'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F572",
+      "file": "tables/health-table08.xlsx",
+      "atom": "64.30",
+      "evidence": "Accident & emergency!L10 in T1 column 'col_L'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F574",
+      "file": "tables/health-table08.xlsx",
+      "atom": "82.20",
+      "evidence": "Accident & emergency!L14 in T1 column 'col_L'"
      }
     ]
    },
@@ -343,25 +369,6 @@
       "file": "clean/statcan/1377.xlsx",
       "atom": "2852.0",
       "evidence": "original!D4: source '2,852' stored '2,852'"
-     }
-    ]
-   },
-   "generic column header (col_X)": {
-    "misses": 2,
-    "examples": [
-     {
-      "dataset": "realhitbench",
-      "id": "F182",
-      "file": "tables/productivity-table05.xlsx",
-      "atom": "-3.20%",
-      "evidence": "Table 6!H109 in T3 column 'col_H'"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "L81",
-      "file": "tables/productivity-table03.xlsx",
-      "atom": "2013",
-      "evidence": "Table 2!B47 in T2 column 'col_B'"
      }
     ]
    },
@@ -560,7 +567,7 @@
     ]
    },
    "oracle-limit: grounding: operation not named by the question": {
-    "misses": 82,
+    "misses": 83,
     "examples": [
      {
       "dataset": "mimotable",
@@ -637,32 +644,6 @@
      }
     ]
    },
-   "oracle-limit: shape: conditional count": {
-    "misses": 39,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0196",
-      "file": "repo/data/english/spreadsheet/3333(87).xlsx",
-      "atom": "14",
-      "evidence": "question: How many companies in the table have addresses located in Beijing? "
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F88",
-      "file": "tables/employment-table19.xlsx",
-      "atom": "145345",
-      "evidence": "question: What is the total number of employed individuals in all industries?"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F412",
-      "file": "tables/economy-table08.xlsx",
-      "atom": "3849.08",
-      "evidence": "question: Calculate the average quarter number of debtors’ applications from 2013 to 2015."
-     }
-    ]
-   },
    "oracle-limit: grounding: implicit whole (total row the question does not name)": {
     "misses": 38,
     "examples": [
@@ -686,6 +667,32 @@
       "file": "clean/nsf/161_80_tab2.xlsx",
       "atom": "1.4",
       "evidence": "D16 row ['constant 2009 $', 'total r&d, all performers']"
+     }
+    ]
+   },
+   "oracle-limit: shape: conditional count": {
+    "misses": 38,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0196",
+      "file": "repo/data/english/spreadsheet/3333(87).xlsx",
+      "atom": "14",
+      "evidence": "question: How many companies in the table have addresses located in Beijing? "
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F88",
+      "file": "tables/employment-table19.xlsx",
+      "atom": "145345",
+      "evidence": "question: What is the total number of employed individuals in all industries?"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F412",
+      "file": "tables/economy-table08.xlsx",
+      "atom": "3849.08",
+      "evidence": "question: Calculate the average quarter number of debtors’ applications from 2013 to 2015."
      }
     ]
    },
@@ -2131,14 +2138,14 @@
      "decoys_reachable": 260,
      "single_witness": 120,
      "miss_library": 29,
-     "loose_only": 136,
+     "loose_only": 137,
      "miss_oracle-limit": 350
     },
     "causes": {
      "library: header missing (generated column name)": 20,
      "oracle-limit: grounding: row set not named by the question": 2,
-     "oracle-limit: shape: conditional count": 39,
-     "oracle-limit: grounding: operation not named by the question": 63,
+     "oracle-limit: shape: conditional count": 38,
+     "oracle-limit: grounding: operation not named by the question": 64,
      "oracle-limit: grounding: an operand named only in part": 30,
      "oracle-limit: shape: group-by aggregate": 10,
      "oracle-limit: shape: average over a conditional set": 13,
@@ -2214,11 +2221,11 @@
     "grounding: question paraphrases an operand": 131,
     "grounding: column named only in part": 115,
     "grounding: operand implied by the question's context": 107,
-    "grounding: operation not named by the question": 82,
+    "grounding: operation not named by the question": 83,
     "grounding: implicit period (the question names no year)": 50,
     "shape: argmax / ranking over groups": 47,
-    "shape: conditional count": 39,
     "grounding: implicit whole (total row the question does not name)": 38,
+    "shape: conditional count": 38,
     "grounding: an operand named only in part": 34,
     "shape: sum over a conditional set": 28,
     "shape: ratio / share of unnamed operands": 28,
@@ -2273,8 +2280,8 @@
   }
  },
  "M": {
-  "violations": 1512,
-  "files": 761,
+  "violations": 1589,
+  "files": 767,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
@@ -2284,7 +2291,7 @@
    },
    "mimotable": {
     "M1 total row in data": 9,
-    "M5 header missing": 194,
+    "M5 header missing": 249,
     "M5 repeated header names": 8,
     "M2 percent mixed": 11,
     "M3 measures mixed": 29,
@@ -2294,7 +2301,7 @@
    },
    "realhitbench": {
     "M6 '(n)' read as negative": 1,
-    "M5 header missing": 561,
+    "M5 header missing": 583,
     "M3 measures mixed": 17,
     "M1 total row in data": 4,
     "M5 number as header": 12,
@@ -2303,7 +2310,7 @@
    }
   },
   "kinds": {
-   "M5 header missing": 1281,
+   "M5 header missing": 1358,
    "M3 measures mixed": 72,
    "M5 repeated header names": 63,
    "M5 duplicate headers": 46,
@@ -2369,15 +2376,15 @@
    },
    "mimotable": {
     "files": 401,
-    "mean": 966.7,
+    "mean": 971.9,
     "median": 870,
     "p90": 1706,
     "max": 4179
    },
    "realhitbench": {
     "files": 536,
-    "mean": 770.6,
-    "median": 611,
+    "mean": 769.8,
+    "median": 613,
     "p90": 1529,
     "max": 3607
    }
@@ -2451,7 +2458,7 @@
    "id": "en-0549",
    "why": "a data row ('Repayment Judgment ... Repayment OK') taken as the header, table split",
    "caught": true,
-   "by": "L: question key: only columns told apart by (2), (3) carry it | M: M3 measures mixed, M5 repeated header names"
+   "by": "L: question key: only columns told apart by (2), (3) carry it | M: M3 measures mixed, M5 header missing, M5 repeated header names"
   },
   {
    "id": "en-0371",
@@ -2466,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 150
+ "seconds": 108
 }

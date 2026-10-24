@@ -169,6 +169,12 @@ def _a1_rows(rng: str) -> tuple[int, int] | None:
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
+def _flag_column(t, k: int) -> bool:
+    """Column k is empty or holds one short mark ('x', '✔', 'Y') and blanks: a selection flag, no label."""
+    vals = {str(r[k]).strip() for r in t.rows if k < len(r) and r[k] not in (None, "")}
+    return len(vals) <= 1 and all(len(v) <= 2 for v in vals)
+
+
 def unnamed_stub(t, j: int, raw: dict) -> bool:
     """Column j is the table's row-label stub and the source names it nowhere: every column to its left is a
     group, parent, numeric or unnamed column, it carries no original header, the table has header rows, and the source cells
@@ -180,11 +186,11 @@ def unnamed_stub(t, j: int, raw: dict) -> bool:
     if j < len(meta) and (meta[j].get("role") == "group" or meta[j].get("original_header")):
         return False
     # the stub: only unnamed columns, the group column, parent columns, numeric columns (`Int# | LiST#` item
-    # numbers before the names) and empty columns to its left (a named text column there, e.g. a title taken as the header, means
+    # numbers before the names) and empty or flag columns (`Selected` with 'x' marks) to its left (a named text column there, e.g. a title taken as the header, means
     # the header is misplaced, not absent)
     if any(not re.fullmatch(r"col_[A-Z]+(_key)?", t.headers[k]) and k not in getattr(t, "parent_cols", set())
            and not (k < len(meta) and meta[k].get("role") == "group") and k not in t.numeric_cols
-           and any(k < len(r) and r[k] not in (None, "") for r in t.rows) for k in range(j)):
+           and not _flag_column(t, k) for k in range(j)):
         return False
     src = (getattr(t, "manifest", {}) or {}).get("source", {})
     letter = t.letters[j] if j < len(t.letters) else None
