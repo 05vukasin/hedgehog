@@ -1517,6 +1517,51 @@ fn promote_header_inner(
     (top, end.min(bottom + 1))
 }
 
+/// Recover explicit merged parents above repeated child headers, across at most one
+/// blank row. A caption spanning the whole table or unrelated metadata is insufficient.
+fn merged_parent_top(grid: &Grid, r: Rect, htop: u32, owner: &[u8]) -> Option<u32> {
+    let cells = &grid.sheet.cells;
+    for parent_row in (htop.saturating_sub(2)..htop).rev() {
+        let parents: Vec<_> = grid.sheet.merges.iter().filter(|m| {
+            m.top == parent_row && m.bottom == parent_row && m.left >= r.left
+                && m.right <= r.right && m.right > m.left
+        }).collect();
+        if parents.len() < 2 {
+            continue;
+        }
+        let mut labels = HashSet::new();
+        let mut children: Option<Vec<String>> = None;
+        let valid = parents.iter().all(|m| {
+            let Some(Value::Text(label)) = grid.cell(m.top, m.left).and_then(|c| c.value.as_ref()) else { return false };
+            if label.trim().is_empty() || !labels.insert(norm_key(label)) {
+                return false;
+            }
+            let own: Vec<String> = (m.left..=m.right).filter_map(|col| {
+                grid.cell(htop, col).and_then(|c| c.value.as_ref()).map(display).filter(|s| !s.is_empty())
+            }).collect();
+            if own.len() != (m.right - m.left + 1) as usize {
+                return false;
+            }
+            match &children {
+                Some(first) => *first == own,
+                None => { children = Some(own); true }
+            }
+        });
+        // The intervening row must be empty within this table's columns.
+        let gap_empty = cells.iter().skip(cells.partition_point(|c| c.row <= parent_row))
+            .take_while(|c| c.row < htop)
+            .all(|c| c.col < r.left || c.col > r.right || c.value.as_ref().is_none_or(|v| display(v).is_empty()));
+        let unowned = cells.iter().enumerate().skip(cells.partition_point(|c| c.row < parent_row))
+            .take_while(|(_, c)| c.row < htop)
+            .filter(|(_, c)| c.col >= r.left && c.col <= r.right)
+            .all(|(i, _)| owner[i] == OWN_NONE);
+        if valid && gap_empty && unowned {
+            return Some(parent_row);
+        }
+    }
+    None
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_table(
     grid: &Grid,
@@ -1561,7 +1606,25 @@ fn build_table(
             _ => rows.push((c.row, vec![i])),
         }
     }
-    let (htop, body_top) = promote_header(&rows, cells, &lay.roles, t.header_top.clamp(r.top, r.bottom), t.header_rows, r.bottom);
+    let (mut htop, body_top) = promote_header(&rows, cells, &lay.roles, t.header_top.clamp(r.top, r.bottom), t.header_rows, r.bottom);
+    if body_top > htop && let Some(parent_row) = merged_parent_top(grid, r, htop, owner) {
+        let old_top = r.top;
+        r.top = r.top.min(parent_row);
+        if r.top < old_top {
+            let start = cells.partition_point(|c| c.row < r.top);
+            let mut prefix: Vec<(u32, Vec<usize>)> = Vec::new();
+            for (i, c) in cells.iter().enumerate().skip(start).take_while(|(_, c)| c.row < old_top) {
+                if c.col < r.left || c.col > r.right { continue; }
+                match prefix.last_mut() {
+                    Some((row, idxs)) if *row == c.row => idxs.push(i),
+                    _ => prefix.push((c.row, vec![i])),
+                }
+            }
+            prefix.append(&mut rows);
+            rows = prefix;
+        }
+        htop = parent_row;
+    }
     let nh = (body_top - htop) as usize;
     // Columns of the rect left and right of every cell of the header and body hold nothing but
     // a merged area reaching past the data (a full-row merge `A2:XFD2` over six columns, B90):
@@ -2622,7 +2685,7 @@ fn build_table(
             n,
             sheet: String::new(),
             source_sheet: sheet.name.clone(),
-            rect: t.rect,
+            rect: Rect { top: t.rect.top.min(htop), ..t.rect },
             header_top: htop,
             // The header rows used (promote_header may move them below the layout's).
             header_rows: nh as u32,
@@ -3702,6 +3765,29 @@ fn collapse_row_totals(items: Vec<TotalItem>) -> Vec<TotalItem> {
 #[cfg(test)]
 mod tests {
     use crate::model::{Cell, Value};
+
+    #[test]
+    fn merged_parent_recovery_does_not_reuse_owned_cells() {
+        use crate::model::{Rect, Sheet};
+        let rows = vec![
+            vec![Some(Value::Text("North".into())), None, Some(Value::Text("South".into()))],
+            vec![],
+            vec![Some(Value::Number(2005.0)), Some(Value::Number(2009.0)), Some(Value::Number(2005.0)), Some(Value::Number(2009.0))],
+        ];
+        let refs: Vec<&[Option<Value>]> = rows.iter().map(Vec::as_slice).collect();
+        let (cells, _) = grid_rows(&refs);
+        let sheet = Sheet {
+            cells,
+            merges: vec![Rect { top: 0, bottom: 0, left: 0, right: 1 }, Rect { top: 0, bottom: 0, left: 2, right: 3 }],
+            ..Sheet::default()
+        };
+        let grid = crate::grid::Grid::new(&sheet);
+        let rect = Rect { top: 2, bottom: 8, left: 0, right: 3 };
+        let mut owner = vec![super::OWN_NONE; sheet.cells.len()];
+        assert_eq!(super::merged_parent_top(&grid, rect, 2, &owner), Some(0));
+        owner[0] = super::OWN_TABLE;
+        assert_eq!(super::merged_parent_top(&grid, rect, 2, &owner), None);
+    }
 
     fn grid_rows(rows: &[&[Option<Value>]]) -> (Vec<Cell>, Vec<(u32, Vec<usize>)>) {
         let mut cells = Vec::new();

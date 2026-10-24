@@ -35,6 +35,53 @@ fn with_column<'a>(n: &'a Normalized, name: &str) -> &'a Table {
         .unwrap_or_else(|| panic!("no table has a column {name:?}: {:?}", n.tables.iter().map(names).collect::<Vec<_>>()))
 }
 
+/// RealHiTBench business-table06: merged region parents sit one blank row above
+/// repeated year headings. The regions identify the measures, rather than title lines.
+#[test]
+fn merged_region_parents_over_a_blank_row() {
+    let n = normalize("region_blank", |ws| {
+        ws.write_string(0, 0, "Businesses by sector and region").unwrap();
+        for (k, region) in ["North East", "North West", "East Midlands", "England"].iter().enumerate() {
+            let c = 1 + 2 * k as u16;
+            ws.merge_range(1, c, 1, c + 1, *region, &Format::new()).unwrap();
+            ws.write_number(3, c, 2005.0).unwrap();
+            ws.write_number(3, c + 1, 2009.0).unwrap();
+        }
+        ws.write_string(3, 0, "Sub-sector").unwrap();
+        for (i, sector) in ["Advertising", "Architecture", "Art", "Fashion", "Software"].iter().enumerate() {
+            ws.write_string(4 + i as u32, 0, *sector).unwrap();
+            for c in 1..=8u16 {
+                ws.write_number(4 + i as u32, c, (137 + 31 * i + 17 * c as usize) as f64).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "North East / 2005");
+    assert!(names(t).contains(&"England / 2009"), "{:?}", names(t));
+    assert_eq!(t.src_rows.len(), 5);
+    let c = t.columns.iter().find(|c| c.name == "North East / 2005").unwrap();
+    assert_eq!(c.original_header[0], ("North East".to_string(), (1, 1)));
+    assert_eq!(t.rect.top, 1, "recovered header belongs to the source rectangle");
+}
+
+#[test]
+fn merged_metadata_over_different_child_labels_is_not_a_header() {
+    let n = normalize("metadata_blank", |ws| {
+        ws.merge_range(0, 1, 0, 2, "Prepared by accounting", &Format::new()).unwrap();
+        ws.merge_range(0, 3, 0, 4, "Checked by operations", &Format::new()).unwrap();
+        for (c, label) in ["Product", "Sales", "Costs", "Profit", "Stock"].iter().enumerate() {
+            ws.write_string(2, c as u16, *label).unwrap();
+        }
+        for (i, product) in ["Pens", "Books", "Paper", "Clips", "Files"].iter().enumerate() {
+            ws.write_string(3 + i as u32, 0, *product).unwrap();
+            for c in 1..=4u16 {
+                ws.write_number(3 + i as u32, c, (137 + 31 * i + 17 * c as usize) as f64).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "Sales");
+    assert!(!names(t).iter().any(|s| s.contains("Prepared by") || s.contains("Checked by")));
+}
+
 /// RealHiTBench military-table07…19: a row of dates over a `Number | %` row, separated from the body
 /// by a blank row. The pair is the header (it used to be a loose title block, and every column of
 /// the table was `col_<letter>`).
