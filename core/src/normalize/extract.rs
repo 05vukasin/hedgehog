@@ -1603,7 +1603,11 @@ fn changed_parent_blocks(grid: &Grid, t: &DetectedTable) -> Vec<DetectedTable> {
     let text = |r, c| grid.cell(r, c).and_then(|c| match &c.value { Some(Value::Text(t)) if !t.trim().is_empty() => Some(t.trim()), _ => None });
     let numeric = |r| grid.row_cells(r).iter().filter(|&&i| {
         let c = &grid.sheet.cells[i as usize];
-        c.col > t.rect.left && c.col <= t.rect.right && matches!(c.value, Some(Value::Number(_)))
+        c.col > t.rect.left && c.col <= t.rect.right && match &c.value {
+            Some(Value::Number(_)) => true,
+            Some(Value::Text(t)) => crate::values::number::parse_number(t.trim(), Default::default()).is_some(),
+            _ => false,
+        }
     }).count() >= 2;
     let cohort = |r| text(r, t.rect.left).is_some_and(|s| s.chars().count() <= 60 && !s.ends_with(':'));
     if parents.len() < 2 || parents[0].left != t.rect.left + 1
