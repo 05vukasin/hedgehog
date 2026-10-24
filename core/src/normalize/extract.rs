@@ -386,8 +386,9 @@ const MAX_OUTLINE_DEPTH: usize = 6;
 /// indent. A bold label heads the plain labels below it at its own indent (`Canada` over
 /// `Atlantic provinces`, `Quebec`, …) when the first label at that indent under the same
 /// ancestors is such a heading: a bold row after plain ones at its indent (a total closing them)
-/// heads nothing. `None` when the labels form one level only, or fewer than two rows (and a tenth
-/// of the rows) have an ancestor. Ancestors are always labels of the sheet's own rows.
+/// heads nothing. Bold-only ancestry needs at least two rows (and a tenth of the rows)
+/// with an ancestor; explicit indentation edges survive without that density threshold.
+/// Ancestors are always labels of the sheet's own rows.
 /// From the run's first label `k` at level `l` to the run's end (a shallower label or a group header):
 /// some bold label at level `l` directly followed by a plain one at level `l`.
 fn bold_heads_plain(outline: &[OutlineRow], k: usize, l: u16, base: &impl Fn(&OutlineRow) -> u16) -> bool {
@@ -464,7 +465,29 @@ fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
         stack.push((l, k));
     }
     let with = paths.iter().filter(|p| !p.is_empty()).count();
-    (with >= 2 && with * 10 >= n).then_some(paths)
+    if with < 2 || with * 10 < n {
+        // Sparse hierarchy needs source indentation for each ancestor, rather than the
+        // bold-heading inference above. Reuse the stack without retaining another row index.
+        stack.clear();
+        for (k, o) in outline.iter().enumerate() {
+            if o.group {
+                stack.clear();
+                continue;
+            }
+            while stack.last().is_some_and(|&(sl, _)| sl >= eff[k]) {
+                stack.pop();
+            }
+            if let Some(out) = o.out.filter(|&out| out < n) {
+                paths[out].clear();
+                let from = stack.len().saturating_sub(MAX_OUTLINE_DEPTH);
+                paths[out].extend(stack[from..].iter()
+                    .filter(|&&(_, p)| base(&outline[p]) < base(o))
+                    .map(|&(_, p)| outline[p].label.clone()));
+            }
+            stack.push((eff[k], k));
+        }
+    }
+    paths.iter().any(|p| !p.is_empty()).then_some(paths)
 }
 
 /// Rows of a table body that are section labels the layout took for data (see the call in
