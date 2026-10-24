@@ -1621,6 +1621,7 @@ fn changed_parent_blocks(grid: &Grid, t: &DetectedTable) -> Vec<DetectedTable> {
     { return vec![t.clone()]; }
     let mut cuts = Vec::new();
     let mut previous_cohort = text(body, t.rect.left);
+    let mut previous_parent_row = t.header_top;
     for r in body + 2..t.rect.bottom {
         if !cohort(r) || !numeric(r - 1) || !numeric(r + 1) { continue; }
         if grid.row_cells(r).iter().any(|&i| {
@@ -1631,13 +1632,14 @@ fn changed_parent_blocks(grid: &Grid, t: &DetectedTable) -> Vec<DetectedTable> {
         let mut changed = false;
         let matched = parents.iter().all(|p| {
             let Some(m) = grid.merge_at(r, p.left) else { return false };
-            let (Some(old), Some(new)) = (text(p.top, p.left), text(r, p.left)) else { return false };
+            let (Some(old), Some(new)) = (text(previous_parent_row, p.left), text(r, p.left)) else { return false };
             changed |= old != new;
             m.top == r && m.bottom == r && m.left == p.left && m.right == p.right
         });
         if matched && (changed || text(r, t.rect.left) != previous_cohort) {
             cuts.push(r);
             previous_cohort = text(r, t.rect.left);
+            previous_parent_row = r;
         }
     }
     let mut out = Vec::with_capacity(cuts.len() + 1);
