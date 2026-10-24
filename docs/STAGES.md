@@ -96,10 +96,19 @@ final implementation `0e86da4`, release `21ab0c6aed37`.
 
 ## Running
 
-Iteration 4 is queued from accepted iteration 3. Next paired source/review phase:
-MiMoTable mixed first-row headers/data accuracy case and critical-path performance
-investigation. Check RAM/swap/disk/btrfs metadata and live slots before delegation;
-finish every source/review worker before serial heavy testing.
+Iteration 4 starts from local master `47be56d`, release `21ab0c6aed37`.
+
+- Lead: `codex/iteration-4`; source/review phase, no heavy jobs.
+- Accuracy: `codex/accuracy-iter4`, `../hh-accuracy-iter2`; DEV MiMoTable
+  `WorkplaceGeneral(45).xlsx` mixed first-row headers/data. Establish faithful
+  ownership, preserve right-side first-row records and source header coordinates.
+- Performance: `codex/performance-iter4`, `../hh-performance-iter2`; investigate
+  fresh baseline critical-path traces and prepare a minimal candidate if justified.
+- Independent reviewer checks source geometry, negative cases, semantics, complexity
+  bounds and minimality for both patches. No worker builds/tests during this phase.
+- Before delegation: about 10 GiB available RAM, negligible swap, 118 GiB disk,
+  btrfs metadata 17.34/18.50 GiB; three lightweight workers plus lead fit four slots.
+  Finish every source/review worker before globally serialized capped testing.
 
 ## Next (in order)
 
