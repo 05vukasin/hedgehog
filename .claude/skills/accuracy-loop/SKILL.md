@@ -15,6 +15,7 @@ numbered **stages** on their own branches; the lead merges them after the gates.
    stage workflow, the brief and report templates, the commit trailer `Stage: S<n>`.
 3. `docs/ACCURACY_PLAN.md` — what "100 %" means (F/S/L/C/M/K), audits, dev/holdout split.
 4. `eval/accuracy/README.md` + `RESULTS.md` — the scoreboard and the current miss clusters.
+5. `docs/DATA.md` — all test data is already on disk in `../testdata` (sources, licenses, manifests); never re-download.
 
 ## Resuming in a fresh chat
 

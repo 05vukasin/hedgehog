@@ -1,7 +1,8 @@
 # Agent playbook
 
 How work on hedgehog is done, so any agent (or a fresh chat) can pick it up. Read this first, then
-[STAGES.md](STAGES.md) (what is done, running and next) and [ACCURACY_PLAN.md](ACCURACY_PLAN.md) (the goal).
+[STAGES.md](STAGES.md) (what is done, running and next), [ACCURACY_PLAN.md](ACCURACY_PLAN.md) (the goal) and
+[DATA.md](DATA.md) (all test data is already downloaded: where it is, sources, licenses — don't fetch again).
 
 ## The goal
 
