@@ -2118,6 +2118,15 @@ fn named_aggregate_rows(grid: &Grid) -> Vec<(u32, Vec<u32>)> {
 /// [`Evidence::SiblingsMatch`] when most other totals in the same row or column check out —
 /// then a mismatch is a real error rather than a wrongly inferred source.
 fn mark_sibling_support(grid: &Grid, cands: &mut [TotalCandidate]) {
+    // Only unconfirmed typed vertical totals can gain evidence below. Formula-only sheets
+    // need neither another round of formula verification nor the sibling row/column indexes.
+    if !cands.iter().any(|c| {
+        c.origin == TotalOrigin::Typed && c.direction == Direction::Vertical
+            && !(number(grid.cell(c.row, c.col)).is_some_and(|v| v != 0.0)
+                && c.evidence.contains(&Evidence::ArithmeticMatch))
+    }) {
+        return;
+    }
     // A zero that "matches" a sum of zeros proves nothing about the inferred ranges.
     let matched: Vec<bool> = cands
         .iter()
