@@ -135,7 +135,9 @@ def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
         rec["level"] = "loose" if r["loose"] else "cell" if r["cell"] else "none"
     if rec["pass"] and date is None and at.num is None:
         # a text answer found only in columns without a name (col_X): the agent cannot tell what it is
-        cols = [t.headers[j] for t in tables for row in t.rows for j, v in enumerate(row) if at.matches_value(v)]
+        # (unless the column is the row-label stub the source leaves unnamed too: unnamed_stub)
+        cols = [t.headers[j] for t in tables for row in t.rows for j, v in enumerate(row)
+                if at.matches_value(v) and not unnamed_stub(t, j, raw)]
         if cols and all(re.match(r"^col_[A-Z]+$", h.split(" / ")[-1]) for h in cols):
             rec["pass"] = False
             rec["cause"], rec["evidence"] = "answer column has no header (col_X)", f"{a['text']!r} only in {sorted(set(cols))[:3]}"
@@ -143,6 +145,39 @@ def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
     if not rec["pass"]:
         rec["cause"], rec["evidence"] = miss_signature(it, tables, hits, at, date)
     return rec
+
+
+def _a1_rows(rng: str) -> tuple[int, int] | None:
+    m = re.fullmatch(r"[A-Z]+(\d+):[A-Z]+(\d+)", rng or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def unnamed_stub(t, j: int, raw: dict) -> bool:
+    """Column j is the table's row-label stub and the source names it nowhere: every column to its left is a
+    group, parent or unnamed column, it carries no original header, the table has header rows, and the source cells
+    of its header rows are empty. Its row labels are then reachable as they are in the source: a `col_X` name loses nothing there
+    (the col_X rule is for a header the source has and hedgehog lost)."""
+    if j not in t.label_cols or j in getattr(t, "parent_cols", set()) or not re.fullmatch(r"col_[A-Z]+", t.headers[j]):
+        return False
+    meta = getattr(t, "colmeta", [])
+    if j < len(meta) and (meta[j].get("role") == "group" or meta[j].get("original_header")):
+        return False
+    # the stub: only unnamed columns, the group column and parent columns to its left (a named column there,
+    # e.g. a title taken as the header, means the header is misplaced, not absent)
+    if any(not re.fullmatch(r"col_[A-Z]+(_key)?", t.headers[k]) and k not in getattr(t, "parent_cols", set())
+           and not (k < len(meta) and meta[k].get("role") == "group") for k in range(j)):
+        return False
+    src = (getattr(t, "manifest", {}) or {}).get("source", {})
+    letter = t.letters[j] if j < len(t.letters) else None
+    if not letter:
+        return False
+    rng, data = _a1_rows(src.get("range")), _a1_rows(src.get("data_range"))
+    if not rng or not data or data[0] <= rng[0]:
+        return False  # no header rows detected: a header taken as data would look the same
+    col = 0
+    for ch in letter:
+        col = col * 26 + ord(ch) - 64
+    return all(str(raw.get((t.sheet, r - 1, col - 1), "")).strip() == "" for r in range(rng[0], data[0]))
 
 
 def question_keys(it: dict, raw: dict) -> list[tuple]:
