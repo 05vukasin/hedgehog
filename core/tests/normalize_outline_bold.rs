@@ -100,3 +100,31 @@ fn a_bold_row_over_deeper_rows_only_heads_no_plain_row_at_its_indent() {
     assert!(p.iter().any(|(x, y)| x == "Pre-trial detention" && y == "Custody"), "{p:?}");
     assert!(p.iter().any(|(x, y)| x == "Other" && y.is_empty()), "{p:?}");
 }
+
+#[test]
+fn bold_labels_one_after_the_other_head_nothing() {
+    // A geography list (realhitbench economy-table20): bold codes for country, region, county one
+    // after the other, plain codes below; the code column gets no parents.
+    let n = normalize("codes", |ws| {
+        let bold = Format::new().set_bold();
+        ws.write_string(0, 0, "Code").unwrap();
+        ws.write_string(0, 1, "Number").unwrap();
+        let rows: [(&str, bool); 8] = [
+            ("K04000001", true),
+            ("E92000001", true),
+            ("E12000001", true),
+            ("E06000047", false),
+            ("E06000005", false),
+            ("E11000007", true),
+            ("E08000037", false),
+            ("E08000021", false),
+        ];
+        for (i, (code, b)) in rows.iter().enumerate() {
+            let f = if *b { bold.clone() } else { Format::new() };
+            ws.write_string_with_format(1 + i as u32, 0, *code, &f).unwrap();
+            ws.write_number(1 + i as u32, 1, 10.0 + i as f64).unwrap();
+        }
+    });
+    let p = parents(&n.tables[0]);
+    assert!(p.iter().all(|(_, y)| y.is_empty()), "{p:?}");
+}

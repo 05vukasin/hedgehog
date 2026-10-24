@@ -424,10 +424,15 @@ fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
             runs.pop();
         }
         if runs.last().is_none_or(|&(rl, _)| rl < l) {
-            // The first label at this level is bold, and a bold label of the run is followed by a
-            // plain one at the same level (`Canada` over `Quebec`; `Custody` over indented rows, then
-            // `Community supervision` over `Probation`, HiTab 959).
-            runs.push((l, o.bold && bold_heads_plain(outline, k, l, &base)));
+            // The first label at this level is a bold heading: followed by a plain one at the same
+            // level (`Canada` over `Quebec`), or by deeper rows while a later bold label of the run
+            // heads plain ones at this level (`Custody` over indented rows, then `Community
+            // supervision` over `Probation`, HiTab 959). A run of bold labels one after the other
+            // (codes of a geography list, `K04000001` then `E92000001`) heads nothing.
+            let next = outline.get(k + 1).filter(|x| !x.group);
+            let headed = o.bold
+                && next.is_some_and(|x| (base(x) == l && !x.bold) || (base(x) > l && bold_heads_plain(outline, k, l, &base)));
+            runs.push((l, headed));
         }
         if runs.last().is_some_and(|&(_, h)| h) && o.bold {
             eff[k] -= 1;
