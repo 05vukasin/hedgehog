@@ -1214,13 +1214,13 @@ fn promote_header_inner(
             break;
         }
     }
-    if found.is_none() {
-        if let Some((a, b)) = block {
-            if form_lines > 0 && rows.len() - b - 1 <= skipped + form_lines {
-                return (htop, body_top);
-            }
-            return (rows[a].0, (rows[b].0 + 1).min(bottom + 1));
+    if found.is_none()
+        && let Some((a, b)) = block
+    {
+        if form_lines > 0 && rows.len() - b - 1 <= skipped + form_lines {
+            return (htop, body_top);
         }
+        return (rows[a].0, (rows[b].0 + 1).min(bottom + 1));
     }
     let Some(k) = found else { return (htop, body_top) };
     // Skipped form lines are titles only when the table under the header is longer than the form.
