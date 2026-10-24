@@ -162,3 +162,35 @@ fn aligned_total_padding_is_not_text_indentation() {
         }
     }
 }
+
+/// Census 0424mnsl: a centered, bold revenue root has a padding space;
+/// its General-aligned children start at the left margin. Removing visual padding
+/// must retain the root, and must never discard explicit indentation on centered children.
+#[test]
+fn centered_root_padding_keeps_dense_hierarchy_and_style_indent() {
+    use rust_xlsxwriter::FormatAlign;
+    for rules_only in [false, true] {
+        for style_indent in [false, true] {
+            let path = std::env::temp_dir().join(format!("hh_centered_root_{}_{}_{}.xlsx", std::process::id(), rules_only, style_indent));
+            let mut wb = Workbook::new();
+            let ws = wb.add_worksheet();
+            ws.write_string(0, 0, "Description").unwrap();
+            ws.write_string(0, 1, "Amount").unwrap();
+            ws.write_string_with_format(1, 0, " Revenue", &Format::new().set_bold().set_align(FormatAlign::Center)).unwrap();
+            ws.write_number(1, 1, 2000.0).unwrap();
+            for k in 0..20u32 {
+                let format = if style_indent { Format::new().set_align(FormatAlign::Center).set_indent(1) } else { Format::new() };
+                ws.write_string_with_format(k + 2, 0, format!("Revenue category {k}"), &format).unwrap();
+                ws.write_number(k + 2, 1, 53.0 + 7.0 * k as f64).unwrap();
+            }
+            wb.save(&path).unwrap();
+            let book = open(&path).unwrap();
+            std::fs::remove_file(path).unwrap();
+            let n = normalize_workbook(&book, &Options { rules_only, keep_totals: true, ..Options::default() });
+            let t = n.tables.iter().find(|t| t.src_rows.contains(&3)).unwrap();
+            let row = t.src_rows.iter().position(|r| *r == 3).unwrap();
+            assert!(t.columns.iter().filter(|c| c.derived_kind() == Some("parent"))
+                .any(|c| c.values[row] == Out::Text("Revenue".into())), "centered root lost: rules={rules_only}, style={style_indent}");
+        }
+    }
+}
