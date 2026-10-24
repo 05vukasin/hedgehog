@@ -5,15 +5,15 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (iteration 5, implementation bc8fad9, 2026-10-24)
+## Current state (iteration 6, implementation e7a34a4, 2026-10-25)
 
 | Measure | Value | Target |
 |---|---|---|
 | F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
-| L lookups | 5,497 / 5,634 = 97.6 % raw, 97.7 % after audit (128 misses) | 100 % after audit |
-| C calculations | 1,198 / 2,264 proven; library misses 42; oracle-limit ≈ 988; gold/question 2 unreviewed | library misses 0 |
-| M misleading-info violations | 1,554 in 763 files (1,358 are columns without header text) | 0 (or documented policy) |
+| L lookups | 5,498 / 5,634 = 97.6 % raw, 97.7 % after audit (127 misses) | 100 % after audit |
+| C calculations | 1,198 / 2,264 proven; library misses 41; oracle-limit ≈ 989; gold/question 2 unreviewed | library misses 0 |
+| M misleading-info violations | 1,552 in 762 files (1,357 are columns without header text) | 0 (or documented policy) |
 | K catalog tokens / file | hitab 774, mimotable 972, realhitbench 771 | no growth |
 | S HiTab table F1@0.8 | 98.9 % (unchanged reproduced baseline; old ledger was stale) | — |
 | Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
@@ -137,28 +137,30 @@ final implementation `bc8fad9` with range fix `4433f95`, release `8863194ea465`.
 - Temporary instrumentation fully removed. Local integration only; no remote push,
   installed CLI replacement, evaluator changes, LLM calls or holdout use.
 
+## Iteration 6 accepted
+
+See [iteration 6 evidence](iteration-6.md). Release `7de31e0ebc5e` recovers
+unmerged price parents with source ownership guards: L +1, M −2; no new L/C
+misses or public accuracy decline. All 541 release tests, quick checks, Clippy,
+50 identical goldens, both structure benchmarks, full fidelity (4,055 files),
+21 Node tests, TypeScript and real-source/feature checks pass.
+The scratch-reuse optimization is rejected; semantic regression retained.
+Final twelve-pair timing is broadly within 1%, with NYISO normalization +0.97%;
+this small cost is documented, and no speed improvement is claimed.
+
 ## Running
 
-Iteration 6 baseline: local master `16b7d55`, release `8863194ea465`.
-
-- Lead `codex/iteration-6`; accuracy `codex/accuracy-iter6` in `../hh-accuracy-iter2`;
-  performance `codex/performance-iter6` in `../hh-performance-iter2`; independent reviewer.
-- Accuracy: discover remaining source-backed DEV lost-header/label or library-contract
-  issues; preserve ambiguous boundaries and source-conflicting gold as unresolved.
-- Performance: one candidate from measured remaining dominant scopes; no speculative
-  caches or unmeasured cleanup. Regression and implementation commits remain separate.
-- Before expansion: 10 GiB RAM available, 4.3 MiB swap used, 121 GiB free disk,
-  btrfs metadata 17.37/18.50 GiB; three free worker slots and no heavy jobs.
-  All source/review workers finish before lead-only serialized capped testing.
+No source workers or heavy jobs. Next paired accuracy/performance iteration
+starts after checking RAM, swap, disk, btrfs metadata and live agent slots.
 
 ## Next (in order)
 
-1. S12 remainder — columns without header text (1,358 of 1,554 M violations): policy for source columns that
+1. S12 remainder — columns without header text (1,357 of 1,552 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
-2. S13 remainder — 128 audited L misses: largest raw clusters are question keys outside tables (28),
+2. S13 remainder — 127 audited L misses: largest raw clusters are question keys outside tables (28),
    numbers not grounded by labels (27), header paths (24), col_X (13), and missing parent paths (12).
-   Numeric-only question ranking still needs work. C library misses remain 42.
+   Numeric-only question ranking still needs work. C library misses remain 41.
 3. S14 — misplaced long tail (≈ 3,200 cells: header rows sent to Notes, data rows read as headers, side-by-side +
    stacked tables like manufacture-table13 / health-table01, forms like en-0549); document what stays.
 4. Review the 2 new gold/question candidates (a04c5358, 55e60981) with source evidence.

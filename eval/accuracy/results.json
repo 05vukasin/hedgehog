@@ -44,15 +44,15 @@
    },
    "realhitbench": {
     "items": 1556,
-    "pass": 1466,
+    "pass": 1467,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 94.2,
-    "after_audit": 94.2
+    "raw": 94.3,
+    "after_audit": 94.3
    },
    "ALL": {
     "items": 5634,
-    "pass": 5497,
+    "pass": 5498,
     "audited": 10,
     "audited_pass": 1,
     "raw": 97.6,
@@ -61,7 +61,7 @@
   },
   "clusters": {
    "question key: cell not in any table (row not in any table)": {
-    "misses": 28,
+    "misses": 27,
     "examples": [
      {
       "dataset": "mimotable",
@@ -567,7 +567,7 @@
     ]
    },
    "oracle-limit: grounding: operation not named by the question": {
-    "misses": 83,
+    "misses": 84,
     "examples": [
      {
       "dataset": "mimotable",
@@ -904,32 +904,6 @@
      }
     ]
    },
-   "library: header missing (generated column name)": {
-    "misses": 19,
-    "examples": [
-     {
-      "dataset": "realhitbench",
-      "id": "F78",
-      "file": "tables/employment-table16.xlsx",
-      "atom": "65",
-      "evidence": "column '2023 / Agriculture and related industries / Wage and salary '; employment-table16.xlsx:T1 range(2023 / Agriculture and related industries / Wage and salary workers(1)) where Age and sex='range=16..19'"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F155",
-      "file": "tables/injuries-table04.xlsx",
-      "atom": "1217",
-      "evidence": "column 'Event or exposure(1) / Transportation incidents(2)'; [injuries-table04.xlsx:T1 value(Event or exposure(1) / Transportation incidents(2)) where row [Total]] - [injuries-table04.xlsx:T1 value(Event or exposure(1) / Violence and other "
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F539",
-      "file": "tables/environment-table09.xlsx",
-      "atom": "6",
-      "evidence": "environment-table09.xlsx:T1 max(col_F) where all data rows (file has: duplicate headers)"
-     }
-    ]
-   },
    "oracle-limit: grounding: no operand named by the question": {
     "misses": 18,
     "examples": [
@@ -953,6 +927,32 @@
       "file": "repo/data/english/spreadsheet/Workbook1(1).xlsx",
       "atom": "88.76",
       "evidence": "Workbook1(1).xlsx:T1 avg(Chemistry) where all data rows"
+     }
+    ]
+   },
+   "library: header missing (generated column name)": {
+    "misses": 18,
+    "examples": [
+     {
+      "dataset": "realhitbench",
+      "id": "F78",
+      "file": "tables/employment-table16.xlsx",
+      "atom": "65",
+      "evidence": "column '2023 / Agriculture and related industries / Wage and salary '; employment-table16.xlsx:T1 range(2023 / Agriculture and related industries / Wage and salary workers(1)) where Age and sex='range=16..19'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F155",
+      "file": "tables/injuries-table04.xlsx",
+      "atom": "1217",
+      "evidence": "column 'Event or exposure(1) / Transportation incidents(2)'; [injuries-table04.xlsx:T1 value(Event or exposure(1) / Transportation incidents(2)) where row [Total]] - [injuries-table04.xlsx:T1 value(Event or exposure(1) / Violence and other "
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F641",
+      "file": "tables/economy-table51.xlsx",
+      "atom": "138488394",
+      "evidence": "column 'col_D'; economy-table51.xlsx:T1 sum(col_D) where col_C='A01101' or col_C='A01203' (file has: header missing)"
      }
     ]
    },
@@ -2137,15 +2137,15 @@
      "decoys": 1600,
      "decoys_reachable": 260,
      "single_witness": 120,
-     "miss_library": 29,
-     "loose_only": 137,
-     "miss_oracle-limit": 350
+     "miss_library": 28,
+     "loose_only": 138,
+     "miss_oracle-limit": 351
     },
     "causes": {
-     "library: header missing (generated column name)": 20,
+     "library: header missing (generated column name)": 19,
      "oracle-limit: grounding: row set not named by the question": 2,
      "oracle-limit: shape: conditional count": 38,
-     "oracle-limit: grounding: operation not named by the question": 64,
+     "oracle-limit: grounding: operation not named by the question": 65,
      "oracle-limit: grounding: an operand named only in part": 30,
      "oracle-limit: shape: group-by aggregate": 10,
      "oracle-limit: shape: average over a conditional set": 13,
@@ -2209,7 +2209,7 @@
   },
   "families": {
    "library": {
-    "header missing (generated column name)": 19,
+    "header missing (generated column name)": 18,
     "hedgehog header naming": 6,
     "number kept as text": 6,
     "header misnamed": 5,
@@ -2221,7 +2221,7 @@
     "grounding: question paraphrases an operand": 131,
     "grounding: column named only in part": 115,
     "grounding: operand implied by the question's context": 107,
-    "grounding: operation not named by the question": 83,
+    "grounding: operation not named by the question": 84,
     "grounding: implicit period (the question names no year)": 50,
     "shape: argmax / ranking over groups": 47,
     "grounding: implicit whole (total row the question does not name)": 38,
@@ -2280,8 +2280,8 @@
   }
  },
  "M": {
-  "violations": 1554,
-  "files": 763,
+  "violations": 1552,
+  "files": 762,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
@@ -2301,20 +2301,20 @@
    },
    "realhitbench": {
     "M6 '(n)' read as negative": 1,
-    "M5 header missing": 583,
+    "M5 header missing": 582,
     "M3 measures mixed": 17,
     "M1 total row in data": 4,
     "M5 number as header": 12,
-    "M5 duplicate headers": 16,
+    "M5 duplicate headers": 15,
     "M5 repeated header names": 40
    }
   },
   "kinds": {
-   "M5 header missing": 1358,
+   "M5 header missing": 1357,
    "M3 measures mixed": 72,
    "M5 repeated header names": 57,
    "M1 total row in data": 23,
-   "M5 duplicate headers": 17,
+   "M5 duplicate headers": 16,
    "M5 number as header": 14,
    "M2 percent mixed": 11,
    "M4 Excel serial as number": 1,
@@ -2383,7 +2383,7 @@
    },
    "realhitbench": {
     "files": 536,
-    "mean": 771.0,
+    "mean": 771.1,
     "median": 613,
     "p90": 1529,
     "max": 3607
@@ -2473,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 133
+ "seconds": 147
 }
