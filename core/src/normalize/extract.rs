@@ -467,7 +467,9 @@ fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
     let with = paths.iter().filter(|p| !p.is_empty()).count();
     if with < 2 || with * 10 < n {
         // Sparse hierarchy needs source indentation for each ancestor, rather than the
-        // bold-heading inference above. Reuse the stack without retaining another row index.
+        // bold-heading inference above. One leading space may just be record padding;
+        // text indentation needs a two-space step, while style indentation is explicit.
+        // Reuse the stack without retaining another row index.
         stack.clear();
         for (k, o) in outline.iter().enumerate() {
             if o.group {
@@ -481,7 +483,10 @@ fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
                 paths[out].clear();
                 let from = stack.len().saturating_sub(MAX_OUTLINE_DEPTH);
                 paths[out].extend(stack[from..].iter()
-                    .filter(|&&(_, p)| base(&outline[p]) < base(o))
+                    .filter(|&&(_, p)| {
+                        let parent = &outline[p];
+                        base(parent) < base(o) && (style || o.spaces.saturating_sub(parent.spaces) >= 2)
+                    })
                     .map(|&(_, p)| outline[p].label.clone()));
             }
             stack.push((eff[k], k));
