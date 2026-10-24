@@ -7,7 +7,8 @@ Model-free (no LLM calls). hedgehog = release build of branch `fix-public` (the 
 Regenerated 2026-10-24 (branch `audit`) with build 5cd30e3711be (master `a4f047e`, after the fidelity merge;
 structure TSVs of the last `run_structure.py`, baselines unchanged) and two scorer fixes: clock times are typed
 values, and the catalog check reads the cells of the catalog's CSV sample rows (a number right after a comma was
-invisible). The summary table below is the `fix-public` run except the catalog row, which is this run.
+invisible), and row labels compare as text (a year row label stored as a number counts). The summary table
+below is the `fix-public` run except the catalog row, which is this run.
 
 ## Summary
 

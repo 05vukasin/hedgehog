@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3370,
+    "pass": 3390,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 88.6,
-    "after_audit": 88.6
+    "raw": 89.1,
+    "after_audit": 89.1
    },
    "mimotable": {
     "items": 273,
@@ -44,19 +44,19 @@
    },
    "realhitbench": {
     "items": 1556,
-    "pass": 1345,
+    "pass": 1346,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 86.4,
-    "after_audit": 86.4
+    "raw": 86.5,
+    "after_audit": 86.5
    },
    "ALL": {
     "items": 5634,
-    "pass": 4976,
+    "pass": 4997,
     "audited": 1,
     "audited_pass": 1,
-    "raw": 88.3,
-    "after_audit": 88.3
+    "raw": 88.7,
+    "after_audit": 88.7
    }
   },
   "clusters": {
@@ -138,32 +138,6 @@
      }
     ]
    },
-   "row label differs": {
-    "misses": 43,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "5b3755fd45219986d6d99ea6ae7ddd7c",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "34.6",
-      "evidence": "Sheet1!F28: gold ['23'] vs labels ['New York U.']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "2e9de4a6c61369d4b7b38b60b7cbb4a7",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "810.0",
-      "evidence": "Sheet1!E28: gold ['23'] vs labels ['New York U.']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "5abb8c2d4b97ca320c22154aff64b579",
-      "file": "clean/nsf/169_84_tab1.xlsx",
-      "atom": "18.8",
-      "evidence": "Table 1!F4: gold ['1'] vs labels ['United States', 'World']"
-     }
-    ]
-   },
    "question key: cell not in any table (row not in any table)": {
     "misses": 42,
     "examples": [
@@ -191,7 +165,7 @@
     ]
    },
    "number not grounded by labels or header": {
-    "misses": 33,
+    "misses": 32,
     "examples": [
      {
       "dataset": "realhitbench",
@@ -213,6 +187,32 @@
       "file": "tables/education-table08.xlsx",
       "atom": "462770",
       "evidence": "2007-2008!I8 in T1 column 'Achievement / General FE College incl Tertiary', labels ['Total Learners']"
+     }
+    ]
+   },
+   "row label differs": {
+    "misses": 23,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "5b3755fd45219986d6d99ea6ae7ddd7c",
+      "file": "clean/nsf/168_83_tab4.xlsx",
+      "atom": "34.6",
+      "evidence": "Sheet1!F28: gold ['23'] vs labels ['New York U.']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "2e9de4a6c61369d4b7b38b60b7cbb4a7",
+      "file": "clean/nsf/168_83_tab4.xlsx",
+      "atom": "810.0",
+      "evidence": "Sheet1!E28: gold ['23'] vs labels ['New York U.']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "5abb8c2d4b97ca320c22154aff64b579",
+      "file": "clean/nsf/169_84_tab1.xlsx",
+      "atom": "18.8",
+      "evidence": "Table 1!F4: gold ['1'] vs labels ['United States', 'World']"
      }
     ]
    },
@@ -493,11 +493,11 @@
   "per": {
    "hitab": {
     "items": 1314,
-    "pass": 666,
+    "pass": 669,
     "audited": 29,
     "audited_pass": 0,
-    "raw": 50.7,
-    "after_audit": 51.8
+    "raw": 50.9,
+    "after_audit": 52.1
    },
    "mimotable": {
     "items": 206,
@@ -509,19 +509,19 @@
    },
    "realhitbench": {
     "items": 744,
-    "pass": 391,
+    "pass": 392,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 52.6,
-    "after_audit": 52.6
+    "raw": 52.7,
+    "after_audit": 52.7
    },
    "ALL": {
     "items": 2264,
-    "pass": 1187,
+    "pass": 1191,
     "audited": 35,
     "audited_pass": 1,
-    "raw": 52.4,
-    "after_audit": 53.2
+    "raw": 52.6,
+    "after_audit": 53.4
    }
   },
   "clusters": {
@@ -748,7 +748,7 @@
       "id": "en-0480",
       "file": "repo/data/english/spreadsheet/AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx",
       "atom": "32",
-      "evidence": "[AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx:T1 value(Question Number) where row [6 questions (5 multiple choice, 1 subjective) / 32 points = 20+12 / Philosophical Life]] + ["
+      "evidence": "[AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx:T1 value(Question Number) where row [2011 / 6 questions (5 multiple choice, 1 subjective) / 32 points = 20+12]] + [AnalysisoftheC"
      },
      {
       "dataset": "mimotable",
@@ -838,7 +838,7 @@
     ]
    },
    "library: header missing (generated column name)": {
-    "misses": 25,
+    "misses": 24,
     "examples": [
      {
       "dataset": "mimotable",
@@ -864,28 +864,28 @@
     ]
    },
    "oracle-limit: shape: ratio / share (one column)": {
-    "misses": 24,
+    "misses": 22,
     "examples": [
-     {
-      "dataset": "hitab",
-      "id": "3c2245521b17c0e6b1fdfd06b9dd0c15",
-      "file": "clean/nsf/10_112_tab1.xlsx",
-      "atom": "-0.072612",
-      "evidence": "2 operand cells named by the question; aggregation div"
-     },
-     {
-      "dataset": "hitab",
-      "id": "2d39e2a6bd87ab42a982e15565c097fa",
-      "file": "clean/nsf/10_112_tab1.xlsx",
-      "atom": "0.042528",
-      "evidence": "2 operand cells named by the question; aggregation div"
-     },
      {
       "dataset": "hitab",
       "id": "7957a251f50b7584e196b07cc7170611",
       "file": "clean/nsf/112_55_fs17-ib-19314-tab007.xlsx",
       "atom": "0.009327",
       "evidence": "2 operand cells named by the question; aggregation div"
+     },
+     {
+      "dataset": "hitab",
+      "id": "adff84205791c0aba6e29993b2d3e223",
+      "file": "clean/nsf/112_55_fs17-ib-19314-tab007.xlsx",
+      "atom": "0.030968",
+      "evidence": "2 operand cells named by the question; aggregation div"
+     },
+     {
+      "dataset": "hitab",
+      "id": "29d75fddfb7895be35e1e80ae7739b9b",
+      "file": "clean/nsf/64_2_nsf21324-tab002.xlsx",
+      "atom": "0.464612",
+      "evidence": "2 operand cells named by the question; aggregation div (file has: measures mixed)"
      }
     ]
    },
@@ -1201,32 +1201,6 @@
      }
     ]
    },
-   "oracle-limit: shape: lookup (sign) (one cell)": {
-    "misses": 6,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "8b907717c6c53941a6eaa62785862959",
-      "file": "clean/statcan/1242.xlsx",
-      "atom": "24",
-      "evidence": "1 operand cells named by the question; aggregation opposite"
-     },
-     {
-      "dataset": "hitab",
-      "id": "955e0ccb9725ca7150c3e90cbd8dedc0",
-      "file": "clean/statcan/946.xlsx",
-      "atom": "0.023",
-      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
-     },
-     {
-      "dataset": "hitab",
-      "id": "c7d5bcb908707b186be84fd2e9ce4ef9",
-      "file": "clean/statcan/946.xlsx",
-      "atom": "0.023",
-      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
-     }
-    ]
-   },
    "oracle-limit: shape: hypothetical (what-if)": {
     "misses": 6,
     "examples": [
@@ -1432,6 +1406,32 @@
       "file": "clean/statcan/2714.xlsx",
       "atom": "95.6",
       "evidence": "2 operand cells named by the question; aggregation max+min (file has: measures mixed)"
+     }
+    ]
+   },
+   "oracle-limit: shape: lookup (sign) (one cell)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "955e0ccb9725ca7150c3e90cbd8dedc0",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.023",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c7d5bcb908707b186be84fd2e9ce4ef9",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.023",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "d5bd579b2882d962bdc563c00e5efb5d",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.036",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
      }
     ]
    },
@@ -2045,14 +2045,14 @@
    "hitab": {
     "counts": {
      "items": 1314,
-     "reachable": 666,
+     "reachable": 669,
      "atoms": 1627,
-     "atoms_reachable": 869,
+     "atoms_reachable": 872,
      "decoys": 3254,
-     "decoys_reachable": 362,
-     "miss_oracle-limit": 692,
-     "loose_only": 448,
-     "single_witness": 511,
+     "decoys_reachable": 361,
+     "miss_oracle-limit": 689,
+     "loose_only": 446,
+     "single_witness": 512,
      "miss_library": 35,
      "miss_gold/question": 31
     },
@@ -2060,7 +2060,7 @@
      "oracle-limit: grounding: implicit period (the question names no year)": 53,
      "library: hedgehog header naming": 16,
      "oracle-limit: grounding: operand implied by the question's context": 133,
-     "oracle-limit: shape: ratio / share (one column)": 24,
+     "oracle-limit: shape: ratio / share (one column)": 22,
      "oracle-limit: shape: ratio / share (one row)": 11,
      "oracle-limit: grounding: question paraphrases an operand": 159,
      "oracle-limit: grounding: implicit whole (total row the question does not name)": 41,
@@ -2080,7 +2080,6 @@
      "oracle-limit: shape: share of a sum of cells": 22,
      "oracle-limit: shape: ratio minus 1 (a risk / odds / index ratio read as a percent more or less)": 11,
      "oracle-limit: grounding: implicit whole (national total, both sexes)": 24,
-     "oracle-limit: shape: lookup (sign) (one cell)": 6,
      "library: label path lost": 5,
      "oracle-limit: shape: difference (one column)": 9,
      "oracle-limit: shape: difference (a block)": 1,
@@ -2097,7 +2096,8 @@
      "oracle-limit: shape: ratio / share (a block)": 2,
      "oracle-limit: shape: maximum (one cell)": 2,
      "oracle-limit: shape: sum of named cells, ... placeholders skipped": 1,
-     "oracle-limit: shape: range (one column)": 7
+     "oracle-limit: shape: range (one column)": 7,
+     "oracle-limit: shape: lookup (sign) (one cell)": 5
     }
    },
    "mimotable": {
@@ -2137,18 +2137,18 @@
    "realhitbench": {
     "counts": {
      "items": 744,
-     "reachable": 391,
+     "reachable": 392,
      "atoms": 800,
-     "atoms_reachable": 416,
+     "atoms_reachable": 417,
      "decoys": 1600,
      "decoys_reachable": 251,
      "single_witness": 122,
-     "miss_library": 41,
+     "miss_library": 40,
      "loose_only": 141,
      "miss_oracle-limit": 343
     },
     "causes": {
-     "library: header missing (generated column name)": 30,
+     "library: header missing (generated column name)": 29,
      "oracle-limit: grounding: row set not named by the question": 2,
      "oracle-limit: shape: conditional count": 39,
      "oracle-limit: grounding: operation not named by the question": 58,
@@ -2177,32 +2177,32 @@
    "hitab_atoms": 1627,
    "located": 1627,
    "replayable": 1489,
-   "replayable_reachable": 827,
-   "replayable_agree": 458,
-   "replayable_agree_superset": 485,
-   "replayable_agree_subset": 776,
+   "replayable_reachable": 830,
+   "replayable_agree": 461,
+   "replayable_agree_superset": 488,
+   "replayable_agree_subset": 779,
    "single_answer_replayable": 981,
-   "single_answer_reachable": 499,
-   "single_answer_agree_exact": 454,
+   "single_answer_reachable": 502,
+   "single_answer_agree_exact": 457,
    "not_replayable": 138,
    "not_replayable_reachable": 42
   },
   "decoys_by_magnitude": {
    "decimal": {
     "atoms": 1420,
-    "reachable": 718,
+    "reachable": 720,
     "decoys": 2840,
-    "decoys_reachable": 190
+    "decoys_reachable": 189
    },
    "integer > 100": {
     "atoms": 468,
-    "reachable": 230,
+    "reachable": 231,
     "decoys": 936,
     "decoys_reachable": 19
    },
    "integer 11-100": {
     "atoms": 419,
-    "reachable": 249,
+    "reachable": 250,
     "decoys": 838,
     "decoys_reachable": 165
    },
@@ -2215,7 +2215,7 @@
   },
   "families": {
    "library": {
-    "header missing (generated column name)": 25,
+    "header missing (generated column name)": 24,
     "hedgehog header naming": 20,
     "number kept as text": 6,
     "header misnamed": 5,
@@ -2237,7 +2237,7 @@
     "shape: ratio / share of unnamed operands": 28,
     "shape: sum over a conditional set": 27,
     "shape: difference / change of aggregates": 26,
-    "shape: ratio / share (one column)": 24,
+    "shape: ratio / share (one column)": 22,
     "shape: share of a sum of cells": 22,
     "grounding: implicit whole (national total, both sexes)": 21,
     "grounding: no operand named by the question": 18,
@@ -2249,13 +2249,13 @@
     "shape: group-by aggregate": 10,
     "shape: difference (one column)": 9,
     "shape: lookup (one column)": 6,
-    "shape: lookup (sign) (one cell)": 6,
     "shape: hypothetical (what-if)": 6,
     "shape: unit conversion (minutes to hours, thousands to billions, percent to fraction)": 5,
     "shape: one sum per group (one answer per group)": 5,
     "shape: maximum (one column)": 5,
     "shape: sum of named cells (one row)": 5,
     "shape: extremes (one column)": 5,
+    "shape: lookup (sign) (one cell)": 5,
     "shape: lookup (one row)": 4,
     "shape: range (one column)": 4,
     "shape: multi-step expression": 4,
@@ -2483,5 +2483,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 114
+ "seconds": 138
 }

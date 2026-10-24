@@ -7,7 +7,8 @@ Model-free (no LLM calls). hedgehog = release build of branch `fix-public` (the 
 Regenerated 2026-10-24 (branch `audit`) with build 5cd30e3711be (master `a4f047e`, after the fidelity merge;
 structure TSVs of the last `run_structure.py`, baselines unchanged) and two scorer fixes: clock times are typed
 values, and the catalog check reads the cells of the catalog's CSV sample rows (a number right after a comma was
-invisible). The summary table below is the `fix-public` run except the catalog row, which is this run.
+invisible), and row labels compare as text (a year row label stored as a number counts). The summary table
+below is the `fix-public` run except the catalog row, which is this run.
 
 ## Summary
 
@@ -124,12 +125,12 @@ Needs a query (answer not verbatim in the file): are the operand columns clean n
 | group | needs a query | gold operands | hh clean | pandas clean | guessed | hh: columns found | hh: all clean | pandas: columns found | pandas: all clean |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | chinese · lookup | 70 | 0 | — | — | 70 | 74.3 % | 62.9 % | 50.0 % | 25.7 % |
-| chinese · needs_query | 267 | 0 | — | — | 267 | 81.3 % | 70.8 % | 53.2 % | 24.3 % |
+| chinese · needs_query | 267 | 0 | — | — | 267 | 81.3 % | 70.4 % | 53.2 % | 24.3 % |
 | chinese · not_measured | 0 | 0 | — | — | 0 | — | — | — | — |
 | english · lookup | 51 | 0 | — | — | 51 | 68.6 % | 60.8 % | 52.9 % | 25.5 % |
 | english · needs_query | 201 | 0 | — | — | 201 | 75.6 % | 68.7 % | 54.7 % | 25.4 % |
 | english · not_measured | 0 | 0 | — | — | 0 | — | — | — | — |
-| ALL | 589 | 0 | — | — | 589 | 77.4 % | 68.3 % | 53.3 % | 25.0 % |
+| ALL | 589 | 0 | — | — | 589 | 77.4 % | 68.1 % | 53.3 % | 25.0 % |
 
 #### C. Answer reachability by table type / sub-type
 
@@ -154,10 +155,10 @@ Needs a query (answer not verbatim in the file): are the operand columns clean n
 | multiple files, simple header | 31 | 0 | — | — | 31 | 74.2 % | 61.3 % | 32.3 % | 9.7 % |
 | multiple tables | 60 | 0 | — | — | 60 | 81.7 % | 71.7 % | 25.0 % | 0.0 % |
 | single file, multiple sheets, complicate header | 73 | 0 | — | — | 73 | 83.6 % | 54.8 % | 38.4 % | 8.2 % |
-| single file, multiple sheets, simple header | 45 | 0 | — | — | 45 | 80.0 % | 73.3 % | 77.8 % | 40.0 % |
+| single file, multiple sheets, simple header | 45 | 0 | — | — | 45 | 80.0 % | 71.1 % | 77.8 % | 40.0 % |
 | single file, single sheet, complicate header | 91 | 0 | — | — | 91 | 72.5 % | 64.8 % | 24.2 % | 2.2 % |
 | single file, single sheet, simple header | 260 | 0 | — | — | 260 | 75.0 % | 70.4 % | 74.2 % | 44.6 % |
-| ALL | 589 | 0 | — | — | 589 | 77.4 % | 68.3 % | 53.3 % | 25.0 % |
+| ALL | 589 | 0 | — | — | 589 | 77.4 % | 68.1 % | 53.3 % | 25.0 % |
 
 #### D. Cost per file
 
@@ -211,15 +212,15 @@ Tokens: tiktoken o200k_base. Times are wall-clock per file, cold (hedgehog's dis
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Data Analysis | 533 | 533 | 0 | — | — | — | — | — | — | — | — |
 | Data Analysis (long tables) | 155 | 155 | 0 | — | — | — | — | — | — | — | — |
-| Fact Checking | 1217 | 2 | 825 | 62.5 % | 98.9 % | 97.9 % | 80.8 % | 45.8 % | 100.0 % | 66.9 % | 25.9 % |
-| Fact Checking (long tables) | 245 | 2 | 138 | 26.8 % | 99.3 % | 99.3 % | 78.3 % | 44.2 % | 100.0 % | 57.2 % | 15.2 % |
-| Numerical Reasoning | 771 | 5 | 298 | 65.8 % | 99.7 % | 98.3 % | 67.4 % | 36.2 % | 100.0 % | 50.7 % | 21.8 % |
+| Fact Checking | 1217 | 2 | 825 | 62.5 % | 98.9 % | 97.9 % | 81.3 % | 47.2 % | 100.0 % | 66.9 % | 25.9 % |
+| Fact Checking (long tables) | 245 | 2 | 138 | 26.8 % | 99.3 % | 99.3 % | 79.7 % | 44.9 % | 100.0 % | 57.2 % | 15.2 % |
+| Numerical Reasoning | 771 | 5 | 298 | 65.8 % | 99.7 % | 98.3 % | 68.1 % | 37.6 % | 100.0 % | 50.7 % | 21.8 % |
 | Numerical Reasoning (long tables) | 203 | 0 | 115 | 27.8 % | 99.1 % | 95.7 % | 69.6 % | 26.1 % | 100.0 % | 53.9 % | 12.2 % |
 | Structure Comprehending | 396 | 396 | 0 | — | — | — | — | — | — | — | — |
 | Structure Comprehending (long tables) | 34 | 34 | 0 | — | — | — | — | — | — | — | — |
 | Visualization | 154 | 154 | 0 | — | — | — | — | — | — | — | — |
 | Visualization (long tables) | 44 | 44 | 0 | — | — | — | — | — | — | — | — |
-| ALL | 3752 | 1325 | 1376 | 56.8 % | 99.1 % | 98.0 % | 76.7 % | 41.9 % | 100.0 % | 61.3 % | 22.8 % |
+| ALL | 3752 | 1325 | 1376 | 56.8 % | 99.1 % | 98.0 % | 77.3 % | 43.1 % | 100.0 % | 61.3 % | 22.8 % |
 
 Not measured: the benchmark's free-text / chart / edit tasks, items whose file is missing, and HiTab header answers whose text is not a cell of the file (HiTab rewrote the label). Verbatim = every answer atom is a cell of the file; rates are over verbatim items.
 
@@ -229,15 +230,15 @@ Needs a query (answer not verbatim in the file): are the operand columns clean n
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | Data Analysis | 0 | 0 | — | — | 0 | — | — | — | — |
 | Data Analysis (long tables) | 0 | 0 | — | — | 0 | — | — | — | — |
-| Fact Checking | 390 | 0 | — | — | 390 | 71.3 % | 62.3 % | 41.0 % | 6.9 % |
-| Fact Checking (long tables) | 105 | 0 | — | — | 105 | 71.4 % | 45.7 % | 25.7 % | 4.8 % |
-| Numerical Reasoning | 468 | 0 | — | — | 468 | 76.7 % | 69.2 % | 44.4 % | 8.5 % |
-| Numerical Reasoning (long tables) | 88 | 0 | — | — | 88 | 78.4 % | 59.1 % | 23.9 % | 2.3 % |
+| Fact Checking | 390 | 0 | — | — | 390 | 71.3 % | 59.7 % | 41.0 % | 6.9 % |
+| Fact Checking (long tables) | 105 | 0 | — | — | 105 | 71.4 % | 44.8 % | 25.7 % | 4.8 % |
+| Numerical Reasoning | 468 | 0 | — | — | 468 | 76.7 % | 66.9 % | 44.4 % | 8.5 % |
+| Numerical Reasoning (long tables) | 88 | 0 | — | — | 88 | 78.4 % | 56.8 % | 23.9 % | 2.3 % |
 | Structure Comprehending | 0 | 0 | — | — | 0 | — | — | — | — |
 | Structure Comprehending (long tables) | 0 | 0 | — | — | 0 | — | — | — | — |
 | Visualization | 0 | 0 | — | — | 0 | — | — | — | — |
 | Visualization (long tables) | 0 | 0 | — | — | 0 | — | — | — | — |
-| ALL | 1051 | 0 | — | — | 1051 | 74.3 % | 63.5 % | 39.6 % | 7.0 % |
+| ALL | 1051 | 0 | — | — | 1051 | 74.3 % | 61.2 % | 39.6 % | 7.0 % |
 
 #### C. Answer reachability by table type / sub-type
 
@@ -245,16 +246,16 @@ Needs a query (answer not verbatim in the file): are the operand columns clean n
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |  | 1 | 0 | 0 | — | — | — | — | — | — | — | — |
 | (not measured) | 1322 | 1322 | 0 | — | — | — | — | — | — | — | — |
-| Calculation | 321 | 0 | 72 | 27.8 % | 100.0 % | 100.0 % | 79.2 % | 25.0 % | 100.0 % | 58.3 % | 12.5 % |
-| Comparison | 166 | 1 | 89 | 64.0 % | 98.9 % | 96.6 % | 66.3 % | 49.4 % | 100.0 % | 53.9 % | 28.1 % |
-| Counting | 255 | 1 | 109 | 62.4 % | 100.0 % | 96.3 % | 64.2 % | 17.4 % | 100.0 % | 51.4 % | 9.2 % |
-| Inference-based Fact Checking | 537 | 0 | 334 | 59.9 % | 99.4 % | 97.3 % | 72.5 % | 41.0 % | 100.0 % | 52.1 % | 30.2 % |
-| Multi-hop Fact Checking | 296 | 0 | 158 | 58.9 % | 100.0 % | 98.7 % | 83.5 % | 47.5 % | 100.0 % | 65.8 % | 27.2 % |
+| Calculation | 321 | 0 | 72 | 27.8 % | 100.0 % | 100.0 % | 79.2 % | 29.2 % | 100.0 % | 58.3 % | 12.5 % |
+| Comparison | 166 | 1 | 89 | 64.0 % | 98.9 % | 96.6 % | 67.4 % | 49.4 % | 100.0 % | 53.9 % | 28.1 % |
+| Counting | 255 | 1 | 109 | 62.4 % | 100.0 % | 96.3 % | 64.2 % | 18.3 % | 100.0 % | 51.4 % | 9.2 % |
+| Inference-based Fact Checking | 537 | 0 | 334 | 59.9 % | 99.4 % | 97.3 % | 72.8 % | 41.0 % | 100.0 % | 52.1 % | 30.2 % |
+| Multi-hop Fact Checking | 296 | 0 | 158 | 58.9 % | 100.0 % | 98.7 % | 84.2 % | 48.7 % | 100.0 % | 65.8 % | 27.2 % |
 | Multi-hop Numerical Reasoning | 92 | 0 | 32 | 62.5 % | 100.0 % | 100.0 % | 84.4 % | 43.8 % | 100.0 % | 50.0 % | 15.6 % |
 | Non-adverse, Adverse, Cancelled | 1 | 0 | 1 | 100.0 % | 100.0 % | 100.0 % | 100.0 % | 100.0 % | 100.0 % | 0.0 % | 0.0 % |
-| Ranking | 142 | 1 | 115 | 54.8 % | 99.1 % | 96.5 % | 61.7 % | 39.1 % | 100.0 % | 47.0 % | 28.7 % |
-| Value-Matching | 619 | 0 | 466 | 55.6 % | 98.3 % | 98.7 % | 85.2 % | 48.1 % | 100.0 % | 75.1 % | 18.9 % |
-| ALL | 3752 | 1325 | 1376 | 56.8 % | 99.1 % | 98.0 % | 76.7 % | 41.9 % | 100.0 % | 61.3 % | 22.8 % |
+| Ranking | 142 | 1 | 115 | 54.8 % | 99.1 % | 96.5 % | 62.6 % | 39.1 % | 100.0 % | 47.0 % | 28.7 % |
+| Value-Matching | 619 | 0 | 466 | 55.6 % | 98.3 % | 98.7 % | 86.1 % | 50.2 % | 100.0 % | 75.1 % | 18.9 % |
+| ALL | 3752 | 1325 | 1376 | 56.8 % | 99.1 % | 98.0 % | 77.3 % | 43.1 % | 100.0 % | 61.3 % | 22.8 % |
 
 Not measured: the benchmark's free-text / chart / edit tasks, items whose file is missing, and HiTab header answers whose text is not a cell of the file (HiTab rewrote the label). Verbatim = every answer atom is a cell of the file; rates are over verbatim items.
 
@@ -264,16 +265,16 @@ Needs a query (answer not verbatim in the file): are the operand columns clean n
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 |  | 1 | 0 | — | — | 1 | 100.0 % | 100.0 % | 100.0 % | 0.0 % |
 | (not measured) | 0 | 0 | — | — | 0 | — | — | — | — |
-| Calculation | 249 | 0 | — | — | 249 | 85.5 % | 76.3 % | 42.6 % | 7.6 % |
-| Comparison | 76 | 0 | — | — | 76 | 78.9 % | 73.7 % | 38.2 % | 2.6 % |
-| Counting | 145 | 0 | — | — | 145 | 61.4 % | 54.5 % | 42.1 % | 9.7 % |
-| Inference-based Fact Checking | 203 | 0 | — | — | 203 | 73.4 % | 58.6 % | 42.4 % | 6.9 % |
-| Multi-hop Fact Checking | 138 | 0 | — | — | 138 | 76.8 % | 63.8 % | 40.6 % | 7.2 % |
-| Multi-hop Numerical Reasoning | 60 | 0 | — | — | 60 | 70.0 % | 56.7 % | 40.0 % | 8.3 % |
+| Calculation | 249 | 0 | — | — | 249 | 85.5 % | 73.9 % | 42.6 % | 7.6 % |
+| Comparison | 76 | 0 | — | — | 76 | 78.9 % | 69.7 % | 38.2 % | 2.6 % |
+| Counting | 145 | 0 | — | — | 145 | 61.4 % | 53.8 % | 42.1 % | 9.7 % |
+| Inference-based Fact Checking | 203 | 0 | — | — | 203 | 73.4 % | 54.7 % | 42.4 % | 6.9 % |
+| Multi-hop Fact Checking | 138 | 0 | — | — | 138 | 76.8 % | 62.3 % | 40.6 % | 7.2 % |
+| Multi-hop Numerical Reasoning | 60 | 0 | — | — | 60 | 70.0 % | 53.3 % | 40.0 % | 8.3 % |
 | Non-adverse, Adverse, Cancelled | 0 | 0 | — | — | 0 | — | — | — | — |
-| Ranking | 26 | 0 | — | — | 26 | 92.3 % | 65.4 % | 34.6 % | 7.7 % |
-| Value-Matching | 153 | 0 | — | — | 153 | 63.4 % | 54.2 % | 28.8 % | 5.2 % |
-| ALL | 1051 | 0 | — | — | 1051 | 74.3 % | 63.5 % | 39.6 % | 7.0 % |
+| Ranking | 26 | 0 | — | — | 26 | 92.3 % | 61.5 % | 34.6 % | 7.7 % |
+| Value-Matching | 153 | 0 | — | — | 153 | 63.4 % | 53.6 % | 28.8 % | 5.2 % |
+| ALL | 1051 | 0 | — | — | 1051 | 74.3 % | 61.2 % | 39.6 % | 7.0 % |
 
 #### D. Cost per file
 
@@ -330,7 +331,7 @@ Tokens: tiktoken o200k_base. Times are wall-clock per file, cold (hedgehog's dis
 
 | tool | cell found in a table | number stored = source | column header exact | lenient | row labels exact | lenient | row leaf label | both exact | both lenient |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| hedgehog | 99.9 % | 99.8 % | 93.7 % | 98.9 % | 77.1 % | 85.3 % | 90.7 % | 73.0 % | 84.4 % |
+| hedgehog | 99.9 % | 99.8 % | 93.7 % | 98.9 % | 80.6 % | 89.1 % | 94.7 % | 76.3 % | 88.1 % |
 | pandas | 100.0 % | 11.5 % | 0.0 % | 0.8 % | 41.3 % | 43.8 % | 95.1 % | 0.0 % | 0.1 % |
 
 Header and label rates are over cells found; 'number stored = source' over found cells whose source reads as a number (stored as a number equal to it; text that looks like a number does not count). Not found: hedgehog: column not in the row's table 5; pandas: 0.
@@ -342,8 +343,8 @@ Stored values: hedgehog: {'equal': 4430, 'different': 4, 'kept as text': 3, 'sou
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | computed | 1520 | 0 | 0 | — | — | — | — | — | — | — | — |
 | header_answer | 1358 | 77 | 1281 | 90.3 % | 99.8 % | 99.6 % | 75.8 % | 53.7 % | 99.8 % | 85.9 % | 56.6 % |
-| lookup | 4446 | 0 | 4446 | 83.3 % | 100.0 % | 99.9 % | 97.3 % | 68.2 % | 100.0 % | 81.6 % | 1.3 % |
-| ALL | 7324 | 77 | 5727 | 84.9 % | 100.0 % | 99.8 % | 92.5 % | 65.0 % | 100.0 % | 82.6 % | 13.7 % |
+| lookup | 4446 | 0 | 4446 | 83.3 % | 100.0 % | 99.9 % | 97.7 % | 70.7 % | 100.0 % | 81.6 % | 1.3 % |
+| ALL | 7324 | 77 | 5727 | 84.9 % | 100.0 % | 99.8 % | 92.8 % | 66.9 % | 100.0 % | 82.6 % | 13.7 % |
 
 Not measured: the benchmark's free-text / chart / edit tasks, items whose file is missing, and HiTab header answers whose text is not a cell of the file (HiTab rewrote the label). Verbatim = every answer atom is a cell of the file; rates are over verbatim items.
 
