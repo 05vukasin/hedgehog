@@ -1590,11 +1590,73 @@ fn merged_parent_top(grid: &Grid, r: Rect, htop: u32, owner: &[u8]) -> Option<u3
     None
 }
 
+/// Cohorts that repeat only merged parent headers inherit the original child rows.
+/// Require identical complete parent spans, a stub cohort, and numeric records on both sides.
+fn changed_parent_blocks(grid: &Grid, t: &DetectedTable) -> Vec<DetectedTable> {
+    if t.header_rows < 2 { return vec![t.clone()]; }
+    let body = t.header_top.saturating_add(t.header_rows);
+    let parents: Vec<Rect> = grid.sheet.merges.iter().copied()
+        .filter(|m| m.top == t.header_top && m.bottom == m.top && m.left > t.rect.left && m.right <= t.rect.right)
+        .collect();
+    let mut parents = parents;
+    parents.sort_by_key(|m| m.left);
+    let text = |r, c| grid.cell(r, c).and_then(|c| match &c.value { Some(Value::Text(t)) if !t.trim().is_empty() => Some(t.trim()), _ => None });
+    let numeric = |r| grid.row_cells(r).iter().filter(|&&i| {
+        let c = &grid.sheet.cells[i as usize];
+        c.col > t.rect.left && c.col <= t.rect.right && matches!(c.value, Some(Value::Number(_)))
+    }).count() >= 2;
+    let cohort = |r| text(r, t.rect.left).is_some_and(|s| s.chars().count() <= 60 && !s.ends_with(':'));
+    if parents.len() < 2 || parents[0].left != t.rect.left + 1
+        || parents.last().is_none_or(|m| m.right != t.rect.right)
+        || parents.windows(2).any(|w| w[0].right + 1 != w[1].left)
+        || !cohort(body) || numeric(body) || !numeric(body + 1)
+        || grid.row_cells(body).iter().any(|&i| {
+            let c = &grid.sheet.cells[i as usize];
+            c.col > t.rect.left && c.col <= t.rect.right && c.value.as_ref().is_some_and(|v| !display(v).is_empty())
+        })
+        || (t.rect.left + 1..=t.rect.right).any(|c| !(t.header_top + 1..body).any(|r| {
+            grid.cell(r, c).or_else(|| grid.merge_at(r, c).and_then(|m| grid.cell(m.top, m.left)))
+                .is_some_and(|cell| matches!(&cell.value, Some(Value::Text(s)) if !s.trim().is_empty()))
+        }))
+    { return vec![t.clone()]; }
+    let mut cuts = Vec::new();
+    let mut previous_cohort = text(body, t.rect.left);
+    for r in body + 2..t.rect.bottom {
+        if !cohort(r) || !numeric(r - 1) || !numeric(r + 1) { continue; }
+        if grid.row_cells(r).iter().any(|&i| {
+            let c = &grid.sheet.cells[i as usize];
+            c.col >= t.rect.left && c.col <= t.rect.right && c.value.as_ref().is_some_and(|v| !display(v).is_empty())
+                && (c.col != t.rect.left && !parents.iter().any(|m| m.left == c.col) || !matches!(c.value, Some(Value::Text(_))))
+        }) { continue; }
+        let mut changed = false;
+        let matched = parents.iter().all(|p| {
+            let Some(m) = grid.merge_at(r, p.left) else { return false };
+            let (Some(old), Some(new)) = (text(p.top, p.left), text(r, p.left)) else { return false };
+            changed |= old != new;
+            m.top == r && m.bottom == r && m.left == p.left && m.right == p.right
+        });
+        if matched && (changed || text(r, t.rect.left) != previous_cohort) {
+            cuts.push(r);
+            previous_cohort = text(r, t.rect.left);
+        }
+    }
+    let mut out = Vec::with_capacity(cuts.len() + 1);
+    let mut part = t.clone();
+    for row in cuts {
+        part.rect.bottom = row - 1;
+        out.push(part);
+        part = DetectedTable { rect: Rect { top: row, ..t.rect }, header_top: row, header_rows: 1, confidence: t.confidence };
+    }
+    out.push(part);
+    out
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_table(
     grid: &Grid,
     lay: &SheetLayout,
     t: &DetectedTable,
+    inherited: Option<&Table>,
     n: usize,
     sheet_hints: &OnceLock<HashMap<u32, ColumnHints>>,
     row_total: &HashMap<u32, RowTotal>,
@@ -1653,7 +1715,8 @@ fn build_table(
         }
         htop = parent_row;
     }
-    let nh = (body_top - htop) as usize;
+    let physical_nh = (body_top - htop) as usize;
+    let mut nh = physical_nh;
     // Columns of the rect left and right of every cell of the header and body hold nothing but
     // a merged area reaching past the data (a full-row merge `A2:XFD2` over six columns, B90):
     // they are left out, so the table costs its cells, not its rows × the width of a merge.
@@ -1762,6 +1825,26 @@ fn build_table(
             }
         }
     }
+    // A changed cohort repeats its parent row only. Reuse the donor's actual child
+    // source cells, keeping own parent text and typing the new complete header independently.
+    let cohort = inherited.and_then(|_| grid.cell(htop, r.left)).and_then(|c| c.value.as_ref()).map(display);
+    if let Some(donor) = inherited {
+        let child_rows = donor.header_rows.saturating_sub(1) as usize;
+        head.extend((0..child_rows).map(|_| vec![None; ncols]));
+        nh = head.len();
+        for col in &donor.columns {
+            let Some(c) = col.source_col.filter(|c| *c >= r.left && *c <= r.right) else { continue };
+            let k = (c - r.left) as usize;
+            if c == r.left { head[0][k] = None; }
+            for part in &col.original_header {
+                if c == r.left || part.1.0 > donor.header_top {
+                    let hr = part.1.0.saturating_sub(donor.header_top) as usize;
+                    if hr < head.len() { head[hr][k] = Some(part.clone()); }
+                }
+            }
+        }
+        warnings.push(format!("child header cells inherited from {} with their original source coordinates", donor.id()));
+    }
     // B84: month-end dates across a header that step back from December to January of the same
     // year (Jul … Dec 2001, Jan … Mar 2001) were typed without the year change: from the step on
     // they are read one year later, when that continues the monthly sequence.
@@ -1840,6 +1923,7 @@ fn build_table(
     // landing` over `1 2 3 4 5 6`, HiTab 1220), not column numbers.
     let numbering_rows: Vec<bool> = (0..nh)
         .map(|hr| {
+            if hr >= physical_nh { return false; }
             let vals: Vec<&Value> = rows
                 .iter()
                 .filter(|(row, _)| *row == htop + hr as u32)
@@ -1936,6 +2020,11 @@ fn build_table(
     // label written on the group's first data row (it replaces the innermost group).
     let mut group_label_col: Option<u32> = None;
     let mut group_labels: Vec<String> = Vec::new();
+    if let Some(cohort) = cohort {
+        group_labels.push(cohort.clone());
+        run.push((cohort, htop, (0, 0)));
+        group_label_col = Some(r.left);
+    }
     let mut removed_totals = Vec::new();
     let mut body_rows_seen = 0u32;
     // Text label columns of the records (text on most data rows): a "group header" row that fills
@@ -2724,7 +2813,7 @@ fn build_table(
             rect: Rect { top: t.rect.top.min(htop), ..t.rect },
             header_top: htop,
             // The header rows used (promote_header may move them below the layout's).
-            header_rows: nh as u32,
+            header_rows: physical_nh as u32,
             title,
             notes: Vec::new(),
             confidence: t.confidence,
@@ -3218,14 +3307,18 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     detected.extend(value_blocks(grid, &lay));
     detected.sort_by_key(|t| (t.rect.top, t.rect.left));
     for t in &detected {
-        let n = out.tables.len() + 1;
-        let b = build_table(grid, &lay, t, n, &sheet_hints, &row_total, &overrides, opts, &mut owner);
-        info.tables.push(n);
-        layouts.push(row_layout(&b.table, &b.removed_totals));
-        kept.push(b.kept);
-        removed.extend(b.removed_totals.into_iter().map(|(row, rt, idxs)| (n, row, rt, idxs)));
-        notes.extend(b.notes);
-        out.tables.push(b.table);
+        let donor = out.tables.len();
+        for (part, t) in changed_parent_blocks(grid, t).iter().enumerate() {
+            let n = out.tables.len() + 1;
+            let inherited = (part > 0).then(|| &out.tables[donor]);
+            let b = build_table(grid, &lay, t, inherited, n, &sheet_hints, &row_total, &overrides, opts, &mut owner);
+            info.tables.push(n);
+            layouts.push(row_layout(&b.table, &b.removed_totals));
+            kept.push(b.kept);
+            removed.extend(b.removed_totals.into_iter().map(|(row, rt, idxs)| (n, row, rt, idxs)));
+            notes.extend(b.notes);
+            out.tables.push(b.table);
+        }
     }
     copy_row_labels(&mut out.tables[first..], &layouts);
     // Captions a table moved out of its last row belong to the table below them (B72).
