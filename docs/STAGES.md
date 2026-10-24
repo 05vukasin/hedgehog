@@ -72,12 +72,21 @@ final release `541500dbeb36`, alignment implementation `bec3146`.
 
 ## Running
 
-The ongoing goal continues after local integration. Next paired source/review phase:
-HiTab DEV `clean/statcan/1535.xlsx` repeated cohort/header context, alongside the prepared
-row-feature mean fusion experiment `f9ae2ce` (not accepted or measured yet).
-Check RAM/swap, btrfs metadata, disk and live slots before restarting workers. Finish
-all source/review workers before serialized heavy tests. Reuse warm targets, one heavy
-slot, aggregate 4G cap, Cargo jobs 2 and memory watchdog.
+Iteration 2 is integrated locally at `225b9da`; no remote push or CLI installation.
+Iteration 3 baseline is release `541500dbeb36` (saved outside the repo).
+
+- Lead: main checkout, `codex/iteration-3`; source/review phase active, no heavy jobs.
+- Accuracy: `codex/accuracy-iter3`, existing `../hh-accuracy-iter2` worktree. HiTab DEV
+  `clean/statcan/1535.xlsx`: repeated Women cohort and changed disease parent headers
+  must preserve both cohort and source-specific parent/child header paths.
+- Performance: `codex/performance-iter3`, existing `../hh-performance-iter2` worktree.
+  Prepared row-feature mean fusion `f9ae2ce` needs review, bitwise equivalence and
+  measured benefit; it is not accepted yet.
+- Independent reviewer checks source geometry, negative cases and minimality.
+- Latest resources: 11 GiB available RAM, negligible swap, 118 GiB free disk; btrfs
+  metadata 17.31/18.50 GiB. Check again before expanding the swarm.
+- Finish all source/review workers before serialized heavy tests. Reuse warm targets,
+  one heavy slot, aggregate 4G cap, Cargo jobs 2 and memory watchdog.
 
 ## Next (in order)
 
