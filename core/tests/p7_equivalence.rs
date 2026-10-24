@@ -12,6 +12,38 @@ use std::path::PathBuf;
 
 use hh_core::eval::{bench, data_root};
 use hh_core::grid::Grid;
+use hh_core::{Cell, Rect, Sheet, Value};
+
+#[test]
+fn streamed_dense_and_split_rows_match_materialized_features() {
+    let mut cells = Vec::new();
+    for row in [0, 1, 2, 4, 5, 6, 9] {
+        // Short gaps stay in one segment; wide gaps split the row into separate segments.
+        let cols: &[u32] = if row == 4 { &[0, 1, 2, 20, 21, 22] } else { &[0, 1, 2, 3, 4, 5] };
+        for (k, &col) in cols.iter().enumerate() {
+            let value = match (row, k) {
+                (0, _) => Some(Value::Text(format!("Header {k}"))),
+                (_, 0) => Some(Value::Text(format!("Item {row}"))),
+                (_, 1) => Some(Value::Number(-0.0)),
+                (_, 2) => Some(Value::Text("1,234.50".into())),
+                (_, 3) => Some(Value::DateTime(45000.0 + row as f64)),
+                (_, 4) => None,
+                _ => Some(Value::Number(row as f64 / 7.0)),
+            };
+            cells.push(Cell { row, col, value, formula: (k == 4).then(|| "SUM(B2:C2)".into()) });
+        }
+    }
+    let sheet = Sheet {
+        name: "segments".into(), cells,
+        merges: vec![Rect { top: 11, left: 0, bottom: 11, right: 5 }],
+        formats: vec![],
+    };
+    let model = hh_core::learned::embedded().expect("embedded model");
+    let segments = hh_core::learned::equivalence(&Grid::new(&sheet), model, &[1, 2, 4]).unwrap();
+    assert!(segments > 7, "wide row must produce multiple segments");
+    let empty = Sheet { name: "empty".into(), cells: vec![], merges: sheet.merges, formats: vec![] };
+    assert_eq!(hh_core::learned::equivalence(&Grid::new(&empty), model, &[1, 4]).unwrap(), 0);
+}
 
 #[test]
 #[ignore]
