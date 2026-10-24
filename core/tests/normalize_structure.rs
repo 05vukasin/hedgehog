@@ -226,3 +226,37 @@ fn period_labels_get_a_sortable_period_column() {
     let cov = hh_core::normalize::table_time_coverage(t).unwrap();
     assert_eq!((cov.from.as_str(), cov.to.as_str(), cov.granularity), ("2019", "2021-02", "month"));
 }
+
+/// Balanço Social 2016, A349:A351: a leading space on the middle fragment
+/// belongs to one label reconstructed across M/F/T rows, not an outline child.
+#[test]
+fn split_sex_block_label_is_not_a_sparse_outline() {
+    let n = normalize("sex_fragment_indent", |ws| {
+        for (c, h) in ["Motivo da Alteração", "Sexo", "Técnico", "Assistente", "TOTAL"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        let blocks = [
+            ["Promoções", "(carreiras não revistas e", "carreiras subsistentes)"],
+            ["Procedimento", "Concursal", ""],
+            ["Consolidação da", "mobilidade", "na categoria"],
+            ["Alteração obrigatória", " do posicionamento", "remuneratório"],
+            ["Alte.do posicionamento", "remuneratório por ", "opção gestionária (regra)"],
+            ["Alte.do posicionamento", "remuneratório por ", "opção gestionária (excepção)"],
+        ];
+        for (b, labels) in blocks.iter().enumerate() {
+            for (k, sex) in ["M", "F", "T"].iter().enumerate() {
+                let r = 1 + (3 * b + k) as u32;
+                if !labels[k].is_empty() { ws.write_string(r, 0, labels[k]).unwrap(); }
+                ws.write_string(r, 1, *sex).unwrap();
+                for c in 2..=3u16 {
+                    ws.write_number(r, c, if k == 2 { 3.0 } else { 1.0 + k as f64 }).unwrap();
+                }
+                ws.write_number(r, 4, if k == 2 { 6.0 } else { 2.0 + 2.0 * k as f64 }).unwrap();
+            }
+        }
+    });
+    let t = n.tables.iter().find(|t| t.columns.iter().any(|c| c.name == "Sexo")).unwrap();
+    let label = col(t, "Motivo da Alteração");
+    assert!(label.iter().any(|v| text(v) == "Alteração obrigatória do posicionamento remuneratório"));
+    assert!(t.columns.iter().all(|c| c.derived_kind() != Some("parent")), "fragment whitespace became hierarchy: {:?}", names(t));
+}
