@@ -79,6 +79,13 @@ checkout targets; workers prepare separate regression-test and implementation co
 verification there, avoiding duplicate cold builds. Preserve separate worktree targets if workers
 need their own builds. No LLM development calls or holdout inspection.
 
+Before expanding a swarm, check available RAM/swap, btrfs metadata as well as disk space, and
+live agent slots. Add workers only for useful independent tasks. Complete the source and review
+phase before starting heavy builds, corpus tests or timing comparisons. If validation finds a
+failure, return it to the relevant worker and resume testing after that follow-up is complete.
+The lead may coordinate up to three lightweight workers when resources and platform slots allow;
+heavy jobs remain globally serialized. This follows the owner's later 2026-10-24 instruction.
+
 ## Agent brief template
 
 ```

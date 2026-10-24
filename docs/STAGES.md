@@ -56,13 +56,17 @@ Final release SHA-256 prefix: `b147b92202c1`. Baseline/audit/split/scorer defini
 
 Iteration 2 (continuous accuracy/performance loop requested by the owner):
 
-- Accuracy: `codex/accuracy-iter2`, worktree `../hh-accuracy-iter2`; inspect remaining DEV label/header
+- Accuracy: `codex/accuracy-iter2-padding`, worktree `../hh-accuracy-iter2`; inspect remaining DEV label/header
   misses, generated regression first, minimal source-backed fixes.
 - Performance: `codex/performance-iter2`, worktree `../hh-performance-iter2`; inspect measured feature,
   layout and construction/export hot paths. Require actual speed benefit and equivalent output.
 - Lead: `codex/iteration-2` in main checkout; baseline `d1a2386`, release SHA `b147b92202c1`.
-  Reuse warm integration targets for red/green tests and full gates. One heavy slot, 4G total cap,
-  two Cargo jobs; memory watchdog active. Baseline DEV work and prior evidence remain on disk.
+  Reuse warm integration targets for red/green tests and full gates. First quick run caught PT split-label and Enron single-space false-parent regressions.
+  Follow-ups are committed at `817dfef`, independently reviewed and focused tests pass.
+  Source/review phase is complete; unchanged quick gates and full DEV scoring are running. See [iteration evidence](iteration-2.md).
+  One heavy slot, 4G total cap, two Cargo jobs; memory watchdog active. Baseline DEV work and prior evidence remain on disk.
+- Swarm: dedicated performance work plus independent correctness/minimality reviews when RAM,
+  btrfs metadata and live slots allow. Finish source/review work before heavy testing.
 - Workers prepare separate test/fix commits; lead verifies, reviews minimality, integrates and
   records exact per-item and memory/speed deltas. Repeat after integration while goal is active.
 
