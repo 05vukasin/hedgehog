@@ -61,7 +61,7 @@ annotators dropped, a glued footnote letter, a year row label kept as a number, 
 column's header or a total row (HiTab roots its left tree there), placeholder elements (`-`).
 MiMoTable / RealHiTBench: the atom is a table cell, a column header or a title; a number must also share a
 content word with the question through its row labels or column header (else a bare number is found by chance);
-a date atom matches a normalized date (or kept text) with the same month and day.
+a date atom matches a normalized date (or kept text) with the same month and day; a text atom found only in generated `col_X` columns misses (the agent cannot tell what it is), unless that column is the row-label stub the source leaves unnamed too (header rows detected, its source header cells empty, only unnamed / group / parent columns to its left: `lookup.unnamed_stub`, tests in `test_lookup.py`).
 A miss follows the atom's source cell into the tables: cell not in any table / value changed (how: date text
 parsed with another day, Excel serial, number kept as text, ...) / column header path differs / label path
 missing parent / row label differs / generic column header / number not grounded.

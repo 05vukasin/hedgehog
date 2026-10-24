@@ -463,3 +463,40 @@ fn key_value_line_titles() {
     let title = t.title.as_ref().map(|x| x.0.clone()).unwrap_or_default();
     assert!(!title.ends_with(':') && title.parse::<f64>().is_err(), "title {title:?}");
 }
+
+/// HiTab statcan/2797: rows of `F` (too unreliable) also in columns that had none above. A value
+/// annotation is no header label: one table, its columns named by the real header.
+#[test]
+fn suppression_marks_in_new_columns_are_no_header() {
+    let n = normalize("suppressed_new_cols", |ws| {
+        ws.write_string(0, 0, "Table 2: Victims by selected characteristics").unwrap();
+        ws.write_string(2, 0, "Characteristic").unwrap();
+        for (k, h) in ["Male", "Female", "Total number", "Total percent"].iter().enumerate() {
+            ws.write_string(2, 1 + k as u16, *h).unwrap();
+        }
+        let rows: [(&str, [Option<f64>; 4]); 10] = [
+            ("Army", [Some(1.2), Some(9.3), Some(430.0), Some(2.2)]),
+            ("Navy", [Some(2.4), Some(6.0), Some(120.0), Some(3.6)]),
+            ("Air Force", [None, None, Some(20.0), Some(1.1)]),
+            ("Personnel Command", [None, Some(7.8), Some(70.0), Some(3.7)]),
+            ("Other", [None, None, None, None]),
+            ("Indigenous", [None, None, Some(70.0), Some(6.1)]),
+            ("Non-Indigenous", [Some(1.1), Some(6.7), Some(540.0), Some(2.0)]),
+            ("Junior officer", [Some(1.5), Some(8.2), Some(480.0), Some(2.6)]),
+            ("Senior officer", [Some(0.9), None, Some(50.0), Some(1.3)]),
+            ("Recruit", [Some(1.9), Some(6.1), Some(60.0), Some(2.9)]),
+        ];
+        for (i, (label, vals)) in rows.iter().enumerate() {
+            let r = 3 + i as u32;
+            ws.write_string(r, 0, *label).unwrap();
+            for (k, v) in vals.iter().enumerate() {
+                match v {
+                    Some(x) => ws.write_number(r, 1 + k as u16, *x).unwrap(),
+                    None => ws.write_string(r, 1 + k as u16, "F").unwrap(),
+                };
+            }
+        }
+    });
+    let t = with_column(&n, "Total percent");
+    assert_eq!(t.src_rows.len(), 10, "one table: {:?}", n.tables.iter().map(names).collect::<Vec<_>>());
+}

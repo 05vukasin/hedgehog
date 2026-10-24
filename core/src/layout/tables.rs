@@ -531,6 +531,8 @@ fn starts_new_table(
         .skip(1)
         .filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left))
         .filter(|e| !(e.kind == Kind::Text && seen.contains(&(e.left, seen_key(text(sheet, e))))))
+        // nor is a value annotation (`F` too unreliable, `x` suppressed, `<5`)
+        .filter(|e| !(e.kind == Kind::Text && crate::values::missing::numeric_annotation(text(sheet, e)).is_some()))
         .count();
     hits >= SPLIT_MIN_HITS && hits as f32 >= SPLIT_MIN_HIT_FRAC * numeric_cols.len() as f32
 }

@@ -135,7 +135,9 @@ def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
         rec["level"] = "loose" if r["loose"] else "cell" if r["cell"] else "none"
     if rec["pass"] and date is None and at.num is None:
         # a text answer found only in columns without a name (col_X): the agent cannot tell what it is
-        cols = [t.headers[j] for t in tables for row in t.rows for j, v in enumerate(row) if at.matches_value(v)]
+        # (unless the column is the row-label stub the source leaves unnamed too: unnamed_stub)
+        cols = [t.headers[j] for t in tables for row in t.rows for j, v in enumerate(row)
+                if at.matches_value(v) and not unnamed_stub(t, j, raw)]
         if cols and all(re.match(r"^col_[A-Z]+$", h.split(" / ")[-1]) for h in cols):
             rec["pass"] = False
             rec["cause"], rec["evidence"] = "answer column has no header (col_X)", f"{a['text']!r} only in {sorted(set(cols))[:3]}"
@@ -143,6 +145,39 @@ def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
     if not rec["pass"]:
         rec["cause"], rec["evidence"] = miss_signature(it, tables, hits, at, date)
     return rec
+
+
+def _a1_rows(rng: str) -> tuple[int, int] | None:
+    m = re.fullmatch(r"[A-Z]+(\d+):[A-Z]+(\d+)", rng or "")
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+def unnamed_stub(t, j: int, raw: dict) -> bool:
+    """Column j is the table's row-label stub and the source names it nowhere: every column to its left is a
+    group, parent or unnamed column, it carries no original header, the table has header rows, and the source cells
+    of its header rows are empty. Its row labels are then reachable as they are in the source: a `col_X` name loses nothing there
+    (the col_X rule is for a header the source has and hedgehog lost)."""
+    if j not in t.label_cols or j in getattr(t, "parent_cols", set()) or not re.fullmatch(r"col_[A-Z]+", t.headers[j]):
+        return False
+    meta = getattr(t, "colmeta", [])
+    if j < len(meta) and (meta[j].get("role") == "group" or meta[j].get("original_header")):
+        return False
+    # the stub: only unnamed columns, the group column and parent columns to its left (a named column there,
+    # e.g. a title taken as the header, means the header is misplaced, not absent)
+    if any(not re.fullmatch(r"col_[A-Z]+(_key)?", t.headers[k]) and k not in getattr(t, "parent_cols", set())
+           and not (k < len(meta) and meta[k].get("role") == "group") for k in range(j)):
+        return False
+    src = (getattr(t, "manifest", {}) or {}).get("source", {})
+    letter = t.letters[j] if j < len(t.letters) else None
+    if not letter:
+        return False
+    rng, data = _a1_rows(src.get("range")), _a1_rows(src.get("data_range"))
+    if not rng or not data or data[0] <= rng[0]:
+        return False  # no header rows detected: a header taken as data would look the same
+    col = 0
+    for ch in letter:
+        col = col * 26 + ord(ch) - 64
+    return all(str(raw.get((t.sheet, r - 1, col - 1), "")).strip() == "" for r in range(rng[0], data[0]))
 
 
 def question_keys(it: dict, raw: dict) -> list[tuple]:
@@ -246,11 +281,40 @@ def _forms(x: str) -> set[str]:
     m = re.fullmatch(r"(.*[a-z]{3})[a-z]", n)  # "totalb" (a footnote letter glued on) -> "total"
     if m and len(n) > 4:
         out.add(m.group(1))
+    m = re.fullmatch(r"((?:19|20)\d\d)[a-z]", n)  # "2015r" (a revision mark glued on a year) -> "2015"
+    if m:
+        out.add(m.group(1))
     return {f for f in out if f}
 
 
 def _el_eq(gold: str, label: str) -> bool:
     return bool(_forms(gold) & _forms(label)) or norm_text(gold) in _forms(label)
+
+
+def stub_key_cols(t) -> list[int]:
+    """Non-text columns of the row stub that key the rows: the first column or a column left of a text label
+    column, not a label column itself, with a distinct value on every row where it is filled (most rows)."""
+    first_label = min((c for c in t.label_cols if c not in getattr(t, "parent_cols", set())), default=None)
+    out = []
+    for k in range(len(t.headers)):
+        if k in t.label_cols or not (k == 0 or (first_label is not None and k < first_label)):
+            continue
+        vals = [r[k] for r in t.rows if k < len(r) and r[k] not in (None, "")]
+        # distinct where filled (a total row without a rank is no key), filled on most rows
+        if len(vals) >= 2 and 2 * len(vals) >= len(t.rows) and len({str(v) for v in vals}) == len(vals):
+            out.append(k)
+    return out
+
+
+def _key_eq(gold: str, v) -> bool:
+    """A gold label equals a stub key: as text, or as a number ('0.20' = 0.2, '23' = 23)."""
+    if _el_eq(gold, str(v)):
+        return True
+    g = parse_number(gold)
+    try:
+        return g is not None and isinstance(v, (int, float)) and not isinstance(v, bool) and abs(float(g[0]) - float(v)) < 1e-9
+    except (TypeError, ValueError):
+        return False
 
 
 def hitab_paths(t, i: int, j: int, cell: dict) -> tuple[bool, bool, bool]:
@@ -262,24 +326,34 @@ def hitab_paths(t, i: int, j: int, cell: dict) -> tuple[bool, bool, bool]:
     gold_top = [x for x in cell["top_path"] if re.search(r"\w", x)]
     labels = t.labels(i, j) + [str(int(v)) for k, v in enumerate(t.rows[i]) if k != j and isinstance(v, (int, float))
                                and not isinstance(v, bool) and v == int(v) and 1900 <= v <= 2100]
+    # the row's key in a stub column that is not text (HiTab roots rows at 'Rank' 23, 'Number of children' 0,
+    # 'Growth rate' 0.20): the first column, or one left of a label column, with a distinct value on every row
+    keys = [t.rows[i][k] for k in stub_key_cols(t) if k != j and k < len(t.rows[i]) and t.rows[i][k] not in (None, "")]
     # HiTab roots its left tree at the label column's header or at the table's total row ("all
-    # industries" above "manufacturing industries"); a root found there is not a missing parent.
+    # industries" above "manufacturing industries"), also a total-worded row kept as data; a root found
+    # there is not a missing parent.
     roots = [t.headers[c] for c in t.label_cols]
     if t.row_types:
         roots += [L for k, rt in enumerate(t.row_types) if rt != "data" for L in t.labels(k)]
-    row = all(any(_el_eq(g, L) for L in labels) or (n == 0 and len(gold_left) > 1 and any(_el_eq(g, R) for R in roots))
+    # ... also at a total-worded row hedgehog keeps as data ('All businesses' over 'Businesses majority-owned by
+    # visible minorities': percentages of a population, no sum): only the root, every other element is checked
+    roots += [L for k in range(len(t.rows)) for L in t.labels(k) if PS.TOTAL_RX.search(norm_text(L))]
+    row = all(any(_el_eq(g, L) for L in labels) or any(_key_eq(g, v) for v in keys)
+              or (n == 0 and len(gold_left) > 1 and any(_el_eq(g, R) for R in roots))
               for n, g in enumerate(gold_left))
-    leaf = not gold_left or any(_el_eq(gold_left[-1], L) for L in labels)
+    leaf = not gold_left or any(_el_eq(gold_left[-1], L) for L in labels) or any(_key_eq(gold_left[-1], v) for v in keys)
     segs = t.headers[j].split(" / ")
     k = 0
     col = True
     for g in gold_top:
-        while k < len(segs) and not _el_eq(g, segs[k]):
+        # a gold element that itself holds " / " ('unemployed / job vacancies') is a run of segments
+        n = g.count(" / ") + 1
+        while k + n <= len(segs) and not _el_eq(g, " / ".join(segs[k:k + n])):
             k += 1
-        if k == len(segs):
+        if k + n > len(segs):
             col = False
             break
-        k += 1
+        k += n
     return row, leaf, col
 
 

@@ -1,6 +1,6 @@
 {
  "side": "dev",
- "binary": "/home/vukasin/projects/excell-lib-project/hh-totals/target/release/hedgehog",
+ "binary": "/home/vukasin/projects/excell-lib-project/hh-lookup/target/release/hedgehog",
  "tokenizer": "tiktoken o200k_base",
  "F": {
   "summary": {}
@@ -8,19 +8,19 @@
  "S": {
   "hitab": {
    "files": 1303,
-   "cell_role_acc": 0.7413,
-   "table_f1_iou50": 0.9901,
-   "table_f1_iou80": 0.981,
+   "cell_role_acc": 0.7423,
+   "table_f1_iou50": 0.9946,
+   "table_f1_iou80": 0.9908,
    "header_exact": [
-    1241,
+    1251,
     1301
    ]
   },
   "tablesense": {
    "files": 1258,
    "cell_role_acc": null,
-   "table_f1_iou50": 0.6916,
-   "table_f1_iou80": 0.5743,
+   "table_f1_iou50": 0.6917,
+   "table_f1_iou80": 0.5744,
    "header_exact": null
   }
  },
@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3644,
-    "audited": 0,
+    "pass": 3745,
+    "audited": 6,
     "audited_pass": 0,
-    "raw": 95.8,
-    "after_audit": 95.8
+    "raw": 98.4,
+    "after_audit": 98.6
    },
    "mimotable": {
     "items": 273,
@@ -44,100 +44,22 @@
    },
    "realhitbench": {
     "items": 1556,
-    "pass": 1353,
+    "pass": 1428,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 87.0,
-    "after_audit": 87.0
+    "raw": 91.8,
+    "after_audit": 91.8
    },
    "ALL": {
     "items": 5634,
-    "pass": 5266,
-    "audited": 1,
+    "pass": 5442,
+    "audited": 7,
     "audited_pass": 1,
-    "raw": 93.5,
-    "after_audit": 93.5
+    "raw": 96.6,
+    "after_audit": 96.7
    }
   },
   "clusters": {
-   "answer column has no header (col_X)": {
-    "misses": 100,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0172",
-      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(45).xlsx",
-      "atom": "A_005 Project",
-      "evidence": "'A_005 Project' only in ['col_A', 'col_F']"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F185",
-      "file": "tables/productivity-table05.xlsx",
-      "atom": "Q3",
-      "evidence": "'Q3' only in ['col_B']"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F468",
-      "file": "tables/military-table07.xlsx",
-      "atom": "White",
-      "evidence": "'White' only in ['col_C']"
-     }
-    ]
-   },
-   "label path missing parent": {
-    "misses": 81,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "7019381acb0a986c9d99e5da6705c0d4",
-      "file": "clean/nsf/128_62_np16-ib-19308-tab002.xlsx",
-      "atom": "1.6",
-      "evidence": "Table 2!D16: gold ['constant 2012 $', 'total r&d, all performers'] vs labels ['Current $', 'Total R&D, all performers']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "13a842d6215462b864c937e0036e4897",
-      "file": "clean/nsf/128_62_np16-ib-19308-tab002.xlsx",
-      "atom": "2.8",
-      "evidence": "Table 2!C16: gold ['constant 2012 $', 'total r&d, all performers'] vs labels ['Current $', 'Total R&D, all performers']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "c3083c22fb5a0c76a97da0a8477764a8",
-      "file": "clean/nsf/128_62_np16-ib-19308-tab002.xlsx",
-      "atom": "3.3",
-      "evidence": "Table 2!M16: gold ['constant 2012 $', 'total r&d, all performers'] vs labels ['Current $', 'Total R&D, all performers']"
-     }
-    ]
-   },
-   "column header path differs": {
-    "misses": 45,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "79185b6fc938181e16c6d5a7eaba4cdc",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "59.7",
-      "evidence": "original!B18: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "6fab54384d55af4bad53d6082578ec43",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "80.9",
-      "evidence": "original!G18: gold ['number of years since landing or filing a refugee claim', '6'] vs 'Number of years since landing or filing a refugee claim (6)'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "cedff73b04d30db58f3255bcae22a1b7",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "53.1",
-      "evidence": "original!B20: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
-     }
-    ]
-   },
    "question key: cell not in any table (row not in any table)": {
     "misses": 40,
     "examples": [
@@ -190,29 +112,81 @@
      }
     ]
    },
-   "row label differs": {
-    "misses": 23,
+   "column header path differs": {
+    "misses": 28,
     "examples": [
      {
       "dataset": "hitab",
-      "id": "5b3755fd45219986d6d99ea6ae7ddd7c",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "34.6",
-      "evidence": "Sheet1!F28: gold ['23'] vs labels ['New York U.']"
+      "id": "a70a40f9c098b72a8d368ac0536793f3",
+      "file": "clean/statcan/1067.xlsx",
+      "atom": "$20,137",
+      "evidence": "original!F6: gold ['former methodology', 'number of adults', '1'] vs 'New methodology / Number of adults'"
      },
      {
       "dataset": "hitab",
-      "id": "2e9de4a6c61369d4b7b38b60b7cbb4a7",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "810.0",
-      "evidence": "Sheet1!E28: gold ['23'] vs labels ['New York U.']"
+      "id": "696581c2d6fa7917ec11108e1989250d",
+      "file": "clean/statcan/1067.xlsx",
+      "atom": "$18,213",
+      "evidence": "original!B6: gold ['former methodology', 'number of adults', '1'] vs 'Former methodology / Number of adults'"
      },
      {
       "dataset": "hitab",
-      "id": "5abb8c2d4b97ca320c22154aff64b579",
-      "file": "clean/nsf/169_84_tab1.xlsx",
-      "atom": "18.8",
-      "evidence": "Table 1!F4: gold ['1'] vs labels ['United States', 'World']"
+      "id": "79185b6fc938181e16c6d5a7eaba4cdc",
+      "file": "clean/statcan/1220.xlsx",
+      "atom": "59.7",
+      "evidence": "original!B18: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
+     }
+    ]
+   },
+   "answer column has no header (col_X)": {
+    "misses": 25,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0172",
+      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(45).xlsx",
+      "atom": "A_005 Project",
+      "evidence": "'A_005 Project' only in ['col_A', 'col_F']"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F185",
+      "file": "tables/productivity-table05.xlsx",
+      "atom": "Q3",
+      "evidence": "'Q3' only in ['col_B']"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F640",
+      "file": "tables/economy-table51.xlsx",
+      "atom": "A01203",
+      "evidence": "'A01203' only in ['col_C']"
+     }
+    ]
+   },
+   "label path missing parent": {
+    "misses": 14,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "0d207dfe41815dfd777107e8d2d03c58",
+      "file": "clean/statcan/1476.xlsx",
+      "atom": "35.8",
+      "evidence": "original!E17: gold ['percentage', 'worked last year'] vs labels ['Education', 'Worked last year']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c96f6e47af256d95e8eef1a25375227f",
+      "file": "clean/statcan/1476.xlsx",
+      "atom": "36.3",
+      "evidence": "original!B25: gold ['percentage', 'occupation', 'sales and service'] vs labels ['Occupation', 'Sales and service']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "26efe0336e86b2b0c388cc55b52a270b",
+      "file": "clean/statcan/1535.xlsx",
+      "atom": "310.0",
+      "evidence": "original!C13: gold ['women', 'total economic class'] vs labels ['Men', 'Total economic class']"
      }
     ]
    },
@@ -456,7 +430,38 @@
     ]
    }
   },
-  "audited": []
+  "audited": [
+   [
+    "hitab",
+    "9432a4975e4d450ed56a38110043db5d",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "e66f38259fa8d5399fd8eb402e0e2dfc",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "31b4d67c704beda9b45c8fa9132a679e",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "27ab4d16ec1a48dba09e58852471b5b4",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "8b55e5c53878e5770e34ac83b59e8156",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "2103e4eadf3b6e5403f24243b5cee2c5",
+    "gold_wrong"
+   ]
+  ]
  },
  "C": {
   "per": {
@@ -2018,10 +2023,10 @@
      "atoms": 1627,
      "atoms_reachable": 879,
      "decoys": 3254,
-     "decoys_reachable": 376,
+     "decoys_reachable": 375,
      "miss_oracle-limit": 679,
      "loose_only": 451,
-     "single_witness": 508,
+     "single_witness": 509,
      "miss_library": 39,
      "miss_gold/question": 30
     },
@@ -2147,12 +2152,12 @@
    "located": 1627,
    "replayable": 1489,
    "replayable_reachable": 836,
-   "replayable_agree": 461,
-   "replayable_agree_superset": 487,
-   "replayable_agree_subset": 783,
+   "replayable_agree": 462,
+   "replayable_agree_superset": 488,
+   "replayable_agree_subset": 784,
    "single_answer_replayable": 981,
    "single_answer_reachable": 504,
-   "single_answer_agree_exact": 457,
+   "single_answer_agree_exact": 458,
    "not_replayable": 138,
    "not_replayable_reachable": 43
   },
@@ -2173,7 +2178,7 @@
     "atoms": 419,
     "reachable": 251,
     "decoys": 838,
-    "decoys_reachable": 170
+    "decoys_reachable": 169
    },
    "integer <= 10": {
     "atoms": 360,
@@ -2252,16 +2257,15 @@
   }
  },
  "M": {
-  "violations": 1517,
-  "files": 765,
+  "violations": 1515,
+  "files": 764,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
     "M1 total row in data": 10,
     "M5 duplicate headers": 1,
-    "M5 repeated header names": 17,
-    "M3 measures mixed": 26,
-    "M5 number as header": 1
+    "M5 repeated header names": 16,
+    "M3 measures mixed": 26
    },
    "mimotable": {
     "M1 total row in data": 9,
@@ -2286,10 +2290,10 @@
   "kinds": {
    "M5 header missing": 1281,
    "M3 measures mixed": 72,
-   "M5 repeated header names": 66,
+   "M5 repeated header names": 65,
    "M5 duplicate headers": 47,
    "M1 total row in data": 23,
-   "M5 number as header": 15,
+   "M5 number as header": 14,
    "M2 percent mixed": 11,
    "M4 Excel serial as number": 1,
    "M6 '(n)' read as negative": 1
@@ -2320,15 +2324,15 @@
     "hitab clean/statcan/1805.xlsx T1  | 'Oil-producing provinces': 11 percent/rate rows and 4 other rows (values > 100)",
     "hitab clean/statcan/1805.xlsx T1  | 'Central provinces': 11 percent/rate rows and 4 other rows (values > 100)"
    ],
-   "M5 number as header": [
-    "hitab clean/statcan/2797.xlsx T2  | column '5.6'",
-    "mimotable repo/data/chinese/spreadsheet/进销存出入库管理明细表.xlsx T1  | column '1010101'",
-    "mimotable repo/data/english/spreadsheet/GoodsInventoryReport.xlsx T4  | column '170701'"
-   ],
    "M2 percent mixed": [
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '年度合计': 1 percent cells (e.g. Sheet51!B8) and 9 plain (e.g. Sheet51!B2)",
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '1月': 1 percent cells (e.g. Sheet51!C8) and 9 plain (e.g. Sheet51!C2)",
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '2月': 1 percent cells (e.g. Sheet51!D8) and 8 plain (e.g. Sheet51!D2)"
+   ],
+   "M5 number as header": [
+    "mimotable repo/data/chinese/spreadsheet/进销存出入库管理明细表.xlsx T1  | column '1010101'",
+    "mimotable repo/data/english/spreadsheet/GoodsInventoryReport.xlsx T4  | column '170701'",
+    "realhitbench tables/business-table03.xlsx T5  | column '883'"
    ],
    "M4 Excel serial as number": [
     "mimotable repo/data/english/spreadsheet/TaobaoAffiliate-DataAnalysisToolTable-(1).xlsx T4 Recruitment Post Effect Analysis!H2 | 'Release Time': 11 values like 41214"
@@ -2343,21 +2347,21 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 776.5,
-    "median": 695,
-    "p90": 1248,
+    "mean": 773.3,
+    "median": 692,
+    "p90": 1240,
     "max": 2438
    },
    "mimotable": {
     "files": 401,
-    "mean": 966.1,
+    "mean": 966.3,
     "median": 870,
     "p90": 1697,
     "max": 4179
    },
    "realhitbench": {
     "files": 536,
-    "mean": 770.2,
+    "mean": 770.5,
     "median": 611,
     "p90": 1529,
     "max": 3607
@@ -2389,9 +2393,7 @@
     }
    }
   },
-  "regressions": [
-   "hitab"
-  ]
+  "regressions": []
  },
  "library_cases": [
   {
@@ -2449,5 +2451,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 111
+ "seconds": 124
 }
