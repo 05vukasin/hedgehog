@@ -1651,15 +1651,39 @@ fn interval_header_end(grid: &Grid, r: Rect, top: u32, end: u32, owner: &[u8]) -
     end + 1
 }
 
-/// Recover explicit merged parents above repeated child headers, across at most one
-/// blank row. A caption spanning the whole table or unrelated metadata is insufficient.
+/// Recover parents above repeated complete child blocks, across at most one blank
+/// row. Without explicit merges, successive captions must anchor equal-width blocks;
+/// a terminal standalone caption is allowed only over its otherwise unnamed column.
 fn merged_parent_top(grid: &Grid, r: Rect, htop: u32, owner: &[u8]) -> Option<u32> {
     let cells = &grid.sheet.cells;
     for parent_row in (htop.saturating_sub(2)..htop).rev() {
-        let parents: Vec<_> = grid.sheet.merges.iter().filter(|m| {
+        let mut parents: Vec<_> = grid.sheet.merges.iter().copied().filter(|m| {
             m.top == parent_row && m.bottom == parent_row && m.left >= r.left
                 && m.right <= r.right && m.right > m.left
         }).collect();
+        let inferred = parents.is_empty();
+        if inferred {
+            if grid.sheet.merges.iter().any(|m| m.top <= htop && m.bottom >= parent_row
+                && m.left <= r.right && r.left <= m.right) { continue; }
+            let captions: Vec<_> = grid.row_cells(parent_row).iter().map(|&i| &cells[i as usize])
+                .filter(|c| c.col >= r.left && c.col <= r.right
+                    && c.value.as_ref().is_some_and(|v| !display(v).trim().is_empty())).collect();
+            if captions.len() < 2 || captions.first().is_none_or(|c| c.col != r.left.saturating_add(1))
+                || captions.iter().any(|c| c.col == r.left
+                || !matches!(c.value.as_ref(), Some(Value::Text(t)) if !t.trim().is_empty() && !t.trim_end().ends_with(':'))) { continue; }
+            for (i, c) in captions.iter().enumerate() {
+                let right = captions.get(i + 1).map_or(r.right, |next| next.col - 1);
+                if c.col == right {
+                    // This caption owns one otherwise unnamed column, not a short
+                    // or incomplete copy of the repeated child-header block.
+                    if i + 1 != captions.len() || right != r.right
+                        || grid.cell(htop, c.col).and_then(|c| c.value.as_ref()).is_some_and(|v| !display(v).is_empty())
+                    { parents.clear(); break; }
+                    continue;
+                }
+                parents.push(Rect { top: parent_row, bottom: parent_row, left: c.col, right });
+            }
+        }
         if parents.len() < 2 {
             continue;
         }
@@ -1671,9 +1695,12 @@ fn merged_parent_top(grid: &Grid, r: Rect, htop: u32, owner: &[u8]) -> Option<u3
                 return false;
             }
             let own: Vec<String> = (m.left..=m.right).filter_map(|col| {
-                grid.cell(htop, col).and_then(|c| c.value.as_ref()).map(display).filter(|s| !s.is_empty())
+                grid.cell(htop, col).and_then(|c| c.value.as_ref())
+                    .filter(|v| !inferred || matches!(v, Value::Text(_))).map(display).filter(|s| !s.is_empty())
             }).collect();
-            if own.len() != (m.right - m.left + 1) as usize {
+            if own.len() != (m.right - m.left + 1) as usize
+                || (inferred && own.iter().collect::<HashSet<_>>().len() < 2)
+            {
                 return false;
             }
             match &children {
@@ -4256,6 +4283,48 @@ mod tests {
         let grid = crate::grid::Grid::new(&sheet);
         let rect = Rect { top: 0, bottom: 2, left: edge - 2, right: edge };
         assert_eq!(super::interval_header_end(&grid, rect, 0, 1, &[]), 1);
+    }
+
+    #[test]
+    fn unmerged_parent_recovery_requires_complete_aligned_repeated_blocks() {
+        use crate::model::{Rect, Sheet};
+        let t = |s: &str| Some(Value::Text(s.into()));
+        for case in 0..16 {
+            let mut rows = vec![
+                vec![None, t("Contemporary prices"), None, t("2009 prices"), None, t("Share")],
+                vec![],
+                vec![t("Year"), t("All goods"), t("Fuel"), t("All goods"), t("Fuel"), None],
+                vec![Some(Value::Number(1970.0)); 6],
+            ];
+            let mut merges = Vec::new();
+            match case {
+                1 => rows[2][4] = t("Other"),
+                2 => rows[2][4] = None,
+                3 => rows[0][3] = Some(Value::Number(2009.0)),
+                4 => { rows[0][3] = None; rows[0][5] = None; }
+                5 => rows[1] = vec![None, t("Unrelated")],
+                7 => { rows[0][2] = rows[0][3].take(); }
+                8 => rows[2][5] = t("Percent"),
+                9 => { rows[2][2] = t("All goods"); rows[2][4] = t("All goods"); }
+                10 => rows[0][2] = t("Prepared by analyst"),
+                11 => rows[0][0] = t("Prepared by analyst"),
+                12 => merges.push(Rect { top: 0, bottom: 0, left: 1, right: 2 }),
+                13 => rows[0][3] = t("Contemporary prices"),
+                14 => rows[0][5] = None,
+                15 => {
+                    for col in 1..5 { rows[2][col] = Some(Value::Number(2000.0 + ((col - 1) % 2) as f64)); }
+                }
+                _ => {}
+            }
+            let refs: Vec<&[Option<Value>]> = rows.iter().map(Vec::as_slice).collect();
+            let (cells, _) = grid_rows(&refs);
+            let sheet = Sheet { cells, merges, ..Sheet::default() };
+            let grid = crate::grid::Grid::new(&sheet);
+            let mut owner = vec![super::OWN_NONE; sheet.cells.len()];
+            if case == 6 { owner[grid.cell_index(0, 1).unwrap()] = super::OWN_TABLE; }
+            let rect = Rect { top: 2, bottom: 3, left: 0, right: if case == 14 { 4 } else { 5 } };
+            assert_eq!(super::merged_parent_top(&grid, rect, 2, &owner), if case == 0 || case == 14 { Some(0) } else { None }, "case {case}");
+        }
     }
 
     #[test]
