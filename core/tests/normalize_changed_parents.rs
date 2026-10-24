@@ -27,7 +27,7 @@ fn fixture(rules_only: bool, variant: u8) -> Normalized {
     }
     ws.write_number(7, 2, 301.2).unwrap();
     ws.write_number(7, 5, 59.1).unwrap();
-    ws.write_string_with_format(10, 0, "Women", &header).unwrap();
+    ws.write_string_with_format(10, 0, if variant == 6 { "Men" } else { "Women" }, &header).unwrap();
     for (left, label) in [(1, "All-cause (excluding pregnancy)"), (5, "Cancer"), (9, "Digestive diseases")] {
         let right = if variant == 1 && left == 5 { left + 2 } else { left + 3 };
         let label = if variant == 3 && left == 5 { "Cancer (%)" } else if variant == 5 {
@@ -43,8 +43,8 @@ fn fixture(rules_only: bool, variant: u8) -> Normalized {
     if variant == 2 {
         ws.write_string(11, 0, "Reviewed by the statistics department").unwrap();
     }
-    if variant == 4 {
-        ws.write_string_with_format(16, 0, "All adults", &header).unwrap();
+    if variant == 4 || variant == 6 {
+        ws.write_string_with_format(16, 0, if variant == 6 { "Men" } else { "All adults" }, &header).unwrap();
         for (left, label) in [(1, "All-cause"), (5, "Circulatory diseases"), (9, "Digestive diseases")] {
             ws.merge_range(16, left, 16, left + 3, label, &header).unwrap();
         }
@@ -118,9 +118,9 @@ fn changed_parent_metadata_gap_does_not_inherit_children() {
 #[test]
 fn cohorts_returning_to_original_or_unchanged_parents_keep_their_context() {
     for rules_only in [false, true] {
-        for variant in [4, 5] {
+        for variant in [4, 5, 6] {
             let n = fixture(rules_only, variant);
-            let (source_row, cohort) = if variant == 4 { (17, "All adults") } else { (12, "Women") };
+            let (source_row, cohort) = match variant { 4 => (17, "All adults"), 6 => (17, "Men"), _ => (12, "Women") };
             let t = n.tables.iter().find(|t| t.src_rows.contains(&source_row)).unwrap();
             let row = t.src_rows.iter().position(|r| *r == source_row).unwrap();
             assert!(t.columns.iter().any(|c| c.role == ColRole::Group && c.values[row] == Out::Text(cohort.into())));
