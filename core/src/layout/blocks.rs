@@ -851,25 +851,24 @@ mod tests {
 
     #[test]
     fn rebuilt_rows_recheck_year_jumps_without_restoring_short_periods() {
-        let sheet = Sheet {
-            cells: vec![
-                Cell { row: 0, col: 0, value: Some(Value::Number(1900.0)), formula: None },
-                Cell { row: 0, col: 3, value: Some(Value::Number(2020.0)), formula: None },
-                Cell { row: 0, col: 6, value: Some(Value::Text("2010-01".into())), formula: None },
-                Cell { row: 0, col: 9, value: Some(Value::Text("2010-02".into())), formula: None },
-                Cell { row: 0, col: 12, value: Some(Value::Text("2010-03".into())), formula: None },
-            ],
-            ..Sheet::default()
-        };
-        let grid = Grid::new(&sheet);
-        let entries = components(&grid).into_iter().flat_map(|part| {
-            let mut part = make_region(part);
-            drop_stray_years(&sheet, &mut part.rows[0]);
-            part.rows.into_iter().flat_map(|r| r.entries)
-        }).collect();
-        let mut rebuilt = make_region(entries);
-        assert_eq!(flags(&rebuilt.rows[0]), vec![(false, true), (false, true), (false, false), (false, false), (false, false)]);
-        drop_stray_years(&sheet, &mut rebuilt.rows[0]);
-        assert!(rebuilt.rows[0].entries.iter().all(|e| !e.label_num));
+        for first_row in [
+            vec![Value::Number(1900.0), Value::Number(2020.0)],
+            vec![Value::Text("2010-01".into()), Value::Text("2010-02".into()), Value::Text("2010-03".into())],
+        ] {
+            let mut sheet = Sheet::default();
+            for row in 0..3 {
+                for (i, first) in first_row.iter().enumerate() {
+                    let value = if row == 0 { first.clone() } else { Value::Number(row as f64 + 0.5) };
+                    sheet.cells.push(Cell { row, col: i as u32 * 3, value: Some(value), formula: None });
+                }
+            }
+            // Aligned numeric bodies join across two blank spacer columns. Their combined
+            // first row must lose the year jump, while individually demoted text periods stay
+            // demoted even though reconstruction brings three of them together.
+            let out = regions(&Grid::new(&sheet));
+            assert_eq!(out.len(), 1);
+            assert_eq!(out[0].rows[0].entries.len(), first_row.len());
+            assert!(out[0].rows[0].entries.iter().all(|e| !e.label_num));
+        }
     }
 }
