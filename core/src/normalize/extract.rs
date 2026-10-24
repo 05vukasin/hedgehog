@@ -2290,11 +2290,11 @@ fn build_table(
         .collect();
     let body_kind = body_kinds(&rows, cells, body_top);
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
+        body_rows_seen += 1;
         if footer == Some(*row) {
             for &i in idxs { owner[i] = OWN_TABLE; }
             continue;
         }
-        body_rows_seen += 1;
         if Some(*row) == next_caption {
             tr.add(T::NoteRowsMoved, 1);
             for &i in idxs {
