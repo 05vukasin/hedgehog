@@ -158,7 +158,7 @@ pub struct Column {
 
 impl Column {
     /// A column computed from the column on its left (`<name>_period`, `<name>_key`,
-    /// `<name>_parent`): a data column with no source column and no header cells.
+    /// `<name>_parent`, `<name>_parent_2`): a data column with no source column and no header cells.
     pub fn is_derived(&self) -> bool {
         self.role == ColRole::Data && self.source_col.is_none() && self.original_header.is_empty()
     }
@@ -174,12 +174,21 @@ impl Column {
             Some("period")
         } else if base.ends_with("_key") {
             Some("key")
-        } else if base == "parent" || base.ends_with("_parent") {
+        } else if is_parent_name(base) {
             Some("parent")
         } else {
             None
         }
     }
+}
+
+/// `parent`, `<label>_parent` or a further ancestor `<label>_parent_<n>` (n >= 2).
+fn is_parent_name(name: &str) -> bool {
+    let stem = match name.rsplit_once('_') {
+        Some((stem, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && n != "0" && n != "1" => stem,
+        _ => name,
+    };
+    stem == "parent" || stem.ends_with("_parent")
 }
 
 /// Row kind inside a normalized table.
