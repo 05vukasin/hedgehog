@@ -90,7 +90,9 @@ fn copies(sheet: &Sheet, region: &Region) -> Option<Vec<(u32, u32)>> {
                     first.len() >= 2 && first.iter().all(|(l, x)| t.iter().any(|(l2, x2)| *l2 == l + p && x2 == x))
                 }
             });
-            if !stacked && body_fits(sheet, &rows[h + 1..], &ranges, p) {
+            let crossing_body = rows[body0..].iter().flat_map(|r| &r.entries)
+                .any(|e| ranges[..ranges.len() - 1].iter().any(|&(_, cut)| e.left <= cut && e.right > cut));
+            if !stacked && !crossing_body && body_fits(sheet, &rows[h + 1..], &ranges, p) {
                 return Some(ranges);
             }
         }
@@ -140,7 +142,34 @@ fn body_fits(sheet: &Sheet, rows: &[Row], ranges: &[(u32, u32)], p: u32) -> bool
 
 /// The region cut into its side-by-side copies (None: no repeated copies).
 pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<Vec<Region>> {
+    // Explicit full-width titles anchor stacked blocks before their horizontal
+    // copies are considered. Validate every block, so a later comparison or
+    // unrelated table cannot inherit the first block's split.
+    let starts: Vec<_> = region.rows.iter().enumerate().filter_map(|(k, row)| {
+        let mut filled = row.filled();
+        let title = filled.next()?;
+        (filled.next().is_none() && title.kind == Kind::Text
+            && sheet.merges.iter().any(|m| m.top == row.row && m.bottom == row.row
+                && m.left == region.rect.left && m.right == region.rect.right)
+            && title.left == region.rect.left && title.right == region.rect.right).then_some(k)
+    }).collect();
+    if starts.len() >= 2 && starts[0] == 0 {
+        let parts: Vec<_> = starts.iter().enumerate().map(|(i, &start)| {
+            let end = starts.get(i + 1).copied().unwrap_or(region.rows.len());
+            let rows = region.rows[start..end].to_vec();
+            let rect = Rect { top: rows[0].row, bottom: rows.last().unwrap().bottom(), ..region.rect };
+            Region { rect, rows }
+        }).collect();
+        let ranges = copies(sheet, &parts[0])?;
+        if !parts[1..].iter().all(|part| copies(sheet, part).as_ref() == Some(&ranges)) { return None; }
+        let mut out = Vec::new();
+        for part in parts { out.extend(split_repeated_copies(sheet, &part)?); }
+        return Some(out);
+    }
     let ranges = copies(sheet, region)?;
+    let body = region.rows.iter().find(|r| r.n_measure() > 0).map_or(u32::MAX, |r| r.row);
+    let shared_header = |e: &Entry| e.kind == Kind::Text && e.row < body
+        && sheet.merges.iter().any(|m| m.top == e.row && m.bottom == e.bottom && m.left == e.left && m.right == e.right);
     let mut out = Vec::new();
     for (lo, hi) in ranges {
         let piece: Vec<Row> = region
@@ -148,12 +177,13 @@ pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<Ve
             .iter()
             .map(|r| Row {
                 row: r.row,
-                // A title merged across the copies stays with the first one, cut at its edge.
+                // A real merged title intersects each copy; retain its actual
+                // source cell while clipping only the projected occupancy span.
                 entries: r
                     .entries
                     .iter()
-                    .filter(|e| e.left >= lo && e.left <= hi)
-                    .map(|e| Entry { right: e.right.min(hi), ..e.clone() })
+                    .filter(|e| (e.left >= lo && e.left <= hi) || (shared_header(e) && e.left <= hi && e.right >= lo))
+                    .map(|e| Entry { left: e.left.max(lo), right: e.right.min(hi), ..e.clone() })
                     .collect(),
             })
             .filter(|r| !r.entries.is_empty())
@@ -171,4 +201,65 @@ pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<Ve
         out.push(Region { rect, rows: piece });
     }
     (out.len() >= 2).then_some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::cells::Agg;
+    use crate::model::{Cell, Value};
+
+    #[test]
+    fn stacked_copies_require_every_block_and_never_share_body_merges() {
+        for case in 0..6 {
+            let mut sheet = Sheet::default();
+            let mut rows = Vec::new();
+            for block in 0..2u32 {
+                let top = 9 * block;
+                if !(case == 3 && block == 1) { sheet.merges.push(Rect { top, bottom: top, left: 0, right: 3 }); }
+                for offset in 0..8u32 {
+                    let row = top + offset;
+                    let values = match offset {
+                        0 => vec![(0, Value::Text(format!("Metric {block}")))],
+                        1 => vec![(0, Value::Text("Highest".into())), (2, Value::Text("Least".into()))],
+                        2 => vec![(0, Value::Text("State".into())), (1, Value::Text("Value".into())), (2, Value::Text("State".into())), (3, Value::Text(if case == 2 && block == 1 { "Other" } else { "Value" }.into()))],
+                        _ => vec![(0, Value::Text(format!("Left {block} {offset}"))), (1, Value::Number(offset as f64)),
+                            (2, Value::Text(format!("{} {block} {offset}", if case == 1 && block == 1 { "Left" } else { "Right" }))), (3, Value::Number(10.0 + offset as f64))],
+                    };
+                    let mut entries = Vec::new();
+                    for (col, value) in values {
+                        if case >= 4 && block == 1 && offset == 4 && col == 2 { continue; }
+                        let cell = sheet.cells.len();
+                        let kind = if matches!(value, Value::Number(_)) { Kind::Num } else { Kind::Text };
+                        sheet.cells.push(Cell { row, col, value: Some(value), formula: None });
+                        let right = if offset == 0 { 3 } else if case >= 4 && block == 1 && offset == 4 && col == 1 { 2 } else { col };
+                        entries.push(Entry { row, left: col, right, bottom: row, kind, label_num: false, date: false, agg: Agg::None, rule: false, cell: Some(cell) });
+                    }
+                    rows.push(Row { row, entries });
+                }
+            }
+            if case >= 4 {
+                sheet.merges.push(Rect { top: 13, bottom: 13, left: 1, right: 2 });
+                if case == 5 {
+                    let i = sheet.cells.iter().position(|c| c.row == 13 && c.col == 1).unwrap();
+                    sheet.cells[i].value = Some(Value::Text("Merged record label".into()));
+                    rows.iter_mut().find(|r| r.row == 13).unwrap().entries.iter_mut().find(|e| e.left == 1).unwrap().kind = Kind::Text;
+                }
+            }
+            let region = Region { rect: Rect { top: 0, bottom: 16, left: 0, right: 3 }, rows };
+            let split = split_repeated_copies(&sheet, &region);
+            if case == 0 {
+                let parts = split.unwrap();
+                assert_eq!(parts.len(), 4);
+                for part in &parts {
+                    assert_eq!(part.rows.len(), 8);
+                    let title = &part.rows[0].entries[0];
+                    assert_eq!((title.left, title.right), (part.rect.left, part.rect.right));
+                    assert_eq!(sheet.cells[title.cell.unwrap()].col, 0, "actual merged caption anchor retained");
+                }
+                let owned: HashSet<_> = parts.iter().flat_map(|p| &p.rows).flat_map(|r| &r.entries).filter_map(|e| e.cell).collect();
+                assert_eq!(owned.len(), sheet.cells.len(), "no metadata, title or record disappears");
+            } else { assert!(split.is_none(), "case {case}"); }
+        }
+    }
 }
