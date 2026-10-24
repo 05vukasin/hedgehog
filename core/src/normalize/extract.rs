@@ -1970,7 +1970,10 @@ fn build_table(
     let mut outline: Vec<OutlineRow> = Vec::new();
     let outline_row = |idxs: &[usize], out: Option<usize>, group: bool| -> Option<OutlineRow> {
         let i = idxs.iter().copied().find(|&i| Some(cells[i].col) == outline_col)?;
-        let Some(Value::Text(t)) = &cells[i].value else { return None };
+        // A label split across M/F/T rows is one reconstructed label. Fragment whitespace
+        // (Balanço Social A349:A351) is not indentation of a child record.
+        let value = sex.as_ref().and_then(|sb| sb.labels.get(&(cells[i].row, cells[i].col))).or(cells[i].value.as_ref());
+        let Some(Value::Text(t)) = value else { return None };
         let label = t.trim();
         // A missing-value token (`no data`, `n/a`) in the label column is no label.
         if label.is_empty() || crate::values::table_missing_token(label).is_some() {
