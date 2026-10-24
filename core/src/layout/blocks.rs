@@ -501,6 +501,18 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     ov as f32 >= GAP_MIN_ROW_OVERLAP * hl.max(hr) as f32 || inside
 }
 
+/// Connected components, then gap-tolerant merging into regions.
+pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
+    let mut out = regions_inner(grid);
+    for r in &mut out {
+        for row in &mut r.rows {
+            mark_rules(grid.sheet, row);
+            drop_stray_years(grid.sheet, row);
+        }
+    }
+    out
+}
+
 /// Whole numbers in the year range that do not read as a row of years (B33): a header of years
 /// counts up or repeats in small steps (`2022 2023 2024`, `2000 2005 2010`, `2023 2023 2024`), while
 /// a data row with values that happen to lie in 1900–2100 (`Riverbend 2 | 1948 | 2043 | 338`) jumps.
@@ -565,8 +577,7 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
     }
 }
 
-/// Connected components, then gap-tolerant merging into regions.
-pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
+fn regions_inner(grid: &Grid) -> Vec<Region> {
     let mut blocks: Vec<Region> = components(grid).into_iter().map(make_region).collect();
     // Ruling lines and stray years before the blocks' profiles decide the gap merges.
     for b in &mut blocks {
@@ -711,16 +722,7 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
             groups.entry(root).or_default().extend(b.rows.into_iter().flat_map(|r| r.entries));
         }
     }
-    out.extend(groups.into_values().map(|entries| {
-        let mut region = make_region(entries);
-        // Unchanged component rows were classified before profiling. Only rebuilt rows can
-        // combine rules or year runs from different components and need another pass.
-        for row in &mut region.rows {
-            mark_rules(grid.sheet, row);
-            drop_stray_years(grid.sheet, row);
-        }
-        region
-    }));
+    out.extend(groups.into_values().map(make_region));
     out.sort_by_key(|r| (r.rect.top, r.rect.left));
     out
 }
