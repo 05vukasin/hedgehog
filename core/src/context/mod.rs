@@ -282,12 +282,17 @@ impl<'g> Context<'g> {
         let mut col_keys: Vec<(u32, u32)> = Vec::new(); // (block, col)
         let mut col_aggs: Vec<ColAgg> = Vec::new();
         let mut col_index: HashMap<(u32, u32), u32> = HashMap::default();
-        let mut seen_values: HashSet<(u32, u32, ValueKey)> = HashSet::default();
+        let mut seen_values: HashSet<(u32, ValueKey)> = HashSet::default();
         let mut last_col: Option<((u32, u32), u32)> = None;
         for &i in &by_col {
             let i = i as usize;
             let cell = &cells[i];
             let (k, comp) = (kinds[i], comp_of[i]);
+            // Column order is grouped: earlier columns' distinct values are no longer needed.
+            // Keep the component in the key because components may interleave within a column.
+            if last_col.is_some_and(|((_, col), _)| col != cell.col) {
+                seen_values.clear();
+            }
             let key = (comp, cell.col);
             let slot = match last_col {
                 Some((kk, slot)) if kk == key => slot,
@@ -306,7 +311,7 @@ impl<'g> Context<'g> {
             ca.n += 1;
             ca.kinds[k as usize] += 1;
             ca.numeric += k.is_numeric() as u32;
-            if seen_values.insert((comp, cell.col, value_key(cell.value.as_ref(), cell.formula.as_deref()))) {
+            if seen_values.insert((comp, value_key(cell.value.as_ref(), cell.formula.as_deref()))) {
                 ca.distinct += 1;
             }
             if let Some(v) = numeric_value(cell) {
