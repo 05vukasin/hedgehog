@@ -57,9 +57,11 @@ fn states(ws: &mut rust_xlsxwriter::Worksheet, two_level: bool) {
             ws.write_string(2, c + 1, "All R&D expenditures").unwrap();
             ws.write_string(2, c + 2, "Intramural performers").unwrap();
             ws.write_string(2, c + 4, "Extramural performers").unwrap();
+            // HiTab 208_99: 'State' on the upper header row, the lower one starts at the amounts
+            ws.write_string(2, c, "State").unwrap();
         }
         let one = ["State", "All R&D", "Intramural", "Intramural %", "Extramural", "Extramural %"];
-        let two = ["State", "", "Amount", "Percent", "Amount", "Percent"];
+        let two = ["", "", "Amount", "Percent", "Amount", "Percent"];
         for (k, s) in (if two_level { two } else { one }).iter().enumerate() {
             if !s.is_empty() {
                 ws.write_string(h, c + k as u16, *s).unwrap();

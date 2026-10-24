@@ -80,7 +80,9 @@ fn copies(sheet: &Sheet, region: &Region) -> Option<Vec<(u32, u32)>> {
                 .collect();
             // A header row again further down: stacked tables, each side by side; the stacked
             // split comes first (left as one region here).
-            let stacked = rows[h + 1..].iter().any(|r| {
+            // (rows of the header under row h, before the first row of numbers, do not count)
+            let body0 = rows[h + 1..].iter().position(|r| r.n_measure() > 0).map_or(rows.len(), |i| h + 1 + i);
+            let stacked = rows[body0..].iter().any(|r| {
                 let n = r.n();
                 n >= 4 && r.filled().all(|e| e.kind == Kind::Text) && n == r.n_text() && {
                     let t: Vec<(u32, String)> = r.filled().map(|e| (e.left, norm(sheet, e))).collect();
