@@ -5,17 +5,17 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (master 134d648, 2026-10-24)
+## Current state (S12/S13 batch, implementation 865faa1, 2026-10-24)
 
 | Measure | Value | Target |
 |---|---|---|
 | F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
-| L lookups | 5,469 / 5,634 = 97.1 % raw, 97.2 % after audit (≈ 156 misses) | 100 % after audit |
+| L lookups | 5,487 / 5,634 = 97.4 % raw, 97.5 % after audit (138 misses) | 100 % after audit |
 | C calculations | 1,198 / 2,264 proven; library misses 42; oracle-limit ≈ 988; gold/question 2 unreviewed | library misses 0 |
-| M misleading-info violations | 1,589 in 767 files (most: columns without header text incl. ≈ 80 new col_<letter> value-block tables) | 0 (or documented policy) |
-| K catalog tokens / file | hitab 773, mimotable 972, realhitbench 770 | no growth |
-| S HiTab table F1@0.8 | ≈ 99.1 % | — |
+| M misleading-info violations | 1,560 in 763 files (1,358 are columns without header text) | 0 (or documented policy) |
+| K catalog tokens / file | hitab 773, mimotable 972, realhitbench 771 | no growth |
+| S HiTab table F1@0.8 | 98.9 % (unchanged reproduced baseline; old ledger was stale) | — |
 | Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
 
 ## Done
@@ -34,21 +34,36 @@ split unless noted. Update this file whenever a stage starts, merges or is dropp
 | S9b | Remaining lookups; F-mark annotation rule; unit/lone-label sections | lookup → 4fd2909 | L 5,266 → 5,442 (96.6 %) |
 | S10 | Cell placement: value blocks from Notes → tables, X-flag columns kept, 'N.B.'/'avg 00', checker blind spots closed (flag_lost, value_block_in_notes) | placement → 2e773e1 | tablesense misplaced 98,733 → 2,512, golden 35,850 → 163, unplaced → 0 everywhere |
 | S11 | Side-by-side copies of one list split (values were in other states' rows), header labels over numbers, bold sections, scorer fixes | round3 → 7e2cb73 (+134d648 scorer fix) | L 97.2 % after audit; C library family 60 → 42; per-item no regression vs master |
+| S12 (bounded slice) | Merged parent headers over repeated child labels, with blank-row and ownership guards | codex/accuracy-batch → cda69df | Region/year paths restored; combined batch M 1,589 → 1,560 |
+| S13 (bounded slice) | Shared numeric captions, including unmerged Time sections inferred from repeated merged child titles; raw-source boundary guards | codex/accuracy-batch → 865faa1 | Combined batch L 5,469 → 5,487; real science cases 3/10 → 8/10 questions, 28/33 → 33/33 atoms |
+
+## Completed batch validation
+
+See [the batch evidence](accuracy-batch-2026-10-24.md) and [the scoreboard](../eval/accuracy/RESULTS.md).
+Final release SHA-256 prefix: `b147b92202c1`. Baseline/audit/split/scorer definitions unchanged.
+
+- 505 release tests passed, 17 ignored; all quick checks passed; Clippy with warnings denied.
+- 50 golden outputs identical; both analyzer benchmarks passed; full fidelity passed across 4,055 files.
+- Per-item comparison: 18 L misses resolved, no new L/C misses; 29 M violations removed, none added.
+  Public DEV metrics did not decline; no per-file fidelity regression.
+- Node: 21 tests passed and TypeScript checks passed.
+- K: RealHiTBench mean 769.8 → 770.7 tokens (+0.12%); other corpus means unchanged.
+  Source-specific catalog growth is justified by recovered labels/context in the batch report.
+- Both speed experiments rejected: no repeatable improvement. No speed optimization shipped.
+- Heavy jobs serialized, aggregate cap 4G, Cargo jobs 2, memory watchdog active. No LLM or holdout scoring.
 
 ## Running
 
-- S12 (bounded batch): real lost-header recovery; branch `codex/s12-headers`, worktree `../hh-s12`.
-- S13 (bounded batch): stacked captions / lookup label paths outside S12; branch `codex/s13-lookups`, worktree `../hh-s13`.
-- Lead: reproduce dev baseline, profile speed, integrate verified fixes. Heavy jobs serialized
-  (`HH_SLOTS=1`, aggregate slice cap 4G, Cargo jobs 2); no holdout or LLM API calls.
+None. The bounded batch is complete; remaining S12/S13 work is listed below.
 
 ## Next (in order)
 
-1. S12 — columns without header text (M ≈ 1,589, mostly "header missing"): policy for source columns that
+1. S12 remainder — columns without header text (1,358 of 1,560 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
-2. S13 — remaining L misses (≈ 156: stacked-block captions "Time = 75 min" 40, not grounded 27, header path 24,
-   col_X 13, parent 12 incl. 1535 mid-table header, cell in no table 18) and C library misses (42).
+2. S13 remainder — 138 audited L misses: largest raw clusters are question keys outside tables (28),
+   numbers not grounded by labels (27), header paths (24), col_X (13), and missing parent paths (12).
+   Numeric-only question ranking still needs work. C library misses remain 42.
 3. S14 — misplaced long tail (≈ 3,200 cells: header rows sent to Notes, data rows read as headers, side-by-side +
    stacked tables like manufacture-table13 / health-table01, forms like en-0549); document what stays.
 4. Review the 2 new gold/question candidates (a04c5358, 55e60981) with source evidence.

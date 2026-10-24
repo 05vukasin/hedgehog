@@ -1,6 +1,6 @@
 {
  "side": "dev",
- "binary": "/home/vukasin/projects/excell-lib-project/hh-round3/target/release/hedgehog",
+ "binary": "/home/vukasin/projects/excell-lib-project/hedgehog/target-master/release/hedgehog",
  "tokenizer": "tiktoken o200k_base",
  "F": {
   "summary": {}
@@ -44,24 +44,24 @@
    },
    "realhitbench": {
     "items": 1556,
-    "pass": 1448,
+    "pass": 1466,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 93.1,
-    "after_audit": 93.1
+    "raw": 94.2,
+    "after_audit": 94.2
    },
    "ALL": {
     "items": 5634,
-    "pass": 5469,
+    "pass": 5487,
     "audited": 10,
     "audited_pass": 1,
-    "raw": 97.1,
-    "after_audit": 97.2
+    "raw": 97.4,
+    "after_audit": 97.5
    }
   },
   "clusters": {
    "question key: cell not in any table (row not in any table)": {
-    "misses": 40,
+    "misses": 28,
     "examples": [
      {
       "dataset": "mimotable",
@@ -190,32 +190,6 @@
      }
     ]
    },
-   "cell not in any table (row not in any table)": {
-    "misses": 9,
-    "examples": [
-     {
-      "dataset": "realhitbench",
-      "id": "F546",
-      "file": "tables/employment-table30.xlsx",
-      "atom": "North East",
-      "evidence": "Avg Emp - Creative!B1='North East'"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F549",
-      "file": "tables/business-table06.xlsx",
-      "atom": "England",
-      "evidence": "Businesses - Creative!T12='England'"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F552",
-      "file": "tables/business-table07.xlsx",
-      "atom": "London",
-      "evidence": "Businesses - Sports!N12='London'"
-     }
-    ]
-   },
    "cell not in any table (column not in the row's table)": {
     "misses": 7,
     "examples": [
@@ -242,8 +216,34 @@
      }
     ]
    },
+   "cell not in any table (row not in any table)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "realhitbench",
+      "id": "F961",
+      "file": "tables/manufacture-table12.xlsx",
+      "atom": "04",
+      "evidence": "Sheet1!G6='04'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F966",
+      "file": "tables/manufacture-table12.xlsx",
+      "atom": "04",
+      "evidence": "Sheet1!G6='04'"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F987",
+      "file": "tables/economy-table68.xlsx",
+      "atom": "Canada",
+      "evidence": "Sheet1!B8='Canada'"
+     }
+    ]
+   },
    "question key: only columns told apart by (2), (3) carry it": {
-    "misses": 6,
+    "misses": 4,
     "examples": [
      {
       "dataset": "mimotable",
@@ -254,17 +254,17 @@
      },
      {
       "dataset": "realhitbench",
-      "id": "F443",
-      "file": "tables/society-table01.xlsx",
-      "atom": "2007/08",
-      "evidence": "'2007/08' names 3 columns of T1: ['2007/08', '2007/08 (2)', '2007/08 (3)'] (a row of values taken as the header, or lost parents)"
+      "id": "F844",
+      "file": "tables/labor-table16.xlsx",
+      "atom": "12.15pm",
+      "evidence": "'12.15pm' names 3 columns of T3: ['12.15pm', '12.15pm (2)', '12.15pm (3)'] (a row of values taken as the header, or lost parents)"
      },
      {
       "dataset": "realhitbench",
-      "id": "F444",
-      "file": "tables/society-table01.xlsx",
-      "atom": "2005/06",
-      "evidence": "'2005/06' names 3 columns of T1: ['2005/06', '2005/06 (2)', '2005/06 (3)'] (a row of values taken as the header, or lost parents)"
+      "id": "F2261",
+      "file": "tables/economy-table116.xlsx",
+      "atom": "Time period",
+      "evidence": "'Time period' names 3 columns of T1: ['Time period', 'Time period (2)', 'Time period (3)'] (a row of values taken as the header, or lost parents)"
      }
     ]
    },
@@ -1562,7 +1562,7 @@
       "id": "F554",
       "file": "tables/business-table07.xlsx",
       "atom": "3903.61",
-      "evidence": "question: Based on the growth trend from 2005 to 2009, predict the number of businesses in “Sports Activities” for 2011 in the “So (file has: duplicate headers)"
+      "evidence": "question: Based on the growth trend from 2005 to 2009, predict the number of businesses in “Sports Activities” for 2011 in the “So"
      },
      {
       "dataset": "realhitbench",
@@ -2280,8 +2280,8 @@
   }
  },
  "M": {
-  "violations": 1589,
-  "files": 767,
+  "violations": 1560,
+  "files": 763,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
@@ -2305,7 +2305,7 @@
     "M3 measures mixed": 17,
     "M1 total row in data": 4,
     "M5 number as header": 12,
-    "M5 duplicate headers": 45,
+    "M5 duplicate headers": 16,
     "M5 repeated header names": 40
    }
   },
@@ -2313,8 +2313,8 @@
    "M5 header missing": 1358,
    "M3 measures mixed": 72,
    "M5 repeated header names": 63,
-   "M5 duplicate headers": 46,
    "M1 total row in data": 23,
+   "M5 duplicate headers": 17,
    "M5 number as header": 14,
    "M2 percent mixed": 11,
    "M4 Excel serial as number": 1,
@@ -2353,8 +2353,8 @@
    ],
    "M5 duplicate headers": [
     "mimotable repo/data/english/spreadsheet/BankDepositInterestRates.xlsx T4  | column '按一年以内定期整存整取同档次利率打六折执行 (2)': the header above ('Execute at 60% of the same tier interest rate for time deposits within one year') is not in any column name",
-    "realhitbench tables/business-table06.xlsx T1  | column '2005 (2)': the source names these columns above the header ('East Midlands', 'East of England', 'England')",
-    "realhitbench tables/business-table06.xlsx T1  | column '2005 (3)': the source names these columns above the header ('East Midlands', 'East of England', 'England')"
+    "realhitbench tables/environment-table03.xlsx T2  | column 'Statistical significance (p-value) (2)': the source names these columns above the header ('ET', 'PAR', 'Sal')",
+    "realhitbench tables/environment-table03.xlsx T2  | column 'Statistical significance (p-value) (3)': the source names these columns above the header ('ET', 'PAR', 'Sal')"
    ],
    "M4 Excel serial as number": [
     "mimotable repo/data/english/spreadsheet/TaobaoAffiliate-DataAnalysisToolTable-(1).xlsx T4 Recruitment Post Effect Analysis!H2 | 'Release Time': 11 values like 41214"
@@ -2383,7 +2383,7 @@
    },
    "realhitbench": {
     "files": 536,
-    "mean": 769.8,
+    "mean": 770.7,
     "median": 613,
     "p90": 1529,
     "max": 3607
@@ -2473,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 108
+ "seconds": 107
 }
