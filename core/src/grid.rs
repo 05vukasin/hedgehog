@@ -28,8 +28,6 @@ pub struct Grid<'a> {
     /// Lowercase words of the sheet's text cells and whether they read as English, built on first
     /// use: whether a hyphenated header word is written joined elsewhere, and how to read it.
     words: OnceLock<Vocab>,
-    /// Shared by the rule layout and model context, which run concurrently.
-    pub(crate) components: OnceLock<crate::context::Labeling>,
 }
 
 /// The words of a sheet's text cells ([`Grid::has_word`], [`Grid::is_english`]).
@@ -96,7 +94,6 @@ impl<'a> Grid<'a> {
             totals: OnceLock::new(),
             deps: OnceLock::new(),
             words: OnceLock::new(),
-            components: OnceLock::new(),
         }
     }
 

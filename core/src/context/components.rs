@@ -34,21 +34,11 @@ pub struct Labeling {
 /// Connected blocks of the sheet, sorted top-to-bottom then left-to-right.
 /// See [`Component`] for the connectivity rule. O(cells + merge perimeters).
 pub fn components(grid: &Grid) -> Vec<Component> {
-    shared_label(grid).components.clone()
+    label(grid).components
 }
 
 /// Like [`components`], also returning which component each cell belongs to.
 pub fn label(grid: &Grid) -> Labeling {
-    shared_label(grid).clone()
-}
-
-/// Compute connectivity once, including when layout and model context request it
-/// concurrently. The public owned APIs retain their independent-value contract.
-pub(super) fn shared_label<'a>(grid: &'a Grid<'_>) -> &'a Labeling {
-    grid.components.get_or_init(|| label_uncached(grid))
-}
-
-fn label_uncached(grid: &Grid) -> Labeling {
     let cells = &grid.sheet.cells;
     let merges = &grid.sheet.merges;
     let n = cells.len();
@@ -158,38 +148,6 @@ fn label_uncached(grid: &Grid) -> Labeling {
     let mut slots: Vec<Option<Component>> = comps.into_iter().map(Some).collect();
     let components = order.iter().map(|&i| slots[i].take().unwrap()).collect();
     Labeling { components, cell_component }
-}
-
-#[cfg(test)]
-mod cache_tests {
-    use super::*;
-    use crate::model::{Cell, Sheet, Value};
-
-    #[test]
-    fn cached_labeling_matches_uncached_and_is_shared_across_threads() {
-        let sheet = Sheet {
-            cells: vec![
-                Cell { row: 0, col: 0, value: Some(Value::Text("Header".into())), formula: None },
-                Cell { row: 1, col: 1, value: Some(Value::Number(12.0)), formula: None },
-                Cell { row: 4, col: 5, value: Some(Value::Number(13.0)), formula: None },
-            ],
-            merges: vec![Rect { top: 0, bottom: 0, left: 0, right: 2 }],
-            ..Sheet::default()
-        };
-        let grid = Grid::new(&sheet);
-        let expected = label_uncached(&grid);
-        std::thread::scope(|scope| {
-            let a = scope.spawn(|| shared_label(&grid));
-            let b = scope.spawn(|| shared_label(&grid));
-            let (a, b) = (a.join().unwrap(), b.join().unwrap());
-            assert!(std::ptr::eq(a, b));
-            assert_eq!(a.components, expected.components);
-            assert_eq!(a.cell_component, expected.cell_component);
-        });
-        let mut owned = label(&grid);
-        owned.components.clear();
-        assert_eq!(components(&grid), expected.components);
-    }
 }
 
 pub(crate) const NEIGHBOURS: [(i64, i64); 8] =

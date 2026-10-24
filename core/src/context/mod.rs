@@ -143,7 +143,7 @@ const _: () = assert!(FEATURES.len() == N);
 pub struct Context<'g> {
     grid: &'g Grid<'g>,
     kinds: Vec<Kind>,
-    comp_of: &'g [u32],
+    comp_of: Vec<u32>,
     /// Per block: bounding box and cell count.
     comps: Vec<(crate::model::Rect, u32)>,
     sheet_row_slot: Vec<u32>,
@@ -173,10 +173,11 @@ impl<'g> Context<'g> {
         let cells = &sheet.cells;
         let n = cells.len();
         let kinds: Vec<Kind> = cells.iter().map(kind_of).collect();
-        let lab = components::shared_label(grid);
-        let comp_of = lab.cell_component.as_slice();
+        let lab = label(grid);
+        let comp_of = lab.cell_component;
         let comps: Vec<(crate::model::Rect, u32)> =
             lab.components.iter().map(|c| (c.rect, c.cells.len() as u32)).collect();
+        drop(lab.components);
 
         // ---- aggregates (first pass) ----
         // Every cell gets a slot for its sheet row, its (block, row) and its (block, column), so the
