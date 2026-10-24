@@ -5,16 +5,16 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (iteration 2, implementation bec3146, 2026-10-24)
+## Current state (iteration 3, implementation 0e86da4, 2026-10-24)
 
 | Measure | Value | Target |
 |---|---|---|
 | F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
-| L lookups | 5,491 / 5,634 = 97.5 % raw, 97.6 % after audit (134 misses) | 100 % after audit |
+| L lookups | 5,493 / 5,634 = 97.5 % raw, 97.7 % after audit (132 misses) | 100 % after audit |
 | C calculations | 1,198 / 2,264 proven; library misses 42; oracle-limit ≈ 988; gold/question 2 unreviewed | library misses 0 |
 | M misleading-info violations | 1,560 in 763 files (1,358 are columns without header text) | 0 (or documented policy) |
-| K catalog tokens / file | hitab 773, mimotable 972, realhitbench 771 | no growth |
+| K catalog tokens / file | hitab 774, mimotable 972, realhitbench 771 | no growth |
 | S HiTab table F1@0.8 | 98.9 % (unchanged reproduced baseline; old ledger was stale) | — |
 | Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
 
@@ -70,38 +70,43 @@ final release `541500dbeb36`, alignment implementation `bec3146`.
 - Final exact per-item/public/fidelity verification passed. Scorer/audit/split/fidelity
   baselines unchanged. No LLM calls, holdout scoring, remote push or installed CLI update.
 
+## Iteration 3 accepted
+
+See [iteration evidence](iteration-3.md). Baseline `225b9da` / release `541500dbeb36`;
+final implementation `0e86da4`, release `21ab0c6aed37`.
+
+- Repeated cohort blocks keep their own parent headers and row context, including
+  numbers stored as text. Two L misses resolved, no new L/C misses or M violations.
+- Raw strict HiTab col_exact 3,597 → 3,595 is retained: exactly two gold paths omit
+  the source's "excluding pregnancy" qualifier. Independent source review and a
+  separate artifact guard prove those cases. Row exact/lenient linking each +2.
+- Only that workbook's catalog changes; HiTab mean tokens +0.026% for recovered
+  cohort/header context. Evaluators, audits, splits and baselines are unchanged.
+- Scoped distinct storage and the minimal capacity guard preserve exact features,
+  exports and MCP responses. Skewed-column Context median 164.04 → 81.10 ms;
+  general end-to-end gains are not claimed. Wide workload direction is favorable;
+  NYISO timing remains neutral/inconclusive across six- and twelve-pair runs.
+- 524 release tests pass (17 ignored), quick, Clippy, 50 goldens, both structure
+  benchmarks, 4,055-file fidelity, Node 21 tests/TypeScript, fresh DEV score and
+  reviewed per-item/public/fidelity comparison all pass. Real bitwise equivalence:
+  41,358 segments/eight sheets, zero differences or skips.
+- Device shutdown interrupted only an optional MCP timing extension; its incomplete
+  result is excluded. All required correctness and normalization evidence is saved.
+- Local integration only; no remote push or installed CLI replacement.
+
 ## Running
 
-Iteration 2 is integrated locally at `225b9da`; no remote push or CLI installation.
-Iteration 3 baseline is release `541500dbeb36` (saved outside the repo).
-
-- Lead: main checkout, `codex/iteration-3`; source/review phase active, no heavy jobs.
-- Accuracy: `codex/accuracy-iter3`, existing `../hh-accuracy-iter2` worktree. HiTab DEV
-  `clean/statcan/1535.xlsx`: repeated Women cohort and changed disease parent headers
-  must preserve both cohort and source-specific parent/child header paths.
-- Performance: `codex/performance-iter3`, existing `../hh-performance-iter2` worktree.
-  Row-feature mean fusion `569269f` passed bitwise equivalence across 41,358 segments
-  and exact exports/responses, but showed no timing gain in six alternating pairs.
-  It is rejected and removed. Replacement `4c826db` reuses the existing distinct-value set
-  per physical column; source review and bitwise equivalence pass, timing remains pending.
-- Initial generated/quick checks passed, but actual DEV checks stayed 2/4 because source
-  numbers are stored as text. Regression `e906011` reproduced this; parser fix `429de74`
-  now passes all 4/4 real workbook checks and preserves the changed Cancer header.
-- 32 focused tests pass; real bitwise equivalence covers 41,358 segments across eight
-  sheets with zero differences/skips. Candidate release build and timings are pending;
-  full corpus/score gates have not yet been rerun for this iteration.
-- Independent reviewer checks source geometry, negative cases and minimality.
-- Latest resources: 11 GiB available RAM, negligible swap, 118 GiB free disk; btrfs
-  metadata 17.31/18.50 GiB. Check again before expanding the swarm.
-- Finish all source/review workers before serialized heavy tests. Reuse warm targets,
-  one heavy slot, aggregate 4G cap, Cargo jobs 2 and memory watchdog.
+Iteration 4 is queued from accepted iteration 3. Next paired source/review phase:
+MiMoTable mixed first-row headers/data accuracy case and critical-path performance
+investigation. Check RAM/swap/disk/btrfs metadata and live slots before delegation;
+finish every source/review worker before serial heavy testing.
 
 ## Next (in order)
 
 1. S12 remainder — columns without header text (1,358 of 1,560 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
-2. S13 remainder — 134 audited L misses: largest raw clusters are question keys outside tables (28),
+2. S13 remainder — 132 audited L misses: largest raw clusters are question keys outside tables (28),
    numbers not grounded by labels (27), header paths (24), col_X (13), and missing parent paths (12).
    Numeric-only question ranking still needs work. C library misses remain 42.
 3. S14 — misplaced long tail (≈ 3,200 cells: header rows sent to Notes, data rows read as headers, side-by-side +

@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3756,
+    "pass": 3758,
     "audited": 9,
     "audited_pass": 0,
-    "raw": 98.7,
-    "after_audit": 98.9
+    "raw": 98.8,
+    "after_audit": 99.0
    },
    "mimotable": {
     "items": 273,
@@ -52,11 +52,11 @@
    },
    "ALL": {
     "items": 5634,
-    "pass": 5491,
+    "pass": 5493,
     "audited": 10,
     "audited_pass": 1,
     "raw": 97.5,
-    "after_audit": 97.6
+    "after_audit": 97.7
    }
   },
   "clusters": {
@@ -164,32 +164,6 @@
      }
     ]
    },
-   "label path missing parent": {
-    "misses": 8,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "0d207dfe41815dfd777107e8d2d03c58",
-      "file": "clean/statcan/1476.xlsx",
-      "atom": "35.8",
-      "evidence": "original!E17: gold ['percentage', 'worked last year'] vs labels ['Education', 'Worked last year']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "c96f6e47af256d95e8eef1a25375227f",
-      "file": "clean/statcan/1476.xlsx",
-      "atom": "36.3",
-      "evidence": "original!B25: gold ['percentage', 'occupation', 'sales and service'] vs labels ['Occupation', 'Sales and service']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "26efe0336e86b2b0c388cc55b52a270b",
-      "file": "clean/statcan/1535.xlsx",
-      "atom": "310.0",
-      "evidence": "original!C13: gold ['women', 'total economic class'] vs labels ['Men', 'Total economic class']"
-     }
-    ]
-   },
    "cell not in any table (column not in the row's table)": {
     "misses": 7,
     "examples": [
@@ -213,6 +187,32 @@
       "file": "clean/statcan/1912.xlsx",
       "atom": "79.0",
       "evidence": "original!B28='79.0'"
+     }
+    ]
+   },
+   "label path missing parent": {
+    "misses": 6,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "0d207dfe41815dfd777107e8d2d03c58",
+      "file": "clean/statcan/1476.xlsx",
+      "atom": "35.8",
+      "evidence": "original!E17: gold ['percentage', 'worked last year'] vs labels ['Education', 'Worked last year']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c96f6e47af256d95e8eef1a25375227f",
+      "file": "clean/statcan/1476.xlsx",
+      "atom": "36.3",
+      "evidence": "original!B25: gold ['percentage', 'occupation', 'sales and service'] vs labels ['Occupation', 'Sales and service']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "2b9048b12deaa6b7dbc977c16d1e953b",
+      "file": "clean/statcan/2703.xlsx",
+      "atom": "26.4",
+      "evidence": "original!B10: gold ['bivariate model', 'cyberstalked but not cyberbullied'] vs labels ['Cyberstalked but not cyberbullied']"
      }
     ]
    },
@@ -2369,7 +2369,7 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 773.4,
+    "mean": 773.6,
     "median": 692,
     "p90": 1244,
     "max": 2438

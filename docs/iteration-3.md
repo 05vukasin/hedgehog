@@ -1,8 +1,9 @@
 # Iteration 3: repeated cohort headers and scoped distinct values
 
 Baseline: local master `225b9da`, release `541500dbeb36`. Candidate source contains
-cohort fixes through `429de74`, distinct-value patch `4c826db`, and parallel fixture
-isolation `0ebe8f6`. All workers completed source/review work before heavy testing.
+cohort fixes through `429de74`, distinct-value patch `4c826db`, capacity guard
+`0e86da4`, and parallel fixture isolation `0ebe8f6`. Final release: `21ab0c6aed37`.
+All workers completed source/review work before heavy testing.
 
 ## Source-backed accuracy
 
@@ -71,12 +72,66 @@ Peak process memory is workload dependent despite the smaller scoped set.
 ## Validation status
 
 All focused tests, actual source checks and bitwise comparisons pass. The full
-release/core gate, Node/TypeScript checks, fresh DEV score and exact per-item/public/
-fidelity comparison are running. This iteration is not integrated or accepted yet.
+core gate passes after the capacity guard: 524 release tests (17 ignored), Clippy,
+50 golden outputs, both
+structure benchmarks and fresh 4,055-file fidelity. Node's 21 tests and TypeScript
+checks pass. Fresh DEV scoring gives L 5,493/5,634 (97.7% audited, 132 misses),
+C 1,198/2,264 and M 1,560 in 763 files.
+
+The strict public comparison reports HiTab exact column matches 3,597 → 3,595.
+Independent source review identifies exactly two annotation omissions: DEV items
+`26efe0336e86b2b0c388cc55b52a270b` (C13=310) and
+`22c640ecce3db7cedf7b98d38a297852` (C12=668). Their gold path is All-cause / ASHR;
+the source explicitly says All-cause (excluding pregnancy) in merged B11:E11,
+with ASHR at C4. The candidate preserves that qualifier and correct Women context;
+values and lenient column matches remain correct. The raw strict metric is retained,
+and no source qualifier, evaluator or annotation is changed to restore its count.
+The separate artifact-only reviewed comparison has passed independent source review.
+Its final execution passes: exactly these two explained changes, no new L/C misses
+or M violations, and zero per-file fidelity regressions across 4,055 files. The
+original strict failure remains saved; the reviewed artifact is separate from the
+project evaluator. HiTab row_exact and row_lenient both increase by two. Only the
+source workbook's catalog changes (3,377 → 4,286 characters); corpus mean tokens
+increase 773.44 → 773.64 (+0.026%) to preserve the recovered cohort/header context.
+
+A further bounded performance probe found a skewed-column cost before acceptance.
+With 500,000 values in the first column, adding 8,192 singleton columns (1.6% more
+cells) raises Context::new median 81.35 → 164.04 ms. The retained-capacity clearing
+control takes about 85 ms. The source-reviewed capacity guard now releases disproportionate retained storage
+while preserving normal reuse and amortized linear work (commit `0e86da4`).
+Nineteen focused tests pass. On the same generated 508,192-cell input, its first
+three-repeat probe gives median 81.10 ms, versus 164.04 ms before the guard.
+This is a workload-specific measurement, not a general end-to-end speed claim.
+The refreshed full core gate, Node tests/TypeScript and DEV comparison pass.
+Final release bitwise equivalence also passes across all 41,358 segments, with no
+skips or differences. All source/review work finished before heavy validation.
+
+The final six-pair comparison isolates the capacity guard (`ff06f1daf0f1` →
+`21ab0c6aed37`) and preserves every CSV/manifest/XLSX member and complete MCP response.
+Financial cold MCP is 37.91 → 38.04 ms, NYISO cold MCP 1,075.06 → 1,071.87 ms,
+and wide CSV cold MCP 41.02 → 40.13 ms. These small mixed changes do not establish
+a general speedup. Wide normalization is 92.20 → 91.76 ms (5/6 paired wins).
+
+NYISO normalization initially measures 2,069.70 → 2,118.28 ms (3/6 wins), with
+variable export timing. The targeted twelve-pair confirmation reverses that median
+to 2,079.10 → 2,062.97 ms (4/12 wins), preserving every output. Analysis-stage traces
+are effectively unchanged; NYISO overall latency is treated as neutral/inconclusive.
+The device shutdown interrupts only the optional MCP extension after six pairs;
+that incomplete extension is excluded from the twelve-pair claim. Its saved report
+contains the complete normalization case; the earlier complete six-pair MCP run
+remains the evidence for MCP. No further timing repetition is justified by these
+results. The supported performance gains are the scoped-set wide workload direction
+and removal of the demonstrated skewed-column clearing cost.
+
+This iteration is accepted for local integration with the explicit source-backed
+strict-header limitation above. Remaining accuracy work includes 132 audited lookup
+misses, 42 computation library misses and 1,560 misleading-output violations.
 No scorer, audit, split, holdout or fidelity baseline definitions changed. No API/LLM
 calls, remote push or installed CLI replacement occurred.
 
 Evidence and bounded scripts: `../scratch-archive/codex-iteration-3/`, including
 `numeric-text-red.log`, `numeric-context-green-final.log`, `source-context-release.json`,
 `real-feature-context.log`, `performance-context.json`,
-`performance-context-confirm.json` and `performance-context-isolated.json`.
+`performance-context-confirm.json`, `performance-context-isolated.json`,
+`performance-capacity.json`, `performance-capacity-nyiso-confirm.json`,
+`capacity-real-equivalence.log` and `verification-reviewed.json`.
