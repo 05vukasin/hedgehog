@@ -1034,6 +1034,27 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         out.loose.push(region);
         return;
     }
+    // A shared caption projected from an actual wider merge owns each copy's
+    // rank and complete leaf header. Ordinary title stripping would discard
+    // these two parent rows, especially in a two-column copy.
+    let projected = rows.len() >= 5 && rows[0].n() == 1 && rows[0].n_text() == 1
+        && sheet.merges.iter().any(|m| m.top == rows[0].row && m.bottom == m.top
+            && m.left <= region.rect.left && m.right >= region.rect.right
+            && (m.left < region.rect.left || m.right > region.rect.right)
+            && single_text(&rows[0]).is_some_and(|e| e.left == region.rect.left && e.right == region.rect.right && e.bottom == m.bottom
+                && e.cell.is_some_and(|i| sheet.cells[i].row == m.top && sheet.cells[i].col == m.left)))
+        && rows[1].row == rows[0].row + 1 && rows[2].row == rows[1].row + 1
+        && single_text(&rows[1]).is_some_and(|e| e.left == region.rect.left && e.right == e.left && e.bottom == e.row)
+        && rows[2].n_text() == region.width() as usize && rows[2].n() == rows[2].n_text()
+        && rows[2].filled().enumerate().all(|(k, e)| e.left == region.rect.left + k as u32 && e.right == e.left && e.bottom == e.row)
+        && rows[2].filled().map(|e| text(sheet, e)).collect::<std::collections::HashSet<_>>().len() >= 2
+        && rows[3..].iter().enumerate().all(|(i, row)| row.row == rows[2].row + i as u32 + 1
+            && row.n() == region.width() as usize
+            && row.filled().enumerate().all(|(k, e)| e.left == region.rect.left + k as u32 && e.right == e.left && e.bottom == e.row
+                && if k == 0 { e.kind == Kind::Text } else { e.kind == Kind::Num && !e.label_num }));
+    if projected && emit_table(sheet, rows, &Seg { titles: 0..0, split: true, start: 0, header: 3, end: rows.len() }, out) {
+        return;
+    }
     // The rows' titles, body end and table segments; `direct`: a lone label directly over a
     // number is a header cell, not a title; `sparse_pre`: a sparse metadata row above a header
     // is skipped.
@@ -1303,6 +1324,50 @@ fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out)
             {
                 out.roles[i] = Role::GroupHeader;
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod projected_copy_tests {
+    use super::*;
+    use crate::model::{Cell, Value};
+    use super::super::cells::Agg;
+
+    #[test]
+    fn projected_copy_parents_require_actual_shared_merge_and_complete_records() {
+        for case in 0..9 {
+            let mut sheet = Sheet::default();
+            let anchor = if case == 1 || case == 6 { 2 } else { 0 };
+            sheet.merges.push(Rect { top: 0, bottom: 0, left: if case == 6 { 0 } else { anchor }, right: 3 });
+            let mut rows = Vec::new();
+            for row in 0..8u32 {
+                if case == 2 && row == 1 { continue; }
+                let values = match row {
+                    0 => vec![(anchor, Value::Text("Recovered".into()))],
+                    1 => vec![(2, Value::Text("Highest".into()))],
+                    2 if case == 3 => vec![(2, Value::Text("State".into()))],
+                    2 => vec![(2, Value::Text("State".into())), (3, Value::Text("Recovered %".into()))],
+                    4 if case == 4 => vec![(2, Value::Text("State 4".into())), (3, Value::Text("Pending".into()))],
+                    4 if case == 5 => vec![(2, Value::Text("Merged record".into()))],
+                    _ => vec![(2, Value::Text(format!("State {row}"))), (3, Value::Number(90.0 + row as f64))],
+                };
+                let mut entries = Vec::new();
+                for (col, value) in values {
+                    let col = if (case == 7 && row == 2 && col == 3) || (case == 8 && row == 4 && col == 3) { 2 } else { col };
+                    let kind = if matches!(value, Value::Number(_)) { Kind::Num } else { Kind::Text };
+                    let i = sheet.cells.len();
+                    sheet.cells.push(Cell { row, col, value: Some(value), formula: None });
+                    let (left, right) = if row == 0 || (case == 5 && row == 4) { (2, 3) } else { (col, col) };
+                    entries.push(Entry { row, left, right, bottom: row, kind, label_num: false, date: false, agg: Agg::None, rule: false, cell: Some(i) });
+                }
+                rows.push(Row { row, entries });
+            }
+            if case == 5 { sheet.merges.push(Rect { top: 4, bottom: 4, left: 2, right: 3 }); }
+            let region = Region { rect: Rect { top: 0, bottom: 7, left: 2, right: 3 }, rows };
+            let mut out = Out { roles: vec![Role::Other; sheet.cells.len()], tables: Vec::new(), loose: Vec::new(), column_numbers: true, registers: false, labelled_totals: Vec::new() };
+            analyze_region(&sheet, region, &mut out);
+            assert_eq!(out.tables.iter().any(|t| t.header_top == 0 && t.header_rows == 3), case == 0, "case {case}");
         }
     }
 }
