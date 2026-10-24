@@ -471,7 +471,8 @@ def flag_cells(cells: dict, hh) -> set:
             cols = [c for c in marked_cols[sheet] if left <= c <= right]
             if not cols:
                 continue
-            rows_with = sorted(r for r, cs in by_row[sheet].items() if top <= r <= bottom and any(left <= c <= right for c in cs))
+            # rows of the table with two or more cells (not a lone group label or caption)
+            rows_with = sorted(r for r, cs in by_row[sheet].items() if top <= r <= bottom and sum(left <= c <= right for c in cs) >= 2)
             for col in cols:
                 marks, others = [], []
                 for r in rows_with:

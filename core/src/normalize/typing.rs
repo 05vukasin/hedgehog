@@ -56,7 +56,8 @@ fn flag_column(slots: &[Slot]) -> bool {
         match s {
             Slot::Val(Value::Text(t)) if is_flag_mark(t) => marks += 1,
             Slot::Val(Value::Text(t)) if t.trim().is_empty() => blanks += 1,
-            Slot::Empty => blanks += 1,
+            // a formula without a saved value shows nothing either
+            Slot::Empty | Slot::NoCache => blanks += 1,
             _ => return false,
         }
     }

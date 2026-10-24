@@ -69,6 +69,7 @@ class Blindspots(unittest.TestCase):
         cells = {("S", 1, 1): text("Deal"), ("S", 1, 3): text("Dump")}
         for r in range(2, 9):
             cells[("S", r, 1)] = text(f"D{r}")
+            cells[("S", r, 2)] = Src(kind="number", value=float(r))
             if r % 3:
                 cells[("S", r, 3)] = text("X")
         self.assertEqual(flag_cells(cells, hh), {("S", r, 3) for r in range(2, 9) if r % 3})
@@ -81,6 +82,7 @@ class Blindspots(unittest.TestCase):
         allx = {("S", 1, 3): text("TFV")}
         allx.update({("S", r, 3): text("x") for r in range(2, 9)})
         allx.update({("S", r, 1): text(f"D{r}") for r in range(1, 9)})
+        allx.update({("S", r, 2): text(f"E{r}") for r in range(1, 9)})
         self.assertEqual(flag_cells(allx, hh), set())
         # an X in a number format stands for a number (Destatis): a missing-value mark
         fmt = {k: (Src(kind="text", value="X", fmt="#,##0.0") if v.value == "X" else v) for k, v in cells.items()}
