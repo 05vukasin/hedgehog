@@ -198,6 +198,20 @@ fn header_text(s: &str) -> bool {
     numeric_text(s).is_none() && missing_token(s).is_none() && !crate::layout::is_rule_text(s)
 }
 
+/// A number stored as text ("2,117,353", HiTab's and many statistics offices' sheets) as a typed
+/// total's value; not a year ("2017" in a header row beside a total word).
+/// Commas only as thousands separators ("1,234.5"): a decimal comma ("4.471,66", "987,10") would be
+/// misread by [`numeric_text`].
+fn text_number(cell: &Cell) -> Option<f64> {
+    let t = text(Some(cell))?;
+    let v = numeric_text(t)?;
+    let year = v.fract() == 0.0 && (1900.0..=2100.0).contains(&v) && t.trim().len() == 4;
+    let int_part = t.split('.').next().unwrap_or("");
+    let grouping = int_part.split(',').skip(1).all(|g| g.bytes().take_while(u8::is_ascii_digit).count() == 3)
+        && t.split('.').nth(1).is_none_or(|d| !d.contains(','));
+    (!year && grouping).then_some(v)
+}
+
 fn number(cell: Option<&Cell>) -> Option<f64> {
     match cell?.value.as_ref()? {
         Value::Number(v) | Value::DateTime(v) => Some(*v),
@@ -513,7 +527,11 @@ fn keyword_rows_with(
                     text_left = true;
                 }
             }
-            (Some((r, lc, lvl, inc)), v) if (c.formula.is_some() || matches!(v, Some(Value::Number(_)))) => {
+            (Some((r, lc, lvl, inc)), v)
+                if (c.formula.is_some()
+                    || matches!(v, Some(Value::Number(_)))
+                    || (registers && !legacy && text_number(c).is_some())) =>
+            {
                 if *inc { &mut weak } else { &mut out }.insert(*r, (*lc, *lvl));
             }
             _ => {}
@@ -794,9 +812,14 @@ fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywor
             .iter()
             .map(|&i| &sheet.cells[i as usize])
             .filter(|c| c.col > lc && c.formula.is_none())
-            .filter(|c| matches!(c.value, Some(Value::Number(_))))
+            .filter(|c| matches!(c.value, Some(Value::Number(_))) || (registers && text_number(c).is_some()))
             .map(|c| c.col)
             .collect()
+    };
+    // The typed number of a keyword row's cell: a number, or (normalized output) a number stored as text.
+    let typed_value = |row: u32, col: u32| -> f64 {
+        let cell = grid.cell(row, col);
+        number(cell).or_else(|| if registers { cell.and_then(text_number) } else { None }).unwrap_or(0.0)
     };
     // "Of which" and average rows (normalized output only): out of every sum.
     let nonsum = if registers {
@@ -844,7 +867,7 @@ fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywor
                 // under 109 and 156).
                 let (mut numbers, mut matches) = (0, 0);
                 for &col in &cols {
-                    let value = number(grid.cell(row, col)).unwrap_or(0.0);
+                    let value = typed_value(row, col);
                     if value == 0.0 {
                         continue;
                     }
@@ -890,9 +913,15 @@ fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywor
             let group =
                 if cols.is_empty() { None } else { group_start(grid, &kw_rows, &rows_with_cells, row, lc, registers) };
             for col in cols {
-                let value = number(grid.cell(row, col)).unwrap_or(0.0);
+                let value = typed_value(row, col);
                 let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
-                if let Some(c) = typed_vertical(&w, view, group, row, col, lc, lvl, value) {
+                // A total stored as text is a candidate only when it adds up (nothing to report
+                // otherwise: the reading of its text may be the problem).
+                let as_text = number(grid.cell(row, col)).is_none();
+                if let Some(c) = typed_vertical(&w, view, group, row, col, lc, lvl, value).filter(|c| {
+                    !as_text
+                        || (c.evidence.contains(&Evidence::ArithmeticMatch) && sizeable_match(view, c, value))
+                }) {
                     out.push(c);
                 }
             }
@@ -905,6 +934,65 @@ fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywor
     if registers {
         let found = unlabelled_totals(grid, &kw_rows, &skip, &formula_total, &mut labels);
         out.extend(found);
+    }
+
+    // (b''') "All X" rows whose numbers add up (normalized output).
+    if registers {
+        let w = Walk {
+            grid,
+            kw_rows: &kw_rows,
+            formula_total: &formula_total,
+            rows_with_cells: &rows_with_cells,
+            kw_set: &kw_set,
+            skip: &skip,
+            more: true,
+            budget: &budget,
+            spacers: false,
+        };
+        let taken: FxHashSet<u32> = out.iter().filter(|c| c.direction == Direction::Vertical).map(|c| c.row).collect();
+        let label_col = first_label_cols(grid);
+        for (row, lc) in aggregate_label_rows(grid) {
+            if kw_rows.contains_key(&row) || taken.contains(&row) || skip.contains(&row) {
+                continue;
+            }
+            let (mut found, mut numbers, mut addends, mut distinctive) = (Vec::new(), 0, 0, false);
+            for col in typed_cols(row, lc) {
+                let value = typed_value(row, col);
+                if value == 0.0 {
+                    continue;
+                }
+                numbers += 1;
+                let view = columns.entry(col).or_insert_with(|| ColumnView::new(grid, col));
+                let Some(mut c) = typed_vertical(&w, view, None, row, col, lc, KeywordLevel::Total, value) else {
+                    continue;
+                };
+                let k = source_numbers(view, &c);
+                if !c.evidence.contains(&Evidence::ArithmeticMatch) || !sizeable_match(view, &c, value) {
+                    continue;
+                }
+                addends = addends.max(k);
+                distinctive |= value.abs() >= 100.0 || value.fract() != 0.0;
+                c.evidence.retain(|e| !matches!(e, Evidence::Keyword(_)));
+                c.evidence.push(Evidence::Unlabelled);
+                found.push(c);
+            }
+            // The rows it adds are listed beside it, labelled in its column ("All HBCUs" over the
+            // institutions); an "All Services" left of the age groups it heads is the key of its
+            // block, which the rows below need.
+            found.retain(|c| {
+                let rows: Vec<u32> = c.ranges.iter().flat_map(|r| r.top..=r.bottom).collect();
+                let labelled = rows.iter().filter(|r| label_col.contains_key(r)).count();
+                let same = rows.iter().filter(|r| label_col.get(r) == Some(&lc)).count();
+                labelled > 0 && 2 * same >= labelled
+            });
+            let m = found.len();
+            // The label asks for an aggregate, so two columns that add up are enough (the others may
+            // hold rates, shares or averages: "All farms | 205,730 | … | 40.3 %").
+            if distinctive && (m >= 2 || (numbers == 1 && m == 1 && addends >= UNLABELLED_MIN_ADDENDS_ONE_COLUMN))
+            {
+                out.extend(found);
+            }
+        }
     }
 
     tr("tot.unlabelled", t.elapsed());
@@ -937,6 +1025,83 @@ fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywor
     }
 }
 
+
+/// A sum found without a formula or a stored number behind it (a total stored as text, an "All …"
+/// row) counts only when it is unlikely by chance: a value of at least 10, or of at least 1 over
+/// three or more numbers. Small values add up within their rounding by chance (a correlation of
+/// "1" = 0.85 + 0.267, incidence rates "0.9" = 0.5 + 0.4).
+fn sizeable_match(view: &ColumnView, c: &TotalCandidate, value: f64) -> bool {
+    let (sum, addends) = source_sum(view, c);
+    addends >= 2
+        && (value.abs() >= 10.0 || (value.abs() >= 1.0 && addends >= 3))
+        && (sum - value).abs() <= SIZEABLE_MATCH_REL * value.abs()
+}
+
+/// How far a [`sizeable_match`] may be off its value (rounding of the parts, not of the total
+/// to whole numbers: "1" for 1.117).
+const SIZEABLE_MATCH_REL: f64 = 0.01;
+
+/// The sum and the count of the numbers a candidate adds (numbers stored as text included).
+fn source_sum(view: &ColumnView, c: &TotalCandidate) -> (f64, usize) {
+    let (mut s, mut n) = (0.0, 0);
+    for r in &c.ranges {
+        for k in view.below(r.top)..view.below(r.bottom + 1) {
+            if view.flags[k] & (ColumnView::NUMBER | ColumnView::NUMBER_TEXT) != 0 && !c.exclude.contains(&(view.rows[k], c.col)) {
+                s += view.values[k];
+                n += 1;
+            }
+        }
+    }
+    (s, n)
+}
+
+/// An aggregate label without a total word: "All HBCUs", "All industries", "All research space";
+/// not "All other …", a remainder category (in an industry outline, a leaf whose rates the rows
+/// below may match by chance). Such a row is a total only if its numbers add up ([`detect_rows`]).
+fn aggregate_label(s: &str) -> bool {
+    let mut words = s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty());
+    let first = words.next().is_some_and(|w| w.eq_ignore_ascii_case("all"));
+    let other = words.clone().next().is_some_and(|w| w.eq_ignore_ascii_case("other") || w.eq_ignore_ascii_case("others"));
+    first && !other && words.count() < MAX_AGGREGATE_LABEL_WORDS
+}
+
+/// Words of an [`aggregate_label`].
+const MAX_AGGREGATE_LABEL_WORDS: usize = 8;
+
+/// Row -> column of its first label text (not a number stored as text).
+fn first_label_cols(grid: &Grid) -> FxHashMap<u32, u32> {
+    let mut out = FxHashMap::default();
+    for c in &grid.sheet.cells {
+        if let Some(Value::Text(t)) = &c.value
+            && header_text(t)
+            && !t.trim().is_empty()
+        {
+            out.entry(c.row).or_insert(c.col);
+        }
+    }
+    out
+}
+
+/// Rows whose first label text is an [`aggregate_label`], as (row, label column), in row order.
+fn aggregate_label_rows(grid: &Grid) -> Vec<(u32, u32)> {
+    let mut out = Vec::new();
+    let mut last = None;
+    for c in &grid.sheet.cells {
+        if last == Some(c.row) {
+            continue;
+        }
+        if let Some(Value::Text(t)) = &c.value
+            && header_text(t)
+            && !t.trim().is_empty()
+        {
+            last = Some(c.row);
+            if aggregate_label(t) {
+                out.push((c.row, c.col));
+            }
+        }
+    }
+    out
+}
 
 /// Rows a group closed by an "X Total" label may span ([`closes_group`]).
 const MAX_GROUP_ROWS: u32 = 10_000;
@@ -1245,6 +1410,12 @@ fn typed_above(
     // unless a leading number stored as text is what makes the total add up (checked below).
     let walk_top = top;
     top = first_value(top);
+    // A column of numbers stored as text (normalized output): those are its values, and only a sum
+    // that adds up makes a candidate.
+    let text_only = top == row && w.more;
+    if text_only {
+        top = first_value_or_text(walk_top);
+    }
     if top == row {
         return None;
     }
@@ -1266,7 +1437,7 @@ fn typed_above(
     };
     // Section since the previous total, and everything above except the earlier totals.
     let section_from = first_total.map_or(walk_top, |t| t + 1);
-    let mut section_top = first_value(section_from);
+    let mut section_top = if text_only { first_value_or_text(section_from) } else { first_value(section_from) };
     let (mut s_section, mut n_section) =
         if section_top < row { sum_rows(section_top, &FxHashSet::default()) } else { (0.0, 0) };
     let (mut s_all, mut n_all) = sum_rows(top, &skip_set);
@@ -1310,6 +1481,8 @@ fn typed_above(
     } else if close(value, s_all, true) {
         whole(&mut c);
         c.evidence.push(Evidence::ArithmeticMatch);
+    } else if text_only {
+        return None;
     } else if has_section && (totals.is_empty() || lvl != KeywordLevel::GrandTotal) {
         section(&mut c);
     } else if lvl == KeywordLevel::GrandTotal || totals.is_empty() {

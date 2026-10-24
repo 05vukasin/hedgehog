@@ -203,6 +203,18 @@ const LABEL_CATEGORY_REPEATS: usize = 3;
 /// Działanie", "SUMME Tirol mit Innsbruck"); longer texts are measure names or codes.
 const LABEL_MAX_WORDS: usize = 4;
 
+/// A total label longer than [`LABEL_MAX_WORDS`] that still confirms a total row: it starts with
+/// the total word ("Total Criminal Code traffic violations", "Total other federal statute
+/// violations") and the row adds up in at least [`LONG_LABEL_MIN_MATCHES`] columns. A measure name
+/// or a code with a total word inside ("Debt service total (% of GNI)") does neither.
+fn long_total_label(t: &str, matched_cols: usize) -> bool {
+    let first = t.split(|ch: char| !ch.is_alphanumeric()).find(|w| !w.is_empty()).unwrap_or("");
+    matched_cols >= LONG_LABEL_MIN_MATCHES && totals::total_keyword(first).is_some()
+}
+
+/// Columns that must add up for a long label starting with a total word ([`long_total_label`]).
+const LONG_LABEL_MIN_MATCHES: usize = 2;
+
 fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
     let mut out: Overrides = HashMap::new();
     let mut add = |row: u32, o: RowOverride, cols: Vec<u32>| out.entry(row).or_default().push((o, cols));
@@ -229,6 +241,18 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
                 .count()
         }) >= LABEL_CATEGORY_REPEATS
     };
+    // Columns whose typed number adds up, per keyword row.
+    let mut matched: HashMap<u32, usize> = HashMap::new();
+    for c in &det.candidates {
+        if c.direction == Direction::Vertical
+            && c.origin == TotalOrigin::Typed
+            && c.evidence.contains(&Evidence::ArithmeticMatch)
+            && c.evidence.iter().any(|e| matches!(e, Evidence::Keyword(_)))
+        {
+            *matched.entry(c.row).or_default() += 1;
+        }
+    }
+    let matched_cols = |row: u32| matched.get(&row).copied().unwrap_or(0);
     let mut named_rows: Vec<u32> = Vec::new();
     let mut name_columns = NameColumns::new();
     for c in &det.candidates {
@@ -239,7 +263,7 @@ fn row_overrides(grid: &Grid, det: &totals::Detection) -> Overrides {
         let labelled = c.evidence.iter().any(|e| matches!(e, Evidence::Keyword(_)))
             && label_text.is_some_and(|(lc, t)| {
                 first_text(c.row) == Some(lc)
-                    && label_words(t) <= LABEL_MAX_WORDS
+                    && (label_words(t) <= LABEL_MAX_WORDS || long_total_label(t, matched_cols(c.row)))
                     && !category(lc, t)
             });
         let confirmed = c.direction == Direction::Vertical
@@ -1551,6 +1575,9 @@ fn build_table(
         let depth = match (level, row_total.get(row).and_then(|t| t.top)) {
             _ if matches!(rt, RowType::Data | RowType::Average | RowType::OfWhich) => path.len(),
             _ if names_group => path.len(),
+            // A group named like a total ("Total drug violations") names its total rows, a grand
+            // total over the groups above too.
+            _ if path.last().is_some_and(|l| totals::total_keyword(l).is_some()) => path.len(),
             (Some(TotalLevel::GrandTotal), _) => 0,
             (_, Some(top)) => path_rows.iter().take_while(|&&h| h <= top.max(body_top)).count(),
             _ => path.len(),
@@ -1606,7 +1633,9 @@ fn build_table(
             slots[k].push(s);
         }
         src_rows.push(*row);
-        outline.extend(outline_row(idxs, (rt == RowType::Data).then(|| src_rows.len() - 1), false));
+        // A kept total row has its parent too ("All federal R&D expenditures" under "All R&D").
+        let with_parent = matches!(rt, RowType::Data | RowType::Total | RowType::Subtotal);
+        outline.extend(outline_row(idxs, with_parent.then(|| src_rows.len() - 1), false));
         row_types.push(rt);
         block_of.push(if rt == RowType::Data { block } else { u32::MAX });
         if rt != RowType::Data {
@@ -1731,7 +1760,10 @@ fn build_table(
             if g.is_some() {
                 break;
             }
-            if row_types[j] == RowType::Data {
+            // A total of the section's rows (not a grand total) belongs to it too.
+            let section_total = matches!(row_types[j], RowType::Total | RowType::Subtotal)
+                && row_total.get(&src_rows[j]).is_some_and(|t| t.level != TotalLevel::GrandTotal);
+            if row_types[j] == RowType::Data || section_total {
                 *g = Some(idx);
             }
         }

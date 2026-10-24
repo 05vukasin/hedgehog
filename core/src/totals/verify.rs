@@ -121,6 +121,8 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
     let cell = grid.cell(cand.row, cand.col);
     check.actual = match cell.and_then(|c| c.value.as_ref()) {
         Some(Value::Number(v) | Value::DateTime(v)) => Some(*v),
+        // A typed total stored as text, as its source may be ("2,117,353").
+        Some(Value::Text(s)) if cand.origin == TotalOrigin::Typed && numeric_text(s).is_some() => numeric_text(s),
         Some(_) => {
             check.reason = CheckReason::NotNumeric;
             return check;
