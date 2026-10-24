@@ -5,17 +5,18 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (master 4fd2909, 2026-10-24)
+## Current state (master 134d648, 2026-10-24)
 
 | Measure | Value | Target |
 |---|---|---|
-| F fidelity: values / dates / text changed (MiMoTable, RealHiTBench, HiTab) | 0/0/0 · 0/0/0 · 0/0/1 | 0 |
-| F unplaced / misplaced (all corpora) | 1,913 / ~1,711 on master; S10 brings unplaced to ~9 | 0 (or documented) |
-| L lookups | 5,442 / 5,634 = 96.6 % (96.7 % after audit) | 100 % after audit |
-| C calculations | 1,198 proven; real library misses ≈ 58 (rest oracle limits / audited gold) | library misses 0 |
-| M misleading-info violations | 1,515 (≈ 800 columns without header text) | 0 (or documented policy) |
-| K catalog tokens / file | hitab ≈ 773, mimotable ≈ 966, realhitbench ≈ 770 | no growth |
-| S HiTab table F1@0.8 | 99.1 % | — |
+| F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
+| F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
+| L lookups | 5,469 / 5,634 = 97.1 % raw, 97.2 % after audit (≈ 156 misses) | 100 % after audit |
+| C calculations | 1,198 / 2,264 proven; library misses 42; oracle-limit ≈ 988; gold/question 2 unreviewed | library misses 0 |
+| M misleading-info violations | 1,589 in 767 files (most: columns without header text incl. ≈ 80 new col_<letter> value-block tables) | 0 (or documented policy) |
+| K catalog tokens / file | hitab 773, mimotable 972, realhitbench 770 | no growth |
+| S HiTab table F1@0.8 | ≈ 99.1 % | — |
+| Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
 
 ## Done
 
@@ -31,21 +32,23 @@ split unless noted. Update this file whenever a stage starts, merges or is dropp
 | S8 | Full outline paths of row labels; '(4)' footnotes; serial dates under date headers | labels → 08db712 | L 4,994 → 5,240 (93.0 %) |
 | S9 | Totals inside data; mixed measures | totals → f3fa706 | M1 73 → 23, M3 310 → 72, M 1,805 → 1,517 |
 | S9b | Remaining lookups; F-mark annotation rule; unit/lone-label sections | lookup → 4fd2909 | L 5,266 → 5,442 (96.6 %) |
+| S10 | Cell placement: value blocks from Notes → tables, X-flag columns kept, 'N.B.'/'avg 00', checker blind spots closed (flag_lost, value_block_in_notes) | placement → 2e773e1 | tablesense misplaced 98,733 → 2,512, golden 35,850 → 163, unplaced → 0 everywhere |
+| S11 | Side-by-side copies of one list split (values were in other states' rows), header labels over numbers, bold sections, scorer fixes | round3 → 7e2cb73 (+134d648 scorer fix) | L 97.2 % after audit; C library family 60 → 42; per-item no regression vs master |
 
 ## Running
 
-| Stage | Title | Branch / worktree | Status |
-|---|---|---|---|
-| S10 | Cell placement (Enron long tail), X-flag columns, small headerless blocks, 'N.B.' / 'avg 00' | placement / ../hh-placement | fixes committed (…b36f312); gates on merged master running |
-| S11 | Side-by-side copies (values in wrong rows), lookups, C library misses, scorer fixes | round3 / ../hh-round3 | commits …d1d6931; side-by-side fix + gates in progress |
+Nothing (milestone reached 2026-10-24 ~13:00; no agents, capped jobs or stage worktrees).
 
 ## Next (in order)
 
-1. Merge S10, then S11 (gates between).
-2. S12 — columns without header text (≈ 800 M): policy (generated name + catalog note when the source has
-   no header text) + real lost headers.
-3. S13 — remaining L misses (captions of stacked blocks, header paths, grounding) and C library misses.
-4. S14 — misplaced long tail (side-by-side tables merged, forms, helper rows); document what stays.
+1. S12 — columns without header text (M ≈ 1,589, mostly "header missing"): policy for source columns that
+   truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
+   S10 recovered from Notes.
+2. S13 — remaining L misses (≈ 156: stacked-block captions "Time = 75 min" 40, not grounded 27, header path 24,
+   col_X 13, parent 12 incl. 1535 mid-table header, cell in no table 18) and C library misses (42).
+3. S14 — misplaced long tail (≈ 3,200 cells: header rows sent to Notes, data rows read as headers, side-by-side +
+   stacked tables like manufacture-table13 / health-table01, forms like en-0549); document what stays.
+4. Review the 2 new gold/question candidates (a04c5358, 55e60981) with source evidence.
 5. Holdout scoring once (`make score-holdout`); new failure classes → S15…
 6. Official agent runs (owner approves budget): MiMoTable end to end, SpreadsheetBench.
 
