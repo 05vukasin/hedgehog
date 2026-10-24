@@ -1986,7 +1986,12 @@ fn build_table(
         }
         let fmt = grid.sheet.formats.get(i).and_then(|f| f.unpack());
         let (indent, bold) = fmt.map_or((0, false), |f| (f.indent, f.bold));
-        let spaces = t.chars().take_while(|&c| c == ' ' || c == '\u{a0}').count().min(255) as u8;
+        // Centered/right-aligned labels use spaces for visual padding, not nesting.
+        let spaces = if fmt.is_some_and(|f| matches!(f.align, crate::model::Align::Center | crate::model::Align::Right)) {
+            0
+        } else {
+            t.chars().take_while(|&c| c == ' ' || c == '\u{a0}').count().min(255) as u8
+        };
         Some(OutlineRow { indent, spaces, bold, label: label.to_string(), out, group })
     };
     // Block of each output row: the rows between two total rows (removed or kept).
