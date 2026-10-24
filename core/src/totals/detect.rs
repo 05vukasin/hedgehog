@@ -2354,3 +2354,63 @@ fn resolve_nesting(grid: &Grid, cands: &mut [TotalCandidate]) {
         }
     }
 }
+
+#[cfg(test)]
+mod sibling_support_tests {
+    use super::*;
+    use crate::model::Sheet;
+
+    #[test]
+    fn sibling_support_preserves_candidates_outside_unconfirmed_typed_verticals() {
+        let cases = [
+            (Some(Value::Number(6.0)), false, true),
+            (Some(Value::Number(6.0)), true, false),
+            (Some(Value::Number(0.0)), true, true),
+            (None, true, true),
+            (Some(Value::Number(f64::NAN)), true, false),
+            (Some(Value::Text("6".into())), true, true),
+        ];
+        for (value, arithmetic, needs_support) in cases {
+            for origin in [TotalOrigin::Typed, TotalOrigin::Formula] {
+                for direction in [Direction::Vertical, Direction::Horizontal] {
+                    for same_source_direction in [false, true] {
+                        let mut sheet = Sheet {
+                            cells: vec![
+                                Cell { row: 0, col: 1, value: Some(Value::Number(2.0)), formula: None },
+                                Cell { row: 1, col: 1, value: Some(Value::Number(3.0)), formula: None },
+                                Cell { row: 2, col: 0, value: value.clone(), formula: None },
+                                Cell { row: 2, col: 1, value: Some(Value::Number(5.0)), formula: Some("SUM(B1:B2)".into()) },
+                            ],
+                            ..Sheet::default()
+                        };
+                        // Keep the duplicate-position and non-row-major Grid paths covered:
+                        // the last duplicate wins, just as the sibling scan's lookup expects.
+                        sheet.cells.reverse();
+                        sheet.cells.push(Cell { row: 2, col: 0, value: value.clone(), formula: None });
+                        let grid = Grid::new(&sheet);
+                        let mut subject = TotalCandidate::new(2, 0, origin, direction);
+                        if arithmetic {
+                            subject.evidence.push(Evidence::ArithmeticMatch);
+                        }
+                        subject.evidence.push(Evidence::SourceBelow);
+                        let mut peer = TotalCandidate::new(2, 1, TotalOrigin::Formula, Direction::Vertical);
+                        peer.ranges.push(Rect { top: 0, left: 1, bottom: 1, right: 1 });
+                        peer.evidence.push(Evidence::Formula(FormulaKind::Sum));
+                        if same_source_direction {
+                            peer.evidence.push(Evidence::SourceBelow);
+                        }
+                        let mut actual = vec![subject, peer];
+                        let mut expected = actual.clone();
+                        if origin == TotalOrigin::Typed && direction == Direction::Vertical
+                            && needs_support && same_source_direction
+                        {
+                            expected[0].evidence.push(Evidence::SiblingsMatch);
+                        }
+                        mark_sibling_support(&grid, &mut actual);
+                        assert_eq!(actual, expected, "{value:?}, {origin:?}, {direction:?}, arithmetic={arithmetic}, same_direction={same_source_direction}");
+                    }
+                }
+            }
+        }
+    }
+}
