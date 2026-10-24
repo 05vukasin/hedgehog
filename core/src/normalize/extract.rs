@@ -1651,6 +1651,46 @@ fn interval_header_end(grid: &Grid, r: Rect, top: u32, end: u32, owner: &[u8]) -
     end + 1
 }
 
+/// Lower triangular pair matrices may name their column axis below the values.
+/// The complete staircase and shifted row/column labels establish exact ownership.
+fn matrix_footer(grid: &Grid, r: Rect, top: u32, body: u32, owner: &[u8]) -> Option<u32> {
+    let width = r.right.checked_sub(r.left)?;
+    if width < 3 || body.checked_add(width)? != r.bottom
+        || !grid.sheet.merges.iter().any(|m| m.top == top && m.bottom == top
+            && m.left == r.left + 1 && m.right == r.right)
+        || !matches!(grid.cell(top, r.left + 1).and_then(|c| c.value.as_ref()), Some(Value::Text(t)) if !t.trim().is_empty()) { return None; }
+    let text = |row, col| grid.cell(row, col).and_then(|c| match &c.value {
+        Some(Value::Text(t)) if !t.trim().is_empty() && c.formula.is_none() => Some(t.trim()),
+        _ => None,
+    });
+    if grid.cell(r.bottom, r.left).and_then(|c| c.value.as_ref()).is_some_and(|v| !display(v).trim().is_empty()) { return None; }
+    let axis: Vec<_> = (r.left + 1..=r.right).map(|c| text(r.bottom, c)).collect::<Option<_>>()?;
+    if axis.iter().collect::<HashSet<_>>().len() != width as usize { return None; }
+    let mut row_labels = HashSet::new();
+    for offset in 0..width {
+        let row = body + offset;
+        let label = text(row, r.left)?;
+        if !row_labels.insert(label) || (offset + 1 < width && label != axis[offset as usize + 1])
+            || (offset + 1 == width && axis.contains(&label)) { return None; }
+        let mut numbers = 0;
+        for col in r.left + 1..=r.right {
+            let value = grid.cell(row, col).and_then(|c| c.value.as_ref());
+            if col <= r.left + offset + 1 {
+                match value {
+                    Some(Value::Number(_)) => numbers += 1,
+                    Some(Value::Text(t)) if t.trim() == "N.S." => {},
+                    _ => return None,
+                }
+            } else if value.is_some_and(|v| !display(v).trim().is_empty()) { return None; }
+        }
+        if numbers == 0 { return None; }
+    }
+    if grid.sheet.merges.iter().any(|m| m.top <= r.bottom && m.bottom >= body
+        && m.left <= r.right && r.left <= m.right)
+        || grid.cells_in(Rect { top: body, ..r }).iter().any(|&i| owner[i as usize] != OWN_NONE || grid.sheet.cells[i as usize].formula.is_some()) { return None; }
+    Some(r.bottom)
+}
+
 /// Recover parents above repeated complete child blocks, across at most one blank
 /// row. Without explicit merges, successive captions must anchor equal-width blocks;
 /// a terminal standalone caption is allowed only over its otherwise unnamed column.
@@ -1986,6 +2026,17 @@ fn build_table(
         }
         warnings.push(format!("child header cells inherited from {} with their original source coordinates", donor.id()));
     }
+    let footer = matrix_footer(grid, r, htop, body_top, owner);
+    if let Some(row) = footer {
+        let mut axis = vec![None; ncols];
+        for (k, h) in axis.iter_mut().enumerate().skip(1) {
+            let col = r.left + k as u32;
+            let value = grid.cell(row, col).and_then(|c| c.value.as_ref()).map(display).unwrap_or_default();
+            *h = Some((value, (row, col)));
+        }
+        head.push(axis);
+        nh = head.len();
+    }
     // B84: month-end dates across a header that step back from December to January of the same
     // year (Jul … Dec 2001, Jan … Mar 2001) were typed without the year change: from the step on
     // they are read one year later, when that continues the monthly sequence.
@@ -2239,6 +2290,10 @@ fn build_table(
         .collect();
     let body_kind = body_kinds(&rows, cells, body_top);
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
+        if footer == Some(*row) {
+            for &i in idxs { owner[i] = OWN_TABLE; }
+            continue;
+        }
         body_rows_seen += 1;
         if Some(*row) == next_caption {
             tr.add(T::NoteRowsMoved, 1);
@@ -4286,6 +4341,45 @@ mod tests {
         let grid = crate::grid::Grid::new(&sheet);
         let rect = Rect { top: 0, bottom: 2, left: edge - 2, right: edge };
         assert_eq!(super::interval_header_end(&grid, rect, 0, 1, &[]), 1);
+    }
+
+    #[test]
+    fn matrix_footer_requires_complete_triangle_and_matching_axes() {
+        use crate::model::{Rect, Sheet};
+        let t = |s: &str| Some(Value::Text(s.into()));
+        let n = |x| Some(Value::Number(x));
+        for case in 0..14 {
+            let mut rows = vec![
+                vec![t("Period"), t("Correlation"), None, None],
+                vec![t("B"), n(0.0), None, None],
+                vec![t("C"), n(0.4), n(0.2), None],
+                vec![t("D"), n(0.5), t("N.S."), n(0.3)],
+                vec![None, t("A"), t("B"), t("C")],
+            ];
+            let mut merges = vec![Rect { top: 0, bottom: 0, left: 1, right: 3 }];
+            match case {
+                1 => rows[1][2] = n(0.6),
+                2 => rows[2][1] = None,
+                3 => rows[2][0] = None,
+                4 => rows[3][2] = t("Unknown"),
+                5 => rows[4][2] = t("Other"),
+                6 => rows[4][3] = t("B"),
+                7 => rows[4][0] = t("Record"),
+                8 => merges.clear(),
+                10 => rows[4][3] = None,
+                11 => merges.push(Rect { top: 2, bottom: 2, left: 2, right: 3 }),
+                12 => rows[0][1] = None,
+                _ => {}
+            }
+            let refs: Vec<&[Option<Value>]> = rows.iter().map(Vec::as_slice).collect();
+            let (mut cells, _) = grid_rows(&refs);
+            if case == 13 { cells.iter_mut().find(|c| c.row == 3 && c.col == 1).unwrap().formula = Some("1/2".into()); }
+            let sheet = Sheet { cells, merges, ..Sheet::default() };
+            let grid = crate::grid::Grid::new(&sheet);
+            let mut owner = vec![super::OWN_NONE; sheet.cells.len()];
+            if case == 9 { owner[grid.cell_index(4, 1).unwrap()] = super::OWN_TABLE; }
+            assert_eq!(super::matrix_footer(&grid, Rect { top: 0, bottom: 4, left: 0, right: 3 }, 0, 1, &owner), if case == 0 { Some(4) } else { None }, "case {case}");
+        }
     }
 
     #[test]
