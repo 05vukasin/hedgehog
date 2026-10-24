@@ -21,6 +21,9 @@ xlrd / odfpy / csv, with the cell's number format) and looked up in hedgehog's o
 - header cells (columns[].original_header), titles, notes (the normalized workbook's Notes sheet,
   whose text is compared too), totals (its Totals sheet), key/value tables (`cell` column), group
   labels (the `group` column) and header words: placed;
+- a missing-value mark ("x", "NA", "None", "(X)", "..") inside a table's source range is null there
+  (a row or column of nothing but such marks is removed like an empty one): intentionally_dropped;
+- a text cell whose value is the label split over it and the rows above/below joined: ok (B72);
 - anything else is UNPLACED; header cells that went to Notes as `repeated_header` of a table that
   got no header at all are MISPLACED (the table's columns are col_<letter>).
 Column checks on top: collapsed dates (many distinct source dates, few distinct values) and a
@@ -56,7 +59,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from compare import compare, date_readings, norm_loose, parse_hh_date, same_moment, show, ws  # noqa: E402
+from compare import compare, date_readings, is_missing_token, norm_loose, parse_hh_date, same_moment, show, ws  # noqa: E402
 from source import Src, read_source  # noqa: E402
 
 REPO = HERE.parent.parent
@@ -198,6 +201,7 @@ class HH:
         self.labels: dict = defaultdict(set)  # sheet -> normalized label words of groups / headers / titles
         self.headerless: dict = {}
         self.last_header: dict = {}
+        self.ranges: dict = defaultdict(list)
         if not self.ok:
             return
         m = json.loads(Path(mpath).read_text())
@@ -274,6 +278,12 @@ class HH:
                             self.labels[sheet].add(norm_loose(row[i]))  # one label (a group level of its own)
                             for part in row[i].split(" / "):
                                 self.labels[sheet].add(norm_loose(part))
+        # sheet -> [(top, left, bottom, right)] of the tables' source ranges
+        for t in self.tables:
+            a, _, b = (t["source"].get("range") or "").partition(":")
+            ra, rb = parse_a1(a) if a else None, parse_a1(b or a) if a else None
+            if ra and rb:
+                self.ranges[t["source"]["sheet"]].append((ra[0], ra[1], rb[0], rb[1]))
         x = next(iter(glob.glob(str(out / "*.normalized.xlsx"))), None)
         extra = read_sheet_rows(Path(x), ["Notes", "Totals"]) if x else {}
         for n in extra.get("Notes", []):
@@ -293,6 +303,10 @@ class HH:
                 rc = parse_a1(str(tt["label_cell"]))
                 if rc:
                     self.place[(tt.get("sheet"), *rc)].append(("total_label", {}))
+
+
+    def in_table(self, sheet, r, c) -> bool:
+        return any(t <= r <= b and l <= c <= rt for t, l, b, rt in self.ranges.get(sheet, ()))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -340,6 +354,8 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
             cls, sub, info = best
             if (cls, sub) == ("text_changed", "lost") and norm_loose(s.value) in hh.labels.get(sheet, ()):
                 cls, sub = "ok", "in_group_column"  # an inline group label: in the group column
+            if cls == "text_changed" and s.kind == "text" and joined_label(cells, sheet, r, c, info["value"]):
+                cls, sub = "ok", "label_joined"  # a label split over rows, joined on each (B72)
             if sub == "percent_fraction" or ("%" in (s.fmt or "") and s.kind == "number"):
                 pct["fraction" if cls == "ok" else "x100" if sub == "percent_x100" else "other"] += 1
             colvals[(info["table"], info["col"] if "col" in info else "value")].append((s, info["value"], addr, info["dtype"]))
@@ -391,6 +407,11 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
         if s.kind == "error":
             _count(res, "intentionally_dropped", "excel_error_outside_tables", addr, s, "", "")
             continue
+        # A missing-value mark ("x", "NA", "None", "..") inside a table's range: it is null there, and a
+        # row or column of nothing but such marks is removed like an empty one (documented drop).
+        if s.kind == "text" and (is_missing_token(s.value) or s.value.strip().lower() == "none") and hh.in_table(sheet, r, c):
+            _count(res, "intentionally_dropped", "missing_token_in_table", addr, s, "", "")
+            continue
         if s.kind in ("date", "datetime") and norm_loose(show(s.value)) in hh.labels.get(sheet, ()):
             _count(res, "ok", "label_date", addr, s, "", "header label")  # a repeated date header row
             continue
@@ -402,6 +423,29 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
 
 
 YEARLIKE = range(1800, 2101)
+
+
+def joined_label(cells: dict, sheet: str, r: int, c: int, hv) -> bool:
+    """hedgehog's value is this text cell joined with the text cells right above and/or below it
+    in the same column: a row label split over two to five rows ("CTFP" / "Por tempo" /
+    "indeterminado"), written in full on each of its rows (documented, B72)."""
+    want = ws(hv or "")
+    if not want or len(want) > 400:
+        return False
+    for top in range(r, r - 5, -1):
+        for bot in range(r, top + 5):
+            if bot == top:
+                continue
+            parts = []
+            for rr in range(top, bot + 1):
+                x = cells.get((sheet, rr, c))
+                if x is None or x.kind != "text":
+                    break
+                parts.append(ws(x.value))
+            else:
+                if " ".join(parts) == want:
+                    return True
+    return False
 
 
 def _header_data_rows(res, hdr_rows):

@@ -112,7 +112,11 @@ up in `hedgehog normalize --csv --keep-totals` output through the manifest's cel
 - **placement**: each cell is in a table, a header, a title or note on `Notes`, a total, a
   key/value table or a group label; otherwise `unplaced`. Header cells of a table that got no
   header (columns `col_<letter>`) and data rows read as a header row are `misplaced`;
-- **documented drops** (missing tokens such as `-` or `n/a`, Excel errors) are counted apart.
+- **documented drops** (missing tokens such as `-` or `n/a`, Excel errors) are counted apart; a
+  missing-value mark (`x`, `XXX`, `None`, `..`) inside a table's range is a null there, also when
+  its whole row or column is removed as empty — never placed as a value.
+
+The checker's own comparisons have unit tests: `python3 -I eval/fidelity/test_checker.py`.
 
 ```sh
 make fidelity                       # every corpus (public, agents, golden), ~5 min, vs eval/fidelity/baseline.tsv

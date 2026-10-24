@@ -27,6 +27,8 @@ MISSING_WORDS = {
     "keine angabe", "keine angaben", "ne", "#n/a", "tbd", "unknown", "nicht verfügbar", "not available", "missing",
     "n.e.", "ne.", "n.z.", "nz", "n.s.", "u", "z", "m", "c", "...", "..", ":", "-", "—", "–",
     "not applicable", "no data", "n/app", "n.app.", "nicht zutreffend", "sans objet", "no aplica", "non applicabile",
+    # bracketed codes of statistical tables (core/src/values/missing.rs: `(X)` not applicable, `(NA)`)
+    "(x)", "(na)",
 }
 _BRACKET_CODE = re.compile(r"^\[[a-z]{1,4}\]$")  # ONS shorthand: [z] not applicable, [x] unavailable, [c] confidential
 EXCEL_ERRORS = {"#n/a", "#ref!", "#div/0!", "#value!", "#name?", "#num!", "#null!", "#spill!", "#calc!", "#getting_data", "#n/a!"}
@@ -48,12 +50,18 @@ def is_missing_token(s: str) -> bool:
     return False
 
 
+# Characters that render as nothing (hedgehog drops them: core/src/values/text.rs): zero-width
+# space / joiners, word joiner, BOM, soft hyphen, Mongolian vowel separator.
+_INVISIBLE = re.compile("[\u200b-\u200d\u2060\ufeff\u00ad\u180e]")
+
+
 def ws(s: str) -> str:
-    """hedgehog's text normalisation: trimmed, every run of whitespace (line breaks too) one space."""
-    return " ".join(str(s).replace("​", "").split())
+    """hedgehog's text normalisation: invisible characters dropped, trimmed, every run of
+    whitespace (line breaks too) one space."""
+    return " ".join(_INVISIBLE.sub("", str(s)).split())
 
 
-_FOOTNOTE_TAIL = re.compile(r"(\s*([¹²³⁰-⁹]+|\*+|†|‡|\(\d{1,2}\)|\d{1,2}\)|\([a-z]\)|\[\w{1,3}\]))+\s*$")
+_FOOTNOTE_TAIL = re.compile(r"(\s*([¹²³⁰-⁹]+|\*+|†|‡|\(\d{1,2}\)|(?<![\w(])\d{1,2}\)|\([a-z]\)|\[\w{1,3}\]))+\s*$")
 
 
 def strip_footnote(s: str) -> str:
@@ -114,6 +122,7 @@ def number_readings(s: str) -> list[tuple[float, str]]:
     if t.endswith("-") and _PLAIN.match(t[:-1] or "x"):  # SAP-style trailing minus
         neg, t = True, t[:-1]
     pct = False
+    t = _FOOTNOTE_NUM.sub("", t)  # "15.64% (1)": the mark after the percent sign
     if t.endswith("%"):
         pct, t = True, t[:-1].strip()
     scale = 1.0
@@ -162,7 +171,7 @@ def number_readings(s: str) -> list[tuple[float, str]]:
 
 # a number followed by a unit or an annotation: 12mm, 20L, 100(m3), 2(东航), 38(1), 26th
 _UNIT = re.compile(r"^(\d+(?:[.,]\d+)?)\s*((?:[^\W\d_]{1,12}\.?\d?|[(（][^()（）]{1,12}[)）]|[²³°′″'\"/]+[^\W\d_]{0,6}))$")
-_FOOTNOTE_NUM = re.compile(r"(\s*([¹²³⁰-⁹]+|\*+|†|‡|\s\(?[rpe]\)?))+$")
+_FOOTNOTE_NUM = re.compile(r"(\s*([¹²³⁰-⁹]+|\*+|†|‡|\s\(?[rpe]\)?|\s\(\d{1,2}\)))+$")
 
 
 def num_equal(a: float, b: float, exact_int: bool = False) -> bool:
@@ -316,6 +325,11 @@ def date_readings(s: str) -> tuple[list[tuple[object, str]], str | None]:
         q = int(m.group(1) or m.group(4))
         y = int(m.group(2) or m.group(3))
         out.append((dt.date(y, 3 * q - 2, 1), "quarter"))
+    # 3Q03, Q2 '01, Q3-01: a quarter with a two-digit year
+    m = re.fullmatch(r"(?i)(?:([1-4])q\s*'?(\d{2})|q([1-4])\s*[-/' ]\s*'?(\d{2}))", body)
+    if m:
+        q = int(m.group(1) or m.group(3))
+        out.append((dt.date(_y(m.group(2) or m.group(4)), 3 * q - 2, 1), "quarter"))
     out = [(d, tag) for d, tag in out if d is not None]
     if tm is not None:
         out = [(dt.datetime.combine(d, tm), tag) for d, tag in out]
