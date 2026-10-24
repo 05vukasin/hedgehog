@@ -335,3 +335,71 @@ fn unmerged_caption_does_not_spread_without_repeated_child_geometry_and_labels()
         }
     }
 }
+
+#[test]
+fn parameter_caption_of_different_width_still_ends_previous_section() {
+    let path =
+        std::env::temp_dir().join(format!("hh_caption_boundary_{}.xlsx", std::process::id()));
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet();
+    for top in [0, 20] {
+        ws.write_string(top, 0, format!("Time = {top} min"))
+            .unwrap();
+        for offset in [1, 9] {
+            for left in [0u16, 6] {
+                ws.merge_range(
+                    top + offset,
+                    left,
+                    top + offset,
+                    left + 4,
+                    if left == 0 { "ROI 1" } else { "ROI 2" },
+                    &Format::new(),
+                )
+                .unwrap();
+                for (c, h) in ["Measure", "M0", "IFN-y", "LPS", "M2"].iter().enumerate() {
+                    ws.write_string(top + offset + 1, left + c as u16, *h)
+                        .unwrap();
+                }
+                for r in 0..4 {
+                    ws.write_string(top + offset + 2 + r, left, format!("Count {r}"))
+                        .unwrap();
+                    for c in 1..5 {
+                        ws.write_number(
+                            top + offset + 2 + r,
+                            left + c,
+                            (100 + 10 * r + c as u32) as f64,
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+        }
+    }
+    // A valid new caption has a different span and no repeated peer. It still ends Time=0.
+    ws.merge_range(8, 0, 8, 5, "Time = 10 min", &Format::new())
+        .unwrap();
+    wb.save(&path).unwrap();
+    let book = open(&path).unwrap();
+    std::fs::remove_file(path).unwrap();
+    for rules_only in [true, false] {
+        let norm = normalize_workbook(
+            &book,
+            &Options {
+                rules_only,
+                ..Options::default()
+            },
+        );
+        let later: Vec<_> = norm
+            .tables
+            .iter()
+            .filter(|t| (8..20).contains(&t.rect.top))
+            .collect();
+        assert!(!later.is_empty());
+        assert!(
+            later
+                .iter()
+                .all(|t| !t.notes.iter().any(|(s, _)| s == "Time = 0 min")),
+            "rules={rules_only}: stale caption passed a different-width boundary"
+        );
+    }
+}

@@ -2708,18 +2708,19 @@ fn build_table(
 /// its width; an unmerged caption needs the same pair (or more) of merged child titles directly
 /// below every occurrence. Keep every title/note string and coordinate exact.
 fn shared_parameter_captions(grid: &Grid, tables: &mut [Table], notes: &[NoteItem]) {
-    fn key(note: &NoteItem) -> Option<String> {
-        let (key, value) = note.text.split_once('=')?;
+    fn parameter_key(text: &str) -> Option<String> {
+        let (key, value) = text.split_once('=')?;
         let key = key.trim();
-        (matches!(note.kind, "title" | "other") && !key.is_empty() && key.chars().count() <= 32
+        (!key.is_empty() && key.chars().count() <= 32
             && key.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
             && value.trim().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+')
-            && note.text.chars().count() <= 120).then(|| key.to_lowercase())
+            && text.chars().count() <= 120).then(|| key.to_lowercase())
     }
     type CaptionSpan = (String, u32, u32);
     let mut groups: HashMap<CaptionSpan, Vec<(&NoteItem, u32)>> = HashMap::new();
     let mut unmerged: HashMap<(String, u32), Vec<&NoteItem>> = HashMap::new();
-    let candidates: Vec<_> = notes.iter().filter_map(|n| key(n).map(|key| (key, n))).collect();
+    let candidates: Vec<_> = notes.iter().filter(|n| matches!(n.kind, "title" | "other"))
+        .filter_map(|n| parameter_key(&n.text).map(|key| (key, n))).collect();
     for (key, note) in &candidates {
         if let Some(merge) = grid.sheet.merges.iter().find(|m| m.top == note.row && m.bottom == note.row && m.left == note.col && m.right > m.left) {
             groups.entry((key.clone(), merge.left, merge.right)).or_default().push((note, merge.right));
@@ -2731,8 +2732,9 @@ fn shared_parameter_captions(grid: &Grid, tables: &mut [Table], notes: &[NoteIte
         let mut layout: Option<Vec<(u32, u32, String)>> = None;
         let valid = captions.iter().all(|caption| {
             // A lateral section with the same parameter owns its own child titles.
-            let limit = candidates.iter().filter(|(k, n)| *k == key && n.row == caption.row && n.col > left)
-                .map(|(_, n)| n.col).min().unwrap_or(u32::MAX);
+            let limit = grid.row_cells(caption.row).iter().map(|&i| &grid.sheet.cells[i as usize])
+                .filter(|c| c.col > left && matches!(c.value.as_ref(), Some(Value::Text(text)) if parameter_key(text).as_ref() == Some(&key)))
+                .map(|c| c.col).min().unwrap_or(u32::MAX);
             let mut merges: Vec<_> = grid.sheet.merges.iter().filter(|m| m.top == caption.row + 1
                 && m.bottom == m.top && m.left >= left && m.right < limit && m.right > m.left).collect();
             merges.sort_by_key(|m| m.left);
@@ -2747,7 +2749,7 @@ fn shared_parameter_captions(grid: &Grid, tables: &mut [Table], notes: &[NoteIte
             }
             if child.len() < 2 { return false; }
             let right = child.last().unwrap().1;
-            if grid.sheet.cells.iter().any(|c| c.row == caption.row && c.col > left && c.col <= right
+            if grid.row_cells(caption.row).iter().map(|&i| &grid.sheet.cells[i as usize]).any(|c| c.col > left && c.col <= right
                 && (c.value.is_some() || c.formula.is_some())) { return false; }
             match &layout {
                 Some(first) => *first == child,
@@ -2759,10 +2761,18 @@ fn shared_parameter_captions(grid: &Grid, tables: &mut [Table], notes: &[NoteIte
             groups.entry((key, left, right)).or_default().extend(captions.into_iter().map(|n| (n, right)));
         }
     }
-    for captions in groups.values_mut().filter(|v| v.len() >= 2) {
+    if !groups.values().any(|v| v.len() >= 2) { return; }
+    // Even a parameter consumed by a differently shaped table is a boundary. It need not
+    // qualify for propagation, or share the earlier caption's inferred width.
+    let boundaries: Vec<_> = grid.sheet.cells.iter().filter_map(|c| {
+        let Value::Text(text) = c.value.as_ref()? else { return None };
+        parameter_key(text).map(|key| (key, c.row, c.col))
+    }).collect();
+    for ((key, left, _), captions) in groups.iter_mut().filter(|(_, v)| v.len() >= 2) {
         captions.sort_by_key(|(n, _)| n.row);
-        for (i, (caption, right)) in captions.iter().enumerate() {
-            let end = captions.get(i + 1).map(|(n, _)| n.row).unwrap_or(u32::MAX);
+        for (caption, right) in captions.iter() {
+            let end = boundaries.iter().filter(|(k, row, col)| k == key && *col == *left && *row > caption.row)
+                .map(|(_, row, _)| *row).min().unwrap_or(u32::MAX);
             for t in tables.iter_mut().filter(|t| t.rect.top > caption.row && t.rect.bottom < end && t.rect.left >= caption.col && t.rect.right <= *right) {
                 let pos = (caption.row, caption.col);
                 if t.title.as_ref().is_none_or(|(_, at)| *at != pos) && !t.notes.iter().any(|(_, at)| *at == pos) {
