@@ -1547,6 +1547,7 @@ fn promote_header_inner(
 
 /// A scale/bounds band immediately below an existing header: `from | to` must
 /// belong to one explicit two-column confidence-interval merge directly above it.
+/// An optional missing parent band must belong to distinct explicit cohort merges.
 /// The stub is empty and all other filled cells are units under existing headers;
 /// an ordinary record, even one containing `from` and `to`, cannot extend the band.
 fn interval_header_end(grid: &Grid, r: Rect, top: u32, end: u32, owner: &[u8]) -> u32 {
@@ -1565,10 +1566,57 @@ fn interval_header_end(grid: &Grid, r: Rect, top: u32, end: u32, owner: &[u8]) -
             && text(end, m.right).trim().eq_ignore_ascii_case("to")
     }).collect();
     if pairs.is_empty() {
-        return end;
+        let Some(after) = end.checked_add(2).filter(|&after| after <= r.bottom) else { return end };
+        // One missing parent band is recoverable only under distinct explicit cohort
+        // merges. Its interval merges must already own the next row's exact bounds.
+        let cohorts: Vec<_> = grid.sheet.merges.iter().filter(|m| {
+            m.top == end - 1 && m.bottom == m.top && m.left > r.left && m.right <= r.right
+                && m.right > m.left && !text(m.top, m.left).trim().is_empty()
+        }).collect();
+        let labels: HashSet<_> = cohorts.iter().map(|m| norm_key(&text(m.top, m.left))).collect();
+        let intervals: Vec<_> = grid.sheet.merges.iter().filter(|m| {
+            m.top == end && m.bottom == end && m.left > r.left && m.right <= r.right
+                && m.right.checked_sub(m.left) == Some(1)
+                && text(end, m.left).to_lowercase().contains("confidence interval")
+                && text(end + 1, m.left).trim().eq_ignore_ascii_case("from")
+                && text(end + 1, m.right).trim().eq_ignore_ascii_case("to")
+                && cohorts.iter().any(|p| p.left <= m.left && m.right <= p.right)
+        }).collect();
+        if cohorts.len() < 2 || labels.len() != cohorts.len() || intervals.len() != cohorts.len()
+            || cohorts.iter().enumerate().any(|(i, p)| cohorts[..i].iter().any(|q| p.left <= q.right && q.left <= p.right))
+            || !cohorts.iter().all(|p| intervals.iter().filter(|m| p.left <= m.left && m.right <= p.right).count() == 1)
+        {
+            return end;
+        }
+        for i in grid.cells_in(Rect { top: end, bottom: end, ..r }) {
+            let i = i as usize;
+            let c = &grid.sheet.cells[i];
+            let Some(v) = c.value.as_ref() else { continue };
+            let t = display(v);
+            let t = t.trim();
+            if t.is_empty() { continue; }
+            if owner[i] != OWN_NONE || !matches!(v, Value::Text(_))
+                || !cohorts.iter().any(|p| p.left <= c.col && c.col <= p.right)
+                || !(intervals.iter().any(|m| m.left == c.col)
+                    || matches!(t, "'000" | "000'") || crate::layout::is_unit_text(t))
+            {
+                return end;
+            }
+        }
+        // Atomic: a parent band alone never advances the header. The recursive call
+        // finds its immediate interval pairs, so it cannot add another parent band.
+        return if interval_header_end(grid, r, top, end + 1, owner) == after { after } else { end };
     }
-    // The next row is a record with numeric bounds, rather than another caption.
-    let numeric = |col| match grid.cell(end + 1, col).and_then(|c| c.value.as_ref()) {
+    // A single body section may precede the numeric record. It stays in the body;
+    // only the evidence lookup skips it, and every non-stub cell must be empty.
+    let next = end + 1;
+    let section = matches!(grid.cell(next, r.left).and_then(|c| c.value.as_ref()), Some(Value::Text(t)) if !t.trim().is_empty())
+        && grid.cells_in(Rect { top: next, bottom: next, ..r }).iter().all(|&i| {
+            let c = &grid.sheet.cells[i as usize];
+            c.col == r.left || c.value.as_ref().is_none_or(|v| display(v).trim().is_empty())
+        });
+    let Some(record) = next.checked_add(u32::from(section)).filter(|&record| record <= r.bottom) else { return end };
+    let numeric = |col| match grid.cell(record, col).and_then(|c| c.value.as_ref()) {
         Some(Value::Number(_)) => true,
         Some(Value::Text(t)) => crate::values::parse_number(t, Default::default()).is_some(),
         _ => false,
@@ -4040,6 +4088,77 @@ fn collapse_row_totals(items: Vec<TotalItem>) -> Vec<TotalItem> {
 #[cfg(test)]
 mod tests {
     use crate::model::{Cell, Value};
+
+    #[test]
+    fn two_interval_bands_require_cohort_ownership_and_numeric_record() {
+        use crate::model::{Rect, Sheet};
+        let t = |s: &str| Some(Value::Text(s.into()));
+        for case in 0..16 {
+            let mut rows = vec![
+                vec![None, t("Men"), None, None, None, t("Women"), None, None, None],
+                vec![None, t("000'"), t("%"), t("95% confidence interval"), None, t("000'"), t("%"), t("95% confidence interval"), None],
+                vec![None, None, None, t("from"), t("to"), None, None, t("from"), t("to")],
+                vec![t("Section"), None, None, None, None, None, None, None, None],
+                vec![t("First"), Some(Value::Number(10.0)), Some(Value::Number(20.0)), Some(Value::Number(19.0)), Some(Value::Number(21.0)), Some(Value::Number(30.0)), Some(Value::Number(40.0)), Some(Value::Number(39.0)), Some(Value::Number(41.0))],
+            ];
+            let mut merges = vec![
+                Rect { top: 0, bottom: 0, left: 1, right: 4 },
+                Rect { top: 0, bottom: 0, left: 5, right: 8 },
+                Rect { top: 1, bottom: 1, left: 3, right: 4 },
+                Rect { top: 1, bottom: 1, left: 7, right: 8 },
+            ];
+            match case {
+                1 => rows[1][1] = t("Unknown"),
+                2 => rows[1][1] = Some(Value::Number(12.0)),
+                3 => merges[0].right = 3,
+                4 => { merges.remove(1); merges.remove(0); }
+                5 => { merges.remove(1); }
+                6 => rows.insert(4, rows[3].clone()),
+                7 => rows[3][1] = Some(Value::Number(5.0)),
+                10 => rows[2][4] = t("Other"),
+                11 => rows[2][2] = Some(Value::Number(25.0)),
+                12 => rows[2][2] = t("Unknown"),
+                13 => rows[4][3] = t("Pending"),
+                14 => { merges[0].right = 8; merges[1].left = 3; }
+                15 => {
+                    for row in &mut rows { row.resize(13, None); }
+                    rows[0][5] = None;
+                    rows[0][9] = t("Women");
+                    merges[0].right = 8;
+                    merges[1].left = 9;
+                    merges[1].right = 12;
+                }
+                _ => {}
+            }
+            let refs: Vec<&[Option<Value>]> = rows.iter().map(Vec::as_slice).collect();
+            let (cells, _) = grid_rows(&refs);
+            let sheet = Sheet { cells, merges, ..Sheet::default() };
+            let grid = crate::grid::Grid::new(&sheet);
+            let mut owner = vec![super::OWN_NONE; sheet.cells.len()];
+            if case == 8 { owner[grid.cell_index(1, 1).unwrap()] = super::OWN_TABLE; }
+            if case == 9 { owner[grid.cell_index(2, 3).unwrap()] = super::OWN_TABLE; }
+            let rect = Rect { top: 0, bottom: rows.len() as u32 - 1, left: 0, right: if case == 15 { 12 } else { 8 } };
+            assert_eq!(super::interval_header_end(&grid, rect, 0, 1, &owner), if case == 0 { 3 } else { 1 }, "case {case}");
+        }
+    }
+
+    #[test]
+    fn interval_section_and_optional_parent_reject_row_coordinate_limit() {
+        use crate::model::{Rect, Sheet};
+        let edge = u32::MAX;
+        let mut cells = Vec::new();
+        for (row, col, text) in [(edge - 2, 3, "95% confidence interval"), (edge - 1, 3, "from"), (edge - 1, 4, "to"), (edge, 0, "Section")] {
+            cells.push(Cell { row, col, value: Some(Value::Text(text.into())), formula: None });
+        }
+        let sheet = Sheet { cells, merges: vec![Rect { top: edge - 2, bottom: edge - 2, left: 3, right: 4 }], ..Sheet::default() };
+        let grid = crate::grid::Grid::new(&sheet);
+        let rect = Rect { top: edge - 2, bottom: edge, left: 0, right: 4 };
+        let owner = vec![super::OWN_NONE; sheet.cells.len()];
+        assert_eq!(super::interval_header_end(&grid, rect, edge - 2, edge - 1, &owner), edge - 1);
+        let empty = Sheet::default();
+        let grid = crate::grid::Grid::new(&empty);
+        assert_eq!(super::interval_header_end(&grid, rect, edge - 2, edge - 1, &[]), edge - 1);
+    }
 
     #[test]
     fn interval_child_band_requires_exact_parent_and_only_header_labels() {
