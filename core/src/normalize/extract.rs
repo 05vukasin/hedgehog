@@ -744,6 +744,21 @@ struct Built {
 
 type Head = Option<(String, (u32, u32))>;
 
+/// The header cells of row `hr` all sit under one and the same header cell of the row above (a
+/// parent label over exactly these columns, merged or filled right), and that label heads nothing else.
+fn numbers_under_one_label(head: &[Vec<Head>], hr: usize) -> bool {
+    if hr == 0 {
+        return false;
+    }
+    // (a cell merged down from the row above, `Group and cohort` over A3:A5, is no number of this row)
+    let cols: Vec<usize> = (0..head[hr].len()).filter(|&hc| head[hr][hc].is_some() && head[hr][hc] != head[hr - 1][hc]).collect();
+    let Some(parent) = cols.first().and_then(|&hc| head[hr - 1][hc].as_ref()) else {
+        return false;
+    };
+    cols.iter().all(|&hc| head[hr - 1][hc].as_ref() == Some(parent))
+        && (0..head[hr].len()).all(|hc| cols.contains(&hc) || head[hr - 1][hc].as_ref() != Some(parent))
+}
+
 /// A total row as detected: its level and the first row of its source (the topmost range start
 /// among the row's vertical totals), when known.
 #[derive(Debug, Clone, Copy)]
@@ -1291,7 +1306,9 @@ fn build_table(
     }
 
     // A column-numbering header row ("1 2 3 …", so notes can say "Sp. 3–4") stays in
-    // `original_header` but does not name the columns (B45: not "… / 1").
+    // `original_header` but does not name the columns (B45: not "… / 1"). Unless the numbers sit
+    // under one label over all of them: then they are that label's values (`Number of years since
+    // landing` over `1 2 3 4 5 6`, HiTab 1220), not column numbers.
     let numbering_rows: Vec<bool> = (0..nh)
         .map(|hr| {
             let vals: Vec<&Value> = rows
@@ -1300,7 +1317,7 @@ fn build_table(
                 .flat_map(|(_, idxs)| idxs.iter().filter_map(|&i| cells[i].value.as_ref()))
                 .filter(|v| !display(v).is_empty())
                 .collect();
-            crate::layout::column_numbering(vals.into_iter())
+            crate::layout::column_numbering(vals.into_iter()) && !numbers_under_one_label(&head, hr)
         })
         .collect();
     // B70: the row label of a header row of series codes ("Dataset identifier code | MGSL | MGSF
