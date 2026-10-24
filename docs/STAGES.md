@@ -37,7 +37,10 @@ split unless noted. Update this file whenever a stage starts, merges or is dropp
 
 ## Running
 
-Nothing (milestone reached 2026-10-24 ~13:00; no agents, capped jobs or stage worktrees).
+- S12 (bounded batch): real lost-header recovery; branch `codex/s12-headers`, worktree `../hh-s12`.
+- S13 (bounded batch): stacked captions / lookup label paths outside S12; branch `codex/s13-lookups`, worktree `../hh-s13`.
+- Lead: reproduce dev baseline, profile speed, integrate verified fixes. Heavy jobs serialized
+  (`HH_SLOTS=1`, aggregate slice cap 4G, Cargo jobs 2); no holdout or LLM API calls.
 
 ## Next (in order)
 
