@@ -519,31 +519,6 @@ pub fn parse(formula: &str) -> ParsedFormula {
     ParsedFormula { kind, refs, sum_refs, functions, has_error }
 }
 
-// TEMPORARY attribution entry point. Keep the normal parser unchanged and remove this helper
-// with the profiling patch before any production acceptance comparison.
-pub(crate) fn parse_profiled(formula: &str, profile: &mut [std::time::Duration; 3]) -> ParsedFormula {
-    let started = std::time::Instant::now();
-    let toks = tokenize(formula);
-    profile[0] += started.elapsed();
-    let started = std::time::Instant::now();
-    let (kind, sum_refs) = classify(&toks);
-    profile[1] += started.elapsed();
-    let started = std::time::Instant::now();
-    let mut refs = Vec::new();
-    let mut functions = Vec::new();
-    let mut has_error = false;
-    for t in toks {
-        match t {
-            Tok::Ref(r) => refs.push(r),
-            Tok::Func(f) => functions.push(f),
-            Tok::Err => has_error = true,
-            _ => {}
-        }
-    }
-    profile[2] += started.elapsed();
-    ParsedFormula { kind, refs, sum_refs, functions, has_error }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
