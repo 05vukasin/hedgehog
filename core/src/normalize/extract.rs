@@ -1096,6 +1096,126 @@ fn numbering_row(cells: &[crate::model::Cell], idxs: &[usize]) -> bool {
         && nums.windows(2).filter(|w| w[1] - w[0] == 1.0).count() * 6 >= (nums.len() - 1) * 5
 }
 
+/// Blocks of cells outside every layout table that hold values: connected cells (consecutive
+/// rows, overlapping columns, at most one blank column between) the layout marked neither title
+/// nor note, at least two columns wide, with at least two rows of two or more numbers or dates
+/// (a key/value list has one value per row), no `Key:` line, apart from every layout table. A row
+/// the layout marked as header starts a block. A first row of labels (or years) over the values
+/// is the header; otherwise the columns are col_<letter>.
+fn value_blocks(grid: &Grid, lay: &SheetLayout) -> Vec<DetectedTable> {
+    let cells = &grid.sheet.cells;
+    let inside = |c: &crate::model::Cell| {
+        lay.tables.iter().any(|t| (t.rect.top..=t.rect.bottom).contains(&c.row) && (t.rect.left..=t.rect.right).contains(&c.col))
+    };
+    let number = |i: usize| matches!(&cells[i].value, Some(Value::Number(_) | Value::DateTime(_)));
+    let year = |i: usize| matches!(&cells[i].value, Some(Value::Number(x)) if x.fract() == 0.0 && (1900.0..=2100.0).contains(x));
+    let key = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with([':', '：']));
+    let header_cell = |i: usize| lay.roles[i] == Role::Header;
+    // Row segments of eligible cells: (row, left, right, cells), split at two blank columns.
+    let mut segs: Vec<(u32, u32, u32, Vec<usize>)> = Vec::new();
+    for (i, c) in cells.iter().enumerate() {
+        if c.value.as_ref().is_none_or(|v| display(v).trim().is_empty()) || inside(c) || matches!(lay.roles[i], Role::Title | Role::Note) {
+            continue;
+        }
+        match segs.last_mut() {
+            Some((r, _, right, v)) if *r == c.row && c.col <= *right + 2 => {
+                *right = c.col;
+                v.push(i);
+            }
+            _ => segs.push((c.row, c.col, c.col, vec![i])),
+        }
+    }
+    // Components: segments of consecutive rows whose columns overlap.
+    let mut parent: Vec<usize> = (0..segs.len()).collect();
+    fn find(p: &mut [usize], x: usize) -> usize {
+        let mut x = x;
+        while p[x] != x {
+            p[x] = p[p[x]];
+            x = p[x];
+        }
+        x
+    }
+    let mut prev_start = 0;
+    let mut k = 0;
+    while k < segs.len() {
+        let row = segs[k].0;
+        let mut e = k;
+        while e < segs.len() && segs[e].0 == row {
+            e += 1;
+        }
+        for a in k..e {
+            for b in prev_start..k {
+                if segs[b].0 + 1 == row && segs[b].1 <= segs[a].2 + 1 && segs[a].1 <= segs[b].2 + 1 {
+                    let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
+                    parent[ra] = rb;
+                }
+            }
+        }
+        prev_start = k;
+        k = e;
+    }
+    let mut comps: BTreeMap<usize, BTreeMap<u32, Vec<usize>>> = BTreeMap::new();
+    for (k, seg) in segs.iter().enumerate() {
+        let root = find(&mut parent, k);
+        comps.entry(root).or_default().entry(seg.0).or_default().extend(seg.3.iter().copied());
+    }
+    let mut out = Vec::new();
+    for rows in comps.values() {
+        let rows: Vec<(u32, &Vec<usize>)> = rows.iter().map(|(r, v)| (*r, v)).collect();
+        // A row the layout marked as header starts a block of its own (its header).
+        let mut starts: Vec<usize> = vec![0];
+        starts.extend((1..rows.len()).filter(|&j| rows[j].1.iter().any(|&i| header_cell(i))));
+        starts.push(rows.len());
+        for w in starts.windows(2) {
+            let block = &rows[w[0]..w[1]];
+            // A `Key: | value` line: a key with a cell after it (a lone "Operations & Maintenance:"
+            // is a section label).
+            let key_line = |idxs: &[usize]| idxs.iter().enumerate().any(|(k, &i)| key(i) && k + 1 < idxs.len());
+            if block.len() < 2 || block.iter().any(|(_, idxs)| key_line(idxs)) {
+                continue;
+            }
+            let numeric_rows = block.iter().filter(|(_, idxs)| idxs.iter().filter(|&&i| number(i)).count() >= 2).count();
+            let (left, right) = block
+                .iter()
+                .flat_map(|(_, idxs)| idxs.iter().map(|&i| cells[i].col))
+                .fold((u32::MAX, 0), |(a, b), c| (a.min(c), b.max(c)));
+            if numeric_rows < 2 || right < left + 1 {
+                continue;
+            }
+            let first = block[0].1;
+            // Labels (or a year over a column of prices) over values: the header.
+            let labels = first.iter().all(|&i| matches!(&cells[i].value, Some(Value::Text(_))) || year(i))
+                && first.iter().any(|&i| matches!(&cells[i].value, Some(Value::Text(_))) || first.len() < block[1].1.len())
+                && block[1..].iter().any(|(_, idxs)| idxs.iter().any(|&i| number(i)));
+            if !labels && first.iter().any(|&i| header_cell(i)) {
+                continue;
+            }
+            let (top, bottom) = (block[0].0, block[block.len() - 1].0);
+            // Never over a table of the layout.
+            if lay.tables.iter().any(|t| t.rect.top <= bottom && top <= t.rect.bottom && t.rect.left <= right && left <= t.rect.right) {
+                continue;
+            }
+            out.push(DetectedTable {
+                rect: Rect { top, left, bottom, right },
+                header_top: top,
+                header_rows: u32::from(labels),
+                confidence: 0.5,
+            });
+        }
+    }
+    // Blocks that share rows and columns (a component's bounding box over another's) are left out.
+    let mut keep = vec![true; out.len()];
+    for a in 0..out.len() {
+        for b in 0..out.len() {
+            let (x, y) = (&out[a].rect, &out[b].rect);
+            if a != b && keep[b] && x.top <= y.bottom && y.top <= x.bottom && x.left <= y.right && y.left <= x.right {
+                keep[a] = false;
+            }
+        }
+    }
+    out.into_iter().zip(keep).filter(|(_, k)| *k).map(|(t, _)| t).collect()
+}
+
 /// Most `Key: | value` lines skipped above the header of a table without header rows.
 const MAX_FORM_LINES: usize = 12;
 
@@ -2860,7 +2980,12 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     let mut removed: Vec<(usize, u32, RowType, Vec<usize>)> = Vec::new();
     let mut notes: Vec<NoteItem> = Vec::new();
     let mut layouts: Vec<Vec<(u32, bool)>> = Vec::new();
-    for t in &lay.tables {
+    // Small blocks of values the layout left outside every table (fewer rows than a headerless
+    // table needs) are tables too, not Notes.
+    let mut detected = lay.tables.clone();
+    detected.extend(value_blocks(grid, &lay));
+    detected.sort_by_key(|t| (t.rect.top, t.rect.left));
+    for t in &detected {
         let n = out.tables.len() + 1;
         let b = build_table(grid, &lay, t, n, &sheet_hints, &row_total, &overrides, opts, &mut owner);
         info.tables.push(n);

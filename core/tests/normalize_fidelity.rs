@@ -357,3 +357,109 @@ fn n_b_is_a_province_in_a_column_of_names() {
     assert_eq!(texts(t, "Region")[3], "N.B.");
     assert_eq!(texts(t, "Rate")[5], "");
 }
+
+#[test]
+fn a_column_of_x_marks_and_blanks_is_a_flag() {
+    // Enron "Consolidated_2000": a DUMP column of X on most deals and blank on the rest. The marks
+    // were read as missing values, the column came out empty and was dropped: flagged and
+    // unflagged deals looked the same.
+    let n = build("flags", |ws| {
+        for (c, h) in ["Deal", "Volume", "Dump"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        for k in 0..10u32 {
+            ws.write_string(1 + k, 0, format!("D{k:03}")).unwrap();
+            ws.write_number(1 + k, 1, 1000.0 + 37.0 * k as f64).unwrap();
+            if k % 3 != 0 {
+                ws.write_string(1 + k, 2, "X").unwrap();
+            }
+        }
+    });
+    let t = &n.tables[0];
+    let dump = texts(t, "Dump");
+    assert_eq!(dump[..4], ["", "X", "X", ""], "{:?}", names(t));
+}
+
+#[test]
+fn x_among_numbers_is_still_a_missing_value() {
+    let n = build("xnum", |ws| {
+        ws.write_string(0, 0, "Area").unwrap();
+        ws.write_string(0, 1, "Count").unwrap();
+        for k in 0..10u32 {
+            ws.write_string(1 + k, 0, format!("Area {k}")).unwrap();
+            if k == 4 {
+                ws.write_string(1 + k, 1, "x").unwrap();
+            } else {
+                ws.write_number(1 + k, 1, 10.0 + k as f64).unwrap();
+            }
+        }
+    });
+    assert_eq!(texts(&n.tables[0], "Count")[4], "");
+}
+
+#[test]
+fn a_small_block_of_values_is_a_table() {
+    // Six rows of a label and six amounts, no header: the layout wants eight rows for a
+    // headerless table, and the whole block went to Notes as "other".
+    let n = build("small", |ws| {
+        let items = ["Outside Services", "Supplies", "Marketing", "Corporate IT", "Corporate Rent", "Other Expenses"];
+        for (k, item) in items.iter().enumerate() {
+            ws.write_string(3 + k as u32, 0, *item).unwrap();
+            for c in 0..6u16 {
+                ws.write_number(3 + k as u32, c + 1, 1000.0 + 97.0 * k as f64 + 13.0 * c as f64).unwrap();
+            }
+        }
+    });
+    let t = n.tables.iter().find(|t| t.columns.iter().any(|c| c.values.iter().any(|v| shown(v) == "Marketing"))).expect("a table");
+    assert_eq!(texts(t, "col_B")[0], "1000", "{:?}", names(t));
+    assert!(!n.notes.iter().any(|x| x.text == "Marketing"), "{:?}", n.notes);
+}
+
+#[test]
+fn a_small_block_with_a_label_row_is_a_table_with_a_header() {
+    let n = build("smallhead", |ws| {
+        for (c, h) in ["Strike", "Jan", "Feb", "Mar", "Apr"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        for r in 0..4u32 {
+            ws.write_number(1 + r, 0, 2.5 + 0.5 * r as f64).unwrap();
+            for c in 0..4u16 {
+                ws.write_number(1 + r, c + 1, 0.31 - 0.05 * c as f64 + 0.01 * r as f64).unwrap();
+            }
+        }
+        ws.write_string(7, 0, "Source: internal desk quotes").unwrap();
+    });
+    let t = &n.tables[0];
+    assert_eq!(texts(t, "Strike")[..2], ["2.5", "3"], "{:?}", names(t));
+    assert!(names(t).contains(&"Mar"), "{:?}", names(t));
+}
+
+#[test]
+fn a_key_value_list_is_no_value_block() {
+    let n = build("kvlist", |ws| {
+        for (k, (key, v)) in [("Total Income", 9666.0), ("Total Expenditure", 7266.0), ("Balance", 2400.0)].iter().enumerate() {
+            ws.write_string(k as u32, 0, *key).unwrap();
+            ws.write_number(k as u32, 1, *v).unwrap();
+        }
+    });
+    assert!(n.tables.iter().all(|t| t.columns.iter().any(|c| c.name == "key")), "{:?}", n.tables.iter().map(names).collect::<Vec<_>>());
+}
+
+#[test]
+fn date_and_price_columns_beside_each_other_are_tables() {
+    // Enron "socal_curvefetch" Sheet1: three date | price column pairs under a year each
+    // (1998 | 1999 | 2000), no other header; every cell went to Notes as "other".
+    let n = build("pairs", |ws| {
+        let date = Format::new().set_num_format("yyyy-mm-dd");
+        for (k, y) in [1998.0, 1999.0, 2000.0].iter().enumerate() {
+            let c = 4 * k as u16;
+            ws.write_number(0, c + 1, *y).unwrap();
+            for r in 0..5u32 {
+                ws.write_number_with_format(1 + r, c, 35704.0 + r as f64, &date).unwrap();
+                ws.write_number(1 + r, c + 1, 2.44 + 0.01 * r as f64 + k as f64).unwrap();
+            }
+        }
+    });
+    assert!(n.tables.iter().any(|t| names(t).contains(&"1999")), "{:?}", n.tables.iter().map(names).collect::<Vec<_>>());
+    assert!(!n.notes.iter().any(|x| x.text == "2.44"), "{:?}", n.notes);
+}

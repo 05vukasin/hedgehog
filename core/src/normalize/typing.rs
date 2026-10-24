@@ -44,6 +44,25 @@ pub(super) enum Slot<'a> {
     Val(&'a Value),
 }
 
+/// `x` / `X` (one letter), `✓`, `✔`: a mark that flags a row.
+pub(crate) fn is_flag_mark(t: &str) -> bool {
+    matches!(t.trim(), "x" | "X" | "✓" | "✔")
+}
+
+/// Every filled cell of the column is a flag mark (at least two), and some cells are blank.
+fn flag_column(slots: &[Slot]) -> bool {
+    let (mut marks, mut blanks) = (0usize, 0usize);
+    for s in slots {
+        match s {
+            Slot::Val(Value::Text(t)) if is_flag_mark(t) => marks += 1,
+            Slot::Val(Value::Text(t)) if t.trim().is_empty() => blanks += 1,
+            Slot::Empty => blanks += 1,
+            _ => return false,
+        }
+    }
+    marks >= 2 && blanks >= 1
+}
+
 pub(super) struct Typed {
     pub dtype: Dtype,
     pub unit: Option<String>,
@@ -228,7 +247,7 @@ fn type_column_untimed(
     tr: &mut Transforms,
 ) -> Typed {
     // Pass 0: missing values (cheap) and the number of real values.
-    let missing: Vec<Option<bool>> = slots
+    let mut missing: Vec<Option<bool>> = slots
         .iter()
         .map(|s| match s {
             Slot::Val(Value::Text(t)) => table_missing_token(t).map(|k| k == MissingKind::Error),
@@ -236,6 +255,15 @@ fn type_column_untimed(
             _ => None,
         })
         .collect();
+    // A column of `X` marks and blanks (Enron "DUMP": X on some rows) is a flag: the mark is a
+    // value, kept as written, so a flagged row stays apart from an unflagged one.
+    if flag_column(slots) {
+        for (s, m) in slots.iter().zip(missing.iter_mut()) {
+            if matches!(s, Slot::Val(Value::Text(t)) if is_flag_mark(t)) {
+                *m = None;
+            }
+        }
+    }
     let n = slots.iter().zip(&missing).filter(|(s, m)| matches!(s, Slot::Val(_)) && m.is_none()).count();
     // A kind is out once its misses exceed what the 90 % rule allows.
     let allowed = n - (TYPE_SHARE * n as f64).ceil() as usize;

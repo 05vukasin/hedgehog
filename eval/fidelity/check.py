@@ -24,6 +24,10 @@ xlrd / odfpy / csv, with the cell's number format) and looked up in hedgehog's o
 - a missing-value mark ("x", "NA", "None", "(X)", "..") inside a table's source range is null there
   (a row or column of nothing but such marks is removed like an empty one): intentionally_dropped;
 - a text cell whose value is the label split over it and the rows above/below joined: ok (B72);
+- a flag column (`X` / `✓` marks and blanks in a table's range): each mark must be kept as a
+  non-empty value, else text_changed (flag_lost);
+- cells only on Notes as `other` that form a block of values (two or more rows with two numbers
+  or dates): MISPLACED (value_block_in_notes), a table left out;
 - anything else is UNPLACED; header cells that went to Notes as `repeated_header` of a table that
   got no header at all are MISPLACED (the table's columns are col_<letter>).
 Column checks on top: collapsed dates (many distinct source dates, few distinct values) and a
@@ -337,6 +341,8 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
         names = {t["source"]["sheet"] for t in hh.tables} or {k[0] for k in hh.place if isinstance(k[0], str) and len(k) == 3}
         name = next(iter(sorted(names)), "")
         cells = {(name, r, c): v for (_, r, c), v in cells.items()}
+    flags = flag_cells(cells, hh)
+    other_notes: list = []
     pct = Counter()
     hdr_rows: dict = defaultdict(list)  # (sheet, table, row) -> header cells of a table's last header row
     colvals: dict = defaultdict(list)  # (table, col) -> [(src, hh, addr)]
@@ -352,6 +358,8 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
                 if best is None or (best[0] != "ok" and cls == "ok"):
                     best = (cls, sub, info)
             cls, sub, info = best
+            if (sheet, r, c) in flags:
+                cls, sub = ("ok", "flag") if ws(info["value"]) else ("text_changed", "flag_lost")
             if (cls, sub) == ("text_changed", "lost") and norm_loose(s.value) in hh.labels.get(sheet, ()):
                 cls, sub = "ok", "in_group_column"  # an inline group label: in the group column
             if cls == "text_changed" and s.kind == "text" and joined_label(cells, sheet, r, c, info["value"]):
@@ -376,7 +384,12 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
                 _count(res, "misplaced", "header_demoted_to_notes", addr, s, n.get("text"), f'{n.get("table")} has no header')
                 continue
             cls, sub = _cmp_note(s, n.get("text") or "")
+            if (sheet, r, c) in flags:
+                _count(res, "text_changed", "flag_lost", addr, s, n.get("text"), f'Notes ({n.get("kind")})')
+                continue
             _count(res, cls, "note:" + sub if cls != "ok" else "note", addr, s, n.get("text"), f'Notes ({n.get("kind")})')
+            if cls == "ok" and n.get("kind") == "other":
+                other_notes.append((sheet, r, c, s, addr))
             continue
         if pl:
             _count(res, "ok", pl[0][0], addr, s, "", pl[0][0])
@@ -407,6 +420,9 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
         if s.kind == "error":
             _count(res, "intentionally_dropped", "excel_error_outside_tables", addr, s, "", "")
             continue
+        if (sheet, r, c) in flags:
+            _count(res, "text_changed", "flag_lost", addr, s, "", "flag column")
+            continue
         # A missing-value mark ("x", "NA", "None", "..") inside a table's range: it is null there, and a
         # row or column of nothing but such marks is removed like an empty one (documented drop).
         if s.kind == "text" and (is_missing_token(s.value) or s.value.strip().lower() == "none") and hh.in_table(sheet, r, c):
@@ -417,12 +433,110 @@ def check_file(binary: str, rel: str, src_path: Path, out: Path, row_limit: int)
             continue
         _count(res, "unplaced", s.kind, addr, s, "", "")
     _header_data_rows(res, hdr_rows)
+    _value_blocks_in_notes(res, other_notes)
     _column_checks(res, colvals)
     res["percent"] = dict(pct)
     return _finish(res, norm)
 
 
 YEARLIKE = range(1800, 2101)
+
+
+FLAG_MARKS = {"x", "✓", "✔"}
+
+
+def numeric_format(fmt) -> bool:
+    """A number format with digit placeholders (`#,##0.0`, `0.000`): the cell stands for a number,
+    so an `X` in it is a missing-value mark (Destatis "Tabellenfach gesperrt"), not a flag."""
+    f = (fmt or "").strip()
+    return bool(f) and f.lower() not in ("general", "@") and bool(re.search(r"[0#]", re.sub(r'"[^"]*"', "", f)))
+
+
+def flag_cells(cells: dict, hh) -> set:
+    """Cells of flag columns: in a table's source range, a column whose filled cells are `x` / `X`
+    / `✓` marks (at least two; one other text on top, its header, allowed) with blank rows
+    between. The mark is a value (flagged vs not), never a missing-value mark: it must be kept,
+    distinct from blank."""
+    out = set()
+    marked_cols = defaultdict(set)  # sheet -> columns holding a mark at all
+    by_row = defaultdict(lambda: defaultdict(list))  # sheet -> row -> columns
+    for (sh, r, c), x in cells.items():
+        by_row[sh][r].append(c)
+        if x.kind == "text" and x.value.strip().lower() in FLAG_MARKS:
+            marked_cols[sh].add(c)
+    for sheet, ranges in hh.ranges.items():
+        if not marked_cols.get(sheet):
+            continue
+        for top, left, bottom, right in ranges:
+            cols = [c for c in marked_cols[sheet] if left <= c <= right]
+            if not cols:
+                continue
+            rows_with = sorted(r for r, cs in by_row[sheet].items() if top <= r <= bottom and any(left <= c <= right for c in cs))
+            for col in cols:
+                marks, others = [], []
+                for r in rows_with:
+                    x = cells.get((sheet, r, col))
+                    if x is None:
+                        continue
+                    if x.kind == "text" and x.value.strip().lower() in FLAG_MARKS and not numeric_format(x.fmt):
+                        marks.append(r)
+                    else:
+                        others.append(r)
+                # blank rows among the marked ones (rows above the first mark are its header)
+                blanks = sum(1 for r in rows_with if marks and r > marks[0]) - sum(1 for r in marks[1:]) \
+                    - sum(1 for r in others if marks and r > marks[0])
+                header_only = not others or (len(others) == 1 and marks and others[0] < marks[0])
+                if len(marks) >= 2 and header_only and blanks >= 1:
+                    out.update((sheet, r, col) for r in marks)
+    return out
+
+
+def _value_blocks_in_notes(res, other_notes):
+    """Cells placed only as Notes items of kind `other` that form a block of values: row segments
+    (cells at most two blank columns apart) joined over consecutive rows with overlapping columns,
+    with at least two rows holding two or more numbers or dates in one segment: a table that
+    hedgehog did not make a table. MISPLACED (value_block_in_notes)."""
+    by_sheet = defaultdict(lambda: defaultdict(list))
+    for sheet, r, c, s, addr in other_notes:
+        by_sheet[sheet][r].append((c, s, addr))
+    for sheet, rows in by_sheet.items():
+        segs = []  # (row, left, right, cells)
+        for r in sorted(rows):
+            for c, s, addr in sorted(rows[r], key=lambda x: x[0]):
+                if segs and segs[-1][0] == r and c <= segs[-1][2] + 2:
+                    segs[-1][2] = c
+                    segs[-1][3].append((c, s, addr))
+                else:
+                    segs.append([r, c, c, [(c, s, addr)]])
+        parent = list(range(len(segs)))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+        by_row = defaultdict(list)
+        for k, sg in enumerate(segs):
+            by_row[sg[0]].append(k)
+        for k, sg in enumerate(segs):
+            for j in by_row.get(sg[0] - 1, ()):
+                if segs[j][1] <= sg[2] + 1 and sg[1] <= segs[j][2] + 1:
+                    parent[find(k)] = find(j)
+        comps = defaultdict(list)
+        for k in range(len(segs)):
+            comps[find(k)].append(segs[k])
+        for comp in comps.values():
+            value_rows = sum(1 for sg in comp if sum(1 for _, s, _ in sg[3] if s.kind in ("number", "date", "datetime")) >= 2)
+            if len({sg[0] for sg in comp}) < 2 or value_rows < 2:
+                continue
+            for sg in comp:
+                for c, s, addr in sg[3]:
+                    res["counts"]["ok"] -= 1
+                    res["counts"]["misplaced"] = res["counts"].get("misplaced", 0) + 1
+                    res["subs"]["misplaced:value_block_in_notes"] += 1
+                    ex = res["examples"]["misplaced:value_block_in_notes"]
+                    if len(ex) < EXAMPLES_PER_SUB:
+                        ex.append({"cell": addr, "source": _show(s), "hedgehog": "", "where": "Notes (other)"})
 
 
 def joined_label(cells: dict, sheet: str, r: int, c: int, hv) -> bool:
