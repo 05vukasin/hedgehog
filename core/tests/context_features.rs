@@ -177,6 +177,50 @@ fn column_aggregates() {
 }
 
 #[test]
+fn column_distinct_values_stay_scoped_to_each_component_and_column() {
+    for (reverse, duplicate, far) in [(false, false, false), (true, false, false), (false, false, true), (true, true, true)] {
+        let mut cells = Vec::new();
+        let mut number = |row, col, value| cells.push(Cell { row, col, value: Some(Value::Number(value)), formula: None });
+        // A U-shaped component surrounds a disconnected two-row component. In columns A/B
+        // the first component appears both before and after the second one.
+        for row in [0, 8] {
+            for col in 0..5 {
+                number(row, col, 10.0);
+            }
+        }
+        for row in 1..8 {
+            number(row, 4, 100.0 + row as f64);
+        }
+        number(4, 0, -0.0);
+        number(5, 0, 0.0); // Distinct by bits, as in the existing value-key contract.
+        number(4, 1, 10.0);
+        number(5, 1, 10.0);
+        if duplicate {
+            number(5, 0, 0.0);
+        }
+        if far {
+            number(20, 1 << 21, 10.0); // Forces the comparison-sort column-order fallback.
+        }
+        cells.sort_by_key(|c| (c.row, c.col));
+        if reverse {
+            cells.reverse();
+        }
+        let sheet = Sheet { name: "distinct".into(), cells, merges: vec![], formats: vec![] };
+        let ctx = Ctx::new(&sheet);
+        for col in 0..4 {
+            assert_eq!(ctx.at("c_col_distinct_ratio", 0, col), 0.5);
+            assert_eq!(ctx.at("c_col_distinct_ratio", 8, col), 0.5);
+        }
+        assert_eq!(ctx.at("c_col_distinct_ratio", 4, 0), if duplicate { 2.0 / 3.0 } else { 1.0 });
+        assert_eq!(ctx.at("c_col_distinct_ratio", 4, 1), 0.5);
+        assert_eq!(ctx.at("c_col_distinct_ratio", 0, 4), 8.0 / 9.0);
+        if far {
+            assert_eq!(ctx.at("c_col_distinct_ratio", 20, 1 << 21), 1.0);
+        }
+    }
+}
+
+#[test]
 fn header_helpers() {
     let sheet = fixture("hdr", report);
     let ctx = Ctx::new(&sheet);
