@@ -18,6 +18,7 @@ build under `../scratch-archive/accuracy/work/<sha256[:12] of the binary>/`), th
 | `acc.py` | items of a split, their gold atoms (L or C), hedgehog's tables (eval/public `hh_load` + dtypes) |
 | `lookup.py` | L: lookup reachability |
 | `oracle.py` | C: computation-reachability oracle, its validation (`--validate`, `--spot`) |
+| `causes.py` | C: one family + cause + evidence for every C miss (library / oracle-limit / gold/question) |
 | `invariants.py` | M: misleading-output invariants |
 | `scoreboard.py` | F, S, L, C, M, K, miss clusters, audit, RESULTS.md |
 | `audit.tsv` | audited misses with evidence |
@@ -78,14 +79,31 @@ one gives the gold at the gold's shown precision (`oracle.py` docstring has the 
   across the question's columns (or a year range of columns), rank;
 - **binary programs** of like operands in the shapes questions ask for: two named row sets in one column
   (difference, entity / whole share), one named row set in two columns that differ in one header segment
-  (change between years), the same column in two tables: a−b, a+b, a/b, 100·a/b, (a−b)/b, 100·(a−b)/b;
-  date differences in days; hypotheticals ("increases by 10 %", "doubled").
+  (change between years), the same column in two tables: a−b, a+b, a/b, 100·a/b, (a−b)/b, 100·(a−b)/b,
+  1 − a/b (complement share); date differences in days; hypotheticals ("increases by 10 %", "doubled");
+- **wholes** (v2): hedgehog's total rows, total-labelled rows and columns ("Total", "All agencies"),
+  arithmetic wholes (a row = the sum of the block of 2+ rows below / above it, a column = the sum of the 2+
+  columns next to it), "All X" rows named by "X": the denominator of a share of a named part inside its block,
+  also when the question does not name the whole ("of the $75.2 billion spent on R&D, how many percent ...");
+- **v2 shapes**: numeric range labels tiling a question range ("aged 18 to 34" = 18-24 + 25-34); argmax /
+  argmin (the value of a named column, or the year label, in the row where a named column is extreme; the
+  year of a row's extreme year column); k-th largest; counts of rows where one named column exceeds another;
+  the change to the year next to the one named ("up from FY 2016"); 100 − x of a percentage whose row label
+  negates what the question asks ("No prior experience" for "some prior experience").
 
-**Grounding guard.** A witness counts only when it is *tight*: the operation is named by the question (a
+**Grounding guard.** Names are matched after folding "R&D"-style acronyms, plurals, men/women ~ male/female
+and label acronyms ("NASA"); a value named by most of its words names nothing when 3+ values of its column are
+named that way. A witness counts only when it is *tight*: the operation is named by the question (a
 generous lexicon: "difference", "more than", "ratio", "share", "total", "average", ...) and the row set and the
 column are named (an aggregate over all data rows needs a fully named column; a count needs its row set). Items
 where only loosely grounded or ungrounded programs match are misses with that cause (they are listed: a
 library cause often hides there, e.g. a column named `Yuan (2)` instead of "Depreciation (Yuan)").
+Pair guards (v2, each from a decoy or spot-check finding): a share divides a part by a whole unless the
+question asks for a ratio ("times", "ratio", "as a percentage of"); growth compares two periods, or two
+entities with "than" / "compared" / "from A to B", and never a column that already holds changes; "how many
+times" is answered only by a ratio; "+" never sums overlapping row sets and is not named by a bare "and";
+'Mean' / 'S.D.', 'number' / 'percent' columns are no pair; IN-lists only as one set in two columns or the
+part of a share.
 **Matching** (agent_mimotable's rules): absolute values; |x − gold| ≤ half a unit of the gold's last shown
 digit, or the gold is x truncated (when it shows decimals); percent ↔ fraction; scale words.
 
@@ -96,12 +114,32 @@ digit, or the gold is x truncated (when it shows decimals); percent ↔ fraction
 2. Decoy test: the gold × 1.1 and × 0.9 at the same precision; the share of decoys the oracle "reaches"
    estimates the false-reachable rate per gold magnitude. Small integers (≤ 10: counts) are weak evidence by
    nature; integers > 100 and decimals are not.
-3. A seeded sample of 30 reachable MiMoTable items (`oracle.py --spot`), checked by hand (2026-10-23):
+3. v2: two seeded samples of 30 witnesses that v1 did not reach, checked by hand (2026-10-23): 24 / 30 right
+   on the first draft (false: a lookup through a range member, a complement cued by "non-", growth between
+   two entities, a sum over mixed number / percent rows, a value lookup for a "how many times" question) -
+   each tightened; 28 / 30 on the final space (false: a column named only by its leaf segment, 2645.xlsx
+   'Males / SHeS / N'; one uncertain growth between two mice for two time points, science-table35).
+   v1: a seeded sample of 30 reachable MiMoTable items (`oracle.py --spot`), checked by hand (2026-10-23):
    29 / 30 verdicts right. In 23 the first witness is the intended program, in 3 the intended program is a
    later witness (en-0324, en-0553, en-0501), in 3 the value is right but the witness is another program
    (argmax lookups and a filter outside the program space: en-0638, en-0250, en-0135); 1 is a coincidence
    (en-0549: "6 records with Repayment OK" matched a row count, while hedgehog took that row as the header -
    M catches it).
+
+**Miss causes** (`causes.py`, v2): every C miss has exactly one family and cause with an evidence string;
+RESULTS.md lists them ("C misses by family and cause") and the audit candidates. In order:
+- *library*: an operand cell in no table / a value changed / a number kept as text / a total row among the
+  data rows (reachable when total-labelled rows are dropped) / **hedgehog header naming** (generated column
+  names - `col_X`, `Yuan (2)`, a bare unit - replaced by the source header cells above the column make a tight
+  witness: the witness is recorded, the miss stays hedgehog's) / header missing (the best match uses a
+  generated column name) / label path lost or header misnamed (a HiTab gold header-path element the question
+  names is not in hedgehog's row labels or column name) / operands split into two tables;
+- *gold/question* (HiTab, from the gold operand cells): the gold is not reproduced from its own operand cells
+  by any reading of its aggregation, or the question names no word of an operand's header path; MiMoTable
+  lookups whose answer is no cell. Audit candidates: listed for review, never audited automatically;
+- *oracle-limit*: grounding (the question paraphrases an operand, names the column or the operation only in
+  part, an implicit period or national total) or a program shape the oracle does not enumerate (from HiTab's
+  aggregation and operand geometry, else the question's wording: forecast, group-by aggregate, median, ...).
 
 ## M: nothing misleading
 

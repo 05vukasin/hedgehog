@@ -154,6 +154,11 @@ pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
     2 * keys >= n && (keys >= 2 || (n == 2 && pure == 1 && r.n_text() == 1))
 }
 
+/// A text cell that is a `Key:` label (ends with a colon, ASCII or full-width).
+fn has_key_label(sheet: &Sheet, r: &Row) -> bool {
+    r.filled().any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with([':', '：']))
+}
+
 /// Header row relative to the rows below it: more of its cells break the column's body type
 /// (text or a year over plain numbers) than repeat it (Pytheas-style signature votes).
 pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
@@ -406,20 +411,54 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         d += 1;
     }
     if !rows[start + d..end].iter().any(|r| r.n_measure() > 0) {
-        // Text-only table (or no body): the first row is a header if it is wide and all text.
-        let r = &rows[start];
-        let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
+        // Text-only table (or no body): the first row is a header if it is wide and all text;
+        // so is the first such row under up to two sparser rows of parent labels (`2012 | 2013 |
+        // 2014` over `Fitch | S&P | Moody's` over `Company | Type of Audit | Month | …`,
+        // RealHiTBench labor-table50).
         let width = rect.right - rect.left + 1;
-        let ok =
-            end - start >= 2 && r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32;
-        return ok as usize;
+        let wide_text = |r: &Row| {
+            let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
+            r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
+        };
+        let parent = |k: usize| {
+            let r = &rows[k];
+            r.n() >= 2
+                && r.n_measure() == 0
+                && r.n_text() + (r.n_num() - r.n_measure()) == r.n()
+                && rows[k + 1].row == r.row + 1
+                && r.n() * 2 <= rows[k + 1].n()
+        };
+        let mut j = start;
+        // A wide row of parent labels (merged over their groups) counts as a parent too when a
+        // wide all-text row twice as dense follows.
+        while PARENT_HEADER_ROWS
+            && j < start + 2
+            && j + 2 < end
+            && parent(j)
+            && (!wide_text(&rows[j]) || wide_text(&rows[j + 1]))
+        {
+            j += 1;
+        }
+        let ok = end - j >= 2 && wide_text(&rows[j]);
+        return if ok { j - start + 1 } else { 0 };
     }
     if d == 0 {
         // Prior: nearly every table has a header. A wide all-text first row counts, and so does
         // a label over period numbers (`Year | 1 | 2 | …`).
         let vals: Option<Vec<&Value>> =
             rows[start].filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
-        let periods = vals.is_some_and(|v| super::labelled_numbering(v.into_iter()));
+        // Several labels before the numbers only when no header row follows: over a header of
+        // dates (`TIME BUCKET | REGION | 1 | 2 | …` over two rows of dates, DECO peter_keavey) the
+        // numbers row is not the header.
+        let next_header = || {
+            start + 2 < end
+                && rows[start + 1].row == rows[start].row + 1
+                && is_header_row(&rows[start + 1], &rows[start + 2..end])
+        };
+        let periods = vals.is_some_and(|v| {
+            super::labelled_numbering_single(v.iter().copied())
+                || (super::labelled_numbering(v.iter().copied()) && !next_header())
+        });
         if end - start >= 2 && (periods || (HEADER_PRIOR && is_wide_text_row(&rows[start], rect))) {
             d = 1;
         } else {
@@ -470,6 +509,7 @@ fn starts_new_table(
     end: usize,
     numeric_cols: &HashSet<u32>,
     header_sig: &Signature,
+    seen: &HashSet<(u32, String)>,
 ) -> bool {
     let r = &rows[k];
     if r.filled().all(|e| e.rule) {
@@ -484,9 +524,23 @@ fn starts_new_table(
     if !header_sig.is_empty() && signature_is(sheet, r, header_sig) {
         return false; // repeated header (H9), stays in the table
     }
-    let hits =
-        r.filled().skip(1).filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left)).count();
+    // A text that the body above already holds in the same column is one of its values (a
+    // suppression mark, `F` = too unreliable, on a row of them), not a new header's label.
+    let hits = r
+        .filled()
+        .skip(1)
+        .filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left))
+        .filter(|e| !(e.kind == Kind::Text && seen.contains(&(e.left, seen_key(text(sheet, e))))))
+        .count();
     hits >= SPLIT_MIN_HITS && hits as f32 >= SPLIT_MIN_HIT_FRAC * numeric_cols.len() as f32
+}
+
+/// Texts up to this long are remembered per column while a body is read ([`starts_new_table`]):
+/// markers and codes, not long labels.
+const SEEN_MAX_CHARS: usize = 12;
+
+fn seen_key(t: &str) -> String {
+    t.trim().to_lowercase()
 }
 
 /// Long sparse tail of a table (helper formulas or a lone column running far below the data):
@@ -617,8 +671,11 @@ fn segment(
                 && (rows[start + o].n() <= 2
                     || is_key_value_row(sheet, &rows[start + o])
                     // `sparse_pre`: any row with a third of the cells of the row below it
-                    // (`Stock D | Code: | 656839` over a 12-column header).
-                    || (sparse_pre && rows[start + o].n() * 3 <= rows[start + o + 1].n()))
+                    // (`Stock D | Code: | 656839` over a 12-column header); without it, such a
+                    // row that holds a `Key:` label (`Project Name: | Number of Clients: | 7`
+                    // over a 13-column header, MiMoTable ProjectStatisticsTable1).
+                    || ((sparse_pre || has_key_label(sheet, &rows[start + o]))
+                        && rows[start + o].n() * 3 <= rows[start + o + 1].n()))
             {
                 o += 1;
                 let h2 = header_depth(sheet, rows, start + o, e, rect, numbers);
@@ -642,10 +699,19 @@ fn segment(
         let mut numeric_cols: HashSet<u32> = HashSet::new();
         let mut num_counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
         let mut split = None;
+        // Short texts of the body rows with numbers so far, by column ([`starts_new_table`]).
+        let mut seen: HashSet<(u32, String)> = HashSet::new();
         for k in body..e {
-            if k > body && k + 1 < e && starts_new_table(sheet, rows, k, e, &numeric_cols, &sig) {
+            if k > body && k + 1 < e && starts_new_table(sheet, rows, k, e, &numeric_cols, &sig, &seen) {
                 split = Some(k);
                 break;
+            }
+            // Only from rows with numbers: a header the body repeats (page headers) is no value.
+            for en in rows[k].filled().filter(|en| en.kind == Kind::Text && rows[k].n_measure() > 0) {
+                let t = text(sheet, en);
+                if t.trim().chars().count() <= SEEN_MAX_CHARS {
+                    seen.insert((en.left, seen_key(t)));
+                }
             }
             let seen = (k - body + 1) as u32;
             for en in &rows[k].entries {
@@ -1064,6 +1130,9 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
             }
         }
     }
+    if let Some(sg) = segs.first_mut() {
+        label_column_header(sheet, rows, sg);
+    }
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
     for seg in &segs {
@@ -1088,6 +1157,71 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         loose_rows.sort_by_key(|r| r.row);
         out.loose.push(Region { rect: bounds(&loose_rows), rows: loose_rows });
     }
+}
+
+/// A headerless `label | value` table whose last title row, directly above it, is one short label
+/// over the row-label column (`Reference area` over `Australia`, `· New South Wales | 681425574`,
+/// the OECD data explorer's export, RealHiTBench science-table02, geography-table03): that label
+/// is the header of the label column, not a title.
+fn label_column_header(sheet: &Sheet, rows: &[Row], seg: &mut Seg) {
+    // Only for a block that is a table already (a header must not make a list or a map one).
+    if seg.header > 0
+        || seg.titles.is_empty()
+        || seg.titles.end != seg.start
+        || seg.end <= seg.start + 1
+        || qualifies(rows, seg).is_none()
+    {
+        return;
+    }
+    let body = &rows[seg.start..seg.end];
+    let left = body.iter().map(|r| r.left()).min().unwrap_or(0);
+    // The column under it holds the rows' text labels, and the rows have numbers beside them.
+    let labels = body.iter().filter(|r| r.filled().any(|x| x.left == left && x.kind == Kind::Text)).count();
+    let numbers = body.iter().filter(|r| r.n_measure() > 0).count();
+    if labels * 5 < body.len() * 4 || numbers * 2 < body.len() {
+        return;
+    }
+    let label = |k: usize| -> Option<&str> {
+        let e = single_text(&rows[k])?;
+        let t = text(sheet, e);
+        let ok = e.left == left
+            && e.right == e.left
+            && is_short_label(t)
+            // no subtitle (`United States, 2017`) and no `Key:` line
+            && !t.contains([':', ','])
+            && !t.chars().any(|c| c.is_ascii_digit())
+            && !is_total_label(t)
+            && !is_note_label(t)
+            && !super::cells::is_unit_text(t);
+        ok.then_some(t)
+    };
+    let indented = |t: &str| t.starts_with(|c: char| !c.is_alphanumeric());
+    let first = body[0].filled().find(|x| x.left == left).map(|x| text(sheet, x)).unwrap_or("");
+    let mut k = seg.start - 1;
+    let Some(t) = label(k) else { return };
+    // A label like the rows' own (`From Anadarko Pool` over `From Bondad Station`, an empty data
+    // row) is one of them, not their header.
+    let word = |s: &str| s.split_whitespace().next().unwrap_or("").to_lowercase();
+    let sibling = body.iter().take(10).any(|r| {
+        r.filled().find(|x| x.left == left).is_some_and(|x| word(text(sheet, x)) == word(t))
+    });
+    if sibling {
+        return;
+    }
+    if rows[k].row + 1 != rows[seg.start].row {
+        return;
+    }
+    // A label over indented labels is their group (`Australia` over `· New South Wales`); the
+    // header is the label right above it.
+    if indented(first) && !indented(t) {
+        if k == seg.titles.start || rows[k - 1].row + 1 != rows[k].row || label(k - 1).is_none_or(indented) {
+            return;
+        }
+        k -= 1;
+    }
+    seg.titles = seg.titles.start..k;
+    seg.start = k;
+    seg.header = 1;
 }
 
 /// Outline-style key columns: a label column of the table holds a label only on the first row of

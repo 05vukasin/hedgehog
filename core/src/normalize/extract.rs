@@ -581,6 +581,50 @@ impl UniqueNames {
     }
 }
 
+/// Columns of one table with the same name, each without a header cell above its own (a parent
+/// label merged over only part of its group, `Main Income` over F:G of F:I; written once at the
+/// left of its group): each takes the nearest label to its left on the header rows above as its
+/// parent (`Main Income / This Year`), the header-path convention, instead of a counter (`This
+/// Year (2)`). Only when that tells all of them apart; otherwise the counter stays.
+fn parent_names_for_duplicates(head: &[Vec<Head>], heads: &mut [(Vec<HeaderPart>, String)], grid: &Grid, tr: &mut Transforms) {
+    let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+    for (k, (parts, label)) in heads.iter().enumerate() {
+        if !parts.is_empty() {
+            by_name.entry(label.to_lowercase()).or_default().push(k);
+        }
+    }
+    let taken: HashSet<String> = heads.iter().map(|(_, l)| l.to_lowercase()).collect();
+    let mut groups: Vec<Vec<usize>> = by_name.into_values().filter(|ks| ks.len() >= 2).collect();
+    groups.sort_unstable();
+    for ks in groups {
+        // The header row of each column's topmost own label: parents come from the rows above it.
+        let top_row = |k: usize| (0..head.len()).find(|&hr| head[hr][k].is_some());
+        let mut names: Vec<String> = Vec::with_capacity(ks.len());
+        for &k in &ks {
+            let Some(top) = top_row(k) else { break };
+            let mut parents: Vec<(String, (u32, u32))> = Vec::new();
+            for row in &head[..top] {
+                if let Some(p) = row[..k].iter().rev().find_map(|h| h.as_ref()) {
+                    parents.push(p.clone());
+                }
+            }
+            if parents.is_empty() {
+                break;
+            }
+            let prefix = clean_name(grid, &parents);
+            names.push(format!("{prefix} / {}", heads[k].1));
+        }
+        let distinct: HashSet<String> = names.iter().map(|n| n.to_lowercase()).collect();
+        if names.len() != ks.len() || distinct.len() != names.len() || distinct.iter().any(|n| taken.contains(n)) {
+            continue;
+        }
+        for (&k, name) in ks.iter().zip(names) {
+            heads[k].1 = name;
+            tr.add(T::HeaderCellsForwardFilled, 1);
+        }
+    }
+}
+
 struct Built {
     table: Table,
     /// Source rows that stayed in the table's data.
@@ -981,13 +1025,27 @@ fn build_table(
     let mut title_rows = 0;
     for (_, idxs) in rows.iter().filter(|(row, _)| *row < htop) {
         title_rows += 1;
+        // A `Key: | … | Key: | value` line above the header: neither its keys nor the value after
+        // each key are a title (`Number of Clients: | 5` made the title "5"); other text on the
+        // line still is (`Stock D | Code: | 656839`).
+        let is_key = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with([':', '：']));
+        let filled_idx: Vec<usize> =
+            idxs.iter().copied().filter(|&i| cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty())).collect();
+        let key_part: HashSet<usize> = filled_idx
+            .iter()
+            .enumerate()
+            .filter(|&(k, &i)| is_key(i) || (k > 0 && is_key(filled_idx[k - 1])))
+            .map(|(_, &i)| i)
+            .collect();
         for &i in idxs {
+            let key_line = key_part.contains(&i);
             owner[i] = OWN_NOTES;
             let mut it = note(i, "title");
             if is_nav_link(&it.text) {
                 // "zur Inhaltsübersicht": a link back to the contents, never the title.
                 it.kind = "other";
             } else if title.is_none()
+                && !key_line
                 && !it.text.is_empty()
                 && !crate::layout::is_note_label(&it.text)
                 // A key of a "Project Name: | …" line above the header is no title.
@@ -1720,6 +1778,7 @@ fn build_table(
         };
         heads.push((parts, label));
     }
+    parent_names_for_duplicates(&head, &mut heads, grid, &mut tr);
     let type_one = |k: usize| -> (Typed, Transforms) {
         let col = r.left + k as u32;
         let first = opts.locale.map(|l| l.hints()).unwrap_or_default();
