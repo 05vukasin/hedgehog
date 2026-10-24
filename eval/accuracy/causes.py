@@ -60,6 +60,12 @@ def generated(name: str) -> bool:
     return not (O.cwords(name) - O._UNIT_WORDS - O._GENERIC)
 
 
+def _is_title(v: str, title: str) -> bool:
+    """The source cell is the table's title (hedgehog's title starts with it, or it with the title)."""
+    a, b = O._n(v), O._n(title)
+    return len(a) >= 20 and len(b) >= 20 and (a.startswith(b[:60]) or b.startswith(a[:60]))
+
+
 def source_header(raw: dict, sheet: str, t, k: int) -> str:
     """The source's header text above column k of table t: the cells in the column from the header's
     last row up to 8 rows above its first (a merged header cell: the nearest non-empty cell to the left in
@@ -83,6 +89,8 @@ def source_header(raw: dict, sheet: str, t, k: int) -> str:
                     break
         if not v:
             continue
+        if _is_title(v, getattr(t, "title", "") or ""):
+            continue  # the table's title above a lone column ('Table 3: …' over '%'): no header of it
         p = parse_number(v)
         if p is not None and not (p[0] == int(p[0]) and 1900 <= p[0] <= 2100):
             break

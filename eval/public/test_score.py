@@ -102,3 +102,11 @@ class CatalogNumbers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AccountingNegative(unittest.TestCase):
+    def test_unclosed_parenthesis(self):
+        self.assertTrue(S.unclosed_negative("(11,134"))
+        self.assertTrue(S.unclosed_negative("(10"))
+        for x in ("(11,134)", "11,134", "(a", "(1) Total", "-5", None, 3.0):
+            self.assertFalse(S.unclosed_negative(x), x)

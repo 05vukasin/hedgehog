@@ -369,6 +369,12 @@ def lenient_in(gold: list[str], text: str) -> bool:
     return all(norm_text(g).replace(" ", "") in t for g in gold)
 
 
+def unclosed_negative(raw) -> bool:
+    """An accounting negative whose closing parenthesis the source lost: '(11,134' in a column of '(8,910',
+    '(7,271' (HiTab's clean StatCan files drop the ')'); a reader that takes it as -11134 reads it right."""
+    return isinstance(raw, str) and re.fullmatch(r"\(\s*\d[\d,]*(\.\d+)?", raw.strip()) is not None
+
+
 def link_one(tables: list[Table], it: dict, raw: dict) -> dict:
     cell = it["cells"][0]
     r0, c0 = cell["row"], cell["col"]
@@ -387,6 +393,8 @@ def link_one(tables: list[Table], it: dict, raw: dict) -> dict:
         out["value"] = "equal"
     elif is_numeric_value(v) and rp[2] and abs(float(v) - rp[0] / 100) <= 1e-9:
         out["value"] = "equal (percent as fraction)"
+    elif is_numeric_value(v) and unclosed_negative(rawv) and abs(float(v) + rp[0]) <= 1e-9 * max(1.0, abs(rp[0])):
+        out["value"] = "equal (accounting negative)"
     elif isinstance(v, str):
         out["value"] = "kept as text"
     else:
@@ -597,7 +605,7 @@ def linking(dataset: str, items: list[dict]) -> dict:
             if r["row_exact"] is False and len(ex[f"{tool}: row labels differ"]) < 6:
                 ex[f"{tool}: row labels differ"].append(
                     f"{it['file']} !{cell['a1']}: gold {cell['left_path']} vs {r['labels'][:4]}")
-            if r["value"] not in ("equal", "equal (percent as fraction)", "source not a number") and len(ex[f"{tool}: value {r['value']}"]) < 6:
+            if r["value"] not in ("equal", "equal (percent as fraction)", "equal (accounting negative)", "source not a number") and len(ex[f"{tool}: value {r['value']}"]) < 6:
                 ex[f"{tool}: value {r['value']}"].append(
                     f"{it['file']} !{cell['a1']}: source {r['source']!r} stored {r['stored']!r}")
         out[tool] = dict(c)

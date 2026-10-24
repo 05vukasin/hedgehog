@@ -50,10 +50,42 @@ class UnnamedStub(unittest.TestCase):
         t = table(["NOW Magazine", "col_B", "2014-07-24"], [["EM2058", "Corona Sunsets", 1.0], ["EM2059", "Other", 2.0]])
         self.assertFalse(L.unnamed_stub(t, 1, RAW))
 
+    def test_number_columns_left_of_it(self):
+        # society-table37: 'Int# | LiST# | (blank) | (blank) | Newborn Lives Saved', the intervention names in E
+        # have no header cell in the source; item numbers to their left do not make it a misplaced header
+        rows = [[0.0, 0.0, "Family Planning", "Contraceptive Use", 3.0], [9.0, 14.0, "Antenatal Care", "TT", 80.0]]
+        t = table(["Int#", "LiST#", "col_C", "col_D", "Newborn Lives Saved"], rows, rng="A5:E8", data="A6:E8")
+        raw = {("S", 4, 0): "Int#", ("S", 4, 1): "LiST#", ("S", 4, 4): "Newborn Lives Saved"}
+        self.assertTrue(L.unnamed_stub(t, 3, raw))
+        e = table(["Selected", "Int#", "col_C", "col_D", "Newborn Lives Saved"], [[None] + r[1:] for r in rows],
+                  rng="A5:E8", data="A6:E8")
+        self.assertTrue(L.unnamed_stub(e, 3, raw), "an empty named column to its left")
+        raw[("S", 4, 3)] = "Intervention"
+        self.assertFalse(L.unnamed_stub(t, 3, raw))
+
     def test_data_column_with_a_lost_header(self):
         t = table(["col_A", "January / Actual", "January / Budget"], ROWS,
                   colmeta=[{"original_header": [{"text": "Product", "cell": "A6"}]}, {}, {}])
         self.assertFalse(L.unnamed_stub(t, 0, RAW))
+
+
+class YearKey(unittest.TestCase):
+    # society-table61: 'Period | Total bankruptcies', the years are the rows' own labels
+    T = table(["Period", "Total bankruptcies"], [[2010.0, 59173.0], [2011.0, 41928.0], [2012.0, 31775.0]])
+
+    def setUp(self):
+        self.T.label_cols = {0}
+
+    def test_year_of_a_year_stub(self):
+        self.assertTrue(L.year_key([self.T], PS.Atom("2010", "number"), {"year", "highest", "bankruptcies"}))
+
+    def test_question_without_year(self):
+        self.assertFalse(L.year_key([self.T], PS.Atom("2010", "number"), {"highest", "bankruptcies"}))
+
+    def test_measure_is_no_year_key(self):
+        t = table(["Period", "Total"], [[2010.0, 2011.0], [2011.0, 1990.0], [2012.0, 1995.0]])
+        t.label_cols = {0}
+        self.assertFalse(L.year_key([t], PS.Atom("1990", "number"), {"year"}))
 
 
 class HitabRoots(unittest.TestCase):
