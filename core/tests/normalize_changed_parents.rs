@@ -56,6 +56,21 @@ fn fixture(rules_only: bool, variant: u8) -> Normalized {
     ws.write_number(11 + u32::from(variant == 2), 2, 668.0).unwrap();
     ws.write_number(12, 2, 310.0).unwrap();
     ws.write_number(12, 5, 65.8).unwrap();
+    // The actual cleaned HiTab source stores every measured value as text.
+    if variant == 7 {
+        for (start, count, base, step) in [(6, 4, 100.0, 17), (11, 5, 200.0, 19)] {
+            for i in 0..count {
+                for c in 1..=12u16 {
+                    let value = match (start + i, c) {
+                        (7, 2) => 301.2, (7, 5) => 59.1, (11, 2) => 668.0,
+                        (12, 2) => 310.0, (12, 5) => 65.8,
+                        _ => base + (step * i + u32::from(c)) as f64,
+                    };
+                    ws.write_string(start + i, c, format!("{value:.1}")).unwrap();
+                }
+            }
+        }
+    }
     wb.save(&path).unwrap();
     let book = open(&path).unwrap();
     std::fs::remove_file(path).unwrap();
@@ -139,5 +154,23 @@ fn changed_parent_unit_text_is_preserved_before_typing() {
         let c = t.columns.iter().find(|c| c.name == "Cancer (%) / Crude").unwrap();
         assert_eq!(c.values[row], Out::Num(65.8));
         assert_eq!(c.original_header[0], ("Cancer (%)".into(), (10, 5)));
+    }
+}
+
+#[test]
+fn numeric_text_cohorts_keep_changed_headers_and_exact_values() {
+    for rules_only in [false, true] {
+        let expected = fixture(rules_only, 0);
+        let actual = fixture(rules_only, 7);
+        assert_eq!(actual.tables.len(), expected.tables.len());
+        for (got, want) in actual.tables.iter().zip(&expected.tables) {
+            assert_eq!(got.src_rows, want.src_rows);
+            assert_eq!(got.columns.len(), want.columns.len());
+            for (got, want) in got.columns.iter().zip(&want.columns) {
+                assert_eq!(got.name, want.name);
+                assert_eq!(got.original_header, want.original_header);
+                assert_eq!(got.values, want.values);
+            }
+        }
     }
 }
