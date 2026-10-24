@@ -131,7 +131,7 @@ def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
         rec["pass"] = ok
     else:
         r = PS.reach_tables(tables, [at], qw)
-        rec["pass"] = r["cell"] and (r["loose"] or at.num is None)
+        rec["pass"] = r["cell"] and (r["loose"] or at.num is None or year_key(tables, at, qw))
         rec["level"] = "loose" if r["loose"] else "cell" if r["cell"] else "none"
     if rec["pass"] and date is None and at.num is None:
         # a text answer found only in columns without a name (col_X): the agent cannot tell what it is
@@ -147,6 +147,23 @@ def check_atom(it: dict, a: dict, tables, raw: dict) -> dict:
     return rec
 
 
+def year_key(tables, at, qwords: set[str]) -> bool:
+    """A year asked for by a 'which year' question, found as the row key of a year stub: a label column whose
+    values are all years (`Period | Total bankruptcies` with 2010 .. 2019). The year is the row's own label, so
+    no other label grounds it; the question's 'year' and a column of nothing but years do."""
+    x = at.num[0] if at.num is not None else None
+    if x is None or at.num[2] or x != int(x) or not 1900 <= x <= 2100 or not ({"year", "years"} & qwords):
+        return False
+    for t, _i, c in PS.find_cells(tables, at):
+        if c not in t.label_cols:
+            continue
+        vals = [row[c] for row in t.rows if c < len(row) and row[c] not in (None, "")]
+        yrs = [v for v in vals if isinstance(v, (int, float)) and v == int(v) and 1900 <= v <= 2100]
+        if len(vals) >= 3 and len(yrs) == len(vals):
+            return True
+    return False
+
+
 def _a1_rows(rng: str) -> tuple[int, int] | None:
     m = re.fullmatch(r"[A-Z]+(\d+):[A-Z]+(\d+)", rng or "")
     return (int(m.group(1)), int(m.group(2))) if m else None
@@ -154,7 +171,7 @@ def _a1_rows(rng: str) -> tuple[int, int] | None:
 
 def unnamed_stub(t, j: int, raw: dict) -> bool:
     """Column j is the table's row-label stub and the source names it nowhere: every column to its left is a
-    group, parent or unnamed column, it carries no original header, the table has header rows, and the source cells
+    group, parent, numeric or unnamed column, it carries no original header, the table has header rows, and the source cells
     of its header rows are empty. Its row labels are then reachable as they are in the source: a `col_X` name loses nothing there
     (the col_X rule is for a header the source has and hedgehog lost)."""
     if j not in t.label_cols or j in getattr(t, "parent_cols", set()) or not re.fullmatch(r"col_[A-Z]+", t.headers[j]):
@@ -162,10 +179,12 @@ def unnamed_stub(t, j: int, raw: dict) -> bool:
     meta = getattr(t, "colmeta", [])
     if j < len(meta) and (meta[j].get("role") == "group" or meta[j].get("original_header")):
         return False
-    # the stub: only unnamed columns, the group column and parent columns to its left (a named column there,
-    # e.g. a title taken as the header, means the header is misplaced, not absent)
+    # the stub: only unnamed columns, the group column, parent columns, numeric columns (`Int# | LiST#` item
+    # numbers before the names) and empty columns to its left (a named text column there, e.g. a title taken as the header, means
+    # the header is misplaced, not absent)
     if any(not re.fullmatch(r"col_[A-Z]+(_key)?", t.headers[k]) and k not in getattr(t, "parent_cols", set())
-           and not (k < len(meta) and meta[k].get("role") == "group") for k in range(j)):
+           and not (k < len(meta) and meta[k].get("role") == "group") and k not in t.numeric_cols
+           and any(k < len(r) and r[k] not in (None, "") for r in t.rows) for k in range(j)):
         return False
     src = (getattr(t, "manifest", {}) or {}).get("source", {})
     letter = t.letters[j] if j < len(t.letters) else None
@@ -365,7 +384,7 @@ def hitab_lookup(it: dict, tables, raw: dict) -> dict:
     if not r["found"]:
         rec.update(**{"pass": False, "cause": f"cell not in any table ({r['reason']})", "evidence": f"{a1}={cell['raw']!r}"})
         return rec
-    val_ok = r["value"] in ("equal", "equal (percent as fraction)", "source not a number")
+    val_ok = r["value"] in ("equal", "equal (percent as fraction)", "equal (accounting negative)", "source not a number")
     t, i, j = PS.locate(tables, it["sheet"], cell["row"], cell["col"])
     row_ok, leaf_ok, col_ok = hitab_paths(t, i, j, cell)
     rec["pass"] = val_ok and col_ok and row_ok

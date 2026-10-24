@@ -64,7 +64,7 @@ def main() -> int:
             if not r["found"]:
                 continue
             c["found"] += 1
-            c["value_equal"] += r["value"] in ("equal", "equal (percent as fraction)")
+            c["value_equal"] += r["value"] in ("equal", "equal (percent as fraction)", "equal (accounting negative)")
             c["col_exact"] += bool(r["col_exact"])
             c["row_exact"] += bool(r["row_exact"])
             c["row_leaf"] += bool(r["row_leaf"])

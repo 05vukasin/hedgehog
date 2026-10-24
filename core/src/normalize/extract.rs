@@ -388,6 +388,24 @@ const MAX_OUTLINE_DEPTH: usize = 6;
 /// ancestors is such a heading: a bold row after plain ones at its indent (a total closing them)
 /// heads nothing. `None` when the labels form one level only, or fewer than two rows (and a tenth
 /// of the rows) have an ancestor. Ancestors are always labels of the sheet's own rows.
+/// From the run's first label `k` at level `l` to the run's end (a shallower label or a group header):
+/// some bold label at level `l` directly followed by a plain one at level `l`.
+fn bold_heads_plain(outline: &[OutlineRow], k: usize, l: u16, base: &impl Fn(&OutlineRow) -> u16) -> bool {
+    // directly: no deeper label between them
+    let mut prev: Option<&OutlineRow> = None;
+    for o in outline[k..].iter().take_while(|o| !o.group && base(o) >= l) {
+        if base(o) == l {
+            if prev.is_some_and(|p| p.bold && !o.bold) {
+                return true;
+            }
+            prev = Some(o);
+        } else {
+            prev = None;
+        }
+    }
+    false
+}
+
 fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
     let style = outline.iter().any(|o| o.indent > 0);
     let base = |o: &OutlineRow| u16::from(if style { o.indent } else { o.spaces });
@@ -406,9 +424,14 @@ fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
             runs.pop();
         }
         if runs.last().is_none_or(|&(rl, _)| rl < l) {
-            // The first label at this level: a bold one followed by a plain one at the same level.
+            // The first label at this level is a bold heading: followed by a plain one at the same
+            // level (`Canada` over `Quebec`), or by deeper rows while a later bold label of the run
+            // heads plain ones at this level (`Custody` over indented rows, then `Community
+            // supervision` over `Probation`, HiTab 959). A run of bold labels one after the other
+            // (codes of a geography list, `K04000001` then `E92000001`) heads nothing.
             let next = outline.get(k + 1).filter(|x| !x.group);
-            let headed = o.bold && next.is_some_and(|x| base(x) == l && !x.bold);
+            let headed = o.bold
+                && next.is_some_and(|x| (base(x) == l && !x.bold) || (base(x) > l && bold_heads_plain(outline, k, l, &base)));
             runs.push((l, headed));
         }
         if runs.last().is_some_and(|&(_, h)| h) && o.bold {
@@ -743,6 +766,21 @@ struct Built {
 }
 
 type Head = Option<(String, (u32, u32))>;
+
+/// The header cells of row `hr` all sit under one and the same header cell of the row above (a
+/// parent label over exactly these columns, merged or filled right), and that label heads nothing else.
+fn numbers_under_one_label(head: &[Vec<Head>], hr: usize) -> bool {
+    if hr == 0 {
+        return false;
+    }
+    // (a cell merged down from the row above, `Group and cohort` over A3:A5, is no number of this row)
+    let cols: Vec<usize> = (0..head[hr].len()).filter(|&hc| head[hr][hc].is_some() && head[hr][hc] != head[hr - 1][hc]).collect();
+    let Some(parent) = cols.first().and_then(|&hc| head[hr - 1][hc].as_ref()) else {
+        return false;
+    };
+    cols.iter().all(|&hc| head[hr - 1][hc].as_ref() == Some(parent))
+        && (0..head[hr].len()).all(|hc| cols.contains(&hc) || head[hr - 1][hc].as_ref() != Some(parent))
+}
 
 /// A total row as detected: its level and the first row of its source (the topmost range start
 /// among the row's vertical totals), when known.
@@ -1706,7 +1744,9 @@ fn build_table(
     }
 
     // A column-numbering header row ("1 2 3 …", so notes can say "Sp. 3–4") stays in
-    // `original_header` but does not name the columns (B45: not "… / 1").
+    // `original_header` but does not name the columns (B45: not "… / 1"). Unless the numbers sit
+    // under one label over all of them: then they are that label's values (`Number of years since
+    // landing` over `1 2 3 4 5 6`, HiTab 1220), not column numbers.
     let numbering_rows: Vec<bool> = (0..nh)
         .map(|hr| {
             let vals: Vec<&Value> = rows
@@ -1715,7 +1755,7 @@ fn build_table(
                 .flat_map(|(_, idxs)| idxs.iter().filter_map(|&i| cells[i].value.as_ref()))
                 .filter(|v| !display(v).is_empty())
                 .collect();
-            crate::layout::column_numbering(vals.into_iter())
+            crate::layout::column_numbering(vals.into_iter()) && !numbers_under_one_label(&head, hr)
         })
         .collect();
     // B70: the row label of a header row of series codes ("Dataset identifier code | MGSL | MGSF

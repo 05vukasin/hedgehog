@@ -60,6 +60,12 @@ def generated(name: str) -> bool:
     return not (O.cwords(name) - O._UNIT_WORDS - O._GENERIC)
 
 
+def _is_title(v: str, title: str) -> bool:
+    """The source cell is the table's title (hedgehog's title starts with it, or it with the title)."""
+    a, b = O._n(v), O._n(title)
+    return len(a) >= 20 and len(b) >= 20 and (a.startswith(b[:60]) or b.startswith(a[:60]))
+
+
 def source_header(raw: dict, sheet: str, t, k: int) -> str:
     """The source's header text above column k of table t: the cells in the column from the header's
     last row up to 8 rows above its first (a merged header cell: the nearest non-empty cell to the left in
@@ -83,6 +89,8 @@ def source_header(raw: dict, sheet: str, t, k: int) -> str:
                     break
         if not v:
             continue
+        if _is_title(v, getattr(t, "title", "") or ""):
+            continue  # the table's title above a lone column ('Table 3: …' over '%'): no header of it
         p = parse_number(v)
         if p is not None and not (p[0] == int(p[0]) and 1900 <= p[0] <= 2100):
             break
@@ -209,7 +217,8 @@ def hitab_cause(it: dict, atom: dict, tables: list, q) -> tuple[str, str, str] |
         for e in c.get("left_path") or []:
             if O.TOTAL_LABEL.search(O._n(e)) or any(_same(e, x) for x in roots):
                 continue  # HiTab roots its left tree at the label column's header or a total row
-            if q.entity(e) and not any(_same(e, x) for x in labs) and not _same(e, t.headers[k]):
+            if q.entity(e) and not any(_same(e, x) for x in labs) and not _same(e, t.headers[k]) \
+                    and not (labs and _labels_other_copy(e, t, i, tables)):
                 return LIB, "label path lost", f"{c.get('a1')}: '{e}' (named by the question) is no label of hedgehog's row {labs[:4]} ({t.id})"
         segs = t.headers[k].split(" / ")
         for e in c.get("top_path") or []:
@@ -332,6 +341,21 @@ def _loose_reason(progs, res: dict, q) -> tuple[str, str, str] | None:
             return LIM, "grounding: operation not named by the question", ""
         return LIM, "grounding: an operand named only in part", ""
     return None
+
+
+def _labels_other_copy(e: str, t, i: int, tables: list) -> bool:
+    """HiTab's left path is the sheet row's left stub: for a cell of the right-hand copy of two side-by-side
+    lists (163_81_tab2: Missouri..Wyoming in G:L beside Alabama..Mississippi in A:F) it names the left copy's
+    label of the same source row, which hedgehog keeps in another table. Only for a row with labels of its own
+    (a table split away from its labels is still hedgehog's miss)."""
+    src = t.src_rows[i] if t.src_rows and i < len(t.src_rows) else -1
+    if src < 0:
+        return False
+    for t2 in tables:
+        i2 = t2.by_src.get(src) if t2 is not t and t2.sheet == t.sheet else None
+        if i2 is not None and any(_same(e, x) for x in t2.labels(i2)):
+            return True
+    return False
 
 
 _REVIEWED: dict | None = None

@@ -1023,6 +1023,12 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
         }
         return;
     }
+    if let Some(parts) = super::repeat::split_repeated_copies(sheet, &region) {
+        for p in parts {
+            analyze_region(sheet, p, out);
+        }
+        return;
+    }
     let rows = &region.rows;
     if rows.len() < MIN_TABLE_ROWS || region.width() < MIN_TABLE_COLS || is_form(sheet, &region) {
         out.loose.push(region);
