@@ -663,3 +663,27 @@ fn incidental_total_that_closes_its_group_is_a_total() {
     let lay = hh_core::layout::analyze(&grid);
     assert_eq!(lay.roles[grid.cell_index(20, 2).unwrap()], hh_core::Role::Total);
 }
+
+
+#[test]
+fn formula_verification_keeps_sources_above_first_unsorted_cell() {
+    for duplicate in [false, true] {
+        let mut cells = vec![
+            Cell { row: 2, col: 1, value: Some(Value::Number(30.0)), formula: Some("SUM(B1:B2)".into()) },
+            Cell { row: 0, col: 1, value: Some(Value::Number(10.0)), formula: None },
+            Cell { row: 1, col: 1, value: Some(Value::Number(if duplicate { 999.0 } else { 20.0 })), formula: None },
+        ];
+        if duplicate {
+            // Grid's fallback index keeps the last cell at a duplicate position.
+            cells.push(Cell { row: 1, col: 1, value: Some(Value::Number(20.0)), formula: None });
+        }
+        let sheet = Sheet { name: "Unsorted".into(), cells, ..Sheet::default() };
+        let grid = Grid::new(&sheet);
+        let candidates = detect(&grid);
+        let total = at(&candidates, 2, 1);
+        assert_eq!(total.ranges, vec![rect(0, 1, 1, 1)]);
+        let checked = verify(&grid, total);
+        assert_eq!((checked.ok, checked.reason, checked.summed), (Some(true), CheckReason::Match, 2));
+        assert_eq!((checked.actual, checked.expected), (Some(30.0), Some(30.0)));
+    }
+}

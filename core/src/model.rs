@@ -220,6 +220,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn used_range_is_independent_of_cell_order() {
+        let positions = [(9, 13), (2, 21), (17, 3), (7, 29)];
+        let expected = Rect { top: 2, left: 3, bottom: 17, right: 29 };
+        let mut permutations = 0;
+        for a in 0..4 {
+            for b in 0..4 {
+                for c in 0..4 {
+                    for d in 0..4 {
+                        if [a, b, c, d].iter().copied().collect::<std::collections::HashSet<_>>().len() != 4 { continue; }
+                        let cells: Vec<_> = [a, b, c, d].iter().map(|&i| Cell {
+                            row: positions[i].0,
+                            col: positions[i].1,
+                            value: Some(Value::Number(i as f64)),
+                            formula: None,
+                        }).collect();
+                        let mut sheet = Sheet { cells, ..Sheet::default() };
+                        assert_eq!(sheet.used_range(), Some(expected), "order {a}{b}{c}{d}");
+                        // A duplicate position cannot move the bounding box.
+                        sheet.cells.push(sheet.cells[0].clone());
+                        assert_eq!(sheet.used_range(), Some(expected));
+                        sheet.merges.push(Rect { top: 1, left: 1, bottom: 20, right: 31 });
+                        assert_eq!(sheet.used_range(), Some(Rect { top: 1, left: 1, bottom: 20, right: 31 }));
+                        permutations += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(permutations, 24);
+    }
+
+    #[test]
     fn formats_pack_and_unpack() {
         assert_eq!(Format::default().unpack(), None);
         let s = FormatSpec {
