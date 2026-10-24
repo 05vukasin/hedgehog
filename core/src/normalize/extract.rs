@@ -1559,7 +1559,7 @@ fn interval_header_end(grid: &Grid, r: Rect, top: u32, end: u32, owner: &[u8]) -
     }
     let pairs: Vec<_> = grid.sheet.merges.iter().filter(|m| {
         m.top == end - 1 && m.bottom == m.top && m.left > r.left && m.right <= r.right
-            && m.right == m.left + 1
+            && m.right.checked_sub(m.left) == Some(1)
             && text(m.top, m.left).to_lowercase().contains("confidence interval")
             && text(end, m.left).trim().eq_ignore_ascii_case("from")
             && text(end, m.right).trim().eq_ignore_ascii_case("to")
