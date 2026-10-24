@@ -116,8 +116,18 @@ final implementation `aa5a013`, release `3c22b9e970fb`.
 
 ## Running
 
-No source workers or heavy jobs running. Iteration 5 starts after local integration
-and resource checks, with separate accuracy and performance workers plus review.
+Iteration 5 baseline: accepted local master `9838da0`, release `3c22b9e970fb`.
+
+- Lead `codex/iteration-5`; accuracy `codex/accuracy-iter5` in
+  `../hh-accuracy-iter2`; performance `codex/performance-iter5` in
+  `../hh-performance-iter2`; independent source reviewer checks both.
+- Accuracy: source-backed remaining DEV failures; two-band StatCan headers are
+  a candidate. Preserve ambiguous cases without fabricated ownership.
+- Performance: prepare temporary coarse profiling of dominant NYISO phases before
+  choosing another production patch; no speculative revival of rejected cleanups.
+- Before expansion: 10 GiB available RAM, 4.3 MiB swap used, 121 GiB free disk,
+  btrfs metadata 17.35/18.50 GiB; three worker slots available, no heavy jobs.
+  All source/review workers finish before serialized capped testing.
 
 ## Next (in order)
 
