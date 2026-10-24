@@ -1,5 +1,7 @@
 # Plan: a tool with 100 % accuracy
 
+How the work is run: [AGENT_PLAYBOOK.md](AGENT_PLAYBOOK.md). What is done, running and next: [STAGES.md](STAGES.md).
+
 Goal (user, 2026-10-23): hedgehog gives an agent everything it needs, exactly right, for every
 question a spreadsheet can answer — proven with model-free tests first; an agent run is only the final,
 official confirmation.

@@ -19,7 +19,8 @@ __pycache__/
 !.env.example
 
 # Claude Code local state (agent worktrees, settings)
-/.claude/
+/.claude/*
+!/.claude/skills/
 
 # Node package: dependencies, local addon builds, napi packaging output
 /node/node_modules/
