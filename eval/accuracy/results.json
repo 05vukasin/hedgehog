@@ -2280,8 +2280,8 @@
   }
  },
  "M": {
-  "violations": 1552,
-  "files": 762,
+  "violations": 1548,
+  "files": 761,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
@@ -2305,7 +2305,7 @@
     "M3 measures mixed": 17,
     "M1 total row in data": 4,
     "M5 number as header": 12,
-    "M5 duplicate headers": 15,
+    "M5 duplicate headers": 11,
     "M5 repeated header names": 40
    }
   },
@@ -2314,8 +2314,8 @@
    "M3 measures mixed": 72,
    "M5 repeated header names": 57,
    "M1 total row in data": 23,
-   "M5 duplicate headers": 16,
    "M5 number as header": 14,
+   "M5 duplicate headers": 12,
    "M2 percent mixed": 11,
    "M4 Excel serial as number": 1,
    "M6 '(n)' read as negative": 1
@@ -2353,8 +2353,8 @@
    ],
    "M5 duplicate headers": [
     "mimotable repo/data/english/spreadsheet/BankDepositInterestRates.xlsx T4  | column '按一年以内定期整存整取同档次利率打六折执行 (2)': the header above ('Execute at 60% of the same tier interest rate for time deposits within one year') is not in any column name",
-    "realhitbench tables/environment-table03.xlsx T2  | column 'Statistical significance (p-value) (2)': the source names these columns above the header ('ET', 'PAR', 'Sal')",
-    "realhitbench tables/environment-table03.xlsx T2  | column 'Statistical significance (p-value) (3)': the source names these columns above the header ('ET', 'PAR', 'Sal')"
+    "realhitbench tables/health-table01.xlsx T2  | column 'States (2)': the header above ('Least') is not in any column name",
+    "realhitbench tables/health-table01.xlsx T2  | column 'Recovered % (2)': the header above ('Least') is not in any column name"
    ],
    "M4 Excel serial as number": [
     "mimotable repo/data/english/spreadsheet/TaobaoAffiliate-DataAnalysisToolTable-(1).xlsx T4 Recruitment Post Effect Analysis!H2 | 'Release Time': 11 values like 41214"
@@ -2383,7 +2383,7 @@
    },
    "realhitbench": {
     "files": 536,
-    "mean": 771.1,
+    "mean": 771.0,
     "median": 613,
     "p90": 1529,
     "max": 3607
@@ -2473,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 147
+ "seconds": 114
 }

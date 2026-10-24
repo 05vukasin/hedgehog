@@ -5,7 +5,7 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (iteration 6, implementation e7a34a4, 2026-10-25)
+## Current state (iteration 7, implementation 2fee835, 2026-10-25)
 
 | Measure | Value | Target |
 |---|---|---|
@@ -13,7 +13,7 @@ split unless noted. Update this file whenever a stage starts, merges or is dropp
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
 | L lookups | 5,498 / 5,634 = 97.6 % raw, 97.7 % after audit (127 misses) | 100 % after audit |
 | C calculations | 1,198 / 2,264 proven; library misses 41; oracle-limit ≈ 989; gold/question 2 unreviewed | library misses 0 |
-| M misleading-info violations | 1,552 in 762 files (1,357 are columns without header text) | 0 (or documented policy) |
+| M misleading-info violations | 1,548 in 761 files (1,357 are columns without header text) | 0 (or documented policy) |
 | K catalog tokens / file | hitab 774, mimotable 972, realhitbench 771 | no growth |
 | S HiTab table F1@0.8 | 98.9 % (unchanged reproduced baseline; old ledger was stale) | — |
 | Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
@@ -148,18 +148,27 @@ The scratch-reuse optimization is rejected; semantic regression retained.
 Final twelve-pair timing is broadly within 1%, with NYISO normalization +0.97%;
 this small cost is documented, and no speed improvement is claimed.
 
+## Iteration 7 accepted
+
+See [iteration 7 evidence](iteration-7.md). Release `d119f31186d5` recovers
+triangular matrix footer axes and preserves numbers beside literal N.S.
+annotations. Four duplicate-header M violations removed, none added; L/C
+unchanged, clean operation reach 521 → 523, catalog tokens −16 in total.
+All 545 release tests, quick checks, Clippy, 50 identical goldens, both structure
+benchmark gates, full fidelity and strict 4,055-file comparison pass. Node21,
+TypeScript, final real-source and 41,358-segment equivalence checks pass.
+Formula allocation experiment rejected/reverted; semantic regression retained.
+Final paired medians stay within 1% of accepted iteration 6 with exact outputs
+and no median RSS increase. No speed improvement is claimed.
+
 ## Running
 
-Iteration 7 baseline: accepted local master `897d06b`, release `7de31e0ebc5e`.
-Lead `codex/iteration-7`; accuracy `codex/accuracy-iter7` and performance
-`codex/performance-iter7` in existing worktrees, plus independent source reviewer.
-Three lightweight workers active; heavy tests wait until source/review completes.
-Before expansion: 12 GiB RAM available, 1.4/14 GiB swap used, 121 GiB disk free,
-btrfs metadata 17.39/18.50 GiB, memory guard active and three free worker slots.
+No workers or heavy jobs. Next paired accuracy/performance iteration starts
+after checking RAM, swap, disk, btrfs metadata and live agent slots.
 
 ## Next (in order)
 
-1. S12 remainder — columns without header text (1,357 of 1,552 M violations): policy for source columns that
+1. S12 remainder — columns without header text (1,357 of 1,548 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
 2. S13 remainder — 127 audited L misses: largest raw clusters are question keys outside tables (28),
