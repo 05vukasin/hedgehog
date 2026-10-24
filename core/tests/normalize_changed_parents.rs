@@ -4,7 +4,9 @@ use hh_core::{normalize::{normalize_workbook, ColRole, Normalized, Options, Out}
 use rust_xlsxwriter::{Format, Workbook};
 
 fn fixture(rules_only: bool, variant: u8) -> Normalized {
-    let path = std::env::temp_dir().join(format!("hh_changed_parents_{}_{}_{}.xlsx", std::process::id(), rules_only, variant));
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = std::env::temp_dir().join(format!("hh_changed_parents_{}_{}_{}_{serial}.xlsx", std::process::id(), rules_only, variant));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     let header = Format::new().set_bold();
