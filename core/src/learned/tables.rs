@@ -237,8 +237,8 @@ fn merge_header_only(
             let from = if prev.header_rows > 0 { prev.header_top } else { p.top };
             let rows: Vec<RowInfo> =
                 rows_in(grid, p, roles, raw, rules).into_iter().filter(|r| r.row >= from && r.row < t.rect.top).collect();
-            // A row inside the span of a vertical merge that starts on a header row above it
-            // (`Number` over A2:A6) is part of the header block whatever the model says of its
+            // A row inside the span of a vertical merge that starts on a header row above it and
+            // reaches into the next table (`Number` over A2:A6) is part of the header block whatever the model says of its
             // other cells (a row of fuel prices under `Gasoline | Diesel`, MiMoTable 8PumpMachinery).
             let mut merged_to: Option<u32> = None;
             let all_header = !rows.is_empty()
@@ -252,6 +252,9 @@ fn merge_header_only(
                                 && m.top == c.row
                                 && m.left == c.col
                                 && m.bottom > m.top
+                                // reaching into the next table: the cut went through the header
+                                // (a group label merged down its own block is no header span)
+                                && m.bottom >= t.rect.top
                             {
                                 merged_to = Some(merged_to.map_or(m.bottom, |b| b.max(m.bottom)));
                             }

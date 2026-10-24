@@ -361,3 +361,105 @@ fn parent_label_rows_over_a_text_only_table() {
     assert!(t.columns.iter().any(|c| c.name == "2013 / Moody's / Company Rating"), "{:?}", names(t));
     assert_eq!(t.src_rows.len(), 6);
 }
+
+/// RealHiTBench labor-table19: stacked blocks, each with its label merged down its own rows
+/// (`Bay 1` over A2:A13) and three header rows. A merge that ends inside its block is no header
+/// span: the blocks stay tables of their own (they became one table with 28 header rows, and
+/// cells were lost).
+#[test]
+fn a_label_merged_down_its_block_is_no_header_span() {
+    let n = normalize("merged_block_labels", |ws| {
+        let m = Format::new();
+        for (b, bay) in ["Bay 1", "Bay 2", "Bay 3"].iter().enumerate() {
+            let top = 12 * b as u32;
+            ws.merge_range(top, 0, top + 11, 0, bay, &m).unwrap();
+            for (k, h) in ["Customer", "Model", "Work type"].iter().enumerate() {
+                ws.write_string(top + k as u32, 1, *h).unwrap();
+                for c in 2..8u16 {
+                    let v = [["Company A", "Company B"][b / 2], "N/A", ["Check", "Overhaul"][b / 2]][k];
+                    ws.write_string(top + k as u32, c, v).unwrap();
+                }
+            }
+            for i in 0..9u32 {
+                ws.write_string(top + 3 + i, 1, format!("Data {}", i + 1)).unwrap();
+                for c in 2..8u16 {
+                    ws.write_number(top + 3 + i, c, (i * 7 + c as u32 * 3 + b as u32) as f64 / 2.0).unwrap();
+                }
+            }
+        }
+    });
+    for t in &n.tables {
+        assert!(t.header_rows <= 4, "{} header rows: {:?}", t.header_rows, names(t));
+    }
+    let data: usize = n.tables.iter().map(|t| t.src_rows.len()).sum();
+    assert!(data >= 27, "{data} data rows: {:?}", n.tables.iter().map(names).collect::<Vec<_>>());
+}
+
+/// DECO-style supply sheet (TableSense VEnron2 `June 12 Proposal`): a label alone above rows whose
+/// labels read like it (`From Anadarko Pool` over `From Bondad Station | …`) is an empty data row,
+/// not the header of the label column.
+#[test]
+fn a_label_like_the_rows_below_is_no_header() {
+    let n = normalize("sibling_label", |ws| {
+        ws.write_string(0, 0, "Receipt Right Assignments").unwrap();
+        ws.write_string(2, 0, "From Anadarko Pool").unwrap();
+        let from = [
+            "From Bondad Station", "From Bondad Mainline", "From Blanco", "From Plains", "From Keystone", "From Waha",
+            "From Permian", "From Ignacio", "From Kutz", "From Chaco",
+        ];
+        for (i, s) in from.iter().enumerate() {
+            ws.write_string(3 + i as u32, 0, *s).unwrap();
+            for c in 1..=4u16 {
+                ws.write_number(3 + i as u32, c, 100.0 * (i as f64 + 1.25) + 7.0 * c as f64).unwrap();
+            }
+        }
+    });
+    assert!(!n.tables.iter().any(|t| t.columns.iter().any(|c| c.name == "From Anadarko Pool")));
+}
+
+/// The title of a table under a `Key: | value` line: never the line's keys or values
+/// (`Number of Clients: | 7` made it "7"), but other text on the line is (MiMoTable
+/// StockSituation4: `Stock D | Code: | 656839` over the trades; en-0162 asks for Stock D).
+#[test]
+fn key_value_line_titles() {
+    let n = normalize("kv_titles", |ws| {
+        ws.write_string(0, 0, "Stock D").unwrap();
+        ws.write_string(0, 1, "Code:").unwrap();
+        ws.write_number(0, 2, 656839.0).unwrap();
+        for (c, h) in ["Serial Number", "Date", "Direction", "Price", "Shares", "Fee", "Total Amount", "Account Cost", "Account Shares"]
+            .iter()
+            .enumerate()
+        {
+            ws.write_string(1, c as u16, *h).unwrap();
+        }
+        for i in 0..5u32 {
+            ws.write_string(2 + i, 0, format!("0{}", i + 1)).unwrap();
+            ws.write_number(2 + i, 1, 44198.0 + 9.0 * i as f64).unwrap();
+            ws.write_string(2 + i, 2, if i % 2 == 0 { "Buy" } else { "Sell" }).unwrap();
+            for c in 3..9u16 {
+                ws.write_number(2 + i, c, 20.0 + 5.0 * i as f64 + c as f64).unwrap();
+            }
+        }
+    });
+    let t = with_column(&n, "Serial Number");
+    assert_eq!(t.title.as_ref().map(|x| x.0.as_str()), Some("Stock D"));
+    let n = normalize("kv_title_value", |ws| {
+        ws.write_string(2, 2, "Project Name:").unwrap();
+        ws.write_string(2, 6, "Number of Clients:").unwrap();
+        ws.write_number(2, 7, 7.0).unwrap();
+        let header = ["No.", "Contract Number", "Client Name", "Client Unit", "Contact", "Project Name", "Quantity", "Days", "Status", "Statistician"];
+        for (c, h) in header.iter().enumerate() {
+            ws.write_string(3, 1 + c as u16, *h).unwrap();
+        }
+        for i in 0..7u32 {
+            ws.write_number(4 + i, 1, (i + 1) as f64).unwrap();
+            for c in 2..=10u16 {
+                ws.write_string(4 + i, c, format!("v{i}{c}")).unwrap();
+            }
+            ws.write_number(4 + i, 7, 10.0 * (i + 1) as f64).unwrap();
+        }
+    });
+    let t = with_column(&n, "Contract Number");
+    let title = t.title.as_ref().map(|x| x.0.clone()).unwrap_or_default();
+    assert!(!title.ends_with(':') && title.parse::<f64>().is_err(), "title {title:?}");
+}

@@ -1199,6 +1199,15 @@ fn label_column_header(sheet: &Sheet, rows: &[Row], seg: &mut Seg) {
     let first = body[0].filled().find(|x| x.left == left).map(|x| text(sheet, x)).unwrap_or("");
     let mut k = seg.start - 1;
     let Some(t) = label(k) else { return };
+    // A label like the rows' own (`From Anadarko Pool` over `From Bondad Station`, an empty data
+    // row) is one of them, not their header.
+    let word = |s: &str| s.split_whitespace().next().unwrap_or("").to_lowercase();
+    let sibling = body.iter().take(10).any(|r| {
+        r.filled().find(|x| x.left == left).is_some_and(|x| word(text(sheet, x)) == word(t))
+    });
+    if sibling {
+        return;
+    }
     if rows[k].row + 1 != rows[seg.start].row {
         return;
     }

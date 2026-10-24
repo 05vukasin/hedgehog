@@ -915,13 +915,27 @@ fn build_table(
     let mut title_rows = 0;
     for (_, idxs) in rows.iter().filter(|(row, _)| *row < htop) {
         title_rows += 1;
+        // A `Key: | … | Key: | value` line above the header: neither its keys nor the value after
+        // each key are a title (`Number of Clients: | 5` made the title "5"); other text on the
+        // line still is (`Stock D | Code: | 656839`).
+        let is_key = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with([':', '：']));
+        let filled_idx: Vec<usize> =
+            idxs.iter().copied().filter(|&i| cells[i].value.as_ref().is_some_and(|v| !display(v).is_empty())).collect();
+        let key_part: HashSet<usize> = filled_idx
+            .iter()
+            .enumerate()
+            .filter(|&(k, &i)| is_key(i) || (k > 0 && is_key(filled_idx[k - 1])))
+            .map(|(_, &i)| i)
+            .collect();
         for &i in idxs {
+            let key_line = key_part.contains(&i);
             owner[i] = OWN_NOTES;
             let mut it = note(i, "title");
             if is_nav_link(&it.text) {
                 // "zur Inhaltsübersicht": a link back to the contents, never the title.
                 it.kind = "other";
             } else if title.is_none()
+                && !key_line
                 && !it.text.is_empty()
                 && !crate::layout::is_note_label(&it.text)
                 // A key of a "Project Name: | …" line above the header is no title.

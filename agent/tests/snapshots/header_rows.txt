@@ -25,7 +25,7 @@ T2  ← Scores!A1:G7 · 6 rows
     95,4,Lecture,1,0,2,-1
     96,4,CAI,1,1,2,-1
     97,4,Lecture,1,2,2,-1
-T3  'Project Name:' ← Projects!B3:J9 · 5 rows
+T3  'Project Statistics Table' ← Projects!B3:J9 · 5 rows
     columns (9): "No."[id] "Contract Number"[id] Client "Client Unit" Contact Project Quantity[10..50] Days[70..98] Status
     all 5 rows (CSV):
     No.,Contract Number,Client,Client Unit,Contact,Project,Quantity,Days,Status
