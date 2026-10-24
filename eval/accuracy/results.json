@@ -8,19 +8,19 @@
  "S": {
   "hitab": {
    "files": 1303,
-   "cell_role_acc": 0.7413,
-   "table_f1_iou50": 0.9901,
-   "table_f1_iou80": 0.981,
+   "cell_role_acc": 0.7423,
+   "table_f1_iou50": 0.9946,
+   "table_f1_iou80": 0.9908,
    "header_exact": [
-    1241,
+    1251,
     1301
    ]
   },
   "tablesense": {
    "files": 1258,
    "cell_role_acc": null,
-   "table_f1_iou50": 0.6916,
-   "table_f1_iou80": 0.5743,
+   "table_f1_iou50": 0.6917,
+   "table_f1_iou80": 0.5744,
    "header_exact": null
   }
  },
@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3704,
+    "pass": 3724,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 97.3,
-    "after_audit": 97.3
+    "raw": 97.9,
+    "after_audit": 97.9
    },
    "mimotable": {
     "items": 273,
@@ -52,40 +52,14 @@
    },
    "ALL": {
     "items": 5634,
-    "pass": 5401,
+    "pass": 5421,
     "audited": 1,
     "audited_pass": 1,
-    "raw": 95.9,
-    "after_audit": 95.9
+    "raw": 96.2,
+    "after_audit": 96.2
    }
   },
   "clusters": {
-   "column header path differs": {
-    "misses": 45,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "79185b6fc938181e16c6d5a7eaba4cdc",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "59.7",
-      "evidence": "original!B18: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "6fab54384d55af4bad53d6082578ec43",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "80.9",
-      "evidence": "original!G18: gold ['number of years since landing or filing a refugee claim', '6'] vs 'Number of years since landing or filing a refugee claim (6)'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "cedff73b04d30db58f3255bcae22a1b7",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "53.1",
-      "evidence": "original!B20: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
-     }
-    ]
-   },
    "question key: cell not in any table (row not in any table)": {
     "misses": 40,
     "examples": [
@@ -135,6 +109,32 @@
       "file": "tables/education-table08.xlsx",
       "atom": "462770",
       "evidence": "2007-2008!I8 in T1 column 'Achievement / General FE College incl Tertiary', labels ['Total Learners']"
+     }
+    ]
+   },
+   "column header path differs": {
+    "misses": 26,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "79185b6fc938181e16c6d5a7eaba4cdc",
+      "file": "clean/statcan/1220.xlsx",
+      "atom": "59.7",
+      "evidence": "original!B18: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
+     },
+     {
+      "dataset": "hitab",
+      "id": "6fab54384d55af4bad53d6082578ec43",
+      "file": "clean/statcan/1220.xlsx",
+      "atom": "80.9",
+      "evidence": "original!G18: gold ['number of years since landing or filing a refugee claim', '6'] vs 'Number of years since landing or filing a refugee claim (6)'"
+     },
+     {
+      "dataset": "hitab",
+      "id": "cedff73b04d30db58f3255bcae22a1b7",
+      "file": "clean/statcan/1220.xlsx",
+      "atom": "53.1",
+      "evidence": "original!B20: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
      }
     ]
    },
@@ -191,7 +191,7 @@
     ]
    },
    "label path missing parent": {
-    "misses": 21,
+    "misses": 20,
     "examples": [
      {
       "dataset": "hitab",
@@ -2021,7 +2021,7 @@
      "decoys_reachable": 376,
      "miss_oracle-limit": 679,
      "loose_only": 451,
-     "single_witness": 508,
+     "single_witness": 509,
      "miss_library": 39,
      "miss_gold/question": 30
     },
@@ -2147,12 +2147,12 @@
    "located": 1627,
    "replayable": 1489,
    "replayable_reachable": 836,
-   "replayable_agree": 461,
-   "replayable_agree_superset": 487,
-   "replayable_agree_subset": 783,
+   "replayable_agree": 462,
+   "replayable_agree_superset": 488,
+   "replayable_agree_subset": 784,
    "single_answer_replayable": 981,
    "single_answer_reachable": 504,
-   "single_answer_agree_exact": 457,
+   "single_answer_agree_exact": 458,
    "not_replayable": 138,
    "not_replayable_reachable": 43
   },
@@ -2252,16 +2252,15 @@
   }
  },
  "M": {
-  "violations": 1517,
-  "files": 765,
+  "violations": 1515,
+  "files": 764,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
     "M1 total row in data": 10,
     "M5 duplicate headers": 1,
-    "M5 repeated header names": 17,
-    "M3 measures mixed": 26,
-    "M5 number as header": 1
+    "M5 repeated header names": 16,
+    "M3 measures mixed": 26
    },
    "mimotable": {
     "M1 total row in data": 9,
@@ -2286,10 +2285,10 @@
   "kinds": {
    "M5 header missing": 1281,
    "M3 measures mixed": 72,
-   "M5 repeated header names": 66,
+   "M5 repeated header names": 65,
    "M5 duplicate headers": 47,
    "M1 total row in data": 23,
-   "M5 number as header": 15,
+   "M5 number as header": 14,
    "M2 percent mixed": 11,
    "M4 Excel serial as number": 1,
    "M6 '(n)' read as negative": 1
@@ -2320,15 +2319,15 @@
     "hitab clean/statcan/1805.xlsx T1  | 'Oil-producing provinces': 11 percent/rate rows and 4 other rows (values > 100)",
     "hitab clean/statcan/1805.xlsx T1  | 'Central provinces': 11 percent/rate rows and 4 other rows (values > 100)"
    ],
-   "M5 number as header": [
-    "hitab clean/statcan/2797.xlsx T2  | column '5.6'",
-    "mimotable repo/data/chinese/spreadsheet/进销存出入库管理明细表.xlsx T1  | column '1010101'",
-    "mimotable repo/data/english/spreadsheet/GoodsInventoryReport.xlsx T4  | column '170701'"
-   ],
    "M2 percent mixed": [
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '年度合计': 1 percent cells (e.g. Sheet51!B8) and 9 plain (e.g. Sheet51!B2)",
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '1月': 1 percent cells (e.g. Sheet51!C8) and 9 plain (e.g. Sheet51!C2)",
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '2月': 1 percent cells (e.g. Sheet51!D8) and 8 plain (e.g. Sheet51!D2)"
+   ],
+   "M5 number as header": [
+    "mimotable repo/data/chinese/spreadsheet/进销存出入库管理明细表.xlsx T1  | column '1010101'",
+    "mimotable repo/data/english/spreadsheet/GoodsInventoryReport.xlsx T4  | column '170701'",
+    "realhitbench tables/business-table03.xlsx T5  | column '883'"
    ],
    "M4 Excel serial as number": [
     "mimotable repo/data/english/spreadsheet/TaobaoAffiliate-DataAnalysisToolTable-(1).xlsx T4 Recruitment Post Effect Analysis!H2 | 'Release Time': 11 values like 41214"
@@ -2343,14 +2342,14 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 776.0,
-    "median": 693,
-    "p90": 1247,
+    "mean": 773.3,
+    "median": 692,
+    "p90": 1240,
     "max": 2438
    },
    "mimotable": {
     "files": 401,
-    "mean": 966.2,
+    "mean": 966.3,
     "median": 870,
     "p90": 1697,
     "max": 4179
@@ -2389,9 +2388,7 @@
     }
    }
   },
-  "regressions": [
-   "hitab"
-  ]
+  "regressions": []
  },
  "library_cases": [
   {
@@ -2449,5 +2446,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 124
+ "seconds": 119
 }
