@@ -4078,6 +4078,19 @@ mod tests {
     }
 
     #[test]
+    fn interval_child_band_rejects_single_column_merge_at_coordinate_limit() {
+        use crate::model::{Rect, Sheet};
+        let edge = u32::MAX;
+        let sheet = Sheet {
+            merges: vec![Rect { top: 0, bottom: 0, left: edge, right: edge }],
+            ..Sheet::default()
+        };
+        let grid = crate::grid::Grid::new(&sheet);
+        let rect = Rect { top: 0, bottom: 2, left: edge - 2, right: edge };
+        assert_eq!(super::interval_header_end(&grid, rect, 0, 1, &[]), 1);
+    }
+
+    #[test]
     fn merged_parent_recovery_does_not_reuse_owned_cells() {
         use crate::model::{Rect, Sheet};
         let rows = vec![
