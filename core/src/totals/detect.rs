@@ -2379,26 +2379,34 @@ mod sibling_support_tests {
                                 Cell { row: 0, col: 1, value: Some(Value::Number(2.0)), formula: None },
                                 Cell { row: 1, col: 1, value: Some(Value::Number(3.0)), formula: None },
                                 Cell { row: 2, col: 0, value: value.clone(), formula: None },
-                                Cell { row: 2, col: 1, value: Some(Value::Number(5.0)), formula: Some("SUM(B1:B2)".into()) },
+                                Cell { row: 2, col: 1, value: Some(Value::Number(5.0)), formula: Some(if same_source_direction { "SUM(B4:B5)" } else { "SUM(B1:B2)" }.into()) },
+                                Cell { row: 3, col: 0, value: Some(Value::Number(2.0)), formula: None },
+                                Cell { row: 3, col: 1, value: Some(Value::Number(2.0)), formula: None },
+                                Cell { row: 4, col: 0, value: Some(Value::Number(3.0)), formula: None },
+                                Cell { row: 4, col: 1, value: Some(Value::Number(3.0)), formula: None },
                             ],
                             ..Sheet::default()
                         };
                         // Keep the duplicate-position and non-row-major Grid paths covered:
                         // the last duplicate wins, just as the sibling scan's lookup expects.
-                        sheet.cells.reverse();
+                        // used_range expects the first cell to hold the minimum row.
+                        sheet.cells[1..].reverse();
                         sheet.cells.push(Cell { row: 2, col: 0, value: value.clone(), formula: None });
                         let grid = Grid::new(&sheet);
                         let mut subject = TotalCandidate::new(2, 0, origin, direction);
+                        subject.ranges.push(Rect { top: 3, left: 0, bottom: 4, right: 0 });
                         if arithmetic {
                             subject.evidence.push(Evidence::ArithmeticMatch);
                         }
                         subject.evidence.push(Evidence::SourceBelow);
                         let mut peer = TotalCandidate::new(2, 1, TotalOrigin::Formula, Direction::Vertical);
-                        peer.ranges.push(Rect { top: 0, left: 1, bottom: 1, right: 1 });
+                        let top = if same_source_direction { 3 } else { 0 };
+                        peer.ranges.push(Rect { top, left: 1, bottom: top + 1, right: 1 });
                         peer.evidence.push(Evidence::Formula(FormulaKind::Sum));
                         if same_source_direction {
                             peer.evidence.push(Evidence::SourceBelow);
                         }
+                        assert_eq!(verify(&grid, &peer).ok, Some(true), "formula peer must provide arithmetic support");
                         let mut actual = vec![subject, peer];
                         let mut expected = actual.clone();
                         if origin == TotalOrigin::Typed && direction == Direction::Vertical
