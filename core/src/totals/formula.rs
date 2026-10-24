@@ -467,9 +467,9 @@ fn classify(toks: &[Tok]) -> (FormulaKind, Vec<Ref>) {
     if toks.is_empty() {
         return (FormulaKind::Other, Vec::new());
     }
-    let terms = split_top(toks, |t| matches!(t, Tok::Op('+')));
+    let terms: Vec<Term> = split_top(toks, |t| matches!(t, Tok::Op('+'))).into_iter().map(term).collect();
     if terms.len() == 1 {
-        return match term(terms[0]) {
+        return match terms.into_iter().next().unwrap() {
             Term::Ref(r) if r.kind == RefKind::Cell => (FormulaKind::Reference, Vec::new()),
             Term::Call { kind, refs } => {
                 let refs = if kind.is_sum() { refs } else { Vec::new() };
@@ -481,7 +481,7 @@ fn classify(toks: &[Tok]) -> (FormulaKind, Vec<Ref>) {
     let mut sum_refs = Vec::new();
     let mut calls = 0;
     let mut subtotal_calls = 0;
-    for t in terms.into_iter().map(term) {
+    for t in terms {
         match t {
             Term::Ref(r) => sum_refs.push(r),
             Term::Call { kind: k @ (FormulaKind::Sum | FormulaKind::Subtotal), refs } => {
