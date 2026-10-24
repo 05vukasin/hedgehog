@@ -628,4 +628,35 @@ mod tests {
             let _ = parse(f);
         }
     }
+
+    #[test]
+    fn classification_preserves_all_tokens_after_an_unsupported_term() {
+        let reference = |sheet: Option<&str>, rect, kind| Ref {
+            sheet: sheet.map(str::to_string), external: false, rect, kind,
+        };
+        let a1 = reference(None, r(0, 0, 0, 0), RefKind::Cell);
+        let local_range = reference(None, r(0, 0, 1, 0), RefKind::Range);
+        let later = reference(Some("Later"), r(0, 3, 1, 3), RefKind::Range);
+        let cases = [
+            ("SUM(A1:A2)", FormulaKind::Sum, vec![local_range.clone()], vec!["SUM"], false),
+            ("A1+A1", FormulaKind::AdditionChain, vec![a1.clone(), a1.clone()], vec![], false),
+            ("A1:A2", FormulaKind::Other, vec![local_range], vec![], false),
+            ("IF(A1>0,B1,C1)+SUM('Later'!D1:D2)+#REF!", FormulaKind::Other,
+                vec![a1.clone(), reference(None, r(0, 1, 0, 1), RefKind::Cell),
+                    reference(None, r(0, 2, 0, 2), RefKind::Cell), later.clone()],
+                vec!["IF", "SUM"], true),
+            ("A1+1+SUM('Later'!D1:D2)", FormulaKind::Other,
+                vec![a1.clone(), later], vec!["SUM"], false),
+            ("A1++SUM(B1:B2)", FormulaKind::Other,
+                vec![a1, reference(None, r(0, 1, 1, 1), RefKind::Range)], vec!["SUM"], false),
+        ];
+        for (formula, kind, refs, functions, has_error) in cases {
+            let sum_refs = if kind.is_sum() { refs.clone() } else { Vec::new() };
+            let expected = ParsedFormula {
+                kind, refs, sum_refs,
+                functions: functions.into_iter().map(str::to_string).collect(), has_error,
+            };
+            assert_eq!(parse(formula), expected, "{formula}");
+        }
+    }
 }
