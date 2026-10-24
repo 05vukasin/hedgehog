@@ -163,8 +163,12 @@ and no median RSS increase. No speed improvement is claimed.
 
 ## Running
 
-No workers or heavy jobs. Next paired accuracy/performance iteration starts
-after checking RAM, swap, disk, btrfs metadata and live agent slots.
+Iteration 8 baseline: accepted local master `c6638e7`, release `d119f31186d5`.
+Lead `codex/iteration-8`; accuracy `codex/accuracy-iter8` and performance
+`codex/performance-iter8` in existing worktrees, plus independent source reviewer.
+Three lightweight workers active; no heavy jobs until source/review completes.
+Before expansion: 12 GiB RAM available, 1.5/14 GiB swap used, 120 GiB disk free,
+btrfs metadata 17.40/18.50 GiB, memory guard active and three free worker slots.
 
 ## Next (in order)
 
