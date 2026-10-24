@@ -3,7 +3,7 @@
 //! (table, Totals or Notes), which `CellCounts` reports.
 
 use std::sync::OnceLock;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::headers::{clean_header_with, is_nav_link, not_additive};
 use super::typing::{Slot, Typed, display, fit, type_column};
@@ -907,6 +907,89 @@ fn roll_over_header_dates(row_heads: &mut [Head], grid: &Grid) -> Option<(String
     Some((iso(from), iso(last.1)))
 }
 
+/// Rows that together name the columns: the labels of each column joined over the rows are
+/// distinct for at least four in five columns, and at least two columns hold words (not a
+/// block of unit or placeholder rows).
+fn header_block(block: &[(u32, Vec<usize>)], cells: &[crate::model::Cell]) -> bool {
+    let mut paths: BTreeMap<u32, Vec<String>> = BTreeMap::new();
+    for (_, idxs) in block {
+        // A measured number is a value, not a label (`Physical Gas | 6500` beside a header).
+        if idxs.iter().any(|&i| matches!(&cells[i].value, Some(Value::Number(x)) if !(x.fract() == 0.0 && (1900.0..=2100.0).contains(x)))) {
+            return false;
+        }
+        for &i in idxs {
+            let t = cells[i].value.as_ref().map(display).unwrap_or_default();
+            if !t.trim().is_empty() {
+                paths.entry(cells[i].col).or_default().push(t.trim().to_string());
+            }
+        }
+    }
+    let n = paths.len();
+    let distinct: HashSet<&Vec<String>> = paths.values().collect();
+    let worded = paths
+        .values()
+        .filter(|p| p.iter().any(|t| t.chars().filter(|c| c.is_alphabetic()).count() >= 2 && crate::values::missing_token(t).is_none()))
+        .count();
+    n >= 2 && distinct.len() * 10 >= n * 8 && worded >= 2
+}
+
+/// A row with a measured number (not a whole number that could be a year, not a column
+/// numbering) whose cells are mostly of their columns' kinds (three in five) and whose texts
+/// mostly do not repeat the header's labels: a data row, whatever roles the layout gave its cells.
+fn data_like_row(cells: &[crate::model::Cell], idxs: &[usize], header_texts: &HashSet<String>, kinds: &HashMap<u32, u8>) -> bool {
+    let measured = idxs.iter().any(|&i| match &cells[i].value {
+        Some(Value::Number(x)) => !(x.fract() == 0.0 && (1900.0..=2100.0).contains(x)),
+        _ => false,
+    });
+    if !measured || numbering_row(cells, idxs) {
+        return false;
+    }
+    let (mut filled, mut matched) = (0, 0);
+    for &i in idxs {
+        let k = match &cells[i].value {
+            Some(Value::Number(_)) => 0,
+            Some(Value::DateTime(_)) => 1,
+            Some(Value::Text(t)) if !t.trim().is_empty() => 2,
+            _ => continue,
+        };
+        filled += 1;
+        matched += usize::from(kinds.get(&cells[i].col) == Some(&k));
+    }
+    if matched * 5 < filled * 3 {
+        return false;
+    }
+    let texts: Vec<String> = idxs
+        .iter()
+        .filter_map(|&i| match &cells[i].value {
+            Some(Value::Text(t)) if !t.trim().is_empty() => Some(t.trim().to_string()),
+            _ => None,
+        })
+        .collect();
+    texts.iter().filter(|t| header_texts.contains(*t)).count() * 2 < texts.len().max(1)
+}
+
+/// A row of column numbers counting up by one (at least three), its blank cells aside.
+fn numbering_row(cells: &[crate::model::Cell], idxs: &[usize]) -> bool {
+    let values: Vec<&Value> =
+        idxs.iter().filter_map(|&i| cells[i].value.as_ref()).filter(|v| !matches!(v, Value::Text(t) if t.trim().is_empty())).collect();
+    if crate::layout::column_numbering(values.iter().copied()) {
+        return true;
+    }
+    // A helper row with a gap or two (`5 | 6 | … | 14 | 16 | 17`, a column left out): whole
+    // numbers from 1 to 999 counting up, at least five in six steps by one.
+    let nums: Vec<f64> = values
+        .iter()
+        .filter_map(|v| match v {
+            Value::Number(x) if x.fract() == 0.0 && (1.0..1000.0).contains(x) => Some(*x),
+            _ => None,
+        })
+        .collect();
+    nums.len() == values.len()
+        && nums.len() >= 6
+        && nums.windows(2).all(|w| w[1] > w[0])
+        && nums.windows(2).filter(|w| w[1] - w[0] == 1.0).count() * 6 >= (nums.len() - 1) * 5
+}
+
 /// Most `Key: | value` lines skipped above the header of a table without header rows.
 const MAX_FORM_LINES: usize = 12;
 
@@ -916,6 +999,95 @@ const MAX_FORM_LINES: usize = 12;
 /// row, the first such row (and header rows right under it) is the header; the rows above it are
 /// titles. Its labels must be distinct (not a unit row or a legend).
 fn promote_header(
+    rows: &[(u32, Vec<usize>)],
+    cells: &[crate::model::Cell],
+    roles: &[Role],
+    htop: u32,
+    header_rows: u32,
+    bottom: u32,
+) -> (u32, u32) {
+    let (top, mut end) = promote_header_inner(rows, cells, roles, htop, header_rows, bottom);
+    // A last header row that reads like the rows below it is the first data row (a table cut
+    // from its header: "Outside Services | 2340 | 3057 | …" as column names; a first record
+    // "2020-01-01 | Li | JD Income | 3128" under the real header row).
+    let kinds = body_kinds(rows, cells, end);
+    while end > top {
+        let Some((_, idxs)) = rows.iter().find(|(row, _)| *row + 1 == end) else { break };
+        if !data_like_header_row(cells, idxs, &kinds) {
+            break;
+        }
+        end -= 1;
+    }
+    (top, end)
+}
+
+/// Value kind of each column's body cells (up to 200 rows below the header): 0 number, 1 date,
+/// 2 text, when at least three in five filled cells (and two cells) are of it.
+fn body_kinds(rows: &[(u32, Vec<usize>)], cells: &[crate::model::Cell], body_top: u32) -> HashMap<u32, u8> {
+    let mut counts: HashMap<u32, [usize; 3]> = HashMap::new();
+    for (_, idxs) in rows.iter().filter(|(row, _)| *row >= body_top).take(200) {
+        for &i in idxs {
+            let k = match &cells[i].value {
+                Some(Value::Number(_)) => 0,
+                Some(Value::DateTime(_)) => 1,
+                Some(Value::Text(t)) if !t.trim().is_empty() => 2,
+                _ => continue,
+            };
+            counts.entry(cells[i].col).or_default()[k] += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .filter_map(|(col, c)| {
+            let n: usize = c.iter().sum();
+            let (k, best) = c.iter().enumerate().max_by_key(|&(k, v)| (*v, std::cmp::Reverse(k)))?;
+            (n >= 2 && best * 5 >= n * 3).then_some((col, k as u8))
+        })
+        .collect()
+}
+
+/// A header row whose cells are values of their columns' kinds: at least two measured numbers
+/// over number columns or dates over date columns, three in five cells of their column's kind,
+/// and not a scale of numbers counting up (a grid of strikes `Strike | 2.5 | 3.0 | 3.5` names
+/// its columns) or a column numbering.
+fn data_like_header_row(cells: &[crate::model::Cell], idxs: &[usize], kinds: &HashMap<u32, u8>) -> bool {
+    let (mut filled, mut matched, mut strong) = (0, 0, 0);
+    let mut numbers: Vec<f64> = Vec::new();
+    for &i in idxs {
+        let kind = kinds.get(&cells[i].col).copied();
+        match &cells[i].value {
+            Some(Value::Number(x)) => {
+                filled += 1;
+                numbers.push(*x);
+                let measured = !(x.fract() == 0.0 && (1900.0..=2100.0).contains(x));
+                if kind == Some(0) {
+                    matched += 1;
+                    if measured {
+                        strong += 1;
+                    }
+                }
+            }
+            Some(Value::DateTime(_)) => {
+                filled += 1;
+                if kind == Some(1) {
+                    matched += 1;
+                    strong += 1;
+                }
+            }
+            Some(Value::Text(t)) if !t.trim().is_empty() => {
+                filled += 1;
+                if kind == Some(2) {
+                    matched += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    let scale = numbers.len() >= 3 && numbers.windows(2).all(|w| w[1] > w[0]);
+    strong >= 2 && matched * 5 >= filled * 3 && !scale && !numbering_row(cells, idxs)
+}
+
+fn promote_header_inner(
     rows: &[(u32, Vec<usize>)],
     cells: &[crate::model::Cell],
     roles: &[Role],
@@ -943,19 +1115,38 @@ fn promote_header(
         let keyed = f.iter().enumerate().all(|(k, &i)| key_text(i) || (k > 0 && key_text(f[k - 1])));
         (keyed && f.iter().any(|&i| key_text(i))) || (f.len() <= 2 && f.len() * 3 <= width)
     };
+    let numbering = |idxs: &[usize]| numbering_row(cells, idxs);
     let mut form_lines = 0;
-    for (k, (_, idxs)) in rows.iter().enumerate().filter(|(_, (row, _))| *row >= body_top) {
+    // The run of layout header rows right above the first data row (sheet rows at most one blank
+    // row apart), for a header of several rows none of which names the columns alone.
+    let mut run: Vec<usize> = Vec::new();
+    let mut block: Option<(usize, usize)> = None;
+    for (k, (row, idxs)) in rows.iter().enumerate().filter(|(_, (row, _))| *row >= body_top) {
         if idxs.iter().any(|&i| matches!(roles[i], Role::Data | Role::Total | Role::Other) && filled(&[i]) > 0) {
+            if header_rows == 0 && run.len() >= 2 && rows[*run.last().unwrap_or(&k)].0 + 2 >= *row {
+                block = header_block(&rows[run[0]..=run[run.len() - 1]], cells).then(|| (run[0], run[run.len() - 1]));
+            }
             let n = filled(idxs);
             if header_rows == 0 && skipped < 2 && width >= 6 && (n <= 3 || n * 3 <= width) {
                 skipped += 1;
                 continue;
             }
-            if header_rows == 0 && width >= 3 && form_lines < MAX_FORM_LINES && form_line(idxs) {
+            // A row of column numbers (`1 | 2 | 3 | …`, `5 | 6 | 7 | …`, a helper row over the
+            // header) is no data either.
+            if header_rows == 0 && width >= 3 && form_lines < MAX_FORM_LINES && (form_line(idxs) || numbering(idxs)) {
                 form_lines += 1;
+                run.clear();
                 continue;
             }
             break;
+        }
+        if is_header(idxs) && idxs.iter().any(|&i| roles[i] == Role::Header) {
+            if run.last().is_some_and(|&j| rows[j].0 + 2 < *row) {
+                run.clear();
+            }
+            run.push(k);
+        } else if filled(idxs) > 0 {
+            run.clear();
         }
         let n = filled(idxs);
         // Distinct labels (not a unit or legend row: "EURO EURO EURO", "nichts vorhanden" × 6).
@@ -988,6 +1179,14 @@ fn promote_header(
         {
             found = Some(k);
             break;
+        }
+    }
+    if found.is_none() {
+        if let Some((a, b)) = block {
+            if form_lines > 0 && rows.len() - b - 1 <= skipped + form_lines {
+                return (htop, body_top);
+            }
+            return (rows[a].0, (rows[b].0 + 1).min(bottom + 1));
         }
     }
     let Some(k) = found else { return (htop, body_top) };
@@ -1095,6 +1294,7 @@ fn build_table(
     let mut title_rows = 0;
     for (_, idxs) in rows.iter().filter(|(row, _)| *row < htop) {
         title_rows += 1;
+        let numbers = numbering_row(cells, idxs);
         // A `Key: | … | Key: | value` line above the header: neither its keys nor the value after
         // each key are a title (`Number of Clients: | 5` made the title "5"); other text on the
         // line still is (`Stock D | Code: | 656839`).
@@ -1113,6 +1313,9 @@ fn build_table(
             let mut it = note(i, "title");
             if is_nav_link(&it.text) {
                 // "zur Inhaltsübersicht": a link back to the contents, never the title.
+                it.kind = "other";
+            } else if numbers {
+                // A helper row of column numbers above the header (`5 | 6 | 7 | …`).
                 it.kind = "other";
             } else if title.is_none()
                 && !key_line
@@ -1398,6 +1601,15 @@ fn build_table(
     // Block of each output row: the rows between two total rows (removed or kept).
     let mut block_of: Vec<u32> = Vec::new();
     let mut block = 0u32;
+    // The header's labels, to tell a repeated header row from a data row with header cells.
+    let header_texts: HashSet<String> = rows
+        .iter()
+        .filter(|(row, _)| *row >= htop && *row < body_top)
+        .flat_map(|(_, idxs)| idxs.iter().filter_map(|&i| cells[i].value.as_ref().map(display)))
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let body_kind = body_kinds(&rows, cells, body_top);
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
         if Some(*row) == next_caption {
@@ -1431,6 +1643,13 @@ fn build_table(
             idxs
         };
         let mut kind = row_kind(idxs.iter().map(|&i| lay.roles[i]));
+        // A body row with header cells is a repeated header only when it reads like one: a row
+        // with measured numbers in it that does not repeat the header's labels is data (Enron
+        // "Tuition and Fees | 98834698 | …", a first trade "1 | 2000-06-07 | Vitro | …" under a
+        // subtotal line), not Notes.
+        if kind == RowKind::RepeatedHeader && data_like_row(cells, idxs, &header_texts, &body_kind) {
+            kind = RowKind::Data;
+        }
         if kind == RowKind::Group {
             let filled: Vec<usize> = idxs.iter().copied().filter(|&i| !blank(i)).collect();
             if filled.len() >= 2 && filled.iter().all(|&i| label_cols.contains(&cells[i].col)) {
@@ -3129,6 +3348,133 @@ fn collapse_row_totals(items: Vec<TotalItem>) -> Vec<TotalItem> {
 
 #[cfg(test)]
 mod tests {
+    use crate::model::{Cell, Value};
+
+    fn grid_rows(rows: &[&[Option<Value>]]) -> (Vec<Cell>, Vec<(u32, Vec<usize>)>) {
+        let mut cells = Vec::new();
+        let mut out = Vec::new();
+        for (r, row) in rows.iter().enumerate() {
+            let mut idxs = Vec::new();
+            for (c, v) in row.iter().enumerate() {
+                if let Some(v) = v {
+                    idxs.push(cells.len());
+                    cells.push(Cell { row: r as u32, col: c as u32, value: Some(v.clone()), formula: None });
+                }
+            }
+            out.push((r as u32, idxs));
+        }
+        (cells, out)
+    }
+
+    /// promote_header over rows of (value, role) cells; returns (header top, body top).
+    fn promote(rows: &[Vec<(Option<Value>, Role)>], htop: u32, header_rows: u32) -> (u32, u32) {
+        let vals: Vec<Vec<Option<Value>>> = rows.iter().map(|r| r.iter().map(|(v, _)| v.clone()).collect()).collect();
+        let refs: Vec<&[Option<Value>]> = vals.iter().map(|r| r.as_slice()).collect();
+        let (cells, grouped) = grid_rows(&refs);
+        let mut roles = Vec::new();
+        for r in rows {
+            roles.extend(r.iter().filter(|(v, _)| v.is_some()).map(|(_, role)| *role));
+        }
+        let grouped: Vec<(u32, Vec<usize>)> = grouped.into_iter().filter(|(_, i)| !i.is_empty()).collect();
+        super::promote_header(&grouped, &cells, &roles, htop, header_rows, rows.len() as u32 - 1)
+    }
+
+    #[test]
+    fn a_data_row_the_layout_took_for_the_header_is_body() {
+        // Enron "Texas Nat_Gas Ops O&M": a table cut from its header at "Outside Services | 2340 |
+        // 3057 | 2000 | …"; the layout made that first record the header row.
+        let t = |s: &str| (Some(Value::Text(s.into())), Role::Data);
+        let n = |x: f64| (Some(Value::Number(x)), Role::Data);
+        let mut rows = vec![vec![
+            (Some(Value::Text("Outside Services".into())), Role::Header),
+            (Some(Value::Number(2340.0)), Role::Header),
+            (Some(Value::Number(3057.0)), Role::Header),
+            (Some(Value::Number(2000.0)), Role::Header),
+        ]];
+        for (k, item) in ["Supplies", "Marketing", "Corporate IT", "Corporate Rent", "Other"].iter().enumerate() {
+            rows.push(vec![t(item), n(1093.0 + k as f64), n(1150.5), n(670.0 * k as f64)]);
+        }
+        assert_eq!(promote(&rows, 0, 1), (0, 0));
+        // A real header row stays.
+        rows[0] = vec![(Some(Value::Text("Item".into())), Role::Header), (Some(Value::Text("Jan".into())), Role::Header),
+                       (Some(Value::Text("Feb".into())), Role::Header), (Some(Value::Text("Mar".into())), Role::Header)];
+        assert_eq!(promote(&rows, 0, 1), (0, 1));
+    }
+
+    #[test]
+    fn a_header_of_several_rows_without_one_naming_the_columns() {
+        // Enron "Noresco Gas Usage" / "ENRON_$orion_1099": "Monthly | Hourly | Hourly", "Total |
+        // Avg | Peak", "(kWh) | (kW) | (kW)" over the data; no row is distinct alone.
+        let h = |s: &str| (Some(Value::Text(s.into())), Role::Header);
+        let n = |x: f64| (Some(Value::Number(x)), Role::Data);
+        let mut rows = vec![
+            vec![h("Monthly"), h("Hourly"), h("Hourly"), h("Monthly"), h("Hourly"), h("Hourly")],
+            vec![h("Total"), h("Avg"), h("Peak"), h("Total"), h("Avg"), h("Peak")],
+            vec![h("(kWh)"), h("(kW)"), h("(kW)"), h("(mmbtu)"), h("(mmbtu/hr)"), h("(mmbtu/hr)")],
+        ];
+        for k in 0..6 {
+            let x = k as f64;
+            rows.push(vec![n(3296555.0 + x), n(4431.5 + x), n(8767.0 + x), n(30328.3 + x), n(40.76 + x), n(80.7 + x)]);
+        }
+        // Without header rows the layout's table starts at its first row.
+        assert_eq!(promote(&rows, 0, 0), (0, 3));
+        // A value among the labels makes no header block.
+        let block: Vec<Vec<Option<Value>>> = rows[..3]
+            .iter()
+            .enumerate()
+            .map(|(k, r)| r.iter().enumerate().map(|(c, (v, _))| if (k, c) == (2, 1) { Some(Value::Number(17.5)) } else { v.clone() }).collect())
+            .collect();
+        let refs: Vec<&[Option<Value>]> = block.iter().map(|r| r.as_slice()).collect();
+        let (cells, grouped) = grid_rows(&refs);
+        assert!(!super::header_block(&grouped, &cells));
+    }
+
+    #[test]
+    fn data_rows_with_header_cells_are_data() {
+        // Enron "EES CASH BURN" / "Tuition and Fees": a record whose label the layout marked as a
+        // header cell went to Notes as a repeated header; a repeated header row stays one.
+        let t = |s: &str| Some(Value::Text(s.into()));
+        let n = |x: f64| Some(Value::Number(x));
+        let body: Vec<Vec<Option<Value>>> = (0..6).map(|k| vec![t(&format!("State {k}")), n(1000.0 * k as f64 + 0.5), n(12.25)]).collect();
+        let header: HashSet<String> = ["Region", "Budget", "Spent"].iter().map(|s| s.to_string()).collect();
+        let check = |row: Vec<Option<Value>>| {
+            let mut all: Vec<&[Option<Value>]> = body.iter().map(|r| r.as_slice()).collect();
+            all.push(&row);
+            let (cells, rows) = grid_rows(&all);
+            let kinds = super::body_kinds(&rows, &cells, 0);
+            super::data_like_row(&cells, &rows[6].1, &header, &kinds)
+        };
+        assert!(check(vec![t("California"), n(225000.0), n(1010000.0)]));
+        assert!(!check(vec![t("Region"), t("Budget"), t("Spent")]));
+        assert!(!check(vec![t("Region"), n(2001.0), n(2002.0)]));
+        // labels of another table beside a value (`Emissions | 10 | 12/29 - 1/4 | …`): not of the columns' kinds
+        assert!(!check(vec![t("Emissions"), t("12/29 - 1/4"), t("1/5 - 1/11"), n(10.0)]));
+    }
+
+    #[test]
+    fn data_like_header_rows() {
+        let t = |s: &str| Some(Value::Text(s.into()));
+        let n = |x: f64| Some(Value::Number(x));
+        let body: Vec<Vec<Option<Value>>> =
+            (0..6).map(|k| vec![t(&format!("Item {k}")), n(100.0 + k as f64 * 7.5), n(3.25 * k as f64), n(12.0)]).collect();
+        let check = |head: Vec<Option<Value>>| {
+            let mut all: Vec<&[Option<Value>]> = vec![&head];
+            all.extend(body.iter().map(|r| r.as_slice()));
+            let (cells, rows) = grid_rows(&all);
+            let kinds = super::body_kinds(&rows, &cells, 1);
+            super::data_like_header_row(&cells, &rows[0].1, &kinds)
+        };
+        // a first record: values of the columns' kinds
+        assert!(check(vec![t("Outside Services"), n(2340.0), n(3057.5), n(2000.0)]));
+        // labels; years; a scale of strikes counting up; a column numbering
+        assert!(!check(vec![t("Item"), t("Volume"), t("Rate"), t("Count")]));
+        assert!(!check(vec![t("Item"), n(2019.0), n(2020.0), n(2021.0)]));
+        assert!(!check(vec![t("Strike"), n(2.5), n(3.0), n(3.5)]));
+        assert!(!check(vec![n(1.0), n(2.0), n(3.0), n(4.0)]));
+        // one number among labels is no record
+        assert!(!check(vec![t("Item"), n(32.27), t("Rate"), t("Count")]));
+    }
+
     use super::*;
 
     #[test]

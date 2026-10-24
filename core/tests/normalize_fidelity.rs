@@ -303,3 +303,36 @@ fn a_header_over_a_blank_row_and_a_code_row_is_one_header() {
     assert!(names(t).iter().any(|c| c.contains("Women") && c.contains("BEJD")), "{:?}", names(t));
     assert!(!n.notes.iter().any(|x| x.kind == "repeated_header"), "{:?}", n.notes);
 }
+
+#[test]
+fn a_row_of_column_numbers_over_the_title_is_no_data_row() {
+    // Enron "Legal Conf Pay EdeMexico" / "DPR 1026": a helper row `5 | 6 | 7 | …` at the top of
+    // the sheet, a title, then the header row: the table started at the numbers, got no header,
+    // and the header row went to Notes as a repeated header.
+    let n = build("numbers", |ws| {
+        let date = Format::new().set_num_format("yyyy-mm-dd");
+        for c in 0..7u16 {
+            ws.write_number(0, c + 1, (c + 5) as f64).unwrap();
+        }
+        ws.write_string(3, 2, "Trades Information").unwrap();
+        ws.write_string(4, 2, "ENRON DE MEXICO").unwrap();
+        for (c, h) in ["Trade #", "Trade Date", "Counterparty", "Commodity", "Index", "Volume", "Price"].iter().enumerate() {
+            ws.write_string(7, c as u16 + 1, *h).unwrap();
+        }
+        let parties = ["Vitro", "Lamosa", "Cemex", "Vitro", "Alfa", "Cemex", "Vitro", "Lamosa"];
+        for (k, p) in parties.iter().enumerate() {
+            let row = 9 + k as u32;
+            ws.write_number(row, 1, (k + 1) as f64).unwrap();
+            ws.write_number_with_format(row, 2, 36684.0 + 9.0 * k as f64, &date).unwrap();
+            ws.write_string(row, 3, *p).unwrap();
+            ws.write_string(row, 4, "Natural Gas").unwrap();
+            ws.write_string(row, 5, "PG&E-Tetco").unwrap();
+            ws.write_number(row, 6, 10000.0 + 2500.0 * k as f64).unwrap();
+            ws.write_number(row, 7, 2.5 + 0.125 * k as f64).unwrap();
+        }
+    });
+    let t = n.tables.iter().find(|t| t.columns.iter().any(|c| c.values.iter().any(|v| shown(v) == "Lamosa"))).unwrap();
+    assert_eq!(texts(t, "Counterparty")[..2], ["Vitro", "Lamosa"], "{:?}", names(t));
+    assert!(!n.notes.iter().any(|x| x.kind == "repeated_header"), "{:?}", n.notes);
+    assert_ne!(t.title.as_ref().map(|x| x.0.as_str()), Some("5"));
+}
