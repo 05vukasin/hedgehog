@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3724,
-    "audited": 0,
+    "pass": 3745,
+    "audited": 6,
     "audited_pass": 0,
-    "raw": 97.9,
-    "after_audit": 97.9
+    "raw": 98.4,
+    "after_audit": 98.6
    },
    "mimotable": {
     "items": 273,
@@ -52,11 +52,11 @@
    },
    "ALL": {
     "items": 5634,
-    "pass": 5421,
-    "audited": 1,
+    "pass": 5442,
+    "audited": 7,
     "audited_pass": 1,
-    "raw": 96.2,
-    "after_audit": 96.2
+    "raw": 96.6,
+    "after_audit": 96.7
    }
   },
   "clusters": {
@@ -113,28 +113,28 @@
     ]
    },
    "column header path differs": {
-    "misses": 26,
+    "misses": 28,
     "examples": [
+     {
+      "dataset": "hitab",
+      "id": "a70a40f9c098b72a8d368ac0536793f3",
+      "file": "clean/statcan/1067.xlsx",
+      "atom": "$20,137",
+      "evidence": "original!F6: gold ['former methodology', 'number of adults', '1'] vs 'New methodology / Number of adults'"
+     },
+     {
+      "dataset": "hitab",
+      "id": "696581c2d6fa7917ec11108e1989250d",
+      "file": "clean/statcan/1067.xlsx",
+      "atom": "$18,213",
+      "evidence": "original!B6: gold ['former methodology', 'number of adults', '1'] vs 'Former methodology / Number of adults'"
+     },
      {
       "dataset": "hitab",
       "id": "79185b6fc938181e16c6d5a7eaba4cdc",
       "file": "clean/statcan/1220.xlsx",
       "atom": "59.7",
       "evidence": "original!B18: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "6fab54384d55af4bad53d6082578ec43",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "80.9",
-      "evidence": "original!G18: gold ['number of years since landing or filing a refugee claim', '6'] vs 'Number of years since landing or filing a refugee claim (6)'"
-     },
-     {
-      "dataset": "hitab",
-      "id": "cedff73b04d30db58f3255bcae22a1b7",
-      "file": "clean/statcan/1220.xlsx",
-      "atom": "53.1",
-      "evidence": "original!B20: gold ['number of years since landing or filing a refugee claim', '1'] vs 'Number of years since landing or filing a refugee claim'"
      }
     ]
    },
@@ -164,34 +164,8 @@
      }
     ]
    },
-   "row label differs": {
-    "misses": 23,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "5b3755fd45219986d6d99ea6ae7ddd7c",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "34.6",
-      "evidence": "Sheet1!F28: gold ['23'] vs labels ['New York U.']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "2e9de4a6c61369d4b7b38b60b7cbb4a7",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "810.0",
-      "evidence": "Sheet1!E28: gold ['23'] vs labels ['New York U.']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "5abb8c2d4b97ca320c22154aff64b579",
-      "file": "clean/nsf/169_84_tab1.xlsx",
-      "atom": "18.8",
-      "evidence": "Table 1!F4: gold ['1'] vs labels ['United States', 'World']"
-     }
-    ]
-   },
    "label path missing parent": {
-    "misses": 20,
+    "misses": 14,
     "examples": [
      {
       "dataset": "hitab",
@@ -456,7 +430,38 @@
     ]
    }
   },
-  "audited": []
+  "audited": [
+   [
+    "hitab",
+    "9432a4975e4d450ed56a38110043db5d",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "e66f38259fa8d5399fd8eb402e0e2dfc",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "31b4d67c704beda9b45c8fa9132a679e",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "27ab4d16ec1a48dba09e58852471b5b4",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "8b55e5c53878e5770e34ac83b59e8156",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "2103e4eadf3b6e5403f24243b5cee2c5",
+    "gold_wrong"
+   ]
+  ]
  },
  "C": {
   "per": {
@@ -2018,7 +2023,7 @@
      "atoms": 1627,
      "atoms_reachable": 879,
      "decoys": 3254,
-     "decoys_reachable": 376,
+     "decoys_reachable": 375,
      "miss_oracle-limit": 679,
      "loose_only": 451,
      "single_witness": 509,
@@ -2173,7 +2178,7 @@
     "atoms": 419,
     "reachable": 251,
     "decoys": 838,
-    "decoys_reachable": 170
+    "decoys_reachable": 169
    },
    "integer <= 10": {
     "atoms": 360,
@@ -2356,7 +2361,7 @@
    },
    "realhitbench": {
     "files": 536,
-    "mean": 770.3,
+    "mean": 770.5,
     "median": 611,
     "p90": 1529,
     "max": 3607
@@ -2446,5 +2451,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 119
+ "seconds": 124
 }

@@ -320,3 +320,27 @@ fn data_row_heads_the_sections_indented_below_it() {
     let first = find("Canadian-born owners", 0);
     assert!(!first.iter().any(|x| x == "Recent immigrant owners"), "{first:?}");
 }
+
+/// StatCan 2736: `None` (zero recommendations met) is a row label like `One` and `Two`, not a
+/// missing value; in a number column it still is one.
+#[test]
+fn none_is_a_label_in_a_column_of_labels() {
+    let t = table("nonelabel", |ws| {
+        ws.write_string(0, 0, "Number of recommendations met").unwrap();
+        ws.write_string(0, 1, "Percentage").unwrap();
+        ws.write_string(0, 2, "Count").unwrap();
+        for (k, l) in ["None", "One", "Two", "Three", "Four"].iter().enumerate() {
+            ws.write_string(1 + k as u32, 0, *l).unwrap();
+            ws.write_number(1 + k as u32, 1, 10.7 + 9.5 * k as f64).unwrap();
+            if k == 2 {
+                ws.write_string(1 + k as u32, 2, "none").unwrap();
+            } else {
+                ws.write_number(1 + k as u32, 2, 120.0 + k as f64).unwrap();
+            }
+        }
+    });
+    let lab = t.columns.iter().find(|c| c.name == "Number of recommendations met").unwrap();
+    assert_eq!(text(&lab.values[0]), "None");
+    let cnt = t.columns.iter().find(|c| c.name == "Count").unwrap();
+    assert!(matches!(cnt.values[2], Out::Null), "{:?}", cnt.values[2]);
+}

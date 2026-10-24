@@ -461,6 +461,24 @@ fn type_column_untimed(
         }
         marked > 0 && 2 * marked <= texts
     };
+    // `None` / `Unknown` in a column of text labels is a category (`Number of recommendations met:
+    // None | One | Two`, StatCan 2736), not a missing value: kept as written. Only in a text column
+    // with two or more other distinct texts.
+    let category_words = kind == Kind::Text && {
+        let mut seen: Vec<&str> = Vec::new();
+        for (s, m) in slots.iter().zip(&missing) {
+            if let (Slot::Val(Value::Text(t)), None) = (s, m)
+                && !seen.contains(&t.trim())
+            {
+                seen.push(t.trim());
+                if seen.len() >= 2 {
+                    break;
+                }
+            }
+        }
+        seen.len() >= 2
+    };
+    let is_category_word = |v: &Value| matches!(v, Value::Text(t) if matches!(crate::values::norm_key(t).as_str(), "none" | "unknown"));
     // The previous slot's value: a label filled down from it (same cell) records its mark once.
     let mut last_val: Option<&Value> = None;
     let no_reading = Cand::default();
@@ -483,6 +501,10 @@ fn type_column_untimed(
                 Out::Null
             }
             Slot::Val(v) => {
+                if c.0 == Some(false) && category_words && is_category_word(v) {
+                    values.push(Out::Text(fit(display(v).trim().to_string(), tr)));
+                    continue;
+                }
                 if let Some(is_err) = c.0 {
                     tr.add(if is_err { T::ErrorsToNull } else { T::MissingToNull }, 1);
                     values.push(Out::Null);
