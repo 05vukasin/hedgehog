@@ -388,6 +388,24 @@ const MAX_OUTLINE_DEPTH: usize = 6;
 /// ancestors is such a heading: a bold row after plain ones at its indent (a total closing them)
 /// heads nothing. `None` when the labels form one level only, or fewer than two rows (and a tenth
 /// of the rows) have an ancestor. Ancestors are always labels of the sheet's own rows.
+/// From the run's first label `k` at level `l` to the run's end (a shallower label or a group header):
+/// some bold label at level `l` directly followed by a plain one at level `l`.
+fn bold_heads_plain(outline: &[OutlineRow], k: usize, l: u16, base: &impl Fn(&OutlineRow) -> u16) -> bool {
+    // directly: no deeper label between them
+    let mut prev: Option<&OutlineRow> = None;
+    for o in outline[k..].iter().take_while(|o| !o.group && base(o) >= l) {
+        if base(o) == l {
+            if prev.is_some_and(|p| p.bold && !o.bold) {
+                return true;
+            }
+            prev = Some(o);
+        } else {
+            prev = None;
+        }
+    }
+    false
+}
+
 fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
     let style = outline.iter().any(|o| o.indent > 0);
     let base = |o: &OutlineRow| u16::from(if style { o.indent } else { o.spaces });
@@ -406,10 +424,10 @@ fn outline_paths(outline: &[OutlineRow], n: usize) -> Option<Vec<Vec<String>>> {
             runs.pop();
         }
         if runs.last().is_none_or(|&(rl, _)| rl < l) {
-            // The first label at this level: a bold one followed by a plain one at the same level.
-            let next = outline.get(k + 1).filter(|x| !x.group);
-            let headed = o.bold && next.is_some_and(|x| base(x) == l && !x.bold);
-            runs.push((l, headed));
+            // The first label at this level is bold, and a bold label of the run is followed by a
+            // plain one at the same level (`Canada` over `Quebec`; `Custody` over indented rows, then
+            // `Community supervision` over `Probation`, HiTab 959).
+            runs.push((l, o.bold && bold_heads_plain(outline, k, l, &base)));
         }
         if runs.last().is_some_and(|&(_, h)| h) && o.bold {
             eff[k] -= 1;
