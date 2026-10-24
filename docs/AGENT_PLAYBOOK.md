@@ -67,11 +67,17 @@ explain each in the commit.
    fast-forward master, `make node-test`, push, remove the worktree and branch, then update STAGES.md
    (status, merge commit, metrics after).
 
-## Milestones (owner's rule)
+## Continuing iterations (owner instruction, 2026-10-24)
 
-When the running stages finish, the lead merges them, updates STAGES.md, confirms nothing is running
-(no agents, no capped jobs, no stray worktrees) and **stops** — the next stage starts only when the owner
-asks (often in a fresh chat, via the accuracy-loop skill).
+The owner requested an ongoing fix/test/retest loop with a dedicated performance worker in every
+iteration alongside accuracy work. After verified integration, record results and start the next
+iteration while that instruction remains active. Keep fixes small; remove superseded code and
+unused helpers. A performance patch needs a measured gain and unchanged accuracy; investigation
+alone never justifies shipping a speculative optimization. Serialize heavy jobs globally with
+`HH_SLOTS=1`, aggregate cap 4G, and Cargo jobs 2. The lead runs integration checks from warm main
+checkout targets; workers prepare separate regression-test and implementation commits for red/green
+verification there, avoiding duplicate cold builds. Preserve separate worktree targets if workers
+need their own builds. No LLM development calls or holdout inspection.
 
 ## Agent brief template
 

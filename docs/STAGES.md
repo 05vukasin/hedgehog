@@ -54,7 +54,17 @@ Final release SHA-256 prefix: `b147b92202c1`. Baseline/audit/split/scorer defini
 
 ## Running
 
-None. The bounded batch is complete; remaining S12/S13 work is listed below.
+Iteration 2 (continuous accuracy/performance loop requested by the owner):
+
+- Accuracy: `codex/accuracy-iter2`, worktree `../hh-accuracy-iter2`; inspect remaining DEV label/header
+  misses, generated regression first, minimal source-backed fixes.
+- Performance: `codex/performance-iter2`, worktree `../hh-performance-iter2`; inspect measured feature,
+  layout and construction/export hot paths. Require actual speed benefit and equivalent output.
+- Lead: `codex/iteration-2` in main checkout; baseline `d1a2386`, release SHA `b147b92202c1`.
+  Reuse warm integration targets for red/green tests and full gates. One heavy slot, 4G total cap,
+  two Cargo jobs; memory watchdog active. Baseline DEV work and prior evidence remain on disk.
+- Workers prepare separate test/fix commits; lead verifies, reviews minimality, integrates and
+  records exact per-item and memory/speed deltas. Repeat after integration while goal is active.
 
 ## Next (in order)
 
