@@ -4090,6 +4090,55 @@ mod tests {
     use crate::model::{Cell, Value};
 
     #[test]
+    fn body_slots_reset_across_sparse_skipped_and_uncached_rows() {
+        use super::*;
+        use crate::model::Sheet;
+        let text = |s: &str| Some(Value::Text(s.into()));
+        let num = |n| Some(Value::Number(n));
+        let rows = vec![
+            vec![text("Item"), text("Value A"), text("Value B"), text("Cluster")],
+            vec![text("First"), num(11.0), num(21.0), text("Merged")],
+            vec![text("Second"), None, num(22.0), None],
+            vec![text("Source: this line belongs in notes"), None, None, None],
+            vec![text("Fourth"), None, num(24.0), text("Group 4")],
+            vec![text("Fifth"), Some(Value::Error("#VALUE!".into())), num(25.0), text("Group 5")],
+            vec![text("Sixth"), num(16.0), None, text("Group 6")],
+        ];
+        let refs: Vec<_> = rows.iter().map(Vec::as_slice).collect();
+        let (mut cells, _) = grid_rows(&refs);
+        cells.push(Cell { row: 4, col: 1, value: None, formula: Some("1+1".into()) });
+        cells.sort_by_key(|c| (c.row, c.col));
+        let sheet = Sheet {
+            cells,
+            merges: vec![Rect { top: 1, left: 3, bottom: 2, right: 3 }],
+            ..Sheet::default()
+        };
+        let grid = Grid::new(&sheet);
+        let detected = DetectedTable {
+            rect: Rect { top: 0, left: 0, bottom: 6, right: 3 },
+            header_top: 0, header_rows: 1, confidence: 1.0,
+        };
+        let lay = SheetLayout {
+            tables: vec![detected.clone()],
+            roles: sheet.cells.iter().map(|c| match c.row {
+                0 => Role::Header,
+                3 => Role::Note,
+                _ => Role::Data,
+            }).collect(),
+        };
+        let mut owner = vec![OWN_NONE; sheet.cells.len()];
+        let built = build_table(&grid, &lay, &detected, None, 1, &OnceLock::new(),
+            &HashMap::new(), &HashMap::new(), &Options::default(), &mut owner);
+        assert_eq!(built.table.src_rows, vec![1, 2, 4, 5, 6]);
+        let col = |n| &built.table.columns.iter().find(|c| c.source_col == Some(n)).unwrap().values;
+        assert_eq!(col(1), &vec![Out::Num(11.0), Out::Null, Out::Null, Out::Null, Out::Num(16.0)]);
+        assert_eq!(col(2), &vec![Out::Num(21.0), Out::Num(22.0), Out::Num(24.0), Out::Num(25.0), Out::Null]);
+        assert_eq!(&col(3)[..2], &[Out::Text("Merged".into()), Out::Text("Merged".into())]);
+        assert_eq!(built.table.transforms.get(T::FormulasWithoutValue), 1);
+        assert!(built.notes.iter().any(|n| n.row == 3));
+    }
+
+    #[test]
     fn two_interval_bands_require_cohort_ownership_and_numeric_record() {
         use crate::model::{Rect, Sheet};
         let t = |s: &str| Some(Value::Text(s.into()));
