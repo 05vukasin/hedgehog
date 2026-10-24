@@ -239,7 +239,6 @@ struct RowFeats {
 fn row_feats<'g>(src: &Sources<'_, 'g>, values: &mut Values<'g>, cur: &mut Cursor, (start, end): (usize, usize)) -> RowFeats {
     let cells = &src.grid.sheet.cells;
     let mut feats = vec![0f32; (end - start) * NB];
-    let mut mean = vec![0f32; NB];
     let mut c = [0f32; crate::context::N];
     for (k, i) in (start..end).enumerate() {
         let f = &mut feats[k * NB..(k + 1) * NB];
@@ -251,8 +250,11 @@ fn row_feats<'g>(src: &Sources<'_, 'g>, values: &mut Values<'g>, cur: &mut Curso
         let (t, l) = rest.split_at_mut(crate::totals::features::NAMES.len());
         t.copy_from_slice(&src.totals.cell(i));
         l.copy_from_slice(&src.lt.cell(i));
-        // As `segment_features_where`: add each feature in cell order, then divide below.
-        for (m, &v) in mean.iter_mut().zip(f.iter()) {
+    }
+    // As `segment_features_where`: per feature, the sum over the row's cells in order, then / n.
+    let mut mean = vec![0f32; NB];
+    for k in 0..end - start {
+        for (m, &v) in mean.iter_mut().zip(&feats[k * NB..(k + 1) * NB]) {
             *m += v;
         }
     }
