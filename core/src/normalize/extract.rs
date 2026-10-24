@@ -1545,6 +1545,64 @@ fn promote_header_inner(
     (top, end.min(bottom + 1))
 }
 
+/// A scale/bounds band immediately below an existing header: `from | to` must
+/// belong to one explicit two-column confidence-interval merge directly above it.
+/// The stub is empty and all other filled cells are units under existing headers;
+/// an ordinary record, even one containing `from` and `to`, cannot extend the band.
+fn interval_header_end(grid: &Grid, r: Rect, top: u32, end: u32, owner: &[u8]) -> u32 {
+    if end <= top || end >= r.bottom {
+        return end;
+    }
+    let text = |row, col| grid.cell(row, col).and_then(|c| c.value.as_ref()).map(display).unwrap_or_default();
+    if !text(end, r.left).trim().is_empty() {
+        return end;
+    }
+    let pairs: Vec<_> = grid.sheet.merges.iter().filter(|m| {
+        m.top == end - 1 && m.bottom == m.top && m.left > r.left && m.right <= r.right
+            && m.right == m.left + 1
+            && text(m.top, m.left).to_lowercase().contains("confidence interval")
+            && text(end, m.left).trim().eq_ignore_ascii_case("from")
+            && text(end, m.right).trim().eq_ignore_ascii_case("to")
+    }).collect();
+    if pairs.is_empty() {
+        return end;
+    }
+    // The next row is a record with numeric bounds, rather than another caption.
+    let numeric = |col| match grid.cell(end + 1, col).and_then(|c| c.value.as_ref()) {
+        Some(Value::Number(_)) => true,
+        Some(Value::Text(t)) => crate::values::parse_number(t, Default::default()).is_some(),
+        _ => false,
+    };
+    if !pairs.iter().all(|m| numeric(m.left) && numeric(m.right)) {
+        return end;
+    }
+    let row = Rect { top: end, bottom: end, ..r };
+    for i in grid.cells_in(row) {
+        let i = i as usize;
+        let c = &grid.sheet.cells[i];
+        let Some(v) = c.value.as_ref() else { continue };
+        let t = display(v);
+        let t = t.trim();
+        if t.is_empty() { continue; }
+        if owner[i] != OWN_NONE || !matches!(v, Value::Text(_)) {
+            return end;
+        }
+        if pairs.iter().any(|m| c.col == m.left || c.col == m.right) {
+            continue;
+        }
+        // The apostrophe notation is a scale, not a measured zero or an ID.
+        let scale = matches!(t, "'000" | "000'");
+        let headed = !text(end - 1, c.col).trim().is_empty()
+            || grid.sheet.merges.iter().any(|m| m.top < end && m.bottom == end - 1
+                && m.top >= top && m.left <= c.col && c.col <= m.right
+                && !text(m.top, m.left).trim().is_empty());
+        if !headed || !(scale || crate::layout::is_unit_text(t)) {
+            return end;
+        }
+    }
+    end + 1
+}
+
 /// Recover explicit merged parents above repeated child headers, across at most one
 /// blank row. A caption spanning the whole table or unrelated metadata is insufficient.
 fn merged_parent_top(grid: &Grid, r: Rect, htop: u32, owner: &[u8]) -> Option<u32> {
@@ -1703,6 +1761,7 @@ fn build_table(
         }
     }
     let (mut htop, body_top) = promote_header(&rows, cells, &lay.roles, t.header_top.clamp(r.top, r.bottom), t.header_rows, r.bottom);
+    let body_top = interval_header_end(grid, r, htop, body_top, owner);
     if body_top > htop && let Some(parent_row) = merged_parent_top(grid, r, htop, owner) {
         let old_top = r.top;
         r.top = r.top.min(parent_row);
@@ -3981,6 +4040,42 @@ fn collapse_row_totals(items: Vec<TotalItem>) -> Vec<TotalItem> {
 #[cfg(test)]
 mod tests {
     use crate::model::{Cell, Value};
+
+    #[test]
+    fn interval_child_band_requires_exact_parent_and_only_header_labels() {
+        use crate::model::{Rect, Sheet};
+        let t = |s: &str| Some(Value::Text(s.into()));
+        for case in 0..9 {
+            let mut rows = vec![
+                vec![t("Item"), t("Number"), t("Percent"), t("95% confidence interval"), None],
+                vec![None, t("'000"), None, t("from"), t("to")],
+                vec![t("Total"), Some(Value::Number(979.0)), Some(Value::Number(33.7)), Some(Value::Number(32.3)), Some(Value::Number(35.0))],
+            ];
+            let mut merges = vec![Rect { top: 0, bottom: 0, left: 3, right: 4 }];
+            match case {
+                1 => merges.clear(),
+                2 => rows[0][3] = t("Forecast"),
+                3 => merges[0].left = 2,
+                4 => rows[1][1] = Some(Value::Number(123.0)),
+                5 => rows[1][1] = t("Unexplained"),
+                6 => rows[0][1] = None,
+                7 => rows[1][0] = t("Record"),
+                8 => rows[2][3] = t("Pending"),
+                _ => {}
+            }
+            let refs: Vec<&[Option<Value>]> = rows.iter().map(Vec::as_slice).collect();
+            let (cells, _) = grid_rows(&refs);
+            let sheet = Sheet { cells, merges, ..Sheet::default() };
+            let grid = crate::grid::Grid::new(&sheet);
+            let rect = Rect { top: 0, bottom: 2, left: 0, right: 4 };
+            let mut owner = vec![super::OWN_NONE; sheet.cells.len()];
+            assert_eq!(super::interval_header_end(&grid, rect, 0, 1, &owner), if case == 0 { 2 } else { 1 }, "case {case}");
+            if case == 0 {
+                owner[grid.cell_index(1, 3).unwrap()] = super::OWN_TABLE;
+                assert_eq!(super::interval_header_end(&grid, rect, 0, 1, &owner), 1);
+            }
+        }
+    }
 
     #[test]
     fn merged_parent_recovery_does_not_reuse_owned_cells() {
