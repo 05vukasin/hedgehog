@@ -33,6 +33,7 @@ fn triangular_matrix_footer_labels_name_columns_without_becoming_records() {
             let data = if top == 0 { &rows } else { &pvalues };
             assert_eq!(t.src_rows, (top + 1..top + 6).collect::<Vec<_>>());
             assert_eq!(t.header_rows, 1);
+            assert_eq!(t.transforms.get(hh_core::normalize::T::BlankRowsRemoved), 0);
             let stub = t.columns.iter().find(|c| c.source_col == Some(0)).unwrap();
             assert_eq!(stub.values, labels[1..].iter().map(|s| Out::Text((*s).into())).collect::<Vec<_>>());
             for j in 0..5 {
