@@ -2641,6 +2641,37 @@ fn build_table(
     }
 }
 
+/// A repeated parameter caption merged across the section's width ("Time = 75 min")
+/// scopes every table below it until the next value of that parameter. Keep each source string
+/// and coordinate intact: a child title such as "ROI 3" remains the title, the caption a note.
+fn shared_parameter_captions(grid: &Grid, tables: &mut [Table], notes: &[NoteItem]) {
+    type CaptionSpan = (String, u32, u32);
+    let mut groups: HashMap<CaptionSpan, Vec<(&NoteItem, u32)>> = HashMap::new();
+    for note in notes.iter().filter(|n| n.kind == "title") {
+        let Some((key, value)) = note.text.split_once('=') else { continue };
+        let key = key.trim();
+        if key.is_empty() || key.chars().count() > 32 || !key.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
+            || !value.trim().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+') || note.text.chars().count() > 120 {
+            continue;
+        }
+        let Some(merge) = grid.sheet.merges.iter().find(|m| m.top == note.row && m.bottom == note.row && m.left == note.col && m.right > m.left) else { continue };
+        groups.entry((key.to_lowercase(), merge.left, merge.right)).or_default().push((note, merge.right));
+    }
+    for captions in groups.values_mut().filter(|v| v.len() >= 2) {
+        captions.sort_by_key(|(n, _)| n.row);
+        for (i, (caption, right)) in captions.iter().enumerate() {
+            let end = captions.get(i + 1).map(|(n, _)| n.row).unwrap_or(u32::MAX);
+            for t in tables.iter_mut().filter(|t| t.rect.top > caption.row && t.rect.bottom < end && t.rect.left >= caption.col && t.rect.right <= *right) {
+                let pos = (caption.row, caption.col);
+                if t.title.as_ref().is_none_or(|(_, at)| *at != pos) && !t.notes.iter().any(|(_, at)| *at == pos) {
+                    t.notes.push((caption.text.clone(), pos));
+                    t.notes.sort_by_key(|(_, at)| *at);
+                }
+            }
+        }
+    }
+}
+
 /// Nearest table below (title) or above (note) a loose cell, within `ASSOC_MAX_GAP` blank rows
 /// and overlapping its columns (with a little slack on the left).
 fn associate(tables: &[Table], row: u32, col: u32, title: bool) -> Option<usize> {
@@ -3384,6 +3415,7 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
             .unwrap_or_else(|| "table".to_string());
         t.sheet = format!("{prefix}{base}");
     }
+    shared_parameter_captions(grid, tables, &notes);
     // After the titles: a block's title can be the phrase of its borrowed names.
     borrow_headers(&mut out.tables[first..]);
 
