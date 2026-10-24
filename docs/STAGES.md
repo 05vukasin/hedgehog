@@ -63,7 +63,13 @@ Iteration 2 (continuous accuracy/performance loop requested by the owner):
 - Lead: `codex/iteration-2` in main checkout; baseline `d1a2386`, release SHA `b147b92202c1`.
   Reuse warm integration targets for red/green tests and full gates. First quick run caught PT split-label and Enron single-space false-parent regressions.
   Follow-ups are committed at `817dfef`, independently reviewed and focused tests pass.
-  Source/review phase is complete; unchanged quick gates and full DEV scoring are running. See [iteration evidence](iteration-2.md).
+  Candidate `802cddb92a49` passed 514 release tests, Node, 50 Enron goldens and full 4,055-file
+  fidelity; DEV L +4 (5,491), no new L/C misses, C/M unchanged. Final public comparison then
+  exposed centered subtotal padding incorrectly creating ancestry. Fix `bec3146` and generated
+  regressions pass focused red/green checks. It also restores 49 source-proven Census ancestors;
+  this single mini-golden fixture is updated after independent source/complete output review.
+  Checkpoint `895d9e3` passes all quick gates; full release gates, DEV score and exact public/
+  per-file comparison are running again. See [iteration evidence](iteration-2.md).
   One heavy slot, 4G total cap, two Cargo jobs; memory watchdog active. Baseline DEV work and prior evidence remain on disk.
 - Swarm: dedicated performance work plus independent correctness/minimality reviews when RAM,
   btrfs metadata and live slots allow. Finish source/review work before heavy testing.
