@@ -907,6 +907,9 @@ fn roll_over_header_dates(row_heads: &mut [Head], grid: &Grid) -> Option<(String
     Some((iso(from), iso(last.1)))
 }
 
+/// Most `Key: | value` lines skipped above the header of a table without header rows.
+const MAX_FORM_LINES: usize = 12;
+
 /// B72: the header rows the layout found, or a fuller header row below them. When every header
 /// row is sparse (a year label "Ano: 2016" over a numbered caption) and a row of header cells
 /// with at least three labels and twice as many as any header row comes before the first data
@@ -930,11 +933,26 @@ fn promote_header(
     // title rows) instead of ending the search, so the header row below still names the columns.
     let width = rows.iter().flat_map(|(_, idxs)| idxs.iter().map(|&i| cells[i].col)).collect::<HashSet<u32>>().len();
     let mut skipped = 0;
+    // A form of `Key: | value` lines (a deal sheet's "Counterparty Name: | … | Deal Date: | …",
+    // an ONS "Date of publication: | … | Inquiries: | …" block) above a table without header
+    // rows: every filled cell is a key ending in a colon or the value right after one, or the
+    // line is one or two cells in a wide table. Up to MAX_FORM_LINES such lines are skipped.
+    let key_text = |i: usize| matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with([':', '：']));
+    let form_line = |idxs: &[usize]| {
+        let f: Vec<usize> = idxs.iter().copied().filter(|&i| filled(&[i]) > 0).collect();
+        let keyed = f.iter().enumerate().all(|(k, &i)| key_text(i) || (k > 0 && key_text(f[k - 1])));
+        (keyed && f.iter().any(|&i| key_text(i))) || (f.len() <= 2 && f.len() * 3 <= width)
+    };
+    let mut form_lines = 0;
     for (k, (_, idxs)) in rows.iter().enumerate().filter(|(_, (row, _))| *row >= body_top) {
         if idxs.iter().any(|&i| matches!(roles[i], Role::Data | Role::Total | Role::Other) && filled(&[i]) > 0) {
             let n = filled(idxs);
             if header_rows == 0 && skipped < 2 && width >= 6 && (n <= 3 || n * 3 <= width) {
                 skipped += 1;
+                continue;
+            }
+            if header_rows == 0 && width >= 3 && form_lines < MAX_FORM_LINES && form_line(idxs) {
+                form_lines += 1;
                 continue;
             }
             break;
@@ -973,6 +991,10 @@ fn promote_header(
         }
     }
     let Some(k) = found else { return (htop, body_top) };
+    // Skipped form lines are titles only when the table under the header is longer than the form.
+    if form_lines > 0 && rows.len() - k - 1 <= skipped + form_lines {
+        return (htop, body_top);
+    }
     let top = rows[k].0;
     let mut end = top + 1;
     for (row, idxs) in &rows[k + 1..] {
@@ -980,6 +1002,30 @@ fn promote_header(
             break;
         }
         end += 1;
+    }
+    // Without header rows, the band also takes label rows the layout did not mark, up to a later
+    // row it did (ONS: "People | Men | Women", a blank row, "Level | Rate …", then the dataset
+    // codes): every row on the way holds only text labels (no numbers, no missing-value marks)
+    // with at most one blank row between them.
+    if header_rows == 0 {
+        let labels = |idxs: &[usize]| {
+            idxs.iter().all(|&i| match &cells[i].value {
+                Some(Value::Text(t)) => t.trim().is_empty() || crate::values::missing_token(t).is_none(),
+                None => true,
+                Some(_) => false,
+            }) && filled(idxs) > 0
+        };
+        let mut prev = end - 1;
+        let from = end;
+        for (seen, (row, idxs)) in rows[k + 1..].iter().filter(|(row, _)| *row >= from).enumerate() {
+            if *row > prev + 2 || seen >= 4 || !labels(idxs) {
+                break;
+            }
+            prev = *row;
+            if is_header(idxs) && idxs.iter().any(|&i| roles[i] == Role::Header) {
+                end = row + 1;
+            }
+        }
     }
     (top, end.min(bottom + 1))
 }

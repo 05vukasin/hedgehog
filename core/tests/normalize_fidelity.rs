@@ -210,3 +210,96 @@ fn values_with_unit_letters_are_not_scaled() {
     assert_eq!(texts(t, "Thickness"), ["1.0MM", "3.0MM", "3.0MM"]);
     assert_eq!(texts(t, "Day"), ["14th", "26th", "29th"]);
 }
+
+#[test]
+fn a_header_row_under_a_block_of_key_value_lines_names_the_columns() {
+    // Enron "Area Managers.xls" (TableSense): a deal form of `Key: | value` lines above the
+    // monthly table; the table started at the form, got no header, and its header row went to
+    // Notes as a repeated header (columns col_A … col_G).
+    let n = build("kvblock", |ws| {
+        let date = Format::new().set_num_format("yyyy-mm-dd");
+        ws.write_string(2, 0, "Counterparty Name:").unwrap();
+        ws.write_string(2, 1, "The Oakridge Co-op").unwrap();
+        ws.write_string(2, 5, "Deal Date:").unwrap();
+        ws.write_number_with_format(2, 6, 37034.0, &date).unwrap();
+        ws.write_string(3, 0, "Originator:").unwrap();
+        ws.write_string(3, 1, "Greg Frers").unwrap();
+        ws.write_string(3, 5, "Deal ID #:").unwrap();
+        ws.write_string(5, 0, "Deal Start Date:").unwrap();
+        ws.write_number_with_format(5, 1, 37104.0, &date).unwrap();
+        ws.write_string(5, 5, "Unit of Measure:").unwrap();
+        ws.write_string(5, 6, "GJ").unwrap();
+        ws.write_string(6, 0, "Deal End Date:").unwrap();
+        ws.write_number_with_format(6, 1, 37468.0, &date).unwrap();
+        ws.write_string(6, 5, "Volume (Monthly/Daily):").unwrap();
+        ws.write_string(6, 6, "Monthly").unwrap();
+        ws.write_string(7, 0, "Term Duration (Months):").unwrap();
+        ws.write_string(8, 5, "Price:").unwrap();
+        ws.write_string(9, 0, "Fuel Rate %:").unwrap();
+        ws.write_number(9, 1, 0.01561).unwrap();
+        ws.write_string(9, 5, "Buy/Sell:").unwrap();
+        ws.write_string(9, 6, "Buy").unwrap();
+        for (c, h) in ["Month", "Rate 11 Volume", "Rate 13 Volume", "Combined Volume", "Fuel", "Total"].iter().enumerate() {
+            ws.write_string(12, c as u16 + 1, *h).unwrap();
+        }
+        let months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+        for (k, m) in months.iter().enumerate() {
+            let row = 14 + k as u32;
+            let v = 600.0 + 10.5 * k as f64;
+            ws.write_string(row, 1, *m).unwrap();
+            ws.write_number(row, 2, v).unwrap();
+            ws.write_number(row, 4, v).unwrap();
+            ws.write_number(row, 5, (v * 0.0156 * 100.0).round() / 100.0).unwrap();
+            ws.write_number(row, 6, v + 10.0).unwrap();
+        }
+    });
+    let t = n.tables.iter().find(|t| t.columns.iter().any(|c| c.values.iter().any(|v| shown(v) == "February"))).unwrap();
+    assert_eq!(texts(t, "Month")[..2], ["January", "February"], "{:?}", names(t));
+    assert_eq!(texts(t, "Rate 11 Volume")[0], "600");
+    assert!(!n.notes.iter().any(|x| x.kind == "repeated_header" && x.text == "Month"), "{:?}", n.notes);
+}
+
+#[test]
+fn a_header_over_a_blank_row_and_a_code_row_is_one_header() {
+    // ONS a01 labour market tables: a "Date of publication: | … | Inquiries: | …" block, then
+    // "People | Men | Women", a blank row, "Level | Rate per thousand" and the dataset codes over
+    // the monthly rows. The table got no header and the label rows went to Notes.
+    let n = build("ons", |ws| {
+        ws.write_string(0, 0, "Table 10: Redundancies levels and rates for those aged 16 and over").unwrap();
+        ws.write_string(0, 6, "Source: Labour Force Survey").unwrap();
+        ws.write_string(1, 0, "Date of publication:").unwrap();
+        ws.write_string(1, 1, "15 September 2026").unwrap();
+        ws.write_string(1, 5, "Date of next publication:").unwrap();
+        ws.write_string(1, 6, "20 October 2026").unwrap();
+        ws.write_string(2, 0, "Inquiries: Email:").unwrap();
+        ws.write_string(2, 1, "labour.market@ons.gov.uk").unwrap();
+        ws.write_string(2, 5, "Telephone:").unwrap();
+        ws.write_string(2, 6, "01633 455400").unwrap();
+        ws.write_string(3, 0, "United Kingdom (thousands)").unwrap();
+        for (c, h) in [(1u16, "People"), (3, "Men"), (5, "Women")] {
+            ws.write_string(4, c, h).unwrap();
+        }
+        for c in 0..3u16 {
+            ws.write_string(6, 1 + 2 * c, "Level").unwrap();
+            ws.write_string(6, 2 + 2 * c, "Rate per thousand").unwrap();
+        }
+        ws.write_string(7, 0, "Dataset identifier code").unwrap();
+        for (c, code) in ["BEAO", "BEIR", "BEIU", "BEIX", "BEJA", "BEJD"].iter().enumerate() {
+            ws.write_string(7, c as u16 + 1, *code).unwrap();
+        }
+        let months = ["Jan-Mar", "Feb-Apr", "Mar-May", "Apr-Jun", "May-Jul", "Jun-Aug", "Jul-Sep", "Aug-Oct", "Sep-Nov", "Oct-Dec"];
+        for y in 0..3u32 {
+            for (m, p) in months.iter().enumerate() {
+                let row = 9 + y * 10 + m as u32;
+                ws.write_string(row, 0, format!("{p} {}", 2001 + y)).unwrap();
+                for c in 0..6u16 {
+                    let v = 100.0 + (row * 7 + c as u32 * 13) as f64 % 50.0;
+                    ws.write_number(row, c + 1, if c % 2 == 0 { v } else { v / 10.0 }).unwrap();
+                }
+            }
+        }
+    });
+    let t = n.tables.iter().find(|t| t.columns.iter().any(|c| c.values.iter().any(|v| shown(v) == "Feb-Apr 2001"))).unwrap();
+    assert!(names(t).iter().any(|c| c.contains("Women") && c.contains("BEJD")), "{:?}", names(t));
+    assert!(!n.notes.iter().any(|x| x.kind == "repeated_header"), "{:?}", n.notes);
+}
