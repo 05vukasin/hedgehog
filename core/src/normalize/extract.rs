@@ -482,13 +482,23 @@ fn section_rows(
     // section `Net sales:`).
     for (k, (row, idxs)) in body.iter().enumerate().rev() {
         let Some(i) = label(idxs) else { continue };
-        if values(idxs) || !matches!(roles[i], Role::Data | Role::Other) {
+        // A label the layout took for a note mid-table (StatCan 132: a bold section after the
+        // indented rows of the one above) is a candidate too, when rows with values follow.
+        // So is a label alone on its row the layout took for a repeated header (StatCan 2433:
+        // `Individual health` over empty cells merged down into the next section row).
+        let note_mid = matches!(roles[i], Role::Note | Role::Header) && body[k + 1..].iter().any(|(_, ix)| values(ix));
+        // A total-worded label of several words alone on its row, without a number (StatCan 108:
+        // bold `Total household income` over `Below median income`): a section, no total row.
+        let words = |t: &str| t.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).count();
+        let total_heading = matches!(&cells[i].value, Some(Value::Text(t)) if words(t) >= 2)
+            && matches!(roles[i], Role::Total | Role::Data | Role::Other);
+        if values(idxs) || !(matches!(roles[i], Role::Data | Role::Other) || note_mid || total_heading) {
             continue;
         }
         let text_ok = match &cells[i].value {
             Some(Value::Text(t)) => {
                 let t = t.trim();
-                crate::totals::total_keyword(t).is_none()
+                (crate::totals::total_keyword(t).is_none() || total_heading)
                     && !crate::layout::is_note_label(t)
                     && crate::values::table_missing_token(t).is_none()
                     && t.chars().any(|c| c.is_alphanumeric())
@@ -516,6 +526,80 @@ fn section_rows(
         if deeper || (apart && values(next)) || (heading && next_section) {
             out.insert(*row);
         }
+    }
+    out
+}
+
+/// A unit written alone on a body row (StatCan): `mean`, `number`, `percentage points`, `dollars`,
+/// `2016 dollars`, `percentage distribution`: a unit or scale label, or every word one of a few
+/// measure words (numbers allowed).
+fn is_body_unit(t: &str) -> bool {
+    const WORDS: [&str; 34] = [
+        "percent", "percentage", "percentages", "points", "point", "number", "numbers", "dollars", "dollar", "constant",
+        "current", "mean", "average", "median", "proportion", "proportions", "rate", "rates", "ratio", "ratios",
+        "index", "hours", "months", "years", "days", "weeks", "minutes", "thousands", "millions", "billions", "of",
+        "distribution", "count", "share",
+    ];
+    let t = t.trim();
+    if t.is_empty() || t.chars().count() > 32 {
+        return false;
+    }
+    if crate::layout::is_unit_text(t) {
+        return true;
+    }
+    let mut any = false;
+    for w in t.split(|c: char| c.is_whitespace() || c == '/' || c == ',') {
+        let w = w.trim_matches(|c: char| matches!(c, '(' | ')' | '[' | ']'));
+        if w.is_empty() || w.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        let lw = w.to_lowercase();
+        if !WORDS.contains(&lw.as_str()) && w != "$" && w != "%" {
+            return false;
+        }
+        any |= lw != "of";
+    }
+    any
+}
+
+/// Unit rows inside a table body (StatCan `mean`, `number`, `percentage points` between the rows):
+/// the row's only content is a unit (`is_body_unit`) in value columns, its label column is blank,
+/// there are rows with values above it, and the next row with values below has a number in each
+/// column the unit names. The unit heads the rows below it (their values are in that unit): a
+/// section, like a label alone on its row. Row -> the unit text.
+fn unit_section_rows(grid: &Grid, rows: &[(u32, Vec<usize>)], body_top: u32, label_col: Option<u32>) -> HashMap<u32, String> {
+    let mut out = HashMap::new();
+    let Some(lc) = label_col else { return out };
+    let cells = &grid.sheet.cells;
+    let filled = |i: usize| cells[i].value.as_ref().is_some_and(|v| !display(v).trim().is_empty());
+    let number = |i: usize| match &cells[i].value {
+        Some(Value::Number(_)) => true,
+        Some(Value::Text(t)) => crate::values::number::parse_number(t.trim(), Default::default()).is_some(),
+        _ => false,
+    };
+    let body: Vec<&(u32, Vec<usize>)> = rows.iter().filter(|(row, _)| *row >= body_top).collect();
+    let mut values_above = false;
+    for (k, (row, idxs)) in body.iter().enumerate() {
+        let f: Vec<usize> = idxs.iter().copied().filter(|&i| filled(i)).collect();
+        let unit = !f.is_empty()
+            && f.iter().all(|&i| cells[i].col != lc && matches!(&cells[i].value, Some(Value::Text(t)) if is_body_unit(t)));
+        if unit && values_above {
+            // the next row with a number: a number in every column of the unit row
+            let below = body[k + 1..].iter().find(|(_, ix)| ix.iter().any(|&j| number(j)));
+            let fits = below.is_some_and(|(_, ix)| f.iter().all(|&i| ix.iter().any(|&j| cells[j].col == cells[i].col && number(j))));
+            if fits {
+                let mut label: Vec<String> = Vec::new();
+                for &i in &f {
+                    let t = display(cells[i].value.as_ref().unwrap()).trim().to_string();
+                    if !label.contains(&t) {
+                        label.push(t);
+                    }
+                }
+                out.insert(*row, label.join(" / "));
+                continue;
+            }
+        }
+        values_above |= f.iter().any(|&i| number(i));
     }
     out
 }
@@ -1296,6 +1380,12 @@ fn build_table(
         (indent, spaces)
     };
     let mut cur_path: Option<usize> = None;
+    // Data and total rows since the last section label (group run) was applied.
+    let mut since_section = 0usize;
+    // The last data row's outline label, source row and indent; the data row that heads the
+    // sections indented below it (see the group path below).
+    let mut prev_data: Option<(String, u32, (u8, usize))> = None;
+    let mut anchor_row: Option<u32> = None;
     // Column of the group-header rows' labels; a group-header cell there on a data row is a group
     // label written on the group's first data row (it replaces the innermost group).
     let mut group_label_col: Option<u32> = None;
@@ -1330,6 +1420,7 @@ fn build_table(
     // `  Unwanted sexual behaviour …`), or it is set apart from them by bold, capitals or a merge
     // across the row (`2015` over the components of that year). It becomes a group header.
     let section_rows: HashSet<u32> = section_rows(grid, &rows, body_top, outline_col, &lay.roles);
+    let unit_rows: HashMap<u32, String> = unit_section_rows(grid, &rows, body_top, outline_col);
     let mut key_cols: HashSet<usize> = HashSet::new();
     // Outline of the row labels (B-public): the label column's cells with their indent (cell style)
     // and leading spaces, in order, for the `<label>_parent` column built after the loop.
@@ -1391,7 +1482,14 @@ fn build_table(
                 kind = RowKind::Data;
             }
         }
-        if kind == RowKind::Data && section_rows.contains(row) {
+        if matches!(kind, RowKind::Data | RowKind::Note | RowKind::RepeatedHeader) && section_rows.contains(row) {
+            kind = RowKind::Group;
+        }
+        if unit_rows.contains_key(row) && !matches!(kind, RowKind::Total) {
+            kind = RowKind::Group;
+        }
+        // A total-worded section label (no number on its row): see `section_rows`.
+        if kind == RowKind::Total && section_rows.contains(row) {
             kind = RowKind::Group;
         }
         if matches!(kind, RowKind::Data | RowKind::Total) {
@@ -1448,7 +1546,9 @@ fn build_table(
                     }
                 }
                 if let Some(i) = label_cell {
-                    group_label_col = Some(cells[i].col);
+                    if !unit_rows.contains_key(row) {
+                        group_label_col = Some(cells[i].col);
+                    }
                     group_cells.push((i, *row));
                 }
                 tr.add(T::GroupHeaderRowsToColumn, 1);
@@ -1525,6 +1625,39 @@ fn build_table(
             group_labels.push(label.clone());
             run.push((label, *row, label_level(i)));
         }
+        // This row's label in the outline column and its indent (for the anchor below).
+        let own_label = idxs.iter().copied().find(|&i| {
+            Some(cells[i].col) == outline_col && matches!(&cells[i].value, Some(Value::Text(t)) if !t.trim().is_empty())
+        });
+        if !run.is_empty() {
+            // A data row right above sections indented deeper than it (`Recent immigrant owners`
+            // over `  From China`, `  From India`, StatCan 1856) heads them: it is their parent.
+            if let Some((label, arow, alevel)) = prev_data.take()
+                && run.first().is_some_and(|x| x.2 > alevel)
+            {
+                while path_levels.last().is_some_and(|&l| l >= alevel) {
+                    path.pop();
+                    path_rows.pop();
+                    path_levels.pop();
+                }
+                path.push(label);
+                path_rows.push(arow);
+                path_levels.push(alevel);
+                anchor_row = Some(arow);
+            }
+        } else if let Some(arow) = anchor_row
+            && let Some(a) = path_rows.iter().position(|&h| h == arow)
+            && own_label.is_some_and(|i| label_level(i) <= path_levels[a])
+        {
+            // a row back at the anchor's indent (or left of it) leaves it and its sections
+            path.truncate(a);
+            path_rows.truncate(a);
+            path_levels.truncate(a);
+            anchor_row = None;
+            paths.push(path.clone());
+            paths_rows.push(path_rows.clone());
+            cur_path = Some(paths.len() - 1);
+        }
         if !run.is_empty() {
             // Group labels at several indents nest by their indent (`Public spaces` > `  Unwanted
             // sexual behaviour …`, then `Online` replaces both); at one indent a run of group
@@ -1562,6 +1695,7 @@ fn build_table(
             paths.push(path.clone());
             paths_rows.push(path_rows.clone());
             cur_path = Some(paths.len() - 1);
+            since_section = 0;
         }
         // A kept total row belongs only to the groups that contain its whole source: a subtotal
         // to its group, a grand total (or a total over several groups) to none of them. A source
@@ -1575,6 +1709,9 @@ fn build_table(
         let depth = match (level, row_total.get(row).and_then(|t| t.top)) {
             _ if matches!(rt, RowType::Data | RowType::Average | RowType::OfWhich) => path.len(),
             _ if names_group => path.len(),
+            // A total right under its section label (`Constant 2012 $` over `Total R&D, all
+            // performers` and its parts) heads that section, whatever rows above it add up to.
+            _ if since_section == 0 && !path.is_empty() => path.len(),
             // A group named like a total ("Total drug violations") names its total rows, a grand
             // total over the groups above too.
             _ if path.last().is_some_and(|l| totals::total_keyword(l).is_some()) => path.len(),
@@ -1637,6 +1774,11 @@ fn build_table(
         let with_parent = matches!(rt, RowType::Data | RowType::Total | RowType::Subtotal);
         outline.extend(outline_row(idxs, with_parent.then(|| src_rows.len() - 1), false));
         row_types.push(rt);
+        since_section += 1;
+        prev_data = match (rt, own_label) {
+            (RowType::Data, Some(i)) => Some((cells[i].value.as_ref().map(display).unwrap_or_default().trim().to_string(), *row, label_level(i))),
+            _ => None,
+        };
         block_of.push(if rt == RowType::Data { block } else { u32::MAX });
         if rt != RowType::Data {
             block += 1;

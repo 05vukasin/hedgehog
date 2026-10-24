@@ -1,6 +1,6 @@
 {
  "side": "dev",
- "binary": "/home/vukasin/projects/excell-lib-project/hh-totals/target/release/hedgehog",
+ "binary": "/home/vukasin/projects/excell-lib-project/hh-lookup/target/release/hedgehog",
  "tokenizer": "tiktoken o200k_base",
  "F": {
   "summary": {}
@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3644,
+    "pass": 3704,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 95.8,
-    "after_audit": 95.8
+    "raw": 97.3,
+    "after_audit": 97.3
    },
    "mimotable": {
     "items": 273,
@@ -44,74 +44,22 @@
    },
    "realhitbench": {
     "items": 1556,
-    "pass": 1353,
+    "pass": 1428,
     "audited": 0,
     "audited_pass": 0,
-    "raw": 87.0,
-    "after_audit": 87.0
+    "raw": 91.8,
+    "after_audit": 91.8
    },
    "ALL": {
     "items": 5634,
-    "pass": 5266,
+    "pass": 5401,
     "audited": 1,
     "audited_pass": 1,
-    "raw": 93.5,
-    "after_audit": 93.5
+    "raw": 95.9,
+    "after_audit": 95.9
    }
   },
   "clusters": {
-   "answer column has no header (col_X)": {
-    "misses": 100,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0172",
-      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(45).xlsx",
-      "atom": "A_005 Project",
-      "evidence": "'A_005 Project' only in ['col_A', 'col_F']"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F185",
-      "file": "tables/productivity-table05.xlsx",
-      "atom": "Q3",
-      "evidence": "'Q3' only in ['col_B']"
-     },
-     {
-      "dataset": "realhitbench",
-      "id": "F468",
-      "file": "tables/military-table07.xlsx",
-      "atom": "White",
-      "evidence": "'White' only in ['col_C']"
-     }
-    ]
-   },
-   "label path missing parent": {
-    "misses": 81,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "7019381acb0a986c9d99e5da6705c0d4",
-      "file": "clean/nsf/128_62_np16-ib-19308-tab002.xlsx",
-      "atom": "1.6",
-      "evidence": "Table 2!D16: gold ['constant 2012 $', 'total r&d, all performers'] vs labels ['Current $', 'Total R&D, all performers']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "13a842d6215462b864c937e0036e4897",
-      "file": "clean/nsf/128_62_np16-ib-19308-tab002.xlsx",
-      "atom": "2.8",
-      "evidence": "Table 2!C16: gold ['constant 2012 $', 'total r&d, all performers'] vs labels ['Current $', 'Total R&D, all performers']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "c3083c22fb5a0c76a97da0a8477764a8",
-      "file": "clean/nsf/128_62_np16-ib-19308-tab002.xlsx",
-      "atom": "3.3",
-      "evidence": "Table 2!M16: gold ['constant 2012 $', 'total r&d, all performers'] vs labels ['Current $', 'Total R&D, all performers']"
-     }
-    ]
-   },
    "column header path differs": {
     "misses": 45,
     "examples": [
@@ -190,6 +138,32 @@
      }
     ]
    },
+   "answer column has no header (col_X)": {
+    "misses": 25,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0172",
+      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(45).xlsx",
+      "atom": "A_005 Project",
+      "evidence": "'A_005 Project' only in ['col_A', 'col_F']"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F185",
+      "file": "tables/productivity-table05.xlsx",
+      "atom": "Q3",
+      "evidence": "'Q3' only in ['col_B']"
+     },
+     {
+      "dataset": "realhitbench",
+      "id": "F640",
+      "file": "tables/economy-table51.xlsx",
+      "atom": "A01203",
+      "evidence": "'A01203' only in ['col_C']"
+     }
+    ]
+   },
    "row label differs": {
     "misses": 23,
     "examples": [
@@ -213,6 +187,32 @@
       "file": "clean/nsf/169_84_tab1.xlsx",
       "atom": "18.8",
       "evidence": "Table 1!F4: gold ['1'] vs labels ['United States', 'World']"
+     }
+    ]
+   },
+   "label path missing parent": {
+    "misses": 21,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "0d207dfe41815dfd777107e8d2d03c58",
+      "file": "clean/statcan/1476.xlsx",
+      "atom": "35.8",
+      "evidence": "original!E17: gold ['percentage', 'worked last year'] vs labels ['Education', 'Worked last year']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c96f6e47af256d95e8eef1a25375227f",
+      "file": "clean/statcan/1476.xlsx",
+      "atom": "36.3",
+      "evidence": "original!B25: gold ['percentage', 'occupation', 'sales and service'] vs labels ['Occupation', 'Sales and service']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "26efe0336e86b2b0c388cc55b52a270b",
+      "file": "clean/statcan/1535.xlsx",
+      "atom": "310.0",
+      "evidence": "original!C13: gold ['women', 'total economic class'] vs labels ['Men', 'Total economic class']"
      }
     ]
    },
@@ -2343,21 +2343,21 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 776.5,
-    "median": 695,
-    "p90": 1248,
+    "mean": 776.0,
+    "median": 693,
+    "p90": 1247,
     "max": 2438
    },
    "mimotable": {
     "files": 401,
-    "mean": 966.1,
+    "mean": 966.2,
     "median": 870,
     "p90": 1697,
     "max": 4179
    },
    "realhitbench": {
     "files": 536,
-    "mean": 770.2,
+    "mean": 770.3,
     "median": 611,
     "p90": 1529,
     "max": 3607
@@ -2449,5 +2449,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 111
+ "seconds": 124
 }
