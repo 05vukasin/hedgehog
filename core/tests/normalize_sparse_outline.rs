@@ -129,3 +129,36 @@ fn single_padding_space_does_not_create_sparse_log_ancestry() {
         assert!(n.tables.iter().all(|t| t.columns.iter().all(|c| c.derived_kind() != Some("parent"))), "padding became hierarchy");
     }
 }
+
+/// MiMoTable 气体灭火: page subtotals are centered with leading padding,
+/// rather than nested below the preceding bill-of-quantities item code.
+#[test]
+fn aligned_total_padding_is_not_text_indentation() {
+    use rust_xlsxwriter::FormatAlign;
+    for rules_only in [false, true] {
+        for alignment in [FormatAlign::Center, FormatAlign::Right] {
+            let path = std::env::temp_dir().join(format!("hh_aligned_padding_{}_{}_{alignment:?}.xlsx", std::process::id(), rules_only));
+            let mut wb = Workbook::new();
+            let ws = wb.add_worksheet();
+            for (c, h) in ["返回", "定额名称", "工程量"].iter().enumerate() {
+                ws.write_string(0, c as u16, *h).unwrap();
+            }
+            for k in 1..=35u32 {
+                if k == 26 || k == 35 {
+                    let label = if k == 26 { "              本        页        小        计" } else { "              总                            计" };
+                    ws.write_string_with_format(k, 0, label, &Format::new().set_align(alignment)).unwrap();
+                    ws.write_number(k, 2, 0.0).unwrap();
+                } else {
+                    ws.write_string(k, 0, format!("11-{k}")).unwrap();
+                    ws.write_string(k, 1, format!("Pipe item {k}")).unwrap();
+                    ws.write_number(k, 2, k as f64).unwrap();
+                }
+            }
+            wb.save(&path).unwrap();
+            let book = open(&path).unwrap();
+            std::fs::remove_file(path).unwrap();
+            let n = normalize_workbook(&book, &Options { rules_only, keep_totals: true, ..Options::default() });
+            assert!(n.tables.iter().all(|t| t.columns.iter().all(|c| c.derived_kind() != Some("parent"))), "aligned padding became ancestry: {alignment:?}");
+        }
+    }
+}
