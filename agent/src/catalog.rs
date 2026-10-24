@@ -808,6 +808,15 @@ pub(crate) fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
             }
             labels.push(last);
         }
+        // Rows above the first group label are a section of their own whose label stayed in the
+        // header (StatCan: counts, then "percent of paid employment"): an unnamed block.
+        if c.role == ColRole::Group && !distinct.is_empty() && labels.first() == Some(&None) {
+            distinct.push("");
+            let k = distinct.len() - 1;
+            for l in labels.iter_mut().take_while(|l| l.is_none()) {
+                *l = Some(k);
+            }
+        }
         if distinct.len() < 2 {
             continue;
         }
@@ -2807,6 +2816,12 @@ mod tests {
             *v = Out::Text(["A", "A", "B", "B", "C"][k].into());
         }
         assert!(catalog(&plain, "x.xlsx", MAX_CHARS).contains("rows mix measures by \"group\""));
+        // The first section without a label (it stayed in the header): a block of its own.
+        let mut unnamed = n.clone();
+        for (k, v) in unnamed.tables[0].columns[0].values.iter_mut().enumerate() {
+            *v = if k < 2 { Out::Null } else { Out::Text("B".into()) };
+        }
+        assert!(catalog(&unnamed, "x.xlsx", MAX_CHARS).contains("rows mix measures by \"group\""));
         // Regions of similar size: one measure.
         let c = catalog(&book(1, 3, true), "x.xlsx", MAX_CHARS);
         assert!(!c.contains("mix measures"), "{c}");
