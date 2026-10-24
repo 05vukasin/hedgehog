@@ -696,3 +696,31 @@ fn type_column_untimed(
         warnings,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn statistical_non_significance_keeps_native_numbers_and_literal_marker() {
+        let run = |values: &[Value]| {
+            let slots: Vec<_> = values.iter().map(Slot::Val).collect();
+            let rows: Vec<_> = (0..values.len() as u32).collect();
+            let mut tr = Transforms::default();
+            type_column("Correlation", 0, &slots, &rows, ColumnHints::default(), &mut |_, _, _| ColumnHints::default(), &mut tr)
+        };
+        let text = |s: &str| Value::Text(s.into());
+        let typed = run(&[Value::Number(0.71), Value::Number(-0.26), text("N.S.")]);
+        assert_eq!(typed.dtype, Dtype::Number);
+        assert_eq!(typed.values, vec![Out::Num(0.71), Out::Num(-0.26), Out::Text("N.S.".into())]);
+        assert!(typed.warnings.iter().any(|s| s.contains("non-significant")));
+        for values in [vec![text("N.S.")], vec![text("N.S."), text("Alice"), text("Bob")],
+            vec![text("001"), Value::Number(0.71), text("N.S.")],
+            vec![Value::Number(0.71), Value::Number(-0.26), text("N.S")]] {
+            let typed = run(&values);
+            assert_eq!(typed.dtype, Dtype::Text, "{values:?}");
+            assert_eq!(typed.values[0], Out::Text(display(&values[0])));
+            assert!(!typed.warnings.iter().any(|s| s.contains("non-significant")));
+        }
+    }
+}
