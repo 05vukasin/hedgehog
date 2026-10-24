@@ -310,9 +310,14 @@ struct Lines {
 impl Lines {
     fn new(grid: &Grid, major_minor: impl Fn(&Cell) -> (u32, u32)) -> Lines {
         let cells = &grid.sheet.cells;
-        // Only the cell the position index points at (duplicates: the last one).
+        // Sorted indexing already proves positions unique. Other sheets retain only the cell
+        // the position index points at (duplicates: the last one).
+        let unique = matches!(grid.index, CellIndex::Sorted { .. });
         let mut order: Vec<u32> = (0..cells.len() as u32)
             .filter(|&i| {
+                if unique {
+                    return true;
+                }
                 let c = &cells[i as usize];
                 grid.index.get(cells, c.row, c.col) == Some(i)
             })
