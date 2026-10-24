@@ -332,7 +332,13 @@ fn emit(src: &Sources<'_, '_>, row: &RowFeats, prev: Option<&RowFeats>, next: Op
         let g = GEOMETRY.len();
         let nm = members.len() as f32;
         for k in 0..NB {
-            v[g + k] = part.clone().map(|j| feats[j * NB + k]).sum::<f32>() / nm;
+            // The whole-row mean was already accumulated in cell order for the neighbours'
+            // features. Most rows have one segment, so do not sum all their features twice.
+            v[g + k] = if parts.len() == 1 {
+                row.mean[k]
+            } else {
+                part.clone().map(|j| feats[j * NB + k]).sum::<f32>() / nm
+            };
             v[g + NB + k] = feats[part.start * NB + k];
             v[g + 2 * NB + k] = up.map_or(0.0, |m| m[k]);
             v[g + 3 * NB + k] = down.map_or(0.0, |m| m[k]);
