@@ -4036,6 +4036,23 @@ mod tests {
     }
 
     #[test]
+    fn sparse_explicit_outline_drops_same_indent_bold_ancestor() {
+        let row = |label: &str, indent, bold, out, group| OutlineRow {
+            indent, spaces: 0, bold, label: label.into(), out, group,
+        };
+        let mut rows = vec![
+            row("Explicit parent", 0, false, Some(0), false),
+            row("Bold candidate", 1, true, Some(1), false),
+            row("Indented child", 1, false, Some(2), false),
+            row("New section", 0, true, None, true),
+        ];
+        rows.extend((3..40).map(|k| row("Flat peer", 0, false, Some(k), false)));
+        let paths = outline_paths(&rows, 40).unwrap();
+        assert_eq!(paths[1], ["Explicit parent"]);
+        assert_eq!(paths[2], ["Explicit parent"], "same-indent bold ancestry still needs coverage");
+    }
+
+    #[test]
     fn slugs() {
         assert_eq!(slug("Prodaja po regionima — 2024", 26), "prodaja_po_regionima_2024");
         assert_eq!(slug("Укупно Београд", 26), "ukupno_beograd");
