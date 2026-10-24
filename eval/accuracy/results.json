@@ -28,10 +28,10 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3761,
+    "pass": 3762,
     "audited": 9,
     "audited_pass": 0,
-    "raw": 98.8,
+    "raw": 98.9,
     "after_audit": 99.1
    },
    "mimotable": {
@@ -52,7 +52,7 @@
    },
    "ALL": {
     "items": 5634,
-    "pass": 5496,
+    "pass": 5497,
     "audited": 10,
     "audited_pass": 1,
     "raw": 97.6,
@@ -113,7 +113,7 @@
     ]
    },
    "column header path differs": {
-    "misses": 21,
+    "misses": 20,
     "examples": [
      {
       "dataset": "hitab",
@@ -2280,13 +2280,13 @@
   }
  },
  "M": {
-  "violations": 1560,
+  "violations": 1554,
   "files": 763,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
     "M1 total row in data": 10,
-    "M5 repeated header names": 15,
+    "M5 repeated header names": 9,
     "M3 measures mixed": 26
    },
    "mimotable": {
@@ -2312,7 +2312,7 @@
   "kinds": {
    "M5 header missing": 1358,
    "M3 measures mixed": 72,
-   "M5 repeated header names": 63,
+   "M5 repeated header names": 57,
    "M1 total row in data": 23,
    "M5 duplicate headers": 17,
    "M5 number as header": 14,
@@ -2473,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 120
+ "seconds": 133
 }

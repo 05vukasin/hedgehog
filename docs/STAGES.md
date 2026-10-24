@@ -5,15 +5,15 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (iteration 4, implementation aa5a013, 2026-10-24)
+## Current state (iteration 5, implementation bc8fad9, 2026-10-24)
 
 | Measure | Value | Target |
 |---|---|---|
 | F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
-| L lookups | 5,496 / 5,634 = 97.6 % raw, 97.7 % after audit (129 misses) | 100 % after audit |
+| L lookups | 5,497 / 5,634 = 97.6 % raw, 97.7 % after audit (128 misses) | 100 % after audit |
 | C calculations | 1,198 / 2,264 proven; library misses 42; oracle-limit ≈ 988; gold/question 2 unreviewed | library misses 0 |
-| M misleading-info violations | 1,560 in 763 files (1,358 are columns without header text) | 0 (or documented policy) |
+| M misleading-info violations | 1,554 in 763 files (1,358 are columns without header text) | 0 (or documented policy) |
 | K catalog tokens / file | hitab 774, mimotable 972, realhitbench 771 | no growth |
 | S HiTab table F1@0.8 | 98.9 % (unchanged reproduced baseline; old ledger was stale) | — |
 | Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
@@ -114,27 +114,40 @@ final implementation `aa5a013`, release `3c22b9e970fb`.
   confirms small mixed differences, without a repeatable speed gain or broad slowdown.
 - Local integration only; no remote push, installed CLI replacement, LLM or holdout use.
 
+## Iteration 5 accepted
+
+See [iteration evidence](iteration-5.md). Baseline `9838da0` / release `3c22b9e970fb`;
+final implementation `bc8fad9` with range fix `4433f95`, release `8863194ea465`.
+
+- Explicit cohort/interval bands recovered in StatCan 1521/2728: one L miss
+  resolved, six repeated-header M violations removed, no new L/C/M failures.
+  Source values, coordinates and first records verified under both analyzers.
+- Unsorted in-memory sheet bounds now include the minimum cell row; permutation,
+  duplicate and actual formula-verification regressions reproduce and verify the fix.
+- Nine-line sibling-support guard avoids unused formula verification/indexing.
+  Exact exports/MCP preserved; twelve-pair NYISO normalize/cold-open improve
+  about 1.0%/1.7% (11/12 wins each). Financial cold open is 0.85 ms slower;
+  small-workload results are mixed. This is a targeted gain, not general acceleration.
+- 538 release tests (17 ignored), quick, Clippy, 50 goldens, both structure benchmarks,
+  full fidelity, Node 21 tests/TypeScript, fresh DEV and strict regression gates pass.
+  Per-file fidelity: 4,055 records, no regressions. Real feature equivalence:
+  41,358 segments/eight sheets, zero differences/skips. Final source checks pass.
+- Public HiTab exact column linking +25, exact both +19, lenient column/both +1.
+  Catalog growth +106 total tokens (+0.011% mean) retains recovered source labels.
+- Temporary instrumentation fully removed. Local integration only; no remote push,
+  installed CLI replacement, evaluator changes, LLM calls or holdout use.
+
 ## Running
 
-Iteration 5 baseline: accepted local master `9838da0`, release `3c22b9e970fb`.
-
-- Lead `codex/iteration-5`; accuracy `codex/accuracy-iter5` in
-  `../hh-accuracy-iter2`; performance `codex/performance-iter5` in
-  `../hh-performance-iter2`; independent source reviewer checks both.
-- Accuracy: source-backed remaining DEV failures; two-band StatCan headers are
-  a candidate. Preserve ambiguous cases without fabricated ownership.
-- Performance: prepare temporary coarse profiling of dominant NYISO phases before
-  choosing another production patch; no speculative revival of rejected cleanups.
-- Before expansion: 10 GiB available RAM, 4.3 MiB swap used, 121 GiB free disk,
-  btrfs metadata 17.35/18.50 GiB; three worker slots available, no heavy jobs.
-  All source/review workers finish before serialized capped testing.
+Iteration 5 validation is complete; local integration pending. No active workers or
+heavy jobs. Resource and slot checks precede the next accuracy/performance swarm.
 
 ## Next (in order)
 
-1. S12 remainder — columns without header text (1,358 of 1,560 M violations): policy for source columns that
+1. S12 remainder — columns without header text (1,358 of 1,554 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
-2. S13 remainder — 129 audited L misses: largest raw clusters are question keys outside tables (28),
+2. S13 remainder — 128 audited L misses: largest raw clusters are question keys outside tables (28),
    numbers not grounded by labels (27), header paths (24), col_X (13), and missing parent paths (12).
    Numeric-only question ranking still needs work. C library misses remain 42.
 3. S14 — misplaced long tail (≈ 3,200 cells: header rows sent to Notes, data rows read as headers, side-by-side +
