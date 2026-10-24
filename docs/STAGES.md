@@ -5,13 +5,13 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (iteration 3, implementation 0e86da4, 2026-10-24)
+## Current state (iteration 4, implementation aa5a013, 2026-10-24)
 
 | Measure | Value | Target |
 |---|---|---|
 | F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
-| L lookups | 5,493 / 5,634 = 97.5 % raw, 97.7 % after audit (132 misses) | 100 % after audit |
+| L lookups | 5,496 / 5,634 = 97.6 % raw, 97.7 % after audit (129 misses) | 100 % after audit |
 | C calculations | 1,198 / 2,264 proven; library misses 42; oracle-limit ≈ 988; gold/question 2 unreviewed | library misses 0 |
 | M misleading-info violations | 1,560 in 763 files (1,358 are columns without header text) | 0 (or documented policy) |
 | K catalog tokens / file | hitab 774, mimotable 972, realhitbench 771 | no growth |
@@ -94,28 +94,37 @@ final implementation `0e86da4`, release `21ab0c6aed37`.
   result is excluded. All required correctness and normalization evidence is saved.
 - Local integration only; no remote push or installed CLI replacement.
 
+## Iteration 4 accepted
+
+See [iteration evidence](iteration-4.md). Baseline `47be56d` / release `21ab0c6aed37`;
+final implementation `aa5a013`, release `3c22b9e970fb`.
+
+- Explicit confidence-interval child bands retain scale/from/to headers and source
+  coordinates in HiTab 46/504. Three L misses resolved; no new L/C misses or M violations.
+  Invalid merge widths at extreme coordinates are rejected without overflow.
+- Strict public/per-item comparison passes: HiTab column/both-path linking each +3;
+  no public accuracy declines or per-file fidelity regressions across 4,055 records.
+  Mean HiTab catalog growth is 0.0184 tokens/file for recovered source labels.
+- 532 release tests (17 ignored), quick checks, Clippy, 50 goldens, both structure
+  benchmarks, full fidelity, Node 21 tests/TypeScript and fresh DEV score all pass.
+  Real feature equivalence: 41,358 segments/eight sheets, zero differences/skips;
+  final real-source checks pass on both analyzers for both workbooks.
+- Both performance candidates rejected after six-/twelve-pair comparisons; production
+  changes reverted, semantic regressions retained. Final accepted/candidate timing
+  confirms small mixed differences, without a repeatable speed gain or broad slowdown.
+- Local integration only; no remote push, installed CLI replacement, LLM or holdout use.
+
 ## Running
 
-Iteration 4 starts from local master `47be56d`, release `21ab0c6aed37`.
-
-- Lead: `codex/iteration-4`; source/review phase, no heavy jobs.
-- Accuracy: `codex/accuracy-iter4`, `../hh-accuracy-iter2`; DEV MiMoTable
-  `WorkplaceGeneral(45).xlsx` mixed first-row headers/data. Establish faithful
-  ownership, preserve right-side first-row records and source header coordinates.
-- Performance: `codex/performance-iter4`, `../hh-performance-iter2`; investigate
-  fresh baseline critical-path traces and prepare a minimal candidate if justified.
-- Independent reviewer checks source geometry, negative cases, semantics, complexity
-  bounds and minimality for both patches. No worker builds/tests during this phase.
-- Before delegation: about 10 GiB available RAM, negligible swap, 118 GiB disk,
-  btrfs metadata 17.34/18.50 GiB; three lightweight workers plus lead fit four slots.
-  Finish every source/review worker before globally serialized capped testing.
+No source workers or heavy jobs running. Iteration 5 starts after local integration
+and resource checks, with separate accuracy and performance workers plus review.
 
 ## Next (in order)
 
 1. S12 remainder — columns without header text (1,358 of 1,560 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
-2. S13 remainder — 132 audited L misses: largest raw clusters are question keys outside tables (28),
+2. S13 remainder — 129 audited L misses: largest raw clusters are question keys outside tables (28),
    numbers not grounded by labels (27), header paths (24), col_X (13), and missing parent paths (12).
    Numeric-only question ranking still needs work. C library misses remain 42.
 3. S14 — misplaced long tail (≈ 3,200 cells: header rows sent to Notes, data rows read as headers, side-by-side +

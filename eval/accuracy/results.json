@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3758,
+    "pass": 3761,
     "audited": 9,
     "audited_pass": 0,
     "raw": 98.8,
-    "after_audit": 99.0
+    "after_audit": 99.1
    },
    "mimotable": {
     "items": 273,
@@ -52,10 +52,10 @@
    },
    "ALL": {
     "items": 5634,
-    "pass": 5493,
+    "pass": 5496,
     "audited": 10,
     "audited_pass": 1,
-    "raw": 97.5,
+    "raw": 97.6,
     "after_audit": 97.7
    }
   },
@@ -113,7 +113,7 @@
     ]
    },
    "column header path differs": {
-    "misses": 24,
+    "misses": 21,
     "examples": [
      {
       "dataset": "hitab",
@@ -2369,7 +2369,7 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 773.6,
+    "mean": 773.7,
     "median": 692,
     "p90": 1244,
     "max": 2438
@@ -2473,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 102
+ "seconds": 120
 }
