@@ -2704,21 +2704,60 @@ fn build_table(
     }
 }
 
-/// A repeated parameter caption merged across the section's width ("Time = 75 min")
-/// scopes every table below it until the next value of that parameter. Keep each source string
-/// and coordinate intact: a child title such as "ROI 3" remains the title, the caption a note.
+/// Repeated numeric parameter captions scope child tables. An explicit merged caption gives
+/// its width; an unmerged caption needs the same pair (or more) of merged child titles directly
+/// below every occurrence. Keep every title/note string and coordinate exact.
 fn shared_parameter_captions(grid: &Grid, tables: &mut [Table], notes: &[NoteItem]) {
+    fn key(note: &NoteItem) -> Option<String> {
+        let (key, value) = note.text.split_once('=')?;
+        let key = key.trim();
+        (matches!(note.kind, "title" | "other") && !key.is_empty() && key.chars().count() <= 32
+            && key.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
+            && value.trim().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+')
+            && note.text.chars().count() <= 120).then(|| key.to_lowercase())
+    }
     type CaptionSpan = (String, u32, u32);
     let mut groups: HashMap<CaptionSpan, Vec<(&NoteItem, u32)>> = HashMap::new();
-    for note in notes.iter().filter(|n| n.kind == "title") {
-        let Some((key, value)) = note.text.split_once('=') else { continue };
-        let key = key.trim();
-        if key.is_empty() || key.chars().count() > 32 || !key.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
-            || !value.trim().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+') || note.text.chars().count() > 120 {
-            continue;
+    let mut unmerged: HashMap<(String, u32), Vec<&NoteItem>> = HashMap::new();
+    let candidates: Vec<_> = notes.iter().filter_map(|n| key(n).map(|key| (key, n))).collect();
+    for (key, note) in &candidates {
+        if let Some(merge) = grid.sheet.merges.iter().find(|m| m.top == note.row && m.bottom == note.row && m.left == note.col && m.right > m.left) {
+            groups.entry((key.clone(), merge.left, merge.right)).or_default().push((note, merge.right));
+        } else {
+            unmerged.entry((key.clone(), note.col)).or_default().push(note);
         }
-        let Some(merge) = grid.sheet.merges.iter().find(|m| m.top == note.row && m.bottom == note.row && m.left == note.col && m.right > m.left) else { continue };
-        groups.entry((key.to_lowercase(), merge.left, merge.right)).or_default().push((note, merge.right));
+    }
+    for ((key, left), captions) in unmerged.into_iter().filter(|(_, v)| v.len() >= 2) {
+        let mut layout: Option<Vec<(u32, u32, String)>> = None;
+        let valid = captions.iter().all(|caption| {
+            // A lateral section with the same parameter owns its own child titles.
+            let limit = candidates.iter().filter(|(k, n)| *k == key && n.row == caption.row && n.col > left)
+                .map(|(_, n)| n.col).min().unwrap_or(u32::MAX);
+            let mut merges: Vec<_> = grid.sheet.merges.iter().filter(|m| m.top == caption.row + 1
+                && m.bottom == m.top && m.left >= left && m.right < limit && m.right > m.left).collect();
+            merges.sort_by_key(|m| m.left);
+            let mut child = Vec::new();
+            let mut next_left = left;
+            for m in merges {
+                if m.left > next_left.saturating_add(2) || (child.is_empty() && m.left != left) { break; }
+                let Some(Value::Text(label)) = grid.cell(m.top, m.left).and_then(|c| c.value.as_ref()) else { return false };
+                if label.trim().is_empty() { return false; }
+                child.push((m.left, m.right, label.clone()));
+                next_left = m.right.saturating_add(1);
+            }
+            if child.len() < 2 { return false; }
+            let right = child.last().unwrap().1;
+            if grid.sheet.cells.iter().any(|c| c.row == caption.row && c.col > left && c.col <= right
+                && (c.value.is_some() || c.formula.is_some())) { return false; }
+            match &layout {
+                Some(first) => *first == child,
+                None => { layout = Some(child); true }
+            }
+        });
+        if valid && let Some(layout) = layout {
+            let right = layout.last().unwrap().1;
+            groups.entry((key, left, right)).or_default().extend(captions.into_iter().map(|n| (n, right)));
+        }
     }
     for captions in groups.values_mut().filter(|v| v.len() >= 2) {
         captions.sort_by_key(|(n, _)| n.row);
