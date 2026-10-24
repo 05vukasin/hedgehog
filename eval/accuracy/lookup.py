@@ -281,11 +281,40 @@ def _forms(x: str) -> set[str]:
     m = re.fullmatch(r"(.*[a-z]{3})[a-z]", n)  # "totalb" (a footnote letter glued on) -> "total"
     if m and len(n) > 4:
         out.add(m.group(1))
+    m = re.fullmatch(r"((?:19|20)\d\d)[a-z]", n)  # "2015r" (a revision mark glued on a year) -> "2015"
+    if m:
+        out.add(m.group(1))
     return {f for f in out if f}
 
 
 def _el_eq(gold: str, label: str) -> bool:
     return bool(_forms(gold) & _forms(label)) or norm_text(gold) in _forms(label)
+
+
+def stub_key_cols(t) -> list[int]:
+    """Non-text columns of the row stub that key the rows: the first column or a column left of a text label
+    column, not a label column itself, with a distinct value on every row where it is filled (most rows)."""
+    first_label = min((c for c in t.label_cols if c not in getattr(t, "parent_cols", set())), default=None)
+    out = []
+    for k in range(len(t.headers)):
+        if k in t.label_cols or not (k == 0 or (first_label is not None and k < first_label)):
+            continue
+        vals = [r[k] for r in t.rows if k < len(r) and r[k] not in (None, "")]
+        # distinct where filled (a total row without a rank is no key), filled on most rows
+        if len(vals) >= 2 and 2 * len(vals) >= len(t.rows) and len({str(v) for v in vals}) == len(vals):
+            out.append(k)
+    return out
+
+
+def _key_eq(gold: str, v) -> bool:
+    """A gold label equals a stub key: as text, or as a number ('0.20' = 0.2, '23' = 23)."""
+    if _el_eq(gold, str(v)):
+        return True
+    g = parse_number(gold)
+    try:
+        return g is not None and isinstance(v, (int, float)) and not isinstance(v, bool) and abs(float(g[0]) - float(v)) < 1e-9
+    except (TypeError, ValueError):
+        return False
 
 
 def hitab_paths(t, i: int, j: int, cell: dict) -> tuple[bool, bool, bool]:
@@ -297,6 +326,9 @@ def hitab_paths(t, i: int, j: int, cell: dict) -> tuple[bool, bool, bool]:
     gold_top = [x for x in cell["top_path"] if re.search(r"\w", x)]
     labels = t.labels(i, j) + [str(int(v)) for k, v in enumerate(t.rows[i]) if k != j and isinstance(v, (int, float))
                                and not isinstance(v, bool) and v == int(v) and 1900 <= v <= 2100]
+    # the row's key in a stub column that is not text (HiTab roots rows at 'Rank' 23, 'Number of children' 0,
+    # 'Growth rate' 0.20): the first column, or one left of a label column, with a distinct value on every row
+    keys = [t.rows[i][k] for k in stub_key_cols(t) if k != j and k < len(t.rows[i]) and t.rows[i][k] not in (None, "")]
     # HiTab roots its left tree at the label column's header or at the table's total row ("all
     # industries" above "manufacturing industries"), also a total-worded row kept as data; a root found
     # there is not a missing parent.
@@ -306,9 +338,10 @@ def hitab_paths(t, i: int, j: int, cell: dict) -> tuple[bool, bool, bool]:
     # ... also at a total-worded row hedgehog keeps as data ('All businesses' over 'Businesses majority-owned by
     # visible minorities': percentages of a population, no sum): only the root, every other element is checked
     roots += [L for k in range(len(t.rows)) for L in t.labels(k) if PS.TOTAL_RX.search(norm_text(L))]
-    row = all(any(_el_eq(g, L) for L in labels) or (n == 0 and len(gold_left) > 1 and any(_el_eq(g, R) for R in roots))
+    row = all(any(_el_eq(g, L) for L in labels) or any(_key_eq(g, v) for v in keys)
+              or (n == 0 and len(gold_left) > 1 and any(_el_eq(g, R) for R in roots))
               for n, g in enumerate(gold_left))
-    leaf = not gold_left or any(_el_eq(gold_left[-1], L) for L in labels)
+    leaf = not gold_left or any(_el_eq(gold_left[-1], L) for L in labels) or any(_key_eq(gold_left[-1], v) for v in keys)
     segs = t.headers[j].split(" / ")
     k = 0
     col = True

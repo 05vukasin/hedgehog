@@ -79,6 +79,30 @@ class HitabRoots(unittest.TestCase):
         self.assertEqual(L.hitab_paths(self.tbl(), 1, 2, cell)[0], False)
 
 
+class HitabStubKeys(unittest.TestCase):
+    def test_rank_column_keys_the_row(self):
+        # NSF 168_83 tab4: HiTab's left path is the rank ('23'), a number column left of the institutions
+        t = table(["Rank", "Institution", "2015"], [[22, "Ohio State U.", 610.0], [23, "New York U.", 602.0]])
+        self.assertEqual(L.hitab_paths(t, 1, 2, {"left_path": ["23"], "top_path": ["2015"]}), (True, True, True))
+        self.assertFalse(L.hitab_paths(t, 1, 2, {"left_path": ["22"], "top_path": ["2015"]})[0])
+
+    def test_numeric_first_column(self):
+        # statcan/1425: 'Growth rate' 0.20 keys the row; a repeated value keys nothing
+        t = table(["Growth rate", "Canadian-born-owned / percent"], [[0.1, 70.2], [0.2, 78.7]])
+        self.assertTrue(L.hitab_paths(t, 1, 1, {"left_path": ["0.20"], "top_path": ["canadian-born-owned"]})[0])
+        t = table(["Growth rate", "Canadian-born-owned / percent"], [[0.2, 70.2], [0.2, 78.7]])
+        self.assertFalse(L.hitab_paths(t, 1, 1, {"left_path": ["0.20"], "top_path": ["canadian-born-owned"]})[0])
+
+    def test_measure_column_is_no_key(self):
+        # a number column right of the label column is a measure, not a key
+        t = table(["Institution", "2014", "2015"], [["Ohio State U.", 23.0, 610.0], ["New York U.", 524.0, 602.0]])
+        self.assertFalse(L.hitab_paths(t, 1, 2, {"left_path": ["524"], "top_path": ["2015"]})[0])
+
+    def test_revised_year(self):
+        t = table(["Year", "Total crime / rate"], [[2014, 5061.0], [2015, 5210.0]])
+        self.assertTrue(L.hitab_paths(t, 1, 1, {"left_path": ["2015r"], "top_path": ["total crime", "rate"]})[0])
+
+
 class HitabColumns(unittest.TestCase):
     def test_gold_element_with_a_slash(self):
         # statcan/1220: the header cell 'Unemployed / Job vacancies' over 'ratio'
