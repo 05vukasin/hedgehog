@@ -1191,6 +1191,19 @@ fn value_blocks(grid: &Grid, lay: &SheetLayout) -> Vec<DetectedTable> {
                 continue;
             }
             let (top, bottom) = (block[0].0, block[block.len() - 1].0);
+            // Every cell of the rectangle (cells of other blocks inside it too): no title or
+            // note, no header cell below a first row of labels (it would be a repeated header).
+            let lo = cells.partition_point(|c| c.row < top);
+            let hi = cells.partition_point(|c| c.row <= bottom);
+            let stray = (lo..hi).any(|i| {
+                let c = &cells[i];
+                (left..=right).contains(&c.col)
+                    && c.value.as_ref().is_some_and(|v| !display(v).trim().is_empty())
+                    && (matches!(lay.roles[i], Role::Title | Role::Note) || (header_cell(i) && (c.row != top || !labels)))
+            });
+            if stray {
+                continue;
+            }
             // Never over a table of the layout.
             if lay.tables.iter().any(|t| t.rect.top <= bottom && top <= t.rect.bottom && t.rect.left <= right && left <= t.rect.right) {
                 continue;
