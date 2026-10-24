@@ -1837,7 +1837,8 @@ fn build_table(
     }
     let (mut htop, body_top) = promote_header(&rows, cells, &lay.roles, t.header_top.clamp(r.top, r.bottom), t.header_rows, r.bottom);
     let body_top = interval_header_end(grid, r, htop, body_top, owner);
-    if body_top > htop && let Some(parent_row) = merged_parent_top(grid, r, htop, owner) {
+    let parent_top = (body_top > htop).then(|| merged_parent_top(grid, r, htop, owner)).flatten();
+    if let Some(parent_row) = parent_top {
         let old_top = r.top;
         r.top = r.top.min(parent_row);
         if r.top < old_top {
@@ -2011,7 +2012,9 @@ fn build_table(
     };
     for hr in 0..nh.saturating_sub(1) {
         let labelled_below = |hc: usize| (hr + 1..nh).any(|k| head[k][hc].is_some());
-        if (0..ncols).any(|hc| merged_in_header.contains(&(hr, hc))) {
+        // Recovered parents were proven left-anchored at their source captions.
+        // Centring them would give a numeric stub (Year) its neighbour's parent.
+        if (hr == 0 && parent_top.is_some()) || (0..ncols).any(|hc| merged_in_header.contains(&(hr, hc))) {
             continue;
         }
         let labels: Vec<usize> = (0..ncols).filter(|&hc| head[hr][hc].is_some() && labelled_below(hc)).collect();
