@@ -177,10 +177,10 @@ fn centered_root_padding_keeps_dense_hierarchy_and_style_indent() {
             ws.write_string(0, 0, "Description").unwrap();
             ws.write_string(0, 1, "Amount").unwrap();
             ws.write_string_with_format(1, 0, " Revenue1", &Format::new().set_bold().set_align(FormatAlign::Center)).unwrap();
-            ws.write_number(1, 1, 2000.0).unwrap();
+            ws.write_number(1, 1, 500000.0).unwrap();
             for k in 0..20u32 {
                 let format = if style_indent { Format::new().set_align(FormatAlign::Top).set_align(FormatAlign::Center).set_indent(1) } else { Format::new() };
-                let label = if style_indent { format!("Revenue category {k}") } else { format!("    Revenue category {k}") };
+                let label = if style_indent { format!("Revenue category {k}") } else if k == 0 { "General revenue1".into() } else { format!("    Revenue category {k}") };
                 ws.write_string_with_format(k + 2, 0, label, &format).unwrap();
                 ws.write_number(k + 2, 1, 53.0 + 7.0 * k as f64).unwrap();
             }
