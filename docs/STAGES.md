@@ -82,11 +82,14 @@ Iteration 3 baseline is release `541500dbeb36` (saved outside the repo).
 - Performance: `codex/performance-iter3`, existing `../hh-performance-iter2` worktree.
   Row-feature mean fusion `569269f` passed bitwise equivalence across 41,358 segments
   and exact exports/responses, but showed no timing gain in six alternating pairs.
-  It is rejected and removed; a separate source-backed performance investigation continues.
-- Generated regressions and all quick gates pass for the cohort draft, but actual DEV
-  workbook checks remain 2/4: its numeric values are stored as text and the new guard
-  accepts only numeric cells. Source work reopened to add that regression and reuse
-  the existing parser before any full integration gates.
+  It is rejected and removed. Replacement `4c826db` reuses the existing distinct-value set
+  per physical column; source review and bitwise equivalence pass, timing remains pending.
+- Initial generated/quick checks passed, but actual DEV checks stayed 2/4 because source
+  numbers are stored as text. Regression `e906011` reproduced this; parser fix `429de74`
+  now passes all 4/4 real workbook checks and preserves the changed Cancer header.
+- 32 focused tests pass; real bitwise equivalence covers 41,358 segments across eight
+  sheets with zero differences/skips. Candidate release build and timings are pending;
+  full corpus/score gates have not yet been rerun for this iteration.
 - Independent reviewer checks source geometry, negative cases and minimality.
 - Latest resources: 11 GiB available RAM, negligible swap, 118 GiB free disk; btrfs
   metadata 17.31/18.50 GiB. Check again before expanding the swarm.
