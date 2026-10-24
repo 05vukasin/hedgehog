@@ -102,7 +102,9 @@ The alignment follow-up also corrects the Census mini-golden fixture
 old/new normalized CSV field, found 49 correct ancestor additions. All 131 rows,
 existing ancestors and non-parent fields are unchanged; no parent crosses the next
 centered section. The extra parent column reaches the existing depth-six cap
-(+576 CSV bytes). Only this fixture's manifest hash is refreshed; its catalog hash
-and all other mini-golden expectations remain unchanged. Source evidence and exact
+(+576 CSV bytes). Only this fixture's manifest and catalog hashes are refreshed. The complete catalog
+diff adds the correct parent column/values and updates its empty counts; it loses no
+previously listed label or measure. Its size rises 3,620 → 3,756 characters. All other
+mini-golden expectations remain unchanged. Source evidence and exact
 field comparison are retained in `scratch-archive/codex-iteration-2/census-*` outside
 the repository. This is an expected output correction, not a relaxed checker.
