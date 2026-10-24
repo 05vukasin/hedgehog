@@ -221,6 +221,33 @@ fn column_distinct_values_stay_scoped_to_each_component_and_column() {
 }
 
 #[test]
+fn column_distinct_values_survive_sharply_changing_column_sizes() {
+    let mut cells = Vec::new();
+    for row in 0..2048 {
+        cells.push(Cell { row, col: 0, value: Some(Value::Number(row as f64)), formula: None });
+    }
+    for col in 1..=256 {
+        cells.push(Cell { row: 0, col, value: Some(Value::Number(7.0)), formula: None });
+    }
+    // After many singleton columns, a taller column again needs distinct-value storage.
+    for row in 0..128 {
+        cells.push(Cell { row, col: 257, value: Some(Value::Number((row % 8) as f64)), formula: None });
+    }
+    cells.push(Cell { row: 0, col: 258, value: Some(Value::Number(7.0)), formula: None });
+    cells.sort_by_key(|c| (c.row, c.col));
+    let sheet = Sheet { name: "skew".into(), cells, merges: vec![], formats: vec![] };
+    let ctx = Ctx::new(&sheet);
+    assert_eq!(ctx.at("c_col_distinct_ratio", 0, 0), 1.0);
+    assert_eq!(ctx.at("c_col_distinct_ratio", 2047, 0), 1.0);
+    for col in 1..=256 {
+        assert_eq!(ctx.at("c_col_distinct_ratio", 0, col), 1.0);
+    }
+    assert_eq!(ctx.at("c_col_distinct_ratio", 0, 257), 8.0 / 128.0);
+    assert_eq!(ctx.at("c_col_distinct_ratio", 127, 257), 8.0 / 128.0);
+    assert_eq!(ctx.at("c_col_distinct_ratio", 0, 258), 1.0);
+}
+
+#[test]
 fn header_helpers() {
     let sheet = fixture("hdr", report);
     let ctx = Ctx::new(&sheet);
