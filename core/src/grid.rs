@@ -515,6 +515,39 @@ mod tests {
     }
 
     #[test]
+    fn line_indices_match_last_wins_positions() {
+        let dense: Vec<Cell> = (2..6).flat_map(|r| (3..9).map(move |c| cell(r, c))).collect();
+        let sparse = vec![cell(0, 2), cell(0, 8), cell(4, 2), cell(9, 8), cell(9, 1 << 21)];
+        let mut duplicates = sparse.clone();
+        duplicates.reverse();
+        duplicates.push(cell(4, 2));
+        let duplicate_sorted = vec![cell(1, 3), cell(1, 3), cell(2, 4)];
+        for cells in [vec![], vec![cell(4, 8)], dense, sparse, duplicates, duplicate_sorted] {
+            // Independent position semantics: an inserted cell replaces earlier duplicates.
+            let mut positions = std::collections::BTreeMap::new();
+            for (i, c) in cells.iter().enumerate() {
+                positions.insert((c.row, c.col), i as u32);
+            }
+            let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+            let grid = Grid::new(&sheet);
+            for row in 0..12 {
+                let expected: Vec<u32> = positions.iter()
+                    .filter(|((r, _), _)| *r == row)
+                    .map(|(_, &i)| i)
+                    .collect();
+                assert_eq!(grid.row_cells(row), expected, "row {row}");
+            }
+            for col in (0..12).chain([1 << 21]) {
+                let expected: Vec<u32> = positions.iter()
+                    .filter(|((_, c), _)| *c == col)
+                    .map(|(_, &i)| i)
+                    .collect();
+                assert_eq!(grid.col_cells(col), expected, "column {col}");
+            }
+        }
+    }
+
+    #[test]
     fn vocabulary() {
         let text = |r: u32, t: &str| {
             let mut c = cell(r, 0);
