@@ -1070,10 +1070,10 @@ fn body_kinds(rows: &[(u32, Vec<usize>)], cells: &[crate::model::Cell], body_top
 
 /// A header row whose cells are values of their columns' kinds: at least two measured numbers
 /// over number columns or dates over date columns, three in five cells of their column's kind,
-/// and not a scale of numbers counting up (a grid of strikes `Strike | 2.5 | 3.0 | 3.5` names
+/// no text over a column of numbers or dates, and not a scale of numbers counting up (a grid of strikes `Strike | 2.5 | 3.0 | 3.5` names
 /// its columns) or a column numbering.
 fn data_like_header_row(cells: &[crate::model::Cell], idxs: &[usize], kinds: &HashMap<u32, u8>) -> bool {
-    let (mut filled, mut matched, mut strong) = (0, 0, 0);
+    let (mut filled, mut matched, mut strong, mut labels_over_values) = (0, 0, 0, 0);
     let mut numbers: Vec<f64> = Vec::new();
     for &i in idxs {
         let kind = kinds.get(&cells[i].col).copied();
@@ -1100,13 +1100,17 @@ fn data_like_header_row(cells: &[crate::model::Cell], idxs: &[usize], kinds: &Ha
                 filled += 1;
                 if kind == Some(2) {
                     matched += 1;
+                } else if matches!(kind, Some(0 | 1)) {
+                    // A label over a column of numbers or dates: the header of a table beside
+                    // ("2020-01-01 | Li | 3128 | Category | Income | Expenditure"), keep the row.
+                    labels_over_values += 1;
                 }
             }
             _ => {}
         }
     }
     let scale = numbers.len() >= 3 && numbers.windows(2).all(|w| w[1] > w[0]);
-    strong >= 2 && matched * 5 >= filled * 3 && !scale && !numbering_row(cells, idxs)
+    strong >= 2 && matched * 5 >= filled * 3 && labels_over_values == 0 && !scale && !numbering_row(cells, idxs)
 }
 
 fn promote_header_inner(
@@ -3519,6 +3523,8 @@ mod tests {
         assert!(!check(vec![n(1.0), n(2.0), n(3.0), n(4.0)]));
         // one number among labels is no record
         assert!(!check(vec![t("Item"), n(32.27), t("Rate"), t("Count")]));
+        // a record beside the header of another table (labels over number columns)
+        assert!(!check(vec![t("Outside Services"), n(2340.0), n(3057.5), t("Income")]));
     }
 
     use super::*;
