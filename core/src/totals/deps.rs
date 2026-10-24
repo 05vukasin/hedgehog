@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use crate::grid::Grid;
-use crate::totals::formula::{parse, ParsedFormula, Ref};
+use crate::totals::formula::{parse_profiled, ParsedFormula, Ref};
 
 #[derive(Debug, Clone)]
 pub struct FormulaEntry {
@@ -34,12 +34,19 @@ impl DependencyIndex {
         let sheet = grid.sheet;
         let mut formulas = Vec::new();
         let mut by_pos = HashMap::new();
+        let started = std::time::Instant::now();
+        let mut parse_times = [std::time::Duration::ZERO; 3];
         for c in &sheet.cells {
             if let Some(f) = &c.formula {
                 by_pos.insert((c.row, c.col), formulas.len());
-                formulas.push(FormulaEntry { row: c.row, col: c.col, parsed: parse(f) });
+                formulas.push(FormulaEntry { row: c.row, col: c.col, parsed: parse_profiled(f, &mut parse_times) });
             }
         }
+        crate::normalize::trace("prof8.deps.parse_wall", started);
+        for (name, took) in ["prof8.parse.tokenize", "prof8.parse.classify", "prof8.parse.collect"].into_iter().zip(parse_times) {
+            crate::normalize::trace_ms(name, took);
+        }
+        let started = std::time::Instant::now();
 
         // Column → [(row, cell index)] sorted by row (cells are row-major).
         let mut columns: HashMap<u32, Vec<(u32, usize)>> = HashMap::new();
@@ -48,21 +55,32 @@ impl DependencyIndex {
         }
         let mut col_keys: Vec<u32> = columns.keys().copied().collect();
         col_keys.sort_unstable();
+        crate::normalize::trace("prof8.deps.columns", started);
+        let started = std::time::Instant::now();
 
         let mut marks = vec![0u8; sheet.cells.len()];
         let mut budget = MARK_BUDGET;
+        let mut counts = [0u64; 7];
         'outer: for f in &formulas {
             let bits = if f.parsed.kind.is_aggregate() { REFERENCED | BY_AGGREGATE } else { REFERENCED };
             for r in f.parsed.refs.iter().filter(|r| r.is_local(&sheet.name)) {
+                counts[0] += 1;
+                counts[1] += (r.rect.top == r.rect.bottom && r.rect.left == r.rect.right) as u64;
                 let lo = col_keys.partition_point(|&c| c < r.rect.left);
                 let hi = col_keys.partition_point(|&c| c <= r.rect.right);
                 for col in &col_keys[lo..hi] {
+                    counts[2] += 1;
                     let cells = &columns[col];
                     let a = cells.partition_point(|&(row, _)| row < r.rect.top);
                     let b = cells.partition_point(|&(row, _)| row <= r.rect.bottom);
+                    counts[3] += (b - a) as u64;
+                    counts[4] += (b - a + 1) as u64;
                     for &(row, idx) in &cells[a..b] {
                         if (row, *col) != (f.row, f.col) {
+                            counts[5] += (marks[idx] & bits == bits) as u64;
                             marks[idx] |= bits;
+                        } else {
+                            counts[6] += 1;
                         }
                     }
                     budget = budget.saturating_sub(b - a + 1);
@@ -71,6 +89,11 @@ impl DependencyIndex {
                     }
                 }
             }
+        }
+        crate::normalize::trace("prof8.deps.mark_with_counters", started);
+        if crate::normalize::tracing() {
+            eprintln!("[profile-counts] deps cells={} formulas={} local_refs={} point_refs={} column_probes={} visits={} charged={} already_marked={} self_skips={} budget_left={}",
+                sheet.cells.len(), formulas.len(), counts[0], counts[1], counts[2], counts[3], counts[4], counts[5], counts[6], budget);
         }
         DependencyIndex { sheet_name: sheet.name.clone(), formulas, by_pos, marks }
     }
