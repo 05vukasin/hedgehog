@@ -2238,7 +2238,6 @@ fn build_table(
         .filter(|t| !t.is_empty())
         .collect();
     let body_kind = body_kinds(&rows, cells, body_top);
-    let mut row_slots: Vec<Slot> = Vec::new();
     for (row, idxs) in rows.iter().filter(|(row, _)| *row >= body_top) {
         body_rows_seen += 1;
         if Some(*row) == next_caption {
@@ -2531,7 +2530,7 @@ fn build_table(
             }
             _ => cur_path,
         });
-        row_slots.resize(ncols, Slot::Empty);
+        let mut row_slots: Vec<Slot> = vec![Slot::Empty; ncols];
         for &i in idxs {
             owner[i] = OWN_TABLE;
             let c = &cells[i];
@@ -2569,7 +2568,7 @@ fn build_table(
                 }
             }
         }
-        for (k, s) in row_slots.drain(..).enumerate() {
+        for (k, s) in row_slots.into_iter().enumerate() {
             slots[k].push(s);
         }
         src_rows.push(*row);
@@ -2587,7 +2586,6 @@ fn build_table(
             block += 1;
         }
     }
-    drop(row_slots);
     if r.bottom + 1 > body_top {
         tr.add(T::BlankRowsRemoved, (r.bottom + 1 - body_top).saturating_sub(body_rows_seen) as usize);
     }
