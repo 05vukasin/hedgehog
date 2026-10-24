@@ -150,8 +150,12 @@ this small cost is documented, and no speed improvement is claimed.
 
 ## Running
 
-No source workers or heavy jobs. Next paired accuracy/performance iteration
-starts after checking RAM, swap, disk, btrfs metadata and live agent slots.
+Iteration 7 baseline: accepted local master `897d06b`, release `7de31e0ebc5e`.
+Lead `codex/iteration-7`; accuracy `codex/accuracy-iter7` and performance
+`codex/performance-iter7` in existing worktrees, plus independent source reviewer.
+Three lightweight workers active; heavy tests wait until source/review completes.
+Before expansion: 12 GiB RAM available, 1.4/14 GiB swap used, 121 GiB disk free,
+btrfs metadata 17.39/18.50 GiB, memory guard active and three free worker slots.
 
 ## Next (in order)
 
