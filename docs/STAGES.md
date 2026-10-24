@@ -80,8 +80,13 @@ Iteration 3 baseline is release `541500dbeb36` (saved outside the repo).
   `clean/statcan/1535.xlsx`: repeated Women cohort and changed disease parent headers
   must preserve both cohort and source-specific parent/child header paths.
 - Performance: `codex/performance-iter3`, existing `../hh-performance-iter2` worktree.
-  Prepared row-feature mean fusion `f9ae2ce` needs review, bitwise equivalence and
-  measured benefit; it is not accepted yet.
+  Row-feature mean fusion `569269f` passed bitwise equivalence across 41,358 segments
+  and exact exports/responses, but showed no timing gain in six alternating pairs.
+  It is rejected and removed; a separate source-backed performance investigation continues.
+- Generated regressions and all quick gates pass for the cohort draft, but actual DEV
+  workbook checks remain 2/4: its numeric values are stored as text and the new guard
+  accepts only numeric cells. Source work reopened to add that regression and reuse
+  the existing parser before any full integration gates.
 - Independent reviewer checks source geometry, negative cases and minimality.
 - Latest resources: 11 GiB available RAM, negligible swap, 118 GiB free disk; btrfs
   metadata 17.31/18.50 GiB. Check again before expanding the swarm.
