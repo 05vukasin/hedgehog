@@ -5,13 +5,13 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (S12/S13 batch, implementation 865faa1, 2026-10-24)
+## Current state (iteration 2, implementation bec3146, 2026-10-24)
 
 | Measure | Value | Target |
 |---|---|---|
 | F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
-| L lookups | 5,487 / 5,634 = 97.4 % raw, 97.5 % after audit (138 misses) | 100 % after audit |
+| L lookups | 5,491 / 5,634 = 97.5 % raw, 97.6 % after audit (134 misses) | 100 % after audit |
 | C calculations | 1,198 / 2,264 proven; library misses 42; oracle-limit ≈ 988; gold/question 2 unreviewed | library misses 0 |
 | M misleading-info violations | 1,560 in 763 files (1,358 are columns without header text) | 0 (or documented policy) |
 | K catalog tokens / file | hitab 773, mimotable 972, realhitbench 771 | no growth |
@@ -52,36 +52,39 @@ Final release SHA-256 prefix: `b147b92202c1`. Baseline/audit/split/scorer defini
 - Both speed experiments rejected: no repeatable improvement. No speed optimization shipped.
 - Heavy jobs serialized, aggregate cap 4G, Cargo jobs 2, memory watchdog active. No LLM or holdout scoring.
 
+## Iteration 2 accepted
+
+See [iteration evidence](iteration-2.md). Baseline `d1a2386` / release `b147b92202c1`;
+final release `541500dbeb36`, alignment implementation `bec3146`.
+
+- Sparse explicit hierarchy recovered; split-label and incidental/centered padding guarded.
+  Four L misses resolved, no new L/C misses or M violations. Public coverage preserved;
+  HiTab exact row/both linking each +2, lenient row/both each +4.
+- 516 release tests passed, 17 ignored; quick, Clippy, 50 Enron goldens, both structure
+  benchmarks, Node 21 tests/TypeScript and full 4,055-file fidelity passed.
+- Only Census mini-golden hashes changed, after independent raw-source/output proof:
+  49 correct ancestors added, all rows/source values/existing ancestors retained.
+- Two small optimizations remove duplicate position lookup and repeated whole-row means.
+  Final cold MCP open: financial 38.56 → 37.05 ms, NYISO 1,085.31 → 1,072.80 ms;
+  exact exports/responses preserved. Wide CSV gain remains inconclusive across runs.
+- Final exact per-item/public/fidelity verification passed. Scorer/audit/split/fidelity
+  baselines unchanged. No LLM calls, holdout scoring, remote push or installed CLI update.
+
 ## Running
 
-Iteration 2 (continuous accuracy/performance loop requested by the owner):
-
-- Accuracy: `codex/accuracy-iter2-padding`, worktree `../hh-accuracy-iter2`; inspect remaining DEV label/header
-  misses, generated regression first, minimal source-backed fixes.
-- Performance: `codex/performance-iter2`, worktree `../hh-performance-iter2`; inspect measured feature,
-  layout and construction/export hot paths. Require actual speed benefit and equivalent output.
-- Lead: `codex/iteration-2` in main checkout; baseline `d1a2386`, release SHA `b147b92202c1`.
-  Reuse warm integration targets for red/green tests and full gates. First quick run caught PT split-label and Enron single-space false-parent regressions.
-  Follow-ups are committed at `817dfef`, independently reviewed and focused tests pass.
-  Candidate `802cddb92a49` passed 514 release tests, Node, 50 Enron goldens and full 4,055-file
-  fidelity; DEV L +4 (5,491), no new L/C misses, C/M unchanged. Final public comparison then
-  exposed centered subtotal padding incorrectly creating ancestry. Fix `bec3146` and generated
-  regressions pass focused red/green checks. It also restores 49 source-proven Census ancestors;
-  this single mini-golden fixture is updated after independent source/complete output review.
-  Checkpoint `895d9e3` passes all quick gates; full release gates, DEV score and exact public/
-  per-file comparison are running again. See [iteration evidence](iteration-2.md).
-  One heavy slot, 4G total cap, two Cargo jobs; memory watchdog active. Baseline DEV work and prior evidence remain on disk.
-- Swarm: dedicated performance work plus independent correctness/minimality reviews when RAM,
-  btrfs metadata and live slots allow. Finish source/review work before heavy testing.
-- Workers prepare separate test/fix commits; lead verifies, reviews minimality, integrates and
-  records exact per-item and memory/speed deltas. Repeat after integration while goal is active.
+The ongoing goal continues after local integration. Next paired source/review phase:
+HiTab DEV `clean/statcan/1535.xlsx` repeated cohort/header context, alongside the prepared
+row-feature mean fusion experiment `f9ae2ce` (not accepted or measured yet).
+Check RAM/swap, btrfs metadata, disk and live slots before restarting workers. Finish
+all source/review workers before serialized heavy tests. Reuse warm targets, one heavy
+slot, aggregate 4G cap, Cargo jobs 2 and memory watchdog.
 
 ## Next (in order)
 
 1. S12 remainder — columns without header text (1,358 of 1,560 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
-2. S13 remainder — 138 audited L misses: largest raw clusters are question keys outside tables (28),
+2. S13 remainder — 134 audited L misses: largest raw clusters are question keys outside tables (28),
    numbers not grounded by labels (27), header paths (24), col_X (13), and missing parent paths (12).
    Numeric-only question ranking still needs work. C library misses remain 42.
 3. S14 — misplaced long tail (≈ 3,200 cells: header rows sent to Notes, data rows read as headers, side-by-side +

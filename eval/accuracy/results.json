@@ -28,11 +28,11 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3752,
+    "pass": 3756,
     "audited": 9,
     "audited_pass": 0,
-    "raw": 98.6,
-    "after_audit": 98.8
+    "raw": 98.7,
+    "after_audit": 98.9
    },
    "mimotable": {
     "items": 273,
@@ -52,11 +52,11 @@
    },
    "ALL": {
     "items": 5634,
-    "pass": 5487,
+    "pass": 5491,
     "audited": 10,
     "audited_pass": 1,
-    "raw": 97.4,
-    "after_audit": 97.5
+    "raw": 97.5,
+    "after_audit": 97.6
    }
   },
   "clusters": {
@@ -165,7 +165,7 @@
     ]
    },
    "label path missing parent": {
-    "misses": 12,
+    "misses": 8,
     "examples": [
      {
       "dataset": "hitab",
@@ -2369,21 +2369,21 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 773.3,
+    "mean": 773.4,
     "median": 692,
-    "p90": 1240,
+    "p90": 1244,
     "max": 2438
    },
    "mimotable": {
     "files": 401,
-    "mean": 971.9,
+    "mean": 972.2,
     "median": 870,
     "p90": 1706,
     "max": 4179
    },
    "realhitbench": {
     "files": 536,
-    "mean": 770.7,
+    "mean": 771.0,
     "median": 613,
     "p90": 1529,
     "max": 3607
@@ -2473,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 107
+ "seconds": 102
 }

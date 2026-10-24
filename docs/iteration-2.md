@@ -87,14 +87,22 @@ Cold-open medians are financial 38.52 → 37.59 ms and NYISO 1,083.50 → 1,067.
 wide CSV 41.95 → 41.78 ms remains within variation. Normalize timings are noisier, so the
 cold-open results carry the measured speed claim.
 
-Release tests pass (514 passed, 17 ignored), as do Clippy, 50 golden outputs and both
-structure benchmarks. Full fidelity (4,055 files) and all 21 Node tests also pass.
-The exact comparison caught a public MiMo catalog regression (413 → 412): centered
-subtotal padding was mistaken for hierarchy indentation. A generated regression and
-small alignment-aware fix are undergoing validation; integration remains blocked on
-passing the unchanged comparison. The candidate release SHA prefix is `802cddb92a49`. It is not yet
-integrated into master. No scorer, audit, baseline or holdout definitions were changed.
+The intermediate release `802cddb92a49` passed its test/fidelity gates, but the exact
+comparison caught a public MiMo catalog regression (413 → 412): centered subtotal
+padding was mistaken for hierarchy indentation. The alignment-aware follow-up
+ignores text padding on centered/right-aligned labels while preserving explicit
+style indentation. Generated negative and positive regressions fail without the
+fix and pass with it on both analyzers.
 
+The final release `541500dbeb36` passes 516 release tests (17 ignored), Clippy,
+50 Enron golden outputs, both structure benchmarks, all 21 Node tests and TypeScript
+checks. Full fidelity passes across 4,055 files, with no per-file count regression.
+Exact DEV comparison finds four resolved L misses and no new L/C misses or added
+M violations. Public reachability is preserved; HiTab exact row/both linking each
+improves by two, and lenient row/both linking each improves by four. The fresh DEV
+score remains L 5,491/5,634 (97.6% audited), C 1,198/2,264, M 1,560 in 763 files.
+Final-binary timing confirmation passes (six alternating pairs per case/mode). Scorer,
+audit, split and fidelity baseline definitions are unchanged.
 
 The alignment follow-up also corrects the Census mini-golden fixture
 `irregular/us_census/001_0424mnsl-1.xlsx`. Independent review of raw source cells A10
@@ -108,3 +116,22 @@ previously listed label or measure. Its size rises 3,620 → 3,756 characters. A
 mini-golden expectations remain unchanged. Source evidence and exact
 field comparison are retained in `scratch-archive/codex-iteration-2/census-*` outside
 the repository. This is an expected output correction, not a relaxed checker.
+
+
+## Final timing and acceptance
+
+Final binary `541500dbeb36` preserves every compared CSV/manifest, decompressed XLSX
+member and complete MCP response. Six-pair cold-open medians: financial 38.56 →
+37.05 ms (3.9%), NYISO 1,085.31 → 1,072.80 ms (1.2%). NYISO normalize/export is
+2,101.48 → 2,085.54 ms (0.8%); other normalize timings remain small relative to
+variation. Wide CSV cold-open is 42.55 → 41.49 ms in this run, but earlier runs do
+not support a reliable gain. Cold-open peak RSS medians: financial 19.03 → 19.12 MiB,
+NYISO 269.90 → 264.08 MiB, wide CSV 24.58 → 24.54 MiB. These are local workload
+measurements, not a general speed guarantee. Evidence: `performance-padding-final.json`.
+
+All required gates and exact comparisons passed. `verification.json` records zero
+new L/C misses, unchanged M violations and zero per-file fidelity regressions across
+4,055 files. This iteration is accepted for local integration. No remote push or
+installed CLI replacement is performed. The ongoing goal continues with the next
+paired accuracy/performance iteration; 134 audited L misses and 42 computation
+library defects remain, alongside the documented header/placement work.
