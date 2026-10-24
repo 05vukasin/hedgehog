@@ -47,6 +47,15 @@ class M3MeasuresMixed(unittest.TestCase):
                 ["Percentage of people", 98.1], ["Percentage of people", 98.6]]
         self.assertIn("M3 measures mixed", kinds(table(["group", "Food store"], rows, ["text", NUM])))
 
+    def test_flagged_in_the_catalog_is_no_violation(self):
+        rows = [["Number of people", 5546400.0], ["Number of people", 5571600.0],
+                ["Percentage of people", 98.1], ["Percentage of people", 98.6]]
+        t = table(["group", "Food store"], rows, ["text", NUM])
+        flagged = "FILE x.xlsx\nT1  'Food' <- S!A4:B8 · 4 rows\n    rows mix measures by \"group\" — filter before aggregating\nNOTES 1 cells"
+        other = "FILE x.xlsx\nT1  'Food' <- S!A4:B8\n    group column: \"group\"\nT2  'Other'\n    rows mix measures by \"x\" — filter before aggregating"
+        self.assertEqual([v["inv"] for v in I.check_table(t, {}, flagged, 2)], [])
+        self.assertIn("M3 measures mixed", [v["inv"] for v in I.check_table(t, {}, other, 2)])
+
     def test_percent_sign_in_a_product_name_is_no_rate_row(self):
         # economy-table126: 'Production %' is a product; its row holds dollar amounts (Quantity 150, Amount 262.5)
         rows = [["Production %", 150.0, 262.5, 60.375], ["Production %", 150.0, 262.5, 60.375],

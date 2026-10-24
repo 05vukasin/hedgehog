@@ -12,7 +12,8 @@ must be certain, not suspected):
   M2 percent mixed          a numeric column whose source cells mix "12 %" and plain numbers;
      percent scale          a column whose source cells are "N %" but some values are stored as N and
                             others as N / 100;
-  M3 measures mixed         a numeric column without a unit where 2+ rows are labelled as percent /
+  M3 measures mixed         a numeric column without a unit (and in a table the catalog does not flag
+                            with "rows mix measures") where 2+ rows are labelled as percent /
                             rate (values within 0-100) and 2+ other rows hold values > 100, and every row
                             labelled so keeps all its numbers within -105..105 (year columns aside; else the
                             label is a name: "Production %" on a row of dollar amounts, "Leading Rate");
@@ -210,7 +211,25 @@ def _source_names_run(t, raw: dict, j: int, k: int) -> bool:
     return not all(x < len(dtypes) and dtypes[x] in ("integer", "number", "percent", "currency", "float") for x in range(j, k + 1))
 
 
-def check_table(t, raw: dict) -> list[dict]:
+def mixed_flagged(catalog: str, table_id: str, n_tables: int) -> bool:
+    """The catalog already tells the agent that this table's rows mix measures ("rows mix measures by
+    <col> - filter before aggregating", or the long view's "rows mix measures: filter <col> first"):
+    the measure / unit flag M3 asks for."""
+    block, on, any_block = [], False, False
+    for ln in catalog.splitlines():
+        m = re.match(r"^(T\d+)\s", ln)
+        if m:
+            any_block = True
+            on = m.group(1) == table_id
+        elif ln and not ln[0].isspace():
+            on = False
+        if on:
+            block.append(ln)
+    text = "\n".join(block) if any_block else (catalog if n_tables == 1 else "")
+    return "rows mix measures" in text
+
+
+def check_table(t, raw: dict, catalog: str = "", n_tables: int = 1) -> list[dict]:
     out = []
     n = len(t.rows)
     dtypes = getattr(t, "dtypes", ["?"] * len(t.headers))
@@ -279,7 +298,7 @@ def check_table(t, raw: dict) -> list[dict]:
                 v("M2 percent scale", j, None, f"'{t.headers[j][:50]}': some percents stored as fractions, others as shown")
             # M3
             unit = (t.colmeta[j].get("unit") if j < len(getattr(t, "colmeta", [])) else None)
-            if not unit:
+            if not unit and not mixed_flagged(catalog, t.id, n_tables):
                 pr, other, rate_ok = [], [], True
                 for i in range(n):
                     x = _num(t.rows[i][j]) if j < len(t.rows[i]) else None
@@ -377,9 +396,9 @@ def run(datasets, side: str) -> list[dict]:
     for ds in datasets:
         files = sorted(acc.side_files(ds, side))
         for f in files:
-            meta, raw, _, tables = acc.load(ds, f)
+            meta, raw, catalog, tables = acc.load(ds, f)
             for t in tables:
-                for x in check_table(t, raw):
+                for x in check_table(t, raw, catalog, len(tables)):
                     rows.append({"dataset": ds, "file": f, **x})
             acc.load.cache_clear() if len(files) > 400 and files.index(f) % 300 == 299 else None
     return rows
