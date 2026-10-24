@@ -1534,7 +1534,12 @@ fn focus(norm: &Normalized, covs: &[Option<TimeCoverage>], question: &str) -> Op
     if q.is_empty() {
         return None;
     }
-    let texts: Vec<_> = norm.tables.iter().zip(covs).map(|(t, c)| table_text(t, c.as_ref())).collect();
+    let mut texts: Vec<_> = norm.tables.iter().zip(covs).map(|(t, c)| table_text(t, c.as_ref())).collect();
+    for (caption, ids) in shared_context_groups(norm) {
+        for (k, _) in norm.tables.iter().enumerate().filter(|(_, t)| ids.contains(&t.n)) {
+            texts[k].texts.push((3.0, caption.into()));
+        }
+    }
     let rel = crate::question::rank(&q, &texts);
     let ks = crate::question::relevant(&rel);
     if crate::cache::tracing() {
@@ -1562,6 +1567,34 @@ fn focus(norm: &Normalized, covs: &[Option<TimeCoverage>], question: &str) -> Op
     Some(Focus { ks, items: items.join(", ") })
 }
 
+/// Section captions shared by multiple tables, once with their table ids. This exposes context
+/// that distinguishes repeated experimental blocks without dumping workbook notes.
+fn shared_context_groups(norm: &Normalized) -> Vec<(&str, Vec<usize>)> {
+    type SourceCaption<'a> = (&'a str, (u32, u32), &'a str);
+    let mut groups: BTreeMap<SourceCaption<'_>, Vec<usize>> = BTreeMap::new();
+    for t in &norm.tables {
+        for (text, at) in t.title.iter().chain(t.notes.iter()) {
+            let Some((key, value)) = text.split_once('=') else { continue };
+            if key.trim().is_empty() || key.chars().count() > 32 || !key.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
+                || !value.trim().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+') || text.chars().count() > 120 { continue; }
+            let ids = groups.entry((&t.source_sheet, *at, text)).or_default();
+            if ids.last() != Some(&t.n) { ids.push(t.n); }
+        }
+    }
+    groups.into_iter().filter(|(_, ids)| ids.len() > 1).map(|((_, _, text), ids)| (text, ids)).collect()
+}
+
+fn shared_context(norm: &Normalized) -> Vec<String> {
+    let groups = shared_context_groups(norm);
+    let mut lines: Vec<String> = groups.iter().take(8).map(|(text, ids)| {
+        let mut shown = ids.iter().take(24).map(|id| format!("T{id}")).collect::<Vec<_>>().join(",");
+        if ids.len() > 24 { shown.push_str(&format!(", +{} tables (cells reads source captions)", ids.len() - 24)); }
+        format!("CONTEXT {shown}: {text}")
+    }).collect();
+    if groups.len() > 8 { lines.push(format!("CONTEXT +{} sections (cells reads source captions)", groups.len() - 8)); }
+    lines
+}
+
 fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question: Option<&str>) -> String {
     let budget = budget.min(MAX_CHARS);
     let file_name = display_name.rsplit(['/', '\\']).next().unwrap_or(display_name);
@@ -1581,6 +1614,7 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         ),
         time_line(wb_cov.as_ref(), &with_cov, &mentioned_years(norm, file_name)),
     ];
+    head.extend(shared_context(norm));
     let empty: Vec<&str> = norm.sheets.iter().filter(|s| s.tables.is_empty() && s.cells > 0).map(|s| s.name.as_str()).collect();
     if !empty.is_empty() {
         // Names as shown (shortened), a repeated one once with its count.
@@ -2491,7 +2525,9 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     if !t.notes.is_empty() {
         let n: Vec<String> =
             t.notes.iter().take(6).map(|(s, (r, c))| format!("{}: \"{}\"", hh_core::a1(*r, *c), short(s, 80))).collect();
-        lines.push(format!("notes: {}", n.join(" | ")));
+        let mut line = format!("notes: {}", n.join(" | "));
+        if t.notes.len() > 6 { line.push_str(&format!(" | +{} notes (cells reads source notes)", t.notes.len() - 6)); }
+        lines.push(line);
     }
     if !t.warnings.is_empty() {
         let w: Vec<String> = t.warnings.iter().take(4).map(|w| short(w, 120)).collect();
@@ -2661,6 +2697,39 @@ mod tests {
             .collect();
         let sheets = (1..=n).map(|k| SheetInfo { name: format!("Sheet {k}"), tables: vec![k], cells: 10, ..Default::default() }).collect();
         Normalized { sheets, tables, ..Default::default() }
+    }
+
+    #[test]
+    fn shared_section_captions_are_compact_and_scoped() {
+        let mut n = book(4, 3, true);
+        for (k, t) in n.tables.iter_mut().enumerate() {
+            t.source_sheet = "Experiment".into();
+            t.notes.push((if k < 2 { "Time = 0 min" } else { "Time = 75 min" }.into(), (if k < 2 { 0 } else { 20 }, 0)));
+        }
+        let c = catalog(&n, "experiment.xlsx", MAX_CHARS);
+        assert!(c.contains("CONTEXT T1,T2: Time = 0 min") && c.contains("CONTEXT T3,T4: Time = 75 min"), "{c}");
+        assert_eq!(c.matches("Time = 75 min").count(), 1, "{c}");
+        assert!(shared_context_groups(&n).iter().any(|(text, ids)| *text == "Time = 75 min" && *ids == vec![3, 4]));
+        // A one-off calculation note is not a shared section caption.
+        n.tables[0].notes.push(("x = y + z".into(), (5, 0)));
+        assert!(!catalog(&n, "experiment.xlsx", MAX_CHARS).contains("x = y + z"));
+    }
+
+    #[test]
+    fn shared_context_truncation_is_explicit() {
+        let mut n = book(30, 1, true);
+        for t in &mut n.tables {
+            t.source_sheet = "Experiment".into();
+            t.notes.push(("Time = 75 min".into(), (0, 0)));
+        }
+        let c = shared_context(&n).join("\n");
+        assert!(c.contains("+6 tables (cells reads source captions)"), "{c}");
+        for t in &mut n.tables {
+            t.notes.clear();
+            for row in 0..10 { t.notes.push((format!("Time = {row} min"), (row, 0))); }
+        }
+        let c = shared_context(&n).join("\n");
+        assert!(c.contains("CONTEXT +2 sections (cells reads source captions)"), "{c}");
     }
 
     #[test]
