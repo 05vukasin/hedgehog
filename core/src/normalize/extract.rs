@@ -1727,9 +1727,7 @@ fn build_table(
     overrides: &Overrides,
     opts: &Options,
     owner: &mut [u8],
-    profile: &mut [std::time::Duration; 5],
 ) -> Built {
-    let profile_time = std::time::Instant::now();
     let sheet = grid.sheet;
     let cells = &sheet.cells;
     let mut r = t.rect;
@@ -2051,8 +2049,6 @@ fn build_table(
         let numbers = idxs.iter().any(|&i| matches!(cells[i].value, Some(Value::Number(_))));
         (gap && !numbers && (1..=3).contains(&texts.len()) && table_word(texts[0])).then_some(*row)
     });
-    profile[0] += profile_time.elapsed();
-    let profile_time = std::time::Instant::now();
     let mut slots: Vec<Vec<Slot>> = vec![Vec::new(); ncols];
     // Inline group labels (output row, column, value): see the fill-down below.
     let mut inline_labels: Vec<(usize, usize, &Value)> = Vec::new();
@@ -2597,8 +2593,6 @@ fn build_table(
         }
     }
 
-    profile[1] += profile_time.elapsed();
-    let profile_time = std::time::Instant::now();
     // --- Columns -----------------------------------------------------------------------------
     // Names first (in column order), then every column typed (on parallel threads for a large
     // table: each column's typing reads only its own values and the sheet's shared hints, B120),
@@ -2709,12 +2703,9 @@ fn build_table(
         let typed = type_column(&heads[k].1, col, &slots[k], &src_rows, first, &mut refine, &mut tr);
         (typed, tr)
     };
-    profile[2] += profile_time.elapsed();
     let t_typing = std::time::Instant::now();
     let typed_cols: Vec<(Typed, Transforms)> = in_parallel(ncols, ncols * src_rows.len() >= PARALLEL_TYPING_MIN_VALUES, type_one);
     super::typing::add_typing_time(t_typing.elapsed());
-    profile[3] += t_typing.elapsed();
-    let profile_time = std::time::Instant::now();
     let mut data_cols: Vec<Column> = Vec::new();
     let mut col_warnings = Vec::new();
     for (k, ((parts, label), (typed, col_tr))) in heads.into_iter().zip(typed_cols).enumerate() {
@@ -2879,7 +2870,6 @@ fn build_table(
     warnings.extend(col_warnings);
 
     let kept: HashSet<u32> = src_rows.iter().copied().collect();
-    profile[4] += profile_time.elapsed();
     Built {
         table: Table {
             n,
@@ -3378,19 +3368,15 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     let mut layouts: Vec<Vec<(u32, bool)>> = Vec::new();
     // Small blocks of values the layout left outside every table (fewer rows than a headerless
     // table needs) are tables too, not Notes.
-    let profile_time = std::time::Instant::now();
     let mut detected = lay.tables.clone();
     detected.extend(value_blocks(grid, &lay));
     detected.sort_by_key(|t| (t.rect.top, t.rect.left));
-    super::trace("prof.extract.discover", profile_time);
-    let profile_time = std::time::Instant::now();
-    let mut profile = [std::time::Duration::ZERO; 5];
     for t in &detected {
         let donor = out.tables.len();
         for (part, t) in changed_parent_blocks(grid, t).iter().enumerate() {
             let n = out.tables.len() + 1;
             let inherited = (part > 0).then(|| &out.tables[donor]);
-            let b = build_table(grid, &lay, t, inherited, n, &sheet_hints, &row_total, &overrides, opts, &mut owner, &mut profile);
+            let b = build_table(grid, &lay, t, inherited, n, &sheet_hints, &row_total, &overrides, opts, &mut owner);
             info.tables.push(n);
             layouts.push(row_layout(&b.table, &b.removed_totals));
             kept.push(b.kept);
@@ -3399,17 +3385,11 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
             out.tables.push(b.table);
         }
     }
-    super::trace("prof.extract.table_loop_wall", profile_time);
-    for (name, took) in ["prof.extract.prepare", "prof.extract.slots_and_labels", "prof.extract.headers", "prof.extract.typing_wall", "prof.extract.assemble"].into_iter().zip(profile) {
-        super::trace_ms(name, took);
-    }
-    let profile_time = std::time::Instant::now();
     copy_row_labels(&mut out.tables[first..], &layouts);
     // Captions a table moved out of its last row belong to the table below them (B72).
     for x in notes.iter_mut().filter(|x| x.kind == "title" && x.table.is_none()) {
         x.table = associate(&out.tables[first..], x.row, x.col, true).map(|k| first + k + 1);
     }
-    super::trace("prof.extract.copy_and_associate", profile_time);
     super::trace("build_tables", t0);
     super::trace_ms("build_tables.typing", super::typing::take_typing_time());
     let tables = &out.tables[first..];

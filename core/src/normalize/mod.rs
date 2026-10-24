@@ -762,12 +762,8 @@ fn sheet_layout(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::S
             crate::totals::detection(grid);
             trace_ms("totals_prefetch", t.elapsed());
         });
-        let profile = std::time::Instant::now();
         let out = sheet_layout_inner(grid, opts);
-        trace("prof.layout.main_wall", profile);
-        let profile = std::time::Instant::now();
         h.join().unwrap_or_else(|e| std::panic::resume_unwind(e));
-        trace("prof.layout.prefetch_join_wait", profile);
         out
     })
 }

@@ -639,18 +639,7 @@ pub fn detect(grid: &Grid) -> Vec<TotalCandidate> {
 /// Everything [`detect`] finds on the sheet (cached on the grid): candidates, keyword rows,
 /// "of which" and average rows, known aggregates.
 pub fn detection<'a>(grid: &'a Grid) -> &'a Detection {
-    let profile = std::time::Instant::now();
-    let out = grid.totals.get_or_init(|| {
-        let deps_time = std::time::Instant::now();
-        let deps = grid.deps();
-        crate::normalize::trace("prof.cached_totals.deps_access", deps_time);
-        let compute = std::time::Instant::now();
-        let out = detect_rows(grid, deps, true);
-        crate::normalize::trace("prof.cached_totals.compute_r1", compute);
-        out
-    });
-    crate::normalize::trace("prof.cached_totals.access_including_wait", profile);
-    out
+    grid.totals.get_or_init(|| detect_rows(grid, grid.deps(), true))
 }
 
 /// [`detect`] reusing an already built dependency index.
@@ -719,12 +708,7 @@ type Keywords = (Vec<(usize, KeywordLevel)>, KeywordRows, KeywordRows);
 /// (`keyword_cells(grid, registers)` and `keyword_rows_with(grid, …, registers, false)`).
 fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywords: Option<Keywords>) -> Detection {
     let sheet = grid.sheet;
-    let tr = |stage: &str, took| {
-        crate::normalize::trace_ms(stage, took);
-        if crate::normalize::tracing() {
-            crate::normalize::trace_ms(&format!("prof.r{}.{}", u8::from(registers), stage), took);
-        }
-    };
+    let tr = crate::normalize::trace_ms;
     let t = std::time::Instant::now();
     let (kw_cells, mut kw_rows, weak_rows) = keywords.unwrap_or_else(|| {
         let kw_cells = keyword_cells(grid, registers);
@@ -1026,12 +1010,8 @@ fn detect_rows_from(grid: &Grid, deps: &DependencyIndex, registers: bool, keywor
     tr("tot.horizontal", t.elapsed());
     let t = std::time::Instant::now();
     drop_unconfirmed_inside_formulas(&mut out);
-    let profile = std::time::Instant::now();
     resolve_nesting(grid, &mut out);
-    tr("prof.resolve.nesting", profile.elapsed());
-    let profile = std::time::Instant::now();
     mark_sibling_support(grid, &mut out);
-    tr("prof.resolve.siblings", profile.elapsed());
     out.sort_by_key(|c| (c.row, c.col));
     let aggregates = if registers { aggregate_rows(grid) } else { Vec::new() };
     tr("tot.resolve", t.elapsed());

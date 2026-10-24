@@ -1016,23 +1016,19 @@ fn split_adjacent_tables(region: &Region) -> Option<Vec<Region>> {
     Some(out)
 }
 
-pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, profile: &mut [std::time::Duration; 3]) {
-    let split_time = std::time::Instant::now();
+pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     if let Some(parts) = split_adjacent_tables(&region) {
-        profile[0] += split_time.elapsed();
         for p in parts {
-            analyze_region(sheet, p, out, profile);
+            analyze_region(sheet, p, out);
         }
         return;
     }
     if let Some(parts) = super::repeat::split_repeated_copies(sheet, &region) {
-        profile[0] += split_time.elapsed();
         for p in parts {
-            analyze_region(sheet, p, out, profile);
+            analyze_region(sheet, p, out);
         }
         return;
     }
-    profile[0] += split_time.elapsed();
     let rows = &region.rows;
     if rows.len() < MIN_TABLE_ROWS || region.width() < MIN_TABLE_COLS || is_form(sheet, &region) {
         out.loose.push(region);
@@ -1097,7 +1093,6 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, profi
         }
         (e, segs)
     };
-    let plan_time = std::time::Instant::now();
     let (mut e, mut segs) = plan(false, false);
     // No table at all: try again with a lone label over the value column as its header
     // (`percent` over `Total | 30`, a one-value-column statistics table, HiTab statcan/1655;
@@ -1146,8 +1141,6 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, profi
     if let Some(sg) = segs.first_mut() {
         label_column_header(sheet, rows, sg);
     }
-    profile[1] += plan_time.elapsed();
-    let emit_time = std::time::Instant::now();
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
     for seg in &segs {
@@ -1161,7 +1154,6 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, profi
             loose_rows.extend(rows[seg.titles.start..seg.end].iter().cloned());
         }
     }
-    profile[2] += emit_time.elapsed();
     if any {
         for r in &rows[e..] {
             set(out, r, Role::Note);
