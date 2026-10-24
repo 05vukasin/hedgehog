@@ -6,7 +6,8 @@
 //! zeros (`00123`) keeps the column as text (IDs).
 //!
 //! Text that statistical tables put in numeric columns on purpose — censored values (`<5`,
-//! `> 1000`), suppression marks (`c`, `[c]`, `confidential`) and `see note` — stays text but does
+//! `> 1000`), suppression marks (`c`, `[c]`, `confidential`), `see note`, and statistical
+//! non-significance (`N.S.`) — stays text but does
 //! not count against the numeric share, as long as the numbers outnumber it. Numbers with footnote
 //! marks (`123¹`, `12 (r)`, `7 p`, `20560.32e`) are read as numbers; the marks are kept per column
 //! (`Column::footnote_marks`, the manifest's `footnote_marks`). Text labels lose their footnote
@@ -329,7 +330,7 @@ fn type_column_untimed(
                     is_bool = c.boolean.is_some();
                 }
                 if !is_num && c.num.is_none() && lead0 == 0 && num_miss <= allowed_num {
-                    c.annotation = numeric_annotation(t).is_some();
+                    c.annotation = numeric_annotation(t).is_some() || t.trim() == "N.S.";
                     annotation = c.annotation;
                     if !annotation && words_only {
                         let w = t.trim();
@@ -663,8 +664,11 @@ fn type_column_untimed(
         ));
     }
     if !annotated.is_empty() {
+        let kinds = if slots.iter().any(|s| matches!(s, Slot::Val(Value::Text(t)) if t.trim() == "N.S.")) {
+            "censored, suppressed, see-note or non-significant"
+        } else { "censored, suppressed or see-note" };
         warnings.push(format!(
-            "column '{name}' ({}): {} censored, suppressed or see-note value(s) kept as text: {}",
+            "column '{name}' ({}): {} {kinds} value(s) kept as text: {}",
             dtype.as_str(),
             annotated.len(),
             list(&annotated)
