@@ -503,14 +503,7 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
 
 /// Connected components, then gap-tolerant merging into regions.
 pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
-    let mut out = regions_inner(grid);
-    for r in &mut out {
-        for row in &mut r.rows {
-            mark_rules(grid.sheet, row);
-            drop_stray_years(grid.sheet, row);
-        }
-    }
-    out
+    regions_inner(grid)
 }
 
 /// Whole numbers in the year range that do not read as a row of years (B33): a header of years
@@ -722,7 +715,16 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
             groups.entry(root).or_default().extend(b.rows.into_iter().flat_map(|r| r.entries));
         }
     }
-    out.extend(groups.into_values().map(make_region));
+    out.extend(groups.into_values().map(|entries| {
+        let mut region = make_region(entries);
+        // Unchanged component rows were classified before profiling. Only rebuilt rows can
+        // combine rules or year runs from different components and need another pass.
+        for row in &mut region.rows {
+            mark_rules(grid.sheet, row);
+            drop_stray_years(grid.sheet, row);
+        }
+        region
+    }));
     out.sort_by_key(|r| (r.rect.top, r.rect.left));
     out
 }
