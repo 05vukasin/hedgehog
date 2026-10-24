@@ -139,8 +139,17 @@ final implementation `bc8fad9` with range fix `4433f95`, release `8863194ea465`.
 
 ## Running
 
-Iteration 5 validation is complete; local integration pending. No active workers or
-heavy jobs. Resource and slot checks precede the next accuracy/performance swarm.
+Iteration 6 baseline: local master `16b7d55`, release `8863194ea465`.
+
+- Lead `codex/iteration-6`; accuracy `codex/accuracy-iter6` in `../hh-accuracy-iter2`;
+  performance `codex/performance-iter6` in `../hh-performance-iter2`; independent reviewer.
+- Accuracy: discover remaining source-backed DEV lost-header/label or library-contract
+  issues; preserve ambiguous boundaries and source-conflicting gold as unresolved.
+- Performance: one candidate from measured remaining dominant scopes; no speculative
+  caches or unmeasured cleanup. Regression and implementation commits remain separate.
+- Before expansion: 10 GiB RAM available, 4.3 MiB swap used, 121 GiB free disk,
+  btrfs metadata 17.37/18.50 GiB; three free worker slots and no heavy jobs.
+  All source/review workers finish before lead-only serialized capped testing.
 
 ## Next (in order)
 
