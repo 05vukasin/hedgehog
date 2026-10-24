@@ -104,3 +104,28 @@ fn sparse_nested_outline_keeps_nearest_parent() {
         assert_eq!(parent.values[next], Out::Null);
     }
 }
+
+/// Enron spin-reserve log: separately dated entries occasionally have one padding
+/// space in the free-text check column. That does not make the preceding entry a parent.
+#[test]
+fn single_padding_space_does_not_create_sparse_log_ancestry() {
+    for rules_only in [false, true] {
+        let path = std::env::temp_dir().join(format!("hh_sparse_log_{}_{}.xlsx", std::process::id(), rules_only));
+        let mut wb = Workbook::new();
+        let ws = wb.add_worksheet();
+        for (c, h) in ["Date", "Actual 4 minute increment that you checked", "Person", "Period"].iter().enumerate() {
+            ws.write_string(0, c as u16, *h).unwrap();
+        }
+        for k in 0..30u32 {
+            ws.write_number_with_format(k + 1, 0, 36625.0 + k as f64, &Format::new().set_num_format("yyyy-mm-dd")).unwrap();
+            ws.write_string(k + 1, 1, if k == 15 { " ~23:25 just a minute before the check".to_string() } else { format!("Independent check {k}") }).unwrap();
+            ws.write_string(k + 1, 2, "Brian").unwrap();
+            ws.write_number(k + 1, 3, 4.0 + k as f64).unwrap();
+        }
+        wb.save(&path).unwrap();
+        let book = open(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        let n = normalize_workbook(&book, &Options { rules_only, keep_totals: true, ..Options::default() });
+        assert!(n.tables.iter().all(|t| t.columns.iter().all(|c| c.derived_kind() != Some("parent"))), "padding became hierarchy");
+    }
+}
