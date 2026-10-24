@@ -501,11 +501,6 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     ov as f32 >= GAP_MIN_ROW_OVERLAP * hl.max(hr) as f32 || inside
 }
 
-/// Connected components, then gap-tolerant merging into regions.
-pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
-    regions_inner(grid)
-}
-
 /// Whole numbers in the year range that do not read as a row of years (B33): a header of years
 /// counts up or repeats in small steps (`2022 2023 2024`, `2000 2005 2010`, `2023 2023 2024`), while
 /// a data row with values that happen to lie in 1900–2100 (`Riverbend 2 | 1948 | 2043 | 338`) jumps.
@@ -570,7 +565,8 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
     }
 }
 
-fn regions_inner(grid: &Grid) -> Vec<Region> {
+/// Connected components, then gap-tolerant merging into regions.
+pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
     let mut blocks: Vec<Region> = components(grid).into_iter().map(make_region).collect();
     // Ruling lines and stray years before the blocks' profiles decide the gap merges.
     for b in &mut blocks {
