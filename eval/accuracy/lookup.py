@@ -298,10 +298,14 @@ def hitab_paths(t, i: int, j: int, cell: dict) -> tuple[bool, bool, bool]:
     labels = t.labels(i, j) + [str(int(v)) for k, v in enumerate(t.rows[i]) if k != j and isinstance(v, (int, float))
                                and not isinstance(v, bool) and v == int(v) and 1900 <= v <= 2100]
     # HiTab roots its left tree at the label column's header or at the table's total row ("all
-    # industries" above "manufacturing industries"); a root found there is not a missing parent.
+    # industries" above "manufacturing industries"), also a total-worded row kept as data; a root found
+    # there is not a missing parent.
     roots = [t.headers[c] for c in t.label_cols]
     if t.row_types:
         roots += [L for k, rt in enumerate(t.row_types) if rt != "data" for L in t.labels(k)]
+    # ... also at a total-worded row hedgehog keeps as data ('All businesses' over 'Businesses majority-owned by
+    # visible minorities': percentages of a population, no sum): only the root, every other element is checked
+    roots += [L for k in range(len(t.rows)) for L in t.labels(k) if PS.TOTAL_RX.search(norm_text(L))]
     row = all(any(_el_eq(g, L) for L in labels) or (n == 0 and len(gold_left) > 1 and any(_el_eq(g, R) for R in roots))
               for n, g in enumerate(gold_left))
     leaf = not gold_left or any(_el_eq(gold_left[-1], L) for L in labels)

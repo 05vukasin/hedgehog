@@ -56,5 +56,28 @@ class UnnamedStub(unittest.TestCase):
         self.assertFalse(L.unnamed_stub(t, 0, RAW))
 
 
+class HitabRoots(unittest.TestCase):
+    def tbl(self):
+        rows = [["All businesses", 17.2, 21.1], ["Businesses majority-owned by visible minorities", 13.7, 24.7]]
+        return table(["col_A", "Increase", "Decline 40% or more"], rows)
+
+    def test_total_worded_row_kept_as_data_is_a_root(self):
+        # HiTab 128.xlsx: the gold left path is rooted at the 'All businesses' row hedgehog keeps as data
+        cell = {"left_path": ["all businesses", "businesses majority-owned by visible minorities"],
+                "top_path": ["decline 40% or more"]}
+        self.assertEqual(L.hitab_paths(self.tbl(), 1, 2, cell), (True, True, True))
+
+    def test_other_root_is_still_checked(self):
+        cell = {"left_path": ["population centre sizes", "businesses majority-owned by visible minorities"],
+                "top_path": ["decline 40% or more"]}
+        self.assertEqual(L.hitab_paths(self.tbl(), 1, 2, cell)[0], False)
+
+    def test_only_the_root(self):
+        # a total-worded row is no stand-in for an inner element of the path
+        cell = {"left_path": ["women", "all businesses", "businesses majority-owned by visible minorities"],
+                "top_path": ["decline 40% or more"]}
+        self.assertEqual(L.hitab_paths(self.tbl(), 1, 2, cell)[0], False)
+
+
 if __name__ == "__main__":
     unittest.main()
