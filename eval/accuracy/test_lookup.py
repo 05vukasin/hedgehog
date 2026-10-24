@@ -79,5 +79,18 @@ class HitabRoots(unittest.TestCase):
         self.assertEqual(L.hitab_paths(self.tbl(), 1, 2, cell)[0], False)
 
 
+class HitabColumns(unittest.TestCase):
+    def test_gold_element_with_a_slash(self):
+        # statcan/1220: the header cell 'Unemployed / Job vacancies' over 'ratio'
+        t = table(["col_A", "Unemployed / Job vacancies / ratio"], [["Canada", 2.4], ["Quebec", 2.1]])
+        cell = {"left_path": ["canada"], "top_path": ["unemployed / job vacancies", "ratio"]}
+        self.assertEqual(L.hitab_paths(t, 0, 1, cell), (True, True, True))
+        cell = {"left_path": ["canada"], "top_path": ["unemployed / job vacancies", "rate"]}
+        self.assertFalse(L.hitab_paths(t, 0, 1, cell)[2])
+        t2 = table(["col_A", "Unemployed / ratio"], [["Canada", 2.4], ["Quebec", 2.1]])
+        cell = {"left_path": ["canada"], "top_path": ["unemployed / job vacancies", "ratio"]}
+        self.assertFalse(L.hitab_paths(t2, 0, 1, cell)[2])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -313,12 +313,14 @@ def hitab_paths(t, i: int, j: int, cell: dict) -> tuple[bool, bool, bool]:
     k = 0
     col = True
     for g in gold_top:
-        while k < len(segs) and not _el_eq(g, segs[k]):
+        # a gold element that itself holds " / " ('unemployed / job vacancies') is a run of segments
+        n = g.count(" / ") + 1
+        while k + n <= len(segs) and not _el_eq(g, " / ".join(segs[k:k + n])):
             k += 1
-        if k == len(segs):
+        if k + n > len(segs):
             col = False
             break
-        k += 1
+        k += n
     return row, leaf, col
 
 
