@@ -179,6 +179,7 @@ impl Sheet {
         let first = self.cells.first()?;
         let mut r = Rect { top: first.row, left: first.col, bottom: first.row, right: first.col };
         for c in &self.cells {
+            r.top = r.top.min(c.row);
             r.left = r.left.min(c.col);
             r.right = r.right.max(c.col);
             r.bottom = r.bottom.max(c.row);
