@@ -781,3 +781,95 @@ impl Profile {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Cell, Value};
+
+    fn flags(row: &Row) -> Vec<(bool, bool)> {
+        row.entries.iter().map(|e| (e.rule, e.label_num)).collect()
+    }
+
+    #[test]
+    fn unchanged_row_classification_is_idempotent() {
+        let values = [
+            Value::Text("-----".into()),
+            Value::Text("|".into()),
+            Value::Text("2010-01".into()),
+            Value::Text("2020".into()),
+            Value::Number(1900.0),
+            Value::Number(2020.0),
+            Value::DateTime(45000.0),
+            Value::Text("label".into()),
+        ];
+        // Mixed rules, text periods, plain/text years, dates and unrelated labels. Include
+        // repeated values and jumps in either direction: deleting plain years changes the run.
+        for mut pattern in 0..values.len().pow(4) {
+            let mut sheet = Sheet::default();
+            for col in 0..4 {
+                let value = values[pattern % values.len()].clone();
+                pattern /= values.len();
+                sheet.cells.push(Cell { row: 0, col, value: Some(value), formula: None });
+            }
+            let grid = Grid::new(&sheet);
+            let mut region = make_region(entries_of(&grid));
+            let row = &mut region.rows[0];
+            mark_rules(&sheet, row);
+            drop_stray_years(&sheet, row);
+            let once = flags(row);
+            mark_rules(&sheet, row);
+            drop_stray_years(&sheet, row);
+            assert_eq!(flags(row), once, "{:?}", sheet.cells);
+        }
+    }
+
+    #[test]
+    fn rebuilt_rows_classify_rules_across_component_boundaries() {
+        // Separate components contribute a ruling line and a non-rule on the same row.
+        // Existing rule flags survive reconstruction; the newly combined row is not all rules.
+        let sheet = Sheet {
+            cells: vec![
+                Cell { row: 0, col: 0, value: Some(Value::Text("-----".into())), formula: None },
+                Cell { row: 0, col: 3, value: Some(Value::Text("label".into())), formula: None },
+            ],
+            ..Sheet::default()
+        };
+        let grid = Grid::new(&sheet);
+        let mut pieces: Vec<_> = components(&grid).into_iter().map(make_region).collect();
+        assert_eq!(pieces.len(), 2);
+        for piece in &mut pieces {
+            mark_rules(&sheet, &mut piece.rows[0]);
+            drop_stray_years(&sheet, &mut piece.rows[0]);
+        }
+        let entries = pieces.into_iter().flat_map(|p| p.rows.into_iter().flat_map(|r| r.entries)).collect();
+        let mut rebuilt = make_region(entries);
+        mark_rules(&sheet, &mut rebuilt.rows[0]);
+        drop_stray_years(&sheet, &mut rebuilt.rows[0]);
+        assert_eq!(flags(&rebuilt.rows[0]), vec![(true, false), (false, false)]);
+    }
+
+    #[test]
+    fn rebuilt_rows_recheck_year_jumps_without_restoring_short_periods() {
+        let sheet = Sheet {
+            cells: vec![
+                Cell { row: 0, col: 0, value: Some(Value::Number(1900.0)), formula: None },
+                Cell { row: 0, col: 3, value: Some(Value::Number(2020.0)), formula: None },
+                Cell { row: 0, col: 6, value: Some(Value::Text("2010-01".into())), formula: None },
+                Cell { row: 0, col: 9, value: Some(Value::Text("2010-02".into())), formula: None },
+                Cell { row: 0, col: 12, value: Some(Value::Text("2010-03".into())), formula: None },
+            ],
+            ..Sheet::default()
+        };
+        let grid = Grid::new(&sheet);
+        let entries = components(&grid).into_iter().flat_map(|part| {
+            let mut part = make_region(part);
+            drop_stray_years(&sheet, &mut part.rows[0]);
+            part.rows.into_iter().flat_map(|r| r.entries)
+        }).collect();
+        let mut rebuilt = make_region(entries);
+        assert_eq!(flags(&rebuilt.rows[0]), vec![(false, true), (false, true), (false, false), (false, false), (false, false)]);
+        drop_stray_years(&sheet, &mut rebuilt.rows[0]);
+        assert!(rebuilt.rows[0].entries.iter().all(|e| !e.label_num));
+    }
+}
