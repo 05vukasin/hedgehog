@@ -336,3 +336,24 @@ fn a_row_of_column_numbers_over_the_title_is_no_data_row() {
     assert!(!n.notes.iter().any(|x| x.kind == "repeated_header"), "{:?}", n.notes);
     assert_ne!(t.title.as_ref().map(|x| x.0.as_str()), Some("5"));
 }
+
+#[test]
+fn n_b_is_a_province_in_a_column_of_names() {
+    // StatCan HiTab 2582: "N.B." (New Brunswick) among the provinces was nulled as the German
+    // "n.b." (nicht bekannt); in a column of numbers it is still a missing value.
+    let n = build("nb", |ws| {
+        ws.write_string(0, 0, "Region").unwrap();
+        ws.write_string(0, 1, "Rate").unwrap();
+        for (k, p) in ["N.L.", "P.E.I.", "N.S.", "N.B.", "Que.", "Ont.", "Man.", "Sask.", "Alta.", "B.C."].iter().enumerate() {
+            ws.write_string(1 + k as u32, 0, *p).unwrap();
+            if k == 5 {
+                ws.write_string(1 + k as u32, 1, "n.b.").unwrap();
+            } else {
+                ws.write_number(1 + k as u32, 1, 12.5 + k as f64).unwrap();
+            }
+        }
+    });
+    let t = &n.tables[0];
+    assert_eq!(texts(t, "Region")[3], "N.B.");
+    assert_eq!(texts(t, "Rate")[5], "");
+}

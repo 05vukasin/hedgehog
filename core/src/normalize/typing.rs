@@ -478,7 +478,10 @@ fn type_column_untimed(
         }
         seen.len() >= 2
     };
-    let is_category_word = |v: &Value| matches!(v, Value::Text(t) if matches!(crate::values::norm_key(t).as_str(), "none" | "unknown"));
+    // `N.B.` (New Brunswick) and `N.V.` among labels are names too; the German "nicht bekannt" /
+    // "nicht verfügbar" marks are missing values only in a column of numbers.
+    let is_category_word =
+        |v: &Value| matches!(v, Value::Text(t) if matches!(crate::values::norm_key(t).as_str(), "none" | "unknown" | "n.b." | "n.v."));
     // The previous slot's value: a label filled down from it (same cell) records its mark once.
     let mut last_val: Option<&Value> = None;
     let no_reading = Cand::default();

@@ -241,6 +241,12 @@ fn month_word(w: &str) -> Option<u8> {
     })
 }
 
+/// Month abbreviations of other languages that are English words or abbreviations: `avg`
+/// (average), `set`, `out`, `gen`, `mag`, `lip`, `lis`, `sie`, `ago`, `dic`, `paz`, `gru`, `lut`.
+fn word_like_month(w: &str) -> bool {
+    matches!(w, "avg" | "set" | "out" | "gen" | "mag" | "lip" | "lis" | "sie" | "ago" | "dic" | "paz" | "gru" | "lut" | "lug" | "giu" | "ene")
+}
+
 /// Month number of a month name or abbreviation in any of the parser's languages (`März`,
 /// `Jän`, `févr.`, `Sept`), or `None`.
 pub fn month_number(word: &str) -> Option<u8> {
@@ -585,6 +591,10 @@ fn parse_tokens(t: &[Tok], order: Option<DateOrder>, trailing_dot: bool) -> Opti
             match rest {
                 [Num { v: y, len: 4 }] => month(*y as i32, m as u32),
                 [Num { v: d, len: 2 }] if spaced && !trailing_dot && (1..=31).contains(d) => None,
+                // A month abbreviation that is also an English word or abbreviation ("avg 00", an
+                // average of 2000, not August 2000; "set 99", "out 01") needs a mark before a
+                // two-digit year.
+                [Num { len: 2, .. }] if spaced && !trailing_dot && word_like_month(w) => None,
                 [Num { v: y, len: 2 }] => month(year_of(*y, 2)?, m as u32),
                 [Num { v: d, len: dl }, rest @ ..] if *dl <= 2 => {
                     let rest = skip_seps(rest);
@@ -905,6 +915,15 @@ mod tests {
             assert_eq!((d.year, d.month, d.precision), (y, 3, DatePrecision::Month), "{s:?}");
         }
         assert_eq!(parse_date("Marchx 2024", None), None);
+        // "avg 00" in an English sheet is an average for 2000, not August 2000; with a mark or a
+        // four-digit year the Serbian month still reads.
+        for s in ["avg 00", "avg 99", "set 01", "out 98"] {
+            assert_eq!(parse_date(s, None), None, "{s:?}");
+        }
+        for (s, y) in [("avg-00", 2000), ("avg 2000", 2000), ("avg '99", 1999)] {
+            let d = parse_date(s, None).unwrap_or_else(|| panic!("{s:?}"));
+            assert_eq!((d.year, d.month), (y, 8), "{s:?}");
+        }
         assert_eq!(parse_date("Total 2024", None), None);
     }
 
