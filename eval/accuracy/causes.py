@@ -13,7 +13,9 @@ Families
                 listed for review with the evidence.
 
 Order: library causes first (they need a fix in hedgehog), then gold/question (HiTab's gold operands prove
-it), then oracle-limit. Source header grounding ("hedgehog header naming") reruns the oracle on hedgehog's
+it), then oracle-limit. Reviewed candidates: a gold/question miss listed in reviewed.tsv (checked by hand against
+the source cells and found NOT auditable: the gold is right and in the file) takes the family, cause and
+evidence recorded there (oracle-limit or library); audited ones are in audit.tsv. Source header grounding ("hedgehog header naming") reruns the oracle on hedgehog's
 tables with generated column names replaced by the source header cells above the column (cells.tsv): a
 tight witness there is recorded as the miss's witness, and the miss stays a miss.
 """
@@ -31,6 +33,7 @@ from acc import PS, norm_text, parse_number
 from common import col_letter
 
 LIB, LIM, GOLD = "library", "oracle-limit", "gold/question"
+REVIEWED_TSV = acc.HERE / "reviewed.tsv"
 GENERATED = re.compile(r"^col_[A-Z]+$|\(\d+\)$")
 
 
@@ -331,8 +334,36 @@ def _loose_reason(progs, res: dict, q) -> tuple[str, str, str] | None:
     return None
 
 
+_REVIEWED: dict | None = None
+
+
+def reviewed() -> dict:
+    """(dataset, item_id) -> {family, cause, evidence} of reviewed.tsv (gold/question candidates checked by hand
+    against the source cells and found not auditable)."""
+    global _REVIEWED
+    if _REVIEWED is None:
+        _REVIEWED = {}
+        if REVIEWED_TSV.exists():
+            for line in REVIEWED_TSV.read_text().splitlines():
+                if not line.strip() or line.startswith("#") or line.startswith("dataset\t"):
+                    continue
+                ds, i, _m, fam, cause, ev = line.split("\t")
+                _REVIEWED[(ds, i)] = {"family": fam, "cause": cause, "evidence": f"reviewed: {ev}"}
+    return _REVIEWED
+
+
 def classify(it: dict, atom: dict, tables: list, q, res: dict, progs, mkinds: set | None = None) -> dict:
-    """{family, cause, evidence[, witness]} for a missed atom."""
+    """{family, cause, evidence[, witness]} for a missed atom; a reviewed gold/question candidate takes the
+    family and cause of its review (reviewed.tsv)."""
+    c = _classify(it, atom, tables, q, res, progs, mkinds)
+    if c["family"] == GOLD:
+        r = reviewed().get((it["dataset"], it["id"]))
+        if r:
+            return dict(r)
+    return c
+
+
+def _classify(it: dict, atom: dict, tables: list, q, res: dict, progs, mkinds: set | None = None) -> dict:
     def out(fam, cause, ev, **kw):
         d = {"family": fam, "cause": cause, "evidence": ev}
         d.update(kw)

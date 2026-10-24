@@ -3,7 +3,7 @@
  "binary": "/home/vukasin/projects/excell-lib-project/hedgehog/target-master/release/hedgehog",
  "tokenizer": "tiktoken o200k_base",
  "F": {
-  "skipped": "eval/fidelity is not on this branch (cell-fidelity gate: branch fidelity)"
+  "summary": {}
  },
  "S": {
   "hitab": {
@@ -28,31 +28,35 @@
   "per": {
    "hitab": {
     "items": 3805,
-    "pass": 3370,
+    "pass": 3390,
     "audited": 0,
-    "raw": 88.6,
-    "after_audit": 88.6
+    "audited_pass": 0,
+    "raw": 89.1,
+    "after_audit": 89.1
    },
    "mimotable": {
     "items": 273,
     "pass": 261,
-    "audited": 0,
+    "audited": 1,
+    "audited_pass": 1,
     "raw": 95.6,
     "after_audit": 95.6
    },
    "realhitbench": {
     "items": 1556,
-    "pass": 1345,
+    "pass": 1346,
     "audited": 0,
-    "raw": 86.4,
-    "after_audit": 86.4
+    "audited_pass": 0,
+    "raw": 86.5,
+    "after_audit": 86.5
    },
    "ALL": {
     "items": 5634,
-    "pass": 4976,
-    "audited": 0,
-    "raw": 88.3,
-    "after_audit": 88.3
+    "pass": 4997,
+    "audited": 1,
+    "audited_pass": 1,
+    "raw": 88.7,
+    "after_audit": 88.7
    }
   },
   "clusters": {
@@ -134,32 +138,6 @@
      }
     ]
    },
-   "row label differs": {
-    "misses": 43,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "5b3755fd45219986d6d99ea6ae7ddd7c",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "34.6",
-      "evidence": "Sheet1!F28: gold ['23'] vs labels ['New York U.']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "2e9de4a6c61369d4b7b38b60b7cbb4a7",
-      "file": "clean/nsf/168_83_tab4.xlsx",
-      "atom": "810.0",
-      "evidence": "Sheet1!E28: gold ['23'] vs labels ['New York U.']"
-     },
-     {
-      "dataset": "hitab",
-      "id": "5abb8c2d4b97ca320c22154aff64b579",
-      "file": "clean/nsf/169_84_tab1.xlsx",
-      "atom": "18.8",
-      "evidence": "Table 1!F4: gold ['1'] vs labels ['United States', 'World']"
-     }
-    ]
-   },
    "question key: cell not in any table (row not in any table)": {
     "misses": 42,
     "examples": [
@@ -187,7 +165,7 @@
     ]
    },
    "number not grounded by labels or header": {
-    "misses": 33,
+    "misses": 32,
     "examples": [
      {
       "dataset": "realhitbench",
@@ -209,6 +187,32 @@
       "file": "tables/education-table08.xlsx",
       "atom": "462770",
       "evidence": "2007-2008!I8 in T1 column 'Achievement / General FE College incl Tertiary', labels ['Total Learners']"
+     }
+    ]
+   },
+   "row label differs": {
+    "misses": 23,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "5b3755fd45219986d6d99ea6ae7ddd7c",
+      "file": "clean/nsf/168_83_tab4.xlsx",
+      "atom": "34.6",
+      "evidence": "Sheet1!F28: gold ['23'] vs labels ['New York U.']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "2e9de4a6c61369d4b7b38b60b7cbb4a7",
+      "file": "clean/nsf/168_83_tab4.xlsx",
+      "atom": "810.0",
+      "evidence": "Sheet1!E28: gold ['23'] vs labels ['New York U.']"
+     },
+     {
+      "dataset": "hitab",
+      "id": "5abb8c2d4b97ca320c22154aff64b579",
+      "file": "clean/nsf/169_84_tab1.xlsx",
+      "atom": "18.8",
+      "evidence": "Table 1!F4: gold ['1'] vs labels ['United States', 'World']"
      }
     ]
    },
@@ -489,60 +493,38 @@
   "per": {
    "hitab": {
     "items": 1314,
-    "pass": 666,
-    "audited": 0,
-    "raw": 50.7,
-    "after_audit": 50.7
+    "pass": 669,
+    "audited": 29,
+    "audited_pass": 0,
+    "raw": 50.9,
+    "after_audit": 52.1
    },
    "mimotable": {
     "items": 206,
     "pass": 130,
-    "audited": 5,
+    "audited": 6,
+    "audited_pass": 1,
     "raw": 63.1,
-    "after_audit": 64.7
+    "after_audit": 64.5
    },
    "realhitbench": {
     "items": 744,
-    "pass": 391,
+    "pass": 392,
     "audited": 0,
-    "raw": 52.6,
-    "after_audit": 52.6
+    "audited_pass": 0,
+    "raw": 52.7,
+    "after_audit": 52.7
    },
    "ALL": {
     "items": 2264,
-    "pass": 1187,
-    "audited": 5,
-    "raw": 52.4,
-    "after_audit": 52.5
+    "pass": 1191,
+    "audited": 35,
+    "audited_pass": 1,
+    "raw": 52.6,
+    "after_audit": 53.4
    }
   },
   "clusters": {
-   "gold/question: question does not name an operand": {
-    "misses": 132,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "74d4ee7c9c8bd347793da1095a8cd4fe",
-      "file": "clean/nsf/109_55_fs17-ib-19314-tab004.xlsx",
-      "atom": "0.974958",
-      "evidence": "G4 column ['nsf']: no word of it in the question"
-     },
-     {
-      "dataset": "hitab",
-      "id": "47ba0cbe3b4c42e2d5e76c3fcb0311de",
-      "file": "clean/nsf/111_55_fs17-ib-19314-tab006.xlsx",
-      "atom": "0.921821",
-      "evidence": "I4 column ['usda']: no word of it in the question"
-     },
-     {
-      "dataset": "hitab",
-      "id": "df0890dd51311e9ef14d2951b7361889",
-      "file": "clean/nsf/131_64_sdr17-ib-19307-tab001.xlsx",
-      "atom": "0.248342",
-      "evidence": "B15 row ['worldwide', 'non-u.s. residing population']: no word of it in the question"
-     }
-    ]
-   },
    "oracle-limit: grounding: question paraphrases an operand": {
     "misses": 130,
     "examples": [
@@ -595,6 +577,32 @@
      }
     ]
    },
+   "oracle-limit: grounding: operand implied by the question's context": {
+    "misses": 107,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "74d4ee7c9c8bd347793da1095a8cd4fe",
+      "file": "clean/nsf/109_55_fs17-ib-19314-tab004.xlsx",
+      "atom": "0.974958",
+      "evidence": "reviewed: G4 column ['nsf']: no word of it in the question; gold reproduced from its operand cells (source): 0.974958: ratio sum(G4+F4+C4+H4+E4+D4) / B4 = 3.16187e+07/3.24308e+07 = 0.974958"
+     },
+     {
+      "dataset": "hitab",
+      "id": "47ba0cbe3b4c42e2d5e76c3fcb0311de",
+      "file": "clean/nsf/111_55_fs17-ib-19314-tab006.xlsx",
+      "atom": "0.921821",
+      "evidence": "reviewed: I4 column ['usda']: no word of it in the question; gold reproduced from its operand cells (source): 0.921821: ratio sum(I4+F4+C4+H4+E4) / B4 = 283821/307892 = 0.921821"
+     },
+     {
+      "dataset": "hitab",
+      "id": "df0890dd51311e9ef14d2951b7361889",
+      "file": "clean/nsf/131_64_sdr17-ib-19307-tab001.xlsx",
+      "atom": "0.248342",
+      "evidence": "reviewed: B15 row ['worldwide', 'non-u.s. residing population']: no word of it in the question; gold reproduced from its operand cells (source): 0.248342: ratio (D15 ('women'))/(B15 ('total')) = 33700/135700 = 0.248342"
+     }
+    ]
+   },
    "oracle-limit: grounding: operation not named by the question": {
     "misses": 78,
     "examples": [
@@ -618,32 +626,6 @@
       "file": "repo/data/english/spreadsheet/ClientInformationFollow-upStatisticsTable.xlsx",
       "atom": "6",
       "evidence": "ClientInformationFollow-upStatisticsTable.xlsx:T1 avg(Serial Number) where all data rows"
-     }
-    ]
-   },
-   "gold/question: gold not reproduced from its operand cells": {
-    "misses": 56,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "48398cf056d256aa345afa2b22475583",
-      "file": "clean/statcan/1032.xlsx",
-      "atom": "4.581961",
-      "evidence": "gold 4.581961, aggregation ['div'], operands F20=4,581,961"
-     },
-     {
-      "dataset": "hitab",
-      "id": "4e07d458feff383ba363c6a729db75be",
-      "file": "clean/statcan/1103.xlsx",
-      "atom": "96.95",
-      "evidence": "gold 96.95, aggregation ['average'], operands D6=3.1, I6=3.6, G6=3.2, H6=3.6, F6=3.5, K6=2.9 (file has: header missing)"
-     },
-     {
-      "dataset": "hitab",
-      "id": "d14e24a3f2b9c66fd82d91008638b3ad",
-      "file": "clean/statcan/1104.xlsx",
-      "atom": "97.958333",
-      "evidence": "gold 97.958333, aggregation ['sum', 'average'], operands C7=1.5, I5=94.7, I6=1.4, F6=1.6, F5=94.5, L7=1.3 (file has: header missing)"
      }
     ]
    },
@@ -766,7 +748,7 @@
       "id": "en-0480",
       "file": "repo/data/english/spreadsheet/AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx",
       "atom": "32",
-      "evidence": "[AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx:T1 value(Question Number) where row [6 questions (5 multiple choice, 1 subjective) / 32 points = 20+12 / Philosophical Life]] + ["
+      "evidence": "[AnalysisoftheComprehensiveLiberalArtsExamPapersintheNationalCollegeEntranceExaminationinthePastFiveYears.xlsx:T1 value(Question Number) where row [2011 / 6 questions (5 multiple choice, 1 subjective) / 32 points = 20+12]] + [AnalysisoftheC"
      },
      {
       "dataset": "mimotable",
@@ -804,8 +786,15 @@
     ]
    },
    "oracle-limit: shape: sum over a conditional set": {
-    "misses": 26,
+    "misses": 27,
     "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0142",
+      "file": "repo/data/english/spreadsheet/Sheet12(1).xlsx",
+      "atom": "120000",
+      "evidence": "question: What is the total basic salary of all employees?"
+     },
      {
       "dataset": "mimotable",
       "id": "en-0219",
@@ -819,13 +808,6 @@
       "file": "repo/data/english/spreadsheet/BHComponent(2).xlsx",
       "atom": "1758.4",
       "evidence": "gold equals some cell, none named; question: What are the total flange weight and total web weight of the component in row 7?"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0373",
-      "file": "repo/data/english/spreadsheet/WorkplaceGeneral(35).xlsx",
-      "atom": "520",
-      "evidence": "gold equals some cell, none named; question: What is the total of Groceries, Entertainment Expenses, and Transportation Fees/Fuel on October 3rd?"
      }
     ]
    },
@@ -856,7 +838,7 @@
     ]
    },
    "library: header missing (generated column name)": {
-    "misses": 25,
+    "misses": 24,
     "examples": [
      {
       "dataset": "mimotable",
@@ -882,28 +864,54 @@
     ]
    },
    "oracle-limit: shape: ratio / share (one column)": {
-    "misses": 24,
+    "misses": 22,
     "examples": [
-     {
-      "dataset": "hitab",
-      "id": "3c2245521b17c0e6b1fdfd06b9dd0c15",
-      "file": "clean/nsf/10_112_tab1.xlsx",
-      "atom": "-0.072612",
-      "evidence": "2 operand cells named by the question; aggregation div"
-     },
-     {
-      "dataset": "hitab",
-      "id": "2d39e2a6bd87ab42a982e15565c097fa",
-      "file": "clean/nsf/10_112_tab1.xlsx",
-      "atom": "0.042528",
-      "evidence": "2 operand cells named by the question; aggregation div"
-     },
      {
       "dataset": "hitab",
       "id": "7957a251f50b7584e196b07cc7170611",
       "file": "clean/nsf/112_55_fs17-ib-19314-tab007.xlsx",
       "atom": "0.009327",
       "evidence": "2 operand cells named by the question; aggregation div"
+     },
+     {
+      "dataset": "hitab",
+      "id": "adff84205791c0aba6e29993b2d3e223",
+      "file": "clean/nsf/112_55_fs17-ib-19314-tab007.xlsx",
+      "atom": "0.030968",
+      "evidence": "2 operand cells named by the question; aggregation div"
+     },
+     {
+      "dataset": "hitab",
+      "id": "29d75fddfb7895be35e1e80ae7739b9b",
+      "file": "clean/nsf/64_2_nsf21324-tab002.xlsx",
+      "atom": "0.464612",
+      "evidence": "2 operand cells named by the question; aggregation div (file has: measures mixed)"
+     }
+    ]
+   },
+   "oracle-limit: shape: share of a sum of cells": {
+    "misses": 22,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "a669384ccad9cb504cf30b4874d54a77",
+      "file": "clean/statcan/1129.xlsx",
+      "atom": "0.849421",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.849421: share (F6 ('total charged')) / sum of all 2 operands = 10041/11821 = 0.849421 (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "429dfb853512f3e6ae583f5a4e072e58",
+      "file": "clean/statcan/1587.xlsx",
+      "atom": "0.191275",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.191275: share (F8 ('prior canadian skilled work and study experience')) / sum of all 5 operands = 5.7/29.8 = 0.191275 (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "24a174733e76633a584ac8e5acce90c0",
+      "file": "clean/statcan/1946.xlsx",
+      "atom": "0.216383",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.216383: share (J19 ('indigenous')) / sum of all 2 operands = 140/647 = 0.216383"
      }
     ]
    },
@@ -967,7 +975,7 @@
       "id": "en-0064",
       "file": "repo/data/english/spreadsheet/8PumpMachinery.xlsx",
       "atom": "15",
-      "evidence": "8PumpMachinery.xlsx:T2 min(kw·h) where all data rows (file has: repeated header names)"
+      "evidence": "8PumpMachinery.xlsx:T2 min(kw·h) where all data rows (file has: duplicate headers)"
      },
      {
       "dataset": "mimotable",
@@ -1089,6 +1097,32 @@
      }
     ]
    },
+   "oracle-limit: shape: ratio minus 1 (a risk / odds / index ratio read as a percent more or less)": {
+    "misses": 10,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "68d50bea68b662b05e9de6ae213170bc",
+      "file": "clean/statcan/1137.xlsx",
+      "atom": "0.02",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.02: ratio D5=1.02 minus 1 = 0.02"
+     },
+     {
+      "dataset": "hitab",
+      "id": "79687642773070259fe0ed2e8742d82b",
+      "file": "clean/statcan/1137.xlsx",
+      "atom": "0.01",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.01: ratio D6=1.01 minus 1 = 0.01"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c009fc35eefc67dff9eb349cee1c5a84",
+      "file": "clean/statcan/2605.xlsx",
+      "atom": "0.13",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.13: ratio E13=1.13 minus 1 = 0.13"
+     }
+    ]
+   },
    "oracle-limit: shape: group-by aggregate": {
     "misses": 10,
     "examples": [
@@ -1167,32 +1201,6 @@
      }
     ]
    },
-   "oracle-limit: shape: lookup (sign) (one cell)": {
-    "misses": 6,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "8b907717c6c53941a6eaa62785862959",
-      "file": "clean/statcan/1242.xlsx",
-      "atom": "24",
-      "evidence": "1 operand cells named by the question; aggregation opposite"
-     },
-     {
-      "dataset": "hitab",
-      "id": "955e0ccb9725ca7150c3e90cbd8dedc0",
-      "file": "clean/statcan/946.xlsx",
-      "atom": "0.023",
-      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
-     },
-     {
-      "dataset": "hitab",
-      "id": "c7d5bcb908707b186be84fd2e9ce4ef9",
-      "file": "clean/statcan/946.xlsx",
-      "atom": "0.023",
-      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
-     }
-    ]
-   },
    "oracle-limit: shape: hypothetical (what-if)": {
     "misses": 6,
     "examples": [
@@ -1245,6 +1253,32 @@
      }
     ]
    },
+   "oracle-limit: shape: unit conversion (minutes to hours, thousands to billions, percent to fraction)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "48398cf056d256aa345afa2b22475583",
+      "file": "clean/statcan/1032.xlsx",
+      "atom": "4.581961",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 4.581961: F20=4.58196e+06 / 1e+06 (thousands to billions (/1e6)) = 4.581961"
+     },
+     {
+      "dataset": "hitab",
+      "id": "e77b7faaf0ae0f285852f24b0cefe960",
+      "file": "clean/statcan/1621.xlsx",
+      "atom": "0.33",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.33: F13=33 / 100 (percent as a fraction) = 0.33"
+     },
+     {
+      "dataset": "hitab",
+      "id": "5aef72107a2618ee62587514639d8f73",
+      "file": "clean/statcan/1637.xlsx",
+      "atom": "2.416667",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 2.416667: G8=145 / 60 (minutes to hours) = 2.416667"
+     }
+    ]
+   },
    "library: header misnamed": {
     "misses": 5,
     "examples": [
@@ -1268,6 +1302,32 @@
       "file": "clean/statcan/632.xlsx",
       "atom": "60",
       "evidence": "C19: 'men' (named by the question) is not in hedgehog's column '...' (T2) (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: one sum per group (one answer per group)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "8576436244ad61fe7223436e2f59d397",
+      "file": "clean/statcan/2054.xlsx",
+      "atom": "64",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 64: sum of 'doctorate' B29+C29 = 64 | 63.7: sum of 'master's degree' C22+B22 = 63.7 (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "00b12b6400d32e8a88d888442bbd9525",
+      "file": "clean/statcan/2340.xlsx",
+      "atom": "45.2",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 45.2: sum of 'men' I21+I22+I20 = 45.2 | 38.8: sum of 'women' E20+E21+E22 = 38.8 (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "51ac408c1793136139eb429eefdda352",
+      "file": "clean/statcan/2340.xlsx",
+      "atom": "15.4",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 15.4: sum of 'men' I21+I22 = 15.4 | 10.5: sum of 'women' E21+E22 = 10.5 (file has: header missing)"
      }
     ]
    },
@@ -1346,6 +1406,58 @@
       "file": "clean/statcan/2714.xlsx",
       "atom": "95.6",
       "evidence": "2 operand cells named by the question; aggregation max+min (file has: measures mixed)"
+     }
+    ]
+   },
+   "oracle-limit: shape: lookup (sign) (one cell)": {
+    "misses": 5,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "955e0ccb9725ca7150c3e90cbd8dedc0",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.023",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "c7d5bcb908707b186be84fd2e9ce4ef9",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.023",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "d5bd579b2882d962bdc563c00e5efb5d",
+      "file": "clean/statcan/946.xlsx",
+      "atom": "0.036",
+      "evidence": "1 operand cells named by the question; aggregation opposite (file has: header missing)"
+     }
+    ]
+   },
+   "library: side-by-side blocks kept as '(2)' columns": {
+    "misses": 4,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "d608ee27c786ef6c7fe21af936fe5620",
+      "file": "clean/nsf/163_81_tab2.xlsx",
+      "atom": "0.642754",
+      "evidence": "reviewed: 163_81_tab2.xlsx: the right-hand state block (Missouri..Wyoming, G5:L30) is kept as '... (2)' columns of T1, so New York, Texas and Ohio are no row labels (H15 = Ohio 99,329 sits in the row labelled 'Florida'); gold = (CA B10 + NY H12 + TX H23 + FL B15 + OH H15) / B5 = 1,489,342 / 2,317,126 (file has: duplicate headers)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "5e4143651d9b8f8da26c16c7ec36bb1f",
+      "file": "clean/nsf/163_81_tab2.xlsx",
+      "atom": "0.664156",
+      "evidence": "reviewed: 163_81_tab2.xlsx: right-hand state block kept as '(2)' columns (I12 = New York 237,318 in the row labelled 'Connecticut', I20 = South Carolina in 'Indiana'); gold = (NY I12 + CA C10 + FL C15 + SC I20 + CT C12) / C5 = 422,102 / 635,546 (file has: duplicate headers)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "e5ab91cb80629abd65dac3904ff5f317",
+      "file": "clean/nsf/163_81_tab2.xlsx",
+      "atom": "0.658088",
+      "evidence": "reviewed: 163_81_tab2.xlsx: right-hand state block kept as '(2)' columns (K12 = New York, K15 = Ohio, K23 = Texas under other states' labels); gold = (CA E10 + TX K23 + NY K12 + FL E15 + OH K15) / E5 = 1,106,627 / 1,681,580 (file has: duplicate headers)"
      }
     ]
    },
@@ -1453,6 +1565,32 @@
      }
     ]
    },
+   "oracle-limit: shape: ratio of differences (decomposition share)": {
+    "misses": 3,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "e964018e6ca0fefdf93288642d30bf62",
+      "file": "clean/statcan/1853.xlsx",
+      "atom": "0.389381",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.389381: (C13-C8)/(C6-C8) = (39.1-43.5)/(32.2-43.5) (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "6434cadb87d57f0c26568d3fe557b0fe",
+      "file": "clean/statcan/1853.xlsx",
+      "atom": "0.443038",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.443038: (D13-D8)/(D6-D8) = (25.4-32.4)/(16.6-32.4) (file has: header missing)"
+     },
+     {
+      "dataset": "hitab",
+      "id": "f5a0fb0882bd142aa049ae485eb4081f",
+      "file": "clean/statcan/1853.xlsx",
+      "atom": "0.556962",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 0.556962: (D13-D6)/(D8-D6) = (25.4-16.6)/(32.4-16.6) (file has: header missing)"
+     }
+    ]
+   },
    "oracle-limit: shape: forecast / extrapolation": {
     "misses": 3,
     "examples": [
@@ -1461,7 +1599,7 @@
       "id": "F554",
       "file": "tables/business-table07.xlsx",
       "atom": "3903.61",
-      "evidence": "question: Based on the growth trend from 2005 to 2009, predict the number of businesses in “Sports Activities” for 2011 in the “So"
+      "evidence": "question: Based on the growth trend from 2005 to 2009, predict the number of businesses in “Sports Activities” for 2011 in the “So (file has: duplicate headers)"
      },
      {
       "dataset": "realhitbench",
@@ -1536,25 +1674,6 @@
      }
     ]
    },
-   "gold/question: lookup answer is no cell of the file": {
-    "misses": 2,
-    "examples": [
-     {
-      "dataset": "mimotable",
-      "id": "en-0029",
-      "file": "repo/data/english/spreadsheet/PileSingleCalculation.xlsx",
-      "atom": "43,997",
-      "evidence": "gold 43,997 of a lookup question is no source cell"
-     },
-     {
-      "dataset": "mimotable",
-      "id": "en-0197",
-      "file": "repo/data/english/spreadsheet/3333(87).xlsx",
-      "atom": "86",
-      "evidence": "gold 86 of a lookup question is no source cell"
-     }
-    ]
-   },
    "oracle-limit: grounding: row set not named by the question": {
     "misses": 2,
     "examples": [
@@ -1614,6 +1733,30 @@
       "file": "clean/statcan/1087.xlsx",
       "atom": "0.202751",
       "evidence": "2 operand cells named by the question; aggregation diff+div (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: complement (100 - x)": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "4e07d458feff383ba363c6a729db75be",
+      "file": "clean/statcan/1103.xlsx",
+      "atom": "96.95",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 96.95: 100 - average of 12 cells=3.05 = 96.95 (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: shape: average of yearly sums": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "d14e24a3f2b9c66fd82d91008638b3ad",
+      "file": "clean/statcan/1104.xlsx",
+      "atom": "97.958333",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 97.958333: average over 12 columns of the column sums = 1175.5/12 = 97.958333 (file has: header missing)"
      }
     ]
    },
@@ -1677,6 +1820,30 @@
      }
     ]
    },
+   "oracle-limit: shape: sum of named cells, ... placeholders skipped": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "5b07e6f4864ab6d40342013801a109c3",
+      "file": "clean/statcan/608.xlsx",
+      "atom": "38",
+      "evidence": "reviewed: gold reproduced from its operand cells (source): 38: sum B22+B20+B30+B21+B23+B26+B28+B24+B31+B32 = 38 (file has: header missing)"
+     }
+    ]
+   },
+   "oracle-limit: key: a phone number split into number atoms": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "mimotable",
+      "id": "en-0197",
+      "file": "repo/data/english/spreadsheet/3333(87).xlsx",
+      "atom": "86",
+      "evidence": "reviewed: 3333(87).xlsx Sheet1!C2 = '(+86) 571-8502-2088' (row 'Tmall') is the answer; the gold key splits it into 86, 571, 8502, 2088, which are no cells"
+     }
+    ]
+   },
    "oracle-limit: grounding: operand named only in part": {
     "misses": 1,
     "examples": [
@@ -1697,16 +1864,161 @@
       "id": "L282",
       "file": "tables/economy-table27.xlsx",
       "atom": "2",
-      "evidence": "reachable when total-labelled data rows are dropped: economy-table27.xlsx:T1 count(2024-Q3) where Time period (2)='2015, Millions, Euro' (file has: repeated header names)"
+      "evidence": "reachable when total-labelled data rows are dropped: economy-table27.xlsx:T1 count(2024-Q3) where Time period (2)='2015, Millions, Euro'"
      }
     ]
    }
   },
   "audited": [
    [
-    "mimotable",
-    "en-0142",
+    "hitab",
+    "8e02d726bd749fb8cdbb9f9158538f66",
     "gold_wrong"
+   ],
+   [
+    "hitab",
+    "9f273370951dead981788bcb1c9bd903",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "a26ae67eff821dd8815180d2473d1f3a",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "c1036272604531a09e7f15b12bba3852",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "c1b1e4621d9fc4ff188c89d67a0ad646",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "a42c418b775a2df876cfed20619b3ec6",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "a987a0930242546abb3e18bce117d3ce",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "c45d394a8078c05eef243691edc6292e",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "fd1b9e716a05415c00138ffca0176e44",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "ef76e7a0cb1d35531854700bd9b187d2",
+    "ambiguous_question"
+   ],
+   [
+    "hitab",
+    "82c81421a7f18cc9a7129f03771858b1",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "cfd24fd44cc357d073cefe80e4aa3cb3",
+    "ambiguous_question"
+   ],
+   [
+    "hitab",
+    "8d635fa6db27aa71d616e2cccd611820",
+    "ambiguous_question"
+   ],
+   [
+    "hitab",
+    "4556e8c367fb31aad6eec0f44e16b249",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "ab061c7fbd09da8ac94859a28b337a50",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "ae2e9da16dc3dbf015f49a6b7990cff6",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "f09cb5c19db3b2728b09ad63a2eb3dd3",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "8820e18b02d7521046c55cf01cef605d",
+    "ambiguous_question"
+   ],
+   [
+    "hitab",
+    "8b77fbfc125bd106ce019a55e53cbad7",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "69afe4a7a0d27cbb6082a418d24098ba",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "24cdb4939b984d8b4e0bef53869561cd",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "72b073d87be54b32adeffd7a28a0a8f4",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "82d1a3118233601d7a2fa4f956576062",
+    "not_in_file"
+   ],
+   [
+    "hitab",
+    "4877147fa31351106f6cf4616e8ba9e9",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "66ec193ad200738540f6f69200f60a5c",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "b3086dd8c892891ae6284b6888a4f509",
+    "gold_wrong"
+   ],
+   [
+    "hitab",
+    "fc6e19246f7db6013911830eace56fff",
+    "ambiguous_question"
+   ],
+   [
+    "hitab",
+    "059b08ae19c543435738dd7e579ca5f6",
+    "ambiguous_question"
+   ],
+   [
+    "hitab",
+    "e8bc7f6064e64a7b79b49900b4f98416",
+    "gold_wrong"
+   ],
+   [
+    "mimotable",
+    "en-0029",
+    "ambiguous_question"
    ],
    [
     "mimotable",
@@ -1733,40 +2045,48 @@
    "hitab": {
     "counts": {
      "items": 1314,
-     "reachable": 666,
+     "reachable": 669,
      "atoms": 1627,
-     "atoms_reachable": 869,
+     "atoms_reachable": 872,
      "decoys": 3254,
-     "decoys_reachable": 362,
-     "miss_oracle-limit": 505,
-     "loose_only": 448,
-     "single_witness": 511,
-     "miss_library": 31,
-     "miss_gold/question": 222
+     "decoys_reachable": 361,
+     "miss_oracle-limit": 689,
+     "loose_only": 446,
+     "single_witness": 512,
+     "miss_library": 35,
+     "miss_gold/question": 31
     },
     "causes": {
      "oracle-limit: grounding: implicit period (the question names no year)": 53,
      "library: hedgehog header naming": 16,
-     "gold/question: question does not name an operand": 160,
-     "oracle-limit: shape: ratio / share (one column)": 24,
+     "oracle-limit: grounding: operand implied by the question's context": 133,
+     "oracle-limit: shape: ratio / share (one column)": 22,
      "oracle-limit: shape: ratio / share (one row)": 11,
      "oracle-limit: grounding: question paraphrases an operand": 159,
      "oracle-limit: grounding: implicit whole (total row the question does not name)": 41,
+     "gold/question: question does not name an operand": 23,
+     "library: side-by-side blocks kept as '(2)' columns": 4,
      "oracle-limit: grounding: column named only in part": 102,
      "oracle-limit: shape: sum of named cells (one column)": 17,
      "library: operands split into two tables": 1,
      "oracle-limit: shape: difference (one row)": 2,
      "oracle-limit: shape: minimum (one column)": 2,
-     "gold/question: gold not reproduced from its operand cells": 62,
+     "oracle-limit: shape: unit conversion (minutes to hours, thousands to billions, percent to fraction)": 5,
      "oracle-limit: shape: relative change (one row)": 1,
      "oracle-limit: shape: lookup (one column)": 8,
      "oracle-limit: shape: lookup (one row)": 11,
+     "oracle-limit: shape: complement (100 - x)": 1,
+     "oracle-limit: shape: average of yearly sums": 1,
+     "oracle-limit: shape: share of a sum of cells": 22,
+     "oracle-limit: shape: ratio minus 1 (a risk / odds / index ratio read as a percent more or less)": 11,
      "oracle-limit: grounding: implicit whole (national total, both sexes)": 24,
-     "oracle-limit: shape: lookup (sign) (one cell)": 6,
      "library: label path lost": 5,
      "oracle-limit: shape: difference (one column)": 9,
      "oracle-limit: shape: difference (a block)": 1,
      "library: header misnamed": 9,
+     "oracle-limit: shape: ratio of differences (decomposition share)": 3,
+     "gold/question: gold not reproduced from its operand cells": 8,
+     "oracle-limit: shape: one sum per group (one answer per group)": 10,
      "oracle-limit: shape: share of a sum (one column)": 1,
      "oracle-limit: shape: maximum (one column)": 5,
      "oracle-limit: shape: sum of named cells (one row)": 5,
@@ -1775,7 +2095,9 @@
      "oracle-limit: shape: extremes (one column)": 10,
      "oracle-limit: shape: ratio / share (a block)": 2,
      "oracle-limit: shape: maximum (one cell)": 2,
-     "oracle-limit: shape: range (one column)": 7
+     "oracle-limit: shape: sum of named cells, ... placeholders skipped": 1,
+     "oracle-limit: shape: range (one column)": 7,
+     "oracle-limit: shape: lookup (sign) (one cell)": 5
     }
    },
    "mimotable": {
@@ -1787,14 +2109,14 @@
      "decoys": 480,
      "decoys_reachable": 30,
      "single_witness": 85,
-     "miss_oracle-limit": 78,
+     "miss_oracle-limit": 79,
      "loose_only": 41,
-     "miss_gold/question": 2,
+     "miss_gold/question": 1,
      "miss_library": 8
     },
     "causes": {
      "oracle-limit: grounding: operation not named by the question": 25,
-     "gold/question: lookup answer is no cell of the file": 2,
+     "gold/question: lookup answer is no cell of the file": 1,
      "oracle-limit: grounding: column named only in part": 4,
      "library: hedgehog header naming": 7,
      "oracle-limit: shape: sum over a conditional set": 10,
@@ -1805,6 +2127,7 @@
      "oracle-limit: shape: average over a conditional set": 4,
      "library: header missing (generated column name)": 1,
      "oracle-limit: shape: conditional count": 2,
+     "oracle-limit: key: a phone number split into number atoms": 1,
      "oracle-limit: grounding: row set not named by the question": 1,
      "oracle-limit: shape: hypothetical (what-if)": 1,
      "oracle-limit: shape: difference / change of aggregates": 3,
@@ -1814,18 +2137,18 @@
    "realhitbench": {
     "counts": {
      "items": 744,
-     "reachable": 391,
+     "reachable": 392,
      "atoms": 800,
-     "atoms_reachable": 416,
+     "atoms_reachable": 417,
      "decoys": 1600,
      "decoys_reachable": 251,
      "single_witness": 122,
-     "miss_library": 41,
+     "miss_library": 40,
      "loose_only": 141,
      "miss_oracle-limit": 343
     },
     "causes": {
-     "library: header missing (generated column name)": 30,
+     "library: header missing (generated column name)": 29,
      "oracle-limit: grounding: row set not named by the question": 2,
      "oracle-limit: shape: conditional count": 39,
      "oracle-limit: grounding: operation not named by the question": 58,
@@ -1854,32 +2177,32 @@
    "hitab_atoms": 1627,
    "located": 1627,
    "replayable": 1489,
-   "replayable_reachable": 827,
-   "replayable_agree": 458,
-   "replayable_agree_superset": 485,
-   "replayable_agree_subset": 776,
+   "replayable_reachable": 830,
+   "replayable_agree": 461,
+   "replayable_agree_superset": 488,
+   "replayable_agree_subset": 779,
    "single_answer_replayable": 981,
-   "single_answer_reachable": 499,
-   "single_answer_agree_exact": 454,
+   "single_answer_reachable": 502,
+   "single_answer_agree_exact": 457,
    "not_replayable": 138,
    "not_replayable_reachable": 42
   },
   "decoys_by_magnitude": {
    "decimal": {
     "atoms": 1420,
-    "reachable": 718,
+    "reachable": 720,
     "decoys": 2840,
-    "decoys_reachable": 190
+    "decoys_reachable": 189
    },
    "integer > 100": {
     "atoms": 468,
-    "reachable": 230,
+    "reachable": 231,
     "decoys": 936,
     "decoys_reachable": 19
    },
    "integer 11-100": {
     "atoms": 419,
-    "reachable": 249,
+    "reachable": 250,
     "decoys": 838,
     "decoys_reachable": 165
    },
@@ -1892,10 +2215,11 @@
   },
   "families": {
    "library": {
-    "header missing (generated column name)": 25,
+    "header missing (generated column name)": 24,
     "hedgehog header naming": 20,
     "number kept as text": 6,
     "header misnamed": 5,
+    "side-by-side blocks kept as '(2)' columns": 4,
     "label path lost": 4,
     "operands split into two tables": 1,
     "total row mixed into the data": 1
@@ -1903,6 +2227,7 @@
    "oracle-limit": {
     "grounding: question paraphrases an operand": 130,
     "grounding: column named only in part": 116,
+    "grounding: operand implied by the question's context": 107,
     "grounding: operation not named by the question": 78,
     "grounding: implicit period (the question names no year)": 50,
     "shape: argmax / ranking over groups": 47,
@@ -1910,26 +2235,31 @@
     "grounding: implicit whole (total row the question does not name)": 38,
     "grounding: an operand named only in part": 34,
     "shape: ratio / share of unnamed operands": 28,
-    "shape: sum over a conditional set": 26,
+    "shape: sum over a conditional set": 27,
     "shape: difference / change of aggregates": 26,
-    "shape: ratio / share (one column)": 24,
+    "shape: ratio / share (one column)": 22,
+    "shape: share of a sum of cells": 22,
     "grounding: implicit whole (national total, both sexes)": 21,
     "grounding: no operand named by the question": 18,
     "shape: sum of named cells (one column)": 17,
     "shape: average over a conditional set": 17,
     "shape: date arithmetic": 16,
     "shape: ratio / share (one row)": 11,
+    "shape: ratio minus 1 (a risk / odds / index ratio read as a percent more or less)": 10,
     "shape: group-by aggregate": 10,
     "shape: difference (one column)": 9,
     "shape: lookup (one column)": 6,
-    "shape: lookup (sign) (one cell)": 6,
     "shape: hypothetical (what-if)": 6,
+    "shape: unit conversion (minutes to hours, thousands to billions, percent to fraction)": 5,
+    "shape: one sum per group (one answer per group)": 5,
     "shape: maximum (one column)": 5,
     "shape: sum of named cells (one row)": 5,
     "shape: extremes (one column)": 5,
+    "shape: lookup (sign) (one cell)": 5,
     "shape: lookup (one row)": 4,
     "shape: range (one column)": 4,
     "shape: multi-step expression": 4,
+    "shape: ratio of differences (decomposition share)": 3,
     "shape: forecast / extrapolation": 3,
     "shape: difference (one row)": 2,
     "shape: minimum (one column)": 2,
@@ -1937,63 +2267,62 @@
     "grounding: row set not named by the question": 2,
     "shape: median": 2,
     "shape: relative change (one row)": 1,
+    "shape: complement (100 - x)": 1,
+    "shape: average of yearly sums": 1,
     "shape: difference (a block)": 1,
     "shape: share of a sum (one column)": 1,
     "shape: average of named cells (one row)": 1,
     "shape: average+div (one column)": 1,
     "shape: ratio / share (a block)": 1,
+    "shape: sum of named cells, ... placeholders skipped": 1,
+    "key: a phone number split into number atoms": 1,
     "grounding: operand named only in part": 1
    },
-   "gold/question": {
-    "question does not name an operand": 132,
-    "gold not reproduced from its operand cells": 56,
-    "lookup answer is no cell of the file": 2
-   },
+   "gold/question": {},
    "unclassified": {}
   }
  },
  "M": {
-  "violations": 2421,
-  "files": 881,
+  "violations": 2350,
+  "files": 850,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
     "M1 total row in data": 60,
     "M3 measures mixed": 135,
-    "M5 duplicate headers": 18,
+    "M5 duplicate headers": 1,
     "M5 repeated header names": 18,
-    "M5 number as header": 2,
-    "M4 Excel serial as number": 1
+    "M5 number as header": 2
    },
    "mimotable": {
-    "M5 repeated header names": 45,
     "M5 header missing": 254,
-    "M5 duplicate headers": 58,
+    "M5 duplicate headers": 57,
     "M1 total row in data": 10,
-    "M3 measures mixed": 38,
-    "M5 number as header": 6,
+    "M5 repeated header names": 12,
     "M2 percent mixed": 11,
+    "M3 measures mixed": 31,
+    "M5 number as header": 2,
     "M4 Excel serial as number": 13,
     "M6 '(n)' read as negative": 1
    },
    "realhitbench": {
     "M6 '(n)' read as negative": 3,
     "M5 header missing": 963,
-    "M3 measures mixed": 141,
-    "M5 repeated header names": 78,
+    "M3 measures mixed": 138,
     "M1 total row in data": 4,
-    "M5 duplicate headers": 22,
-    "M5 number as header": 14
+    "M5 number as header": 14,
+    "M5 duplicate headers": 49,
+    "M5 repeated header names": 46
    }
   },
   "kinds": {
    "M5 header missing": 1743,
-   "M3 measures mixed": 314,
-   "M5 repeated header names": 141,
-   "M5 duplicate headers": 98,
+   "M3 measures mixed": 304,
+   "M5 duplicate headers": 107,
+   "M5 repeated header names": 76,
    "M1 total row in data": 74,
-   "M5 number as header": 22,
-   "M4 Excel serial as number": 14,
+   "M5 number as header": 18,
+   "M4 Excel serial as number": 13,
    "M2 percent mixed": 11,
    "M6 '(n)' read as negative": 4
   },
@@ -2015,8 +2344,8 @@
    ],
    "M5 duplicate headers": [
     "hitab clean/nsf/163_81_tab2.xlsx T1  | column 'State (2)': the header above ('Extramural performersb') is not in any column name",
-    "hitab clean/nsf/163_81_tab2.xlsx T1  | column 'All R&D expenditures (2)': the header above ('(Thousands of current dollars)') is not in any column name",
-    "hitab clean/nsf/163_81_tab2.xlsx T1  | column 'Intramural performersa / Amount (2)': the header above ('(Thousands of current dollars)') is not in any column name"
+    "mimotable repo/data/chinese/spreadsheet/11地下工程机械.xlsx T2  | column '元 (2)': the source names these columns above the header ('人工费', '养路费及车船使用税', '大修理费')",
+    "mimotable repo/data/chinese/spreadsheet/11地下工程机械.xlsx T2  | column '元 (3)': the source names these columns above the header ('人工费', '养路费及车船使用税', '大修理费')"
    ],
    "M5 repeated header names": [
     "hitab clean/nsf/199_93_tab2.xlsx T2  | 4 adjacent columns named '* / na' (a data row taken as the header?)",
@@ -2026,17 +2355,17 @@
    "M5 number as header": [
     "hitab clean/statcan/2224.xlsx T4  | column 'Aboriginal identity / 208'",
     "hitab clean/statcan/2797.xlsx T2  | column '5.6'",
-    "mimotable repo/data/chinese/spreadsheet/【店铺数据】销售数据表汇总运营部全网-.xlsx T1  | column '利润 / 0.25'"
-   ],
-   "M4 Excel serial as number": [
-    "hitab clean/statcan/621.xlsx T1 original!D5 | 'Employed full-year, full-time / dollars': 3 values like 49380",
-    "mimotable repo/data/english/spreadsheet/3333(80).xlsx T1 Table 1!C4 | 'Date': 10 values like 44301",
-    "mimotable repo/data/english/spreadsheet/3333(80).xlsx T2 Table 2!C4 | 'Date': 10 values like 44301"
+    "mimotable repo/data/chinese/spreadsheet/进销存出入库管理明细表.xlsx T1  | column '1010101'"
    ],
    "M2 percent mixed": [
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '年度合计': 1 percent cells (e.g. Sheet51!B8) and 9 plain (e.g. Sheet51!B2)",
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '1月': 1 percent cells (e.g. Sheet51!C8) and 9 plain (e.g. Sheet51!C2)",
     "mimotable repo/data/chinese/spreadsheet/职场通用 (51).xlsx T1  | '2月': 1 percent cells (e.g. Sheet51!D8) and 8 plain (e.g. Sheet51!D2)"
+   ],
+   "M4 Excel serial as number": [
+    "mimotable repo/data/english/spreadsheet/3333(80).xlsx T1 Table 1!C4 | 'Date': 10 values like 44301",
+    "mimotable repo/data/english/spreadsheet/3333(80).xlsx T2 Table 2!C4 | 'Date': 10 values like 44301",
+    "mimotable repo/data/english/spreadsheet/DeviceRepairandMaintenanceRecordFollow-upForm.xlsx T1 Sheet1!B5 | 'Report Date': 5 values like 44373"
    ],
    "M6 '(n)' read as negative": [
     "mimotable repo/data/english/spreadsheet/3ListofStandards.xlsx T1 Bid List 3!A3 | source '(1)' stored -1 in '序号 / One' (10 such cells next to 54 plain item numbers)",
@@ -2154,5 +2483,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 127
+ "seconds": 138
 }

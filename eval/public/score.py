@@ -36,8 +36,8 @@ from pathlib import Path
 
 csv.field_size_limit(1 << 30)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (HERE, TOKENIZER, col_letter, count_tokens, data_dir, norm_text, parse_number,  # noqa: E402
-                    read_jsonl, words, work_dir, _NUMBER)
+from common import (HERE, TOKENIZER, clock_fraction, col_letter, count_tokens, data_dir, norm_text,  # noqa: E402
+                    parse_number, read_jsonl, words, work_dir, _NUMBER)
 from run_hedgehog import key_of  # noqa: E402
 
 DATASETS = ("mimotable", "realhitbench", "hitab")
@@ -76,7 +76,7 @@ class Atom:
             x = v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
             if x is None:
                 p = parse_number(v)
-                x = p[0] if p else None
+                x = p[0] if p else clock_fraction(v)  # a clock time compares as the day fraction the source stores
             return x is not None and num_eq(self.num, float(x))
         return bool(self.norm) and norm_text(v) == self.norm
 
@@ -97,6 +97,31 @@ def text_numbers(text: str) -> list[float]:
         p = parse_number(m.group(0))
         if p:
             out.append(p[0])
+    return out
+
+
+
+_CSV_BLOCK = re.compile(r"rows \(CSV[^)]*\):\s*$")
+
+
+def catalog_numbers(text: str) -> list[float]:
+    """Numbers of a hedgehog catalog: `text_numbers` of the text, plus every cell of its CSV sample rows (the
+    lines after "all N rows (CSV):" / "first N rows (CSV, ...):"), read as CSV. The free-text pattern skips a
+    number right after a comma (it keeps "1,234" whole), so "0.6,20,5" hid the 20; a quoted "1,234" is one
+    cell. A clock cell counts as its day fraction."""
+    out = text_numbers(text)
+    rows, in_csv = [], False
+    for line in text.splitlines():
+        if in_csv and line.startswith("    ") and not line.startswith("     "):
+            rows.append(line[4:])
+            continue
+        in_csv = bool(_CSV_BLOCK.search(line))
+    for rec in csv.reader(rows):
+        for cell in rec:
+            p = parse_number(cell)
+            x = p[0] if p else clock_fraction(cell)
+            if x is not None:
+                out.append(x)
     return out
 
 
@@ -123,7 +148,8 @@ class Table:
         self.parent_cols: set[int] = set()
 
     def labels(self, i: int, skip: int | None = None) -> list[str]:
-        return [str(self.rows[i][c]) for c in sorted(self.label_cols) if c != skip and c < len(self.rows[i])
+        """Row labels as text whatever their stored type (a year label 2015 stored as a number reads '2015')."""
+        return [label_text(self.rows[i][c]) for c in sorted(self.label_cols) if c != skip and c < len(self.rows[i])
                 and self.rows[i][c] not in (None, "")]
 
     def col_clean(self, c: int) -> tuple[bool, bool]:
@@ -138,6 +164,29 @@ class Table:
                     mixed = True
                     break
         return numeric, not mixed
+
+
+def label_text(v) -> str:
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v)
+
+
+def _year_stub_cols(cols: list[dict], keep: list[int], label_cols: set[int]) -> set[int]:
+    """Number columns of years (all values whole numbers 1900-2100) in the row stub: only label columns or
+    other such year columns to their left. A year that labels the row (a section '2015' under an age
+    group) is a row label stored as a number, not a measure."""
+    out = set()
+    for k, i in enumerate(keep):
+        c = cols[i]
+        if k in label_cols:
+            continue
+        lo, hi = c.get("min"), c.get("max")
+        if c.get("dtype") == "integer" and isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and 1900 <= lo <= hi <= 2100:
+            out.add(k)
+            continue
+        break  # the first measure column ends the stub
+    return out
 
 
 def _cast(v: str):
@@ -183,7 +232,8 @@ def hh_load(dataset: str, rel: str):
             rts = [str(r[rt_i]) for r in body] if rt_i is not None else None
             keep = [i for i, c in enumerate(cols) if c["role"] in ("data", "group")]
             label_cols = {k for k, i in enumerate(keep) if cols[i]["role"] == "group" or cols[i]["dtype"] in ("text", "string")}
-            numeric = {k for k, i in enumerate(keep) if cols[i]["dtype"] in NUMERIC_HH}
+            label_cols |= _year_stub_cols(cols, keep, label_cols)
+            numeric = {k for k, i in enumerate(keep) if cols[i]["dtype"] in NUMERIC_HH and k not in label_cols}
             rows = [[r[i] if i < len(r) else None for i in keep] for r in body]
             tables.append(Table(t["id"], t["source"]["sheet"], [names[i] for i in keep], rows, src, rts, label_cols,
                                 numeric, [cols[i].get("source_column") for i in keep]))
@@ -281,7 +331,9 @@ def operands_by_question(tables: list[Table], qwords: set[str]) -> tuple[int, in
             if not (words(h) & qwords):
                 continue
             vals = [r[c] for r in t.rows if c < len(r) and r[c] not in (None, "")]
-            if not vals or sum(is_numeric_value(v) or parse_number(v) is not None for v in vals) < 0.5 * len(vals):
+            # numeric-looking: numbers, and clock times (typed values; hedgehog writes them "09:30:00")
+            if not vals or sum(is_numeric_value(v) or parse_number(v) is not None or clock_fraction(v) is not None
+                               for v in vals) < 0.5 * len(vals):
                 continue
             n += 1
             numeric, unmixed = t.col_clean(c)
@@ -459,7 +511,7 @@ def reachability(dataset: str, items: list[dict], group_key) -> dict:
         if not computed:
             c["verbatim"] += 1
             catalog = "\n".join(cat for (_, _, cat, _) in loaded)
-            cn, cnum = norm_text(catalog), text_numbers(catalog)
+            cn, cnum = norm_text(catalog), catalog_numbers(catalog)
             mds = [md_load(dataset, f) for f in files]
             mtext = "\n".join((m or {}).get("text") or "" for m in mds)
             mn, mnum = norm_text(mtext), text_numbers(mtext)

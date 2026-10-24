@@ -16,8 +16,10 @@ official confirmation.
 | K | **Compact** — catalog stays small | tokens per file, per question | no regressions |
 
 A miss is allowed only when it is **audited** as one of: the benchmark's gold answer is wrong; the file
-does not contain the information; the question needs knowledge outside the file. Every audited miss is
-listed with its evidence in `eval/accuracy/audit.tsv` (reviewed, never silent).
+does not contain the information; the question needs knowledge outside the file; the question is ambiguous
+(two reasonable readings give different answers). Every audited miss is listed with its evidence (source
+cells + computation) in `eval/accuracy/audit.tsv` (reviewed, never silent); candidates found not auditable
+stay misses with their cause in `eval/accuracy/reviewed.tsv`.
 
 ## Honest data split
 
@@ -48,4 +50,8 @@ listed with its evidence in `eval/accuracy/audit.tsv` (reviewed, never silent).
   wholes), ranges, arg-extremes, adjacent-year changes, complements, tighter pair guards (decoy rates per
   answer type at or below v1); every C miss classified (library / oracle-limit / gold/question) with
   evidence in eval/accuracy/causes.py, source header grounding for generated column names.
+- Done (branch `audit`): measurement hygiene - all 190 C audit candidates checked against the source cells
+  (30 audited with evidence: gold_wrong 22, ambiguous_question 7, not_in_file 1; 160 reclassified in
+  reviewed.tsv as oracle-limit 156 / library 4); clock times are typed values in the scorers; the M checker
+  reviewed per class on a hand-checked sample, its false-positive classes fixed (tests in test_invariants.py).
 - Next: the fix loop on the largest miss clusters.

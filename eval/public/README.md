@@ -80,7 +80,13 @@ about a minute per dataset for hedgehog, a few minutes for the baselines, two mi
 All string comparisons use one normalisation (`common.norm_text`): NFKC, case-folded, accents removed,
 every run of non-alphanumerics → one space. Numbers (`common.parse_number`) read US and European grouping,
 `(500)`, `%`; two numbers match when equal, or equal after rounding to the decimals the answer shows (only
-when it shows decimals); a percent answer also matches its fraction (hedgehog stores 15 % as 0.15).
+when it shows decimals); a percent answer also matches its fraction (hedgehog stores 15 % as 0.15). A clock
+time written `H:MM[:SS]` (hedgehog writes time-of-day cells as `09:30:00`) is a typed value: it compares with a
+numeric answer as the day fraction the source stores (`common.clock_fraction`; 09:30:00 = 0.395833). The numbers of a hedgehog catalog are its free-text numbers plus
+every cell of its CSV sample rows read as CSV (`score.catalog_numbers`; a number right after a comma is not a
+free-text number, so `0.6,20,5` used to hide the 20). Row labels compare as text whatever their stored type, and a
+column of years (whole numbers 1900-2100) in the row stub, left of the first measure, is a label column (a
+section '2015' under an age group; HiTab's year row labels).
 
 ### A. Structure (where labels exist)
 
@@ -139,7 +145,8 @@ operand columns clean numeric columns (numeric dtype, and no row whose label rea
 data row: hedgehog marks them in `_row_type`; pandas has no such column)? HiTab gives the operand cells
 (`[ANSWER]` cells of non-`none` aggregations), so that check is exact; for MiMoTable and RealHiTBench the
 operand columns are *guessed* as the numeric columns whose header shares a word with the question (a
-heuristic; it says whether such columns exist and are clean, not whether they are the right ones).
+heuristic; it says whether such columns exist and are clean, not whether they are the right ones). Clock-time
+columns count as numeric-looking (typed values), not as clean (their dtype is no numeric dtype); dates do not.
 
 Grouping uses each benchmark's own labels: MiMoTable `meta_operation_list` (`lookup` = only Lookup;
 `needs_query` = Calculate / Compare; `not_measured` = any Reasoning, Visualize, Edit), language and table

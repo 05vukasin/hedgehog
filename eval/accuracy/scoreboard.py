@@ -16,8 +16,10 @@ Measures
      k_baseline.json (target: no regression > 1 %).
 Misses are clustered by signature. A C or L miss on a file that has an M violation is clustered under that
 violation ("... (file has: header missing)"): it names the likely library cause; otherwise the measure's own
-cause. Audited misses (audit.tsv: gold_wrong | not_in_file | outside_knowledge, with evidence) leave the
-denominator in the "after audit" score; raw scores count them as misses.
+cause. Audited items (audit.tsv: gold_wrong | not_in_file | outside_knowledge | ambiguous_question, with evidence)
+leave the denominator in the "after audit" score (a pass on an audited item does not count); raw scores count
+them as they are. Reviewed gold/question candidates that are not auditable (reviewed.tsv) keep counting as misses
+under the oracle-limit / library cause of their review.
 """
 
 from __future__ import annotations
@@ -179,6 +181,28 @@ C_HISTORY = [
      "agree_subset": 705, "agree_exact": 402, "replayable": 1489,
      "decoys": {"decimal": (283, 2840), "integer 11-100": (198, 838), "integer <= 10": (282, 720), "integer > 100": (24, 936)},
      "families": "not classified"},
+    {"label": "v2 (a4f047e, before the candidate review), build 5cd30e3711be", "pass": 1187, "items": 2264, "raw": 52.4, "after_audit": 52.5,
+     "agree_subset": 776, "agree_exact": 458, "replayable": 1489,
+     "decoys": {"decimal": (190, 2840), "integer 11-100": (165, 838), "integer <= 10": (269, 720), "integer > 100": (19, 936)},
+     "families": "library 62, oracle-limit 820, gold/question 190, unclassified 0"},
+]
+
+
+# M classes checked by hand against the source cells (2026-10-24, branch audit): a seeded sample of 20 per class
+# (all when fewer) of the checker before the review, real problem (a library cause: hedgehog's output misleads)
+# vs checker false positive; the false-positive classes are fixed in invariants.py (test_invariants.py) and the
+# sample re-scored with the fixed checker. "header missing" (col_X) is not sampled (branch headers).
+M_REVIEW = [
+    # class, violations before / after the fix, sample, real, false positives, real kept / FP kept after, FP classes
+    ("M5 header missing", 1743, 1743, 0, 0, 0, None, None, "not sampled (col_X: branch headers)"),
+    ("M3 measures mixed", 314, 304, 20, 19, 1, 19, 0, "a '%' / 'rate' in a name ('Production %', 'Leading Rate', '坡度1%') on rows of larger numbers"),
+    ("M5 repeated header names", 141, 76, 20, 13, 7, 13, 0, "the source itself repeats the header (literal duplicates, one merged cell over text / mixed columns)"),
+    ("M5 duplicate headers", 98, 107, 20, 9, 11, 9, 0, "the 'header above' is a unit / title line over the stub column, a key/value or form row (new real: names above a unit row taken as the header, regions / categories over repeated year or measure columns; 12 files spot-checked, all real)"),
+    ("M1 total row in data", 74, 74, 20, 20, 0, 20, 0, ""),
+    ("M5 number as header", 22, 18, 20, 16, 4, 16, 0, "a rate parameter under a text header ('利润 / 0.25')"),
+    ("M4 Excel serial as number", 14, 13, 14, 13, 1, 13, 0, "'time' in 'full-time / dollars'"),
+    ("M2 percent mixed", 11, 11, 11, 11, 0, 11, 0, ""),
+    ("M6 '(n)' read as negative", 4, 4, 4, 4, 0, 4, 0, ""),
 ]
 
 
@@ -223,10 +247,13 @@ def score(side: str, examples: int, structure: bool, binary: str) -> dict:
             rr = [r for r in rows if r["dataset"] == ds]
             n = len(rr)
             ok = sum(bool(r[ok_key]) for r in rr)
-            aud = [r for r in rr if not r[ok_key] and (ds, r["id"], name) in audit]
-            per[ds] = {"items": n, "pass": ok, "audited": len(aud),
+            # audited items leave the denominator; a pass on an audited item (e.g. a wrong gold the oracle
+            # happens to reach) does not count either
+            aud = [r for r in rr if (ds, r["id"], name) in audit]
+            apass = sum(bool(r[ok_key]) for r in aud)
+            per[ds] = {"items": n, "pass": ok, "audited": len(aud), "audited_pass": apass,
                        "raw": round(100 * ok / n, 1) if n else None,
-                       "after_audit": round(100 * ok / (n - len(aud)), 1) if n - len(aud) else None}
+                       "after_audit": round(100 * (ok - apass) / (n - len(aud)), 1) if n - len(aud) else None}
             for r in rr:
                 if r[ok_key]:
                     continue
@@ -249,8 +276,10 @@ def score(side: str, examples: int, structure: bool, binary: str) -> dict:
         tot_n = sum(p["items"] for p in per.values())
         tot_ok = sum(p["pass"] for p in per.values())
         tot_a = sum(p["audited"] for p in per.values())
-        per["ALL"] = {"items": tot_n, "pass": tot_ok, "audited": tot_a, "raw": round(100 * tot_ok / tot_n, 1) if tot_n else None,
-                      "after_audit": round(100 * tot_ok / (tot_n - tot_a), 1) if tot_n - tot_a else None}
+        tot_ap = sum(p["audited_pass"] for p in per.values())
+        per["ALL"] = {"items": tot_n, "pass": tot_ok, "audited": tot_a, "audited_pass": tot_ap,
+                      "raw": round(100 * tot_ok / tot_n, 1) if tot_n else None,
+                      "after_audit": round(100 * (tot_ok - tot_ap) / (tot_n - tot_a), 1) if tot_n - tot_a else None}
         return {"per": per, "clusters": {k: v for k, v in sorted(clusters.items(), key=lambda kv: -len(kv[1]))},
                 "audited": audited}
 
@@ -349,7 +378,8 @@ def md(res: dict, examples: int) -> str:
                  f"F1@0.8 {100 * (ts.get('table_f1_iou80') or 0):.1f} % | | {TARGETS['S']} | |")
     for m, label in (("L", "L lookup"), ("C", "C computation")):
         a = res[m]["per"]["ALL"]
-        L.append(f"| {label} | {a['pass']}/{a['items']} = {a['raw']} % | {a['after_audit']} % ({a['audited']} audited) | {TARGETS[m]} | {a['items'] - a['pass'] - a['audited']} |")
+        misses = a['items'] - a['pass'] - (a['audited'] - a.get('audited_pass', 0))
+        L.append(f"| {label} | {a['pass']}/{a['items']} = {a['raw']} % | {a['after_audit']} % ({a['audited']} audited) | {TARGETS[m]} | {misses} |")
     fam = res["C"].get("families") or {}
     L.append("| C misses by family | " + ", ".join(f"{f} {sum(v.values())}" for f, v in fam.items()) + " | | unclassified 0 | |")
     L.append(f"| M misleading | {res['M']['violations']} violations in {res['M']['files']} files | | {TARGETS['M']} | {res['M']['violations']} |")
@@ -394,6 +424,17 @@ def md(res: dict, examples: int) -> str:
             for k, v in list(res[m]["clusters"].items())[:20 if m == "L" else 40]:
                 ex = v[0]
                 L.append(f"| {k} | {len(v)} | {ex['dataset']} {ex['id']} · {Path(ex['file']).name} · `{str(ex['atom'])[:30]}` · {str(ex['evidence'])[:140].replace('|', '/')} |")
+        L += ["", "## M classes: hand review of the checker (2026-10-24)", "",
+              "A seeded sample per class checked against the source cells: real problem (library: the output misleads) "
+              "or checker false positive. False-positive classes are fixed in invariants.py (tests: test_invariants.py, a "
+              "true-positive test next to each false-positive one); the fixed checker on the same sample: recall = real "
+              "kept / real, false positives kept.", "",
+              "| Class | Before | After | Sample | Real | FP | Precision before | After: real kept (recall) / FP kept | FP class (fixed) |",
+              "|---|---|---|---|---|---|---|---|---|"]
+        for c, b, a2, n, tp, fp, tk, fk, why in M_REVIEW:
+            prec = f"{100 * tp / n:.0f} %" if n else "-"
+            after = f"{tk} / {fk}" if tk is not None else "-"
+            L.append(f"| {c} | {b} | {a2} | {n} | {tp} | {fp} | {prec} | {after} | {why} |")
         L += ["", "## M violations: examples", ""]
         for k in kinds:
             for e in res["M"]["examples"][k][:examples]:
@@ -415,7 +456,10 @@ def md(res: dict, examples: int) -> str:
                  f"{b['decoys_reachable']} ({100 * b['decoys_reachable'] / max(1, b['decoys']):.0f} %) |")
     if res["side"] == "dev":
         cand = [(k, x) for k, v in res["C"]["clusters"].items() if k.startswith("gold/question: ") for x in v]
+        rv = [x for v in res["C"]["clusters"].values() for x in v if str(x.get("evidence", "")).startswith("reviewed: ")]
         L += ["", f"## C audit candidates (gold/question: {len(cand)}, for review; not audited)", "",
+              f"Reviewed against the source cells and found not auditable (reviewed.tsv; the gold is right and in the file): "
+              f"{len(rv)} misses, counted under their oracle-limit / library cause above. Audited: audit.tsv.", "",
               "| Cause | Item | File | Gold | Evidence |", "|---|---|---|---|---|"]
         for k, x in cand[:40]:
             L.append(f"| {k[15:]} | {x['dataset']} {x['id']} | {Path(x['file']).name} | `{str(x['atom'])[:20]}` | {str(x['evidence'])[:160].replace('|', '/')} |")

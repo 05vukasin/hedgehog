@@ -22,6 +22,7 @@ build under `../scratch-archive/accuracy/work/<sha256[:12] of the binary>/`), th
 | `invariants.py` | M: misleading-output invariants |
 | `scoreboard.py` | F, S, L, C, M, K, miss clusters, audit, RESULTS.md |
 | `audit.tsv` | audited misses with evidence |
+| `reviewed.tsv` | reviewed audit candidates that are not auditable: their oracle-limit / library cause with evidence |
 | `k_baseline.json` | K baseline (catalog tokens per file), written with `scoreboard.py --update-k` |
 
 ## Split
@@ -145,14 +146,20 @@ RESULTS.md lists them ("C misses by family and cause") and the audit candidates.
 
 Per normalized table (`invariants.py` docstring): M1 a total-labelled row among data rows whose number is the
 sum of its block (arithmetic, 0.1 %); M2 percent and plain numbers mixed in a column, percent scale mixed;
-M3 percent/rate rows and counts mixed in a column without a unit; M4 dates out of 1900-2100 (unless the source
+M3 percent/rate rows and counts mixed in a column without a unit (a row is percent/rate only when all its numbers
+stay within 105: a '%' in a name is none); M4 dates out of 1900-2100 (unless the source
 writes that year), dates collapsed, a source date text stored with another day, Excel serials left as numbers
 in a date column; M5 `col_X` columns, duplicate names whose header above was lost, 3+ adjacent columns with one
-name (a data row taken as the header), a plain number as a header; M6 an outline number "(4)" stored as −4.
+name (a data row taken as the header), a plain number as a header; M6 an outline number "(4)" stored as −4. The checker was reviewed by hand per class on a seeded sample against
+the source cells (2026-10-24; precision table in RESULTS.md, "M classes"); its false-positive classes are fixed
+and tested (`test_invariants.py`: `python3 -I -m unittest discover -s eval/accuracy -p 'test_*.py'`).
 
 ## Clusters and audit
 
 A C or L miss on a file that has an M violation is clustered under that violation (most specific first), else
 under the measure's own cause. `audit.tsv` lists misses that are not hedgehog's: `gold_wrong`, `not_in_file`,
-`outside_knowledge`, each with evidence checked against the source cells. Scores are reported raw and after
-audit (audited misses leave the denominator). Never audit a miss without evidence.
+`outside_knowledge`, `ambiguous_question` (two reasonable readings give different answers; both shown), each with
+evidence checked against the source cells (independent reader, eval/fidelity/source.py). Scores are reported raw
+and after audit (audited items leave the denominator; a pass on an audited item does not count). Never audit a
+miss without evidence. `reviewed.tsv` lists gold/question candidates checked the same way and found NOT auditable
+(the gold is right and in the file): they stay misses under the oracle-limit / library cause recorded there.
