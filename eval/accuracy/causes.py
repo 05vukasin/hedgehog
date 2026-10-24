@@ -209,7 +209,8 @@ def hitab_cause(it: dict, atom: dict, tables: list, q) -> tuple[str, str, str] |
         for e in c.get("left_path") or []:
             if O.TOTAL_LABEL.search(O._n(e)) or any(_same(e, x) for x in roots):
                 continue  # HiTab roots its left tree at the label column's header or a total row
-            if q.entity(e) and not any(_same(e, x) for x in labs) and not _same(e, t.headers[k]):
+            if q.entity(e) and not any(_same(e, x) for x in labs) and not _same(e, t.headers[k]) \
+                    and not (labs and _labels_other_copy(e, t, i, tables)):
                 return LIB, "label path lost", f"{c.get('a1')}: '{e}' (named by the question) is no label of hedgehog's row {labs[:4]} ({t.id})"
         segs = t.headers[k].split(" / ")
         for e in c.get("top_path") or []:
@@ -332,6 +333,21 @@ def _loose_reason(progs, res: dict, q) -> tuple[str, str, str] | None:
             return LIM, "grounding: operation not named by the question", ""
         return LIM, "grounding: an operand named only in part", ""
     return None
+
+
+def _labels_other_copy(e: str, t, i: int, tables: list) -> bool:
+    """HiTab's left path is the sheet row's left stub: for a cell of the right-hand copy of two side-by-side
+    lists (163_81_tab2: Missouri..Wyoming in G:L beside Alabama..Mississippi in A:F) it names the left copy's
+    label of the same source row, which hedgehog keeps in another table. Only for a row with labels of its own
+    (a table split away from its labels is still hedgehog's miss)."""
+    src = t.src_rows[i] if t.src_rows and i < len(t.src_rows) else -1
+    if src < 0:
+        return False
+    for t2 in tables:
+        i2 = t2.by_src.get(src) if t2 is not t and t2.sheet == t.sheet else None
+        if i2 is not None and any(_same(e, x) for x in t2.labels(i2)):
+            return True
+    return False
 
 
 _REVIEWED: dict | None = None

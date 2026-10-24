@@ -13,6 +13,7 @@ mod blocks;
 mod changepoint;
 mod cells;
 pub mod params;
+mod repeat;
 mod tables;
 
 use crate::analysis::{Role, SheetLayout};
