@@ -57,6 +57,29 @@ fn table_at_a1() {
 }
 
 #[test]
+fn sparse_right_edge_text_is_data_when_covered_by_a_header() {
+    for header in ["absent", "explicit", "merged"] {
+        let s = fixture(&format!("comment_header_{header}"), |ws| {
+            table(ws, 0, 0, &["Item", "Quantity", "Value"], 6, "Item");
+            match header {
+                "explicit" => { ws.write_string(0, 3, "Remark").unwrap(); }
+                "merged" => { ws.merge_range(0, 2, 0, 3, "Value", &Format::new()).unwrap(); }
+                _ => {}
+            }
+            ws.write_string(2, 3, "check!").unwrap();
+            ws.write_string(4, 3, "per reviewer").unwrap();
+        });
+        let l = run(&s);
+        assert_eq!(l.tables.len(), 1, "{header}");
+        let headed = header != "absent";
+        assert_eq!(l.tables[0].rect.right, if headed { 3 } else { 2 }, "{header}");
+        for row in [2, 4] {
+            assert_eq!(role(&s, &l, row, 3), if headed { Role::Data } else { Role::Note }, "{header}");
+        }
+    }
+}
+
+#[test]
 fn offset_table_with_title_and_notes() {
     let s = fixture("offset", |ws| {
         ws.write_string(1, 2, "Sales report 2001").unwrap(); // title, separated by a blank row
