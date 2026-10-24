@@ -859,15 +859,16 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     // A comment column right of the table ("check!", "per KL 3/4" on a row or two): no header
     // cell, only text, on few body rows. Its cells are notes, not a data column (B38).
     let mut comments: Vec<usize> = Vec::new();
-    if seg.header > 0 && rect.right > rect.left + 1 {
+    if seg.header > 0
+        && rect.right > rect.left + 1
+        && !rows[seg.start..body_start].iter().any(|r| r.filled().any(|e| e.left <= rect.right && e.right >= rect.right))
+    {
         let c = rect.right;
-        let headed = rows[seg.start..body_start].iter().any(|r| r.filled().any(|e| e.left <= c && e.right >= c));
         let body = &rows[body_start..seg.end];
         let at_c: Vec<&Entry> = body.iter().flat_map(|r| r.filled().filter(|e| e.left == c && e.right == c)).collect();
         let others = body.iter().flat_map(|r| r.filled()).any(|e| e.left < c && e.right >= c);
         let left_fill = body.iter().filter(|r| r.filled().any(|e| e.left == c - 1)).count();
-        if !headed
-            && !others
+        if !others
             && !at_c.is_empty()
             && at_c.len() <= COMMENT_MAX_CELLS.max((COMMENT_MAX_FRAC * body.len() as f32) as usize)
             && at_c.iter().all(|e| e.kind == Kind::Text)
