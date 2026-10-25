@@ -564,4 +564,16 @@ mod tests {
         assert_eq!(text_kind("n/a"), Kind::Missing);
         assert_eq!(text_kind("Q1 2003"), Kind::Text);
     }
+    #[test]
+    fn compound_sd_is_measurement_layout_evidence_only() {
+        for value in ["40.3 (SD 12.9", "39.7 (SD 12.6)", "55 (SD 13", "-2 (SD 0)"] {
+            assert_eq!(text_kind(value), Kind::Num, "{value}");
+        }
+        for value in ["Mean (SD)", "Number (SD reporting)", "40.3 (SD pending", "40.3 (SD -1)",
+            "40.3 (SD 12.9) years", "NaN (SD 2)", "40.3 (SD inf)", "40.3 (SD 12.9))",
+            "40.3 (SD 12.9) other", "40.3 SD 12.9", "SD 12.9"] {
+            assert_eq!(text_kind(value), Kind::Text, "{value}");
+        }
+    }
+
 }
