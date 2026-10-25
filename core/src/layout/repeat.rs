@@ -211,13 +211,14 @@ mod tests {
 
     #[test]
     fn stacked_copies_require_every_block_and_never_share_body_merges() {
-        for case in 0..6 {
+        for case in 0..7 {
             let mut sheet = Sheet::default();
             let mut rows = Vec::new();
             for block in 0..2u32 {
                 let top = 9 * block;
                 if !(case == 3 && block == 1) { sheet.merges.push(Rect { top, bottom: top, left: 0, right: 3 }); }
                 for offset in 0..8u32 {
+                    if case == 6 && offset == 1 { continue; }
                     let row = top + offset;
                     let values = match offset {
                         0 => vec![(0, Value::Text(format!("Metric {block}")))],
@@ -228,17 +229,17 @@ mod tests {
                     };
                     let mut entries = Vec::new();
                     for (col, value) in values {
-                        if case >= 4 && block == 1 && offset == 4 && col == 2 { continue; }
+                        if (case == 4 || case == 5) && block == 1 && offset == 4 && col == 2 { continue; }
                         let cell = sheet.cells.len();
                         let kind = if matches!(value, Value::Number(_)) { Kind::Num } else { Kind::Text };
                         sheet.cells.push(Cell { row, col, value: Some(value), formula: None });
-                        let right = if offset == 0 { 3 } else if case >= 4 && block == 1 && offset == 4 && col == 1 { 2 } else { col };
+                        let right = if offset == 0 { 3 } else if (case == 4 || case == 5) && block == 1 && offset == 4 && col == 1 { 2 } else { col };
                         entries.push(Entry { row, left: col, right, bottom: row, kind, label_num: false, date: false, agg: Agg::None, rule: false, cell: Some(cell) });
                     }
                     rows.push(Row { row, entries });
                 }
             }
-            if case >= 4 {
+            if case == 4 || case == 5 {
                 sheet.merges.push(Rect { top: 13, bottom: 13, left: 1, right: 2 });
                 if case == 5 {
                     let i = sheet.cells.iter().position(|c| c.row == 13 && c.col == 1).unwrap();

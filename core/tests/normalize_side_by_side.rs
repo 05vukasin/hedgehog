@@ -152,3 +152,20 @@ fn repeated_value_headers_over_one_label_column_stay_one_table() {
     });
     assert_eq!(n.tables.len(), 1, "{:?}", n.tables.iter().map(names).collect::<Vec<_>>());
 }
+
+#[test]
+fn merged_titles_units_and_footnotes_do_not_disable_legacy_state_copies() {
+    let n = normalize("states_shared_notes", |ws| {
+        states(ws, true);
+        ws.merge_range(0, 0, 0, 11, "Table 2. State agency expenditures for R&D, by state and performer", &rust_xlsxwriter::Format::new()).unwrap();
+        ws.merge_range(1, 0, 1, 11, "(Thousands of current dollars)", &rust_xlsxwriter::Format::new()).unwrap();
+        ws.merge_range(13, 0, 13, 11, "a Intramural performers include employees within the same state department", &rust_xlsxwriter::Format::new()).unwrap();
+        ws.merge_range(14, 0, 14, 11, "SOURCE: National Science Foundation", &rust_xlsxwriter::Format::new()).unwrap();
+    });
+    assert_eq!(n.tables.len(), 2);
+    assert_eq!(lookup(&n, "State", "Ohio", "All R&D expenditures"), Some(18017.0));
+    assert_eq!(lookup(&n, "State", "Florida", "All R&D expenditures"), Some(8017.0));
+    for t in &n.tables {
+        assert!(names(t).iter().all(|name| !name.ends_with("(2)")), "{:?}", names(t));
+    }
+}
