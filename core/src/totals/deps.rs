@@ -50,19 +50,40 @@ impl DependencyIndex {
         col_keys.sort_unstable();
 
         let mut marks = vec![0u8; sheet.cells.len()];
+        // Per column, one certified filled interval for each mark bit. Empty until needed;
+        // unlike a position cache, this stays bounded by the existing column count.
+        let mut covered: Vec<[(usize, usize); 2]> = Vec::new();
         let mut budget = MARK_BUDGET;
         'outer: for f in &formulas {
             let bits = if f.parsed.kind.is_aggregate() { REFERENCED | BY_AGGREGATE } else { REFERENCED };
             for r in f.parsed.refs.iter().filter(|r| r.is_local(&sheet.name)) {
                 let lo = col_keys.partition_point(|&c| c < r.rect.left);
                 let hi = col_keys.partition_point(|&c| c <= r.rect.right);
-                for col in &col_keys[lo..hi] {
+                for (k, col) in col_keys.iter().enumerate().take(hi).skip(lo) {
                     let cells = &columns[col];
                     let a = cells.partition_point(|&(row, _)| row < r.rect.top);
                     let b = cells.partition_point(|&(row, _)| row <= r.rect.bottom);
-                    for &(row, idx) in &cells[a..b] {
-                        if (row, *col) != (f.row, f.col) {
-                            marks[idx] |= bits;
+                    if covered.is_empty() { covered.resize(col_keys.len(), [(0, 0); 2]); }
+                    let bit = (bits & BY_AGGREGATE != 0) as usize;
+                    let (start, end) = covered[k][bit];
+                    if a < start || b > end {
+                        let mut self_skipped = false;
+                        for &(row, idx) in &cells[a..b] {
+                            if (row, *col) != (f.row, f.col) {
+                                marks[idx] |= bits;
+                            } else {
+                                self_skipped = true;
+                            }
+                        }
+                        if !self_skipped && a < b {
+                            for interval in &mut covered[k][..=bit] {
+                                let (start, end) = *interval;
+                                if a <= end && start <= b {
+                                    *interval = (a.min(start), b.max(end));
+                                } else if b - a >= end - start {
+                                    *interval = (a, b);
+                                }
+                            }
                         }
                     }
                     budget = budget.saturating_sub(b - a + 1);
