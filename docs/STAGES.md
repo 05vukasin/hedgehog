@@ -5,16 +5,16 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (iteration 9 accepted, release 53fbb72abdae, 2026-10-25)
+## Current state (iteration 10 accepted, release fccdb74be45e, 2026-10-25)
 
 | Measure | Value | Target |
 |---|---|---|
 | F fidelity: values / dates / text changed (MiMoTable · RealHiTBench · HiTab) | 0/0/0 · 0/0/0 · 0/0/0 | 0 |
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
 | L lookups | 5,498 / 5,634 = 97.6 % raw, 97.7 % after audit (127 misses) | 100 % after audit |
-| C calculations | 1,198 / 2,264 proven; library misses 41; oracle-limit ≈ 989; gold/question 2 unreviewed | library misses 0 |
+| C calculations | 1,201 / 2,264 proven; library misses 37; oracle-limit ≈ 990; gold/question 2 unreviewed | library misses 0 |
 | M misleading-info violations | 1,539 in 758 files (1,357 are columns without header text) | 0 (or documented policy) |
-| K catalog tokens / file | hitab 774, mimotable 972, realhitbench 771 | no growth |
+| K catalog tokens / file | hitab 773, mimotable 972, realhitbench 771 | no growth |
 | S HiTab table F1@0.8 | 98.9 % (unchanged reproduced baseline; old ledger was stale) | — |
 | Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
 
@@ -209,3 +209,22 @@ show NYISO normalization -12.05% and wide CSV -3.03%, each six of six wins, with
 exact exports/MCP responses. MCP and RSS changes are mixed; NYISO normalization
 median RSS rises about 3.5 MiB. The roughly 4 MB vendor footprint is documented,
 with pinned source checksums and licenses. Local integration only.
+
+## Iteration 10 accepted
+
+See [iteration 10 evidence](iteration-10.md). Release `fccdb74be45e` preserves
+StatCan 632 as one cohort table with 42 records and 13 groups, keeping exact
+mean/SD text and header provenance. Three computation checks recover;
+C rises 1198 to 1201/2264, L and M remain unchanged. Strict comparison passes
+4055 files with no new fidelity regressions or L/C/M misses. All 562 release
+tests, quick checks, Clippy, 50 identical goldens, both structure gates, full
+fidelity, Node21/TypeScript, 41358-segment equivalence and eight final source
+checkers pass. Three independent final reviews pass.
+
+Manifest statistics avoid copied prefixed keys while retaining exact formatted
+numeric identity. Six same-accuracy pairs show NYISO export -2.39% (six wins),
+with exact exports/MCP responses. Final accepted-baseline export medians change
+-1.19% financial, -1.52% NYISO (five wins) and -1.56% wide CSV. MCP and memory
+changes remain mixed; no general MCP or memory improvement is claimed. All
+profiling instrumentation is removed. Workers finish before capped heavy jobs;
+resources and the memory guard are checked. Local integration only.

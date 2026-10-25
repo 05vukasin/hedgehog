@@ -9,10 +9,10 @@
   "hitab": {
    "files": 1303,
    "cell_role_acc": 0.7423,
-   "table_f1_iou50": 0.9939,
-   "table_f1_iou80": 0.9885,
+   "table_f1_iou50": 0.9943,
+   "table_f1_iou80": 0.9889,
    "header_exact": [
-    1251,
+    1252,
     1301
    ]
   },
@@ -456,11 +456,11 @@
   "per": {
    "hitab": {
     "items": 1314,
-    "pass": 673,
+    "pass": 676,
     "audited": 29,
     "audited_pass": 0,
-    "raw": 51.2,
-    "after_audit": 52.4
+    "raw": 51.4,
+    "after_audit": 52.6
    },
    "mimotable": {
     "items": 206,
@@ -480,16 +480,16 @@
    },
    "ALL": {
     "items": 2264,
-    "pass": 1198,
+    "pass": 1201,
     "audited": 35,
     "audited_pass": 1,
-    "raw": 52.9,
-    "after_audit": 53.7
+    "raw": 53.0,
+    "after_audit": 53.8
    }
   },
   "clusters": {
    "oracle-limit: grounding: question paraphrases an operand": {
-    "misses": 131,
+    "misses": 132,
     "examples": [
      {
       "dataset": "hitab",
@@ -1242,32 +1242,6 @@
      }
     ]
    },
-   "library: header misnamed": {
-    "misses": 5,
-    "examples": [
-     {
-      "dataset": "hitab",
-      "id": "aef3fe35c6acb7697d2e128853927a6d",
-      "file": "clean/statcan/1817.xlsx",
-      "atom": "67",
-      "evidence": "D10: 'men' (named by the question) is not in hedgehog's column 'Average time spent (participants) / Men (ref.) / minutes' (T1) (file has: header missing)"
-     },
-     {
-      "dataset": "hitab",
-      "id": "e27906b805a65c5f8a4a76e1d14d4be6",
-      "file": "clean/statcan/632.xlsx",
-      "atom": "16",
-      "evidence": "C7: 'men' (named by the question) is not in hedgehog's column '...' (T2) (file has: header missing)"
-     },
-     {
-      "dataset": "hitab",
-      "id": "da168859d2d0329900f4eabfbc8e0b7c",
-      "file": "clean/statcan/632.xlsx",
-      "atom": "60",
-      "evidence": "C19: 'men' (named by the question) is not in hedgehog's column '...' (T2) (file has: header missing)"
-     }
-    ]
-   },
    "oracle-limit: shape: one sum per group (one answer per group)": {
     "misses": 5,
     "examples": [
@@ -1754,6 +1728,18 @@
      }
     ]
    },
+   "library: header misnamed": {
+    "misses": 1,
+    "examples": [
+     {
+      "dataset": "hitab",
+      "id": "aef3fe35c6acb7697d2e128853927a6d",
+      "file": "clean/statcan/1817.xlsx",
+      "atom": "67",
+      "evidence": "D10: 'men' (named by the question) is not in hedgehog's column 'Average time spent (participants) / Men (ref.) / minutes' (T1) (file has: header missing)"
+     }
+    ]
+   },
    "oracle-limit: shape: share of a sum (one column)": {
     "misses": 1,
     "examples": [
@@ -2039,16 +2025,16 @@
    "hitab": {
     "counts": {
      "items": 1314,
-     "reachable": 673,
+     "reachable": 676,
      "atoms": 1627,
-     "atoms_reachable": 879,
+     "atoms_reachable": 885,
      "decoys": 3254,
      "decoys_reachable": 375,
-     "miss_oracle-limit": 699,
-     "loose_only": 451,
+     "miss_oracle-limit": 701,
+     "loose_only": 446,
      "single_witness": 509,
      "miss_gold/question": 33,
-     "miss_library": 16
+     "miss_library": 8
     },
     "causes": {
      "oracle-limit: grounding: implicit period (the question names no year)": 53,
@@ -2056,7 +2042,7 @@
      "oracle-limit: grounding: operand implied by the question's context": 133,
      "oracle-limit: shape: ratio / share (one column)": 22,
      "oracle-limit: shape: ratio / share (one row)": 11,
-     "oracle-limit: grounding: question paraphrases an operand": 160,
+     "oracle-limit: grounding: question paraphrases an operand": 162,
      "oracle-limit: grounding: implicit whole (total row the question does not name)": 41,
      "oracle-limit: shape: operands in two side-by-side tables": 4,
      "oracle-limit: grounding: column named only in part": 100,
@@ -2077,7 +2063,7 @@
      "library: label path lost": 5,
      "oracle-limit: shape: difference (one column)": 9,
      "oracle-limit: shape: difference (a block)": 1,
-     "library: header misnamed": 9,
+     "library: header misnamed": 1,
      "oracle-limit: shape: ratio of differences (decomposition share)": 3,
      "gold/question: gold not reproduced from its operand cells": 8,
      "oracle-limit: shape: one sum per group (one answer per group)": 10,
@@ -2171,10 +2157,10 @@
    "hitab_atoms": 1627,
    "located": 1627,
    "replayable": 1489,
-   "replayable_reachable": 836,
+   "replayable_reachable": 842,
    "replayable_agree": 462,
    "replayable_agree_superset": 488,
-   "replayable_agree_subset": 784,
+   "replayable_agree_subset": 790,
    "single_answer_replayable": 981,
    "single_answer_reachable": 504,
    "single_answer_agree_exact": 458,
@@ -2196,7 +2182,7 @@
    },
    "integer 11-100": {
     "atoms": 419,
-    "reachable": 251,
+    "reachable": 257,
     "decoys": 838,
     "decoys_reachable": 169
    },
@@ -2212,13 +2198,13 @@
     "header missing (generated column name)": 18,
     "hedgehog header naming": 6,
     "number kept as text": 6,
-    "header misnamed": 5,
     "label path lost": 4,
     "operands split into two tables": 1,
+    "header misnamed": 1,
     "total row mixed into the data": 1
    },
    "oracle-limit": {
-    "grounding: question paraphrases an operand": 131,
+    "grounding: question paraphrases an operand": 132,
     "grounding: column named only in part": 115,
     "grounding: operand implied by the question's context": 107,
     "grounding: operation not named by the question": 84,
@@ -2369,7 +2355,7 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 773.5,
+    "mean": 773.4,
     "median": 692,
     "p90": 1244,
     "max": 2344
@@ -2473,5 +2459,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 114
+ "seconds": 115
 }
