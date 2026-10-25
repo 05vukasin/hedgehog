@@ -79,7 +79,7 @@ fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLay
     let t = std::time::Instant::now();
     let (sigs, search) = changepoint::time_spent();
     for region in regions {
-        tables::analyze_region(sheet, region, &mut out);
+        tables::analyze_region(sheet, region, &mut out, false);
     }
     let (sigs2, search2) = changepoint::time_spent();
     let (sigs, search) = (sigs2.saturating_sub(sigs), search2.saturating_sub(search));

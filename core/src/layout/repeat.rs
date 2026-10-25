@@ -90,9 +90,7 @@ fn copies(sheet: &Sheet, region: &Region) -> Option<Vec<(u32, u32)>> {
                     first.len() >= 2 && first.iter().all(|(l, x)| t.iter().any(|(l2, x2)| *l2 == l + p && x2 == x))
                 }
             });
-            let crossing_body = rows[body0..].iter().flat_map(|r| &r.entries)
-                .any(|e| ranges[..ranges.len() - 1].iter().any(|&(_, cut)| e.left <= cut && e.right > cut));
-            if !stacked && !crossing_body && body_fits(sheet, &rows[h + 1..], &ranges, p) {
+            if !stacked && body_fits(sheet, &rows[h + 1..], &ranges, p) {
                 return Some(ranges);
             }
         }
@@ -140,8 +138,9 @@ fn body_fits(sheet: &Sheet, rows: &[Row], ranges: &[(u32, u32)], p: u32) -> bool
     })
 }
 
-/// The region cut into its side-by-side copies (None: no repeated copies).
-pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<Vec<Region>> {
+/// The copies and whether they came from the validated stacked/ranked path.
+/// The transient proof flag scopes shared-header handling to those direct children.
+pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<(Vec<Region>, bool)> {
     // Explicit full-width titles anchor stacked blocks before their horizontal
     // copies are considered. Validate every block, so a later comparison or
     // unrelated table cannot inherit the first block's split.
@@ -160,16 +159,40 @@ pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<Ve
             let rect = Rect { top: rows[0].row, bottom: rows.last().unwrap().bottom(), ..region.rect };
             Region { rect, rows }
         }).collect();
-        let ranges = copies(sheet, &parts[0])?;
-        if !parts[1..].iter().all(|part| copies(sheet, part).as_ref() == Some(&ranges)) { return None; }
-        let mut out = Vec::new();
-        for part in parts { out.extend(split_repeated_copies(sheet, &part)?); }
-        return Some(out);
+        if let Some(ranges) = copies(sheet, &parts[0]) {
+            let ranked = |part: &Region| {
+                let rows = &part.rows;
+                rows.len() >= 5 && rows[1].n() == ranges.len()
+                    && rows[1].filled().zip(&ranges).all(|(e, &(left, _))| e.left == left && e.right == left && e.bottom == e.row && e.kind == Kind::Text)
+                    && rows[1].filled().map(|e| norm(sheet, e)).collect::<HashSet<_>>().len() == ranges.len()
+                    && rows[2].n() == region.width() as usize
+                    && rows[2].filled().enumerate().all(|(k, e)| e.left == region.rect.left + k as u32 && e.right == e.left && e.bottom == e.row && e.kind == Kind::Text)
+                    && rows.iter().enumerate().all(|(k, row)| row.row == rows[0].row + k as u32)
+                    && rows[3..].iter().all(|row| row.n() == region.width() as usize
+                        && row.filled().enumerate().all(|(k, e)| e.left == region.rect.left + k as u32 && e.right == e.left && e.bottom == e.row
+                            && if ranges.iter().any(|&(left, _)| left == e.left) { e.kind == Kind::Text } else { e.kind == Kind::Num && !e.label_num }))
+            };
+            if parts.iter().all(|part| ranked(part) && copies(sheet, part).as_ref() == Some(&ranges)) {
+                let mut out = Vec::new();
+                for part in parts {
+                    let (mut children, _) = split_repeated_copies(sheet, &part)?;
+                    let caption = &part.rows[0];
+                    for child in &mut children {
+                        // Share only this proven real metric caption, never body cells.
+                        if child.rows[0].row != caption.row {
+                            let entries = caption.entries.iter().map(|e| Entry { left: child.rect.left, right: child.rect.right, ..e.clone() }).collect();
+                            child.rows.insert(0, Row { row: caption.row, entries });
+                            child.rect.top = caption.row;
+                        }
+                    }
+                    out.extend(children);
+                }
+                return Some((out, true));
+            }
+        }
+        // An unsuccessful new plan must not suppress a valid legacy copy split.
     }
     let ranges = copies(sheet, region)?;
-    let body = region.rows.iter().find(|r| r.n_measure() > 0).map_or(u32::MAX, |r| r.row);
-    let shared_header = |e: &Entry| e.kind == Kind::Text && e.row < body
-        && sheet.merges.iter().any(|m| m.top == e.row && m.bottom == e.bottom && m.left == e.left && m.right == e.right);
     let mut out = Vec::new();
     for (lo, hi) in ranges {
         let piece: Vec<Row> = region
@@ -177,13 +200,12 @@ pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<Ve
             .iter()
             .map(|r| Row {
                 row: r.row,
-                // A real merged title intersects each copy; retain its actual
-                // source cell while clipping only the projected occupancy span.
+                // Legacy ownership: cells belong to the copy containing their anchor.
                 entries: r
                     .entries
                     .iter()
-                    .filter(|e| (e.left >= lo && e.left <= hi) || (shared_header(e) && e.left <= hi && e.right >= lo))
-                    .map(|e| Entry { left: e.left.max(lo), right: e.right.min(hi), ..e.clone() })
+                    .filter(|e| e.left >= lo && e.left <= hi)
+                    .map(|e| Entry { right: e.right.min(hi), ..e.clone() })
                     .collect(),
             })
             .filter(|r| !r.entries.is_empty())
@@ -200,7 +222,7 @@ pub(crate) fn split_repeated_copies(sheet: &Sheet, region: &Region) -> Option<Ve
         }
         out.push(Region { rect, rows: piece });
     }
-    (out.len() >= 2).then_some(out)
+    (out.len() >= 2).then_some((out, false))
 }
 
 #[cfg(test)]
@@ -250,7 +272,8 @@ mod tests {
             let region = Region { rect: Rect { top: 0, bottom: 16, left: 0, right: 3 }, rows };
             let split = split_repeated_copies(&sheet, &region);
             if case == 0 {
-                let parts = split.unwrap();
+                let (parts, shared) = split.unwrap();
+                assert!(shared);
                 assert_eq!(parts.len(), 4);
                 for part in &parts {
                     assert_eq!(part.rows.len(), 8);

@@ -1016,16 +1016,16 @@ fn split_adjacent_tables(region: &Region) -> Option<Vec<Region>> {
     Some(out)
 }
 
-pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
+pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, shared_ranked_header: bool) {
     if let Some(parts) = split_adjacent_tables(&region) {
         for p in parts {
-            analyze_region(sheet, p, out);
+            analyze_region(sheet, p, out, false);
         }
         return;
     }
-    if let Some(parts) = super::repeat::split_repeated_copies(sheet, &region) {
+    if let Some((parts, shared)) = super::repeat::split_repeated_copies(sheet, &region) {
         for p in parts {
-            analyze_region(sheet, p, out);
+            analyze_region(sheet, p, out, shared);
         }
         return;
     }
@@ -1037,7 +1037,7 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out) {
     // A shared caption projected from an actual wider merge owns each copy's
     // rank and complete leaf header. Ordinary title stripping would discard
     // these two parent rows, especially in a two-column copy.
-    let projected = rows.len() >= 5 && rows[0].n() == 1 && rows[0].n_text() == 1
+    let projected = shared_ranked_header && rows.len() >= 5 && rows[0].n() == 1 && rows[0].n_text() == 1
         && sheet.merges.iter().any(|m| m.top == rows[0].row && m.bottom == m.top
             && m.left <= region.rect.left && m.right >= region.rect.right
             && (m.left < region.rect.left || m.right > region.rect.right)
@@ -1336,7 +1336,7 @@ mod projected_copy_tests {
 
     #[test]
     fn projected_copy_parents_require_actual_shared_merge_and_complete_records() {
-        for case in 0..9 {
+        for case in 0..10 {
             let mut sheet = Sheet::default();
             let anchor = if case == 1 || case == 6 { 2 } else { 0 };
             sheet.merges.push(Rect { top: 0, bottom: 0, left: if case == 6 { 0 } else { anchor }, right: 3 });
@@ -1366,7 +1366,7 @@ mod projected_copy_tests {
             if case == 5 { sheet.merges.push(Rect { top: 4, bottom: 4, left: 2, right: 3 }); }
             let region = Region { rect: Rect { top: 0, bottom: 7, left: 2, right: 3 }, rows };
             let mut out = Out { roles: vec![Role::Other; sheet.cells.len()], tables: Vec::new(), loose: Vec::new(), column_numbers: true, registers: false, labelled_totals: Vec::new() };
-            analyze_region(&sheet, region, &mut out);
+            analyze_region(&sheet, region, &mut out, case != 9);
             assert_eq!(out.tables.iter().any(|t| t.header_top == 0 && t.header_rows == 3), case == 0, "case {case}");
         }
     }
