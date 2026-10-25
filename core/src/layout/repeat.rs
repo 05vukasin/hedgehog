@@ -283,6 +283,27 @@ mod tests {
                 }
                 let owned: HashSet<_> = parts.iter().flat_map(|p| &p.rows).flat_map(|r| &r.entries).filter_map(|e| e.cell).collect();
                 assert_eq!(owned.len(), sheet.cells.len(), "no metadata, title or record disappears");
+            } else if case == 2 {
+                // The changed second leaf defeats the legacy stacked-header veto.
+                // The new proof must fail, while the accepted anchor-only split
+                // still owns exactly the same source cells and clipped geometry.
+                let (parts, shared) = split.unwrap();
+                assert!(!shared);
+                assert_eq!(parts.len(), 2);
+                for (part, (left, right)) in parts.iter().zip([(0, 1), (2, 3)]) {
+                    let expected: Vec<_> = region.rows.iter().flat_map(|r| &r.entries)
+                        .filter(|e| left <= e.left && e.left <= right)
+                        .map(|e| (e.row, e.left, e.right.min(right), e.bottom, e.cell)).collect();
+                    let actual: Vec<_> = part.rows.iter().flat_map(|r| &r.entries)
+                        .map(|e| (e.row, e.left, e.right, e.bottom, e.cell)).collect();
+                    assert_eq!(actual, expected);
+                    assert_eq!(part.rect, Rect { top: if left == 0 { 0 } else { 1 }, bottom: 16, left, right });
+                    assert_eq!(part.rows.len(), if left == 0 { 16 } else { 14 });
+                    assert_eq!(part.rows.iter().filter(|r| r.row == 0 || r.row == 9).count(), if left == 0 { 2 } else { 0 });
+                }
+                let mut owned: Vec<_> = parts.iter().flat_map(|p| &p.rows).flat_map(|r| &r.entries).filter_map(|e| e.cell).collect();
+                owned.sort_unstable();
+                assert_eq!(owned, (0..sheet.cells.len()).collect::<Vec<_>>(), "no duplicated or missing source cells");
             } else { assert!(split.is_none(), "case {case}"); }
         }
     }
