@@ -38,9 +38,7 @@ fn write_grid(
     formats: &[Option<Format>],
     nrows: usize,
     mut fill: impl FnMut(usize, &mut Vec<Out>),
-    profile: &mut [std::time::Duration; 2],
 ) -> Result<(), Error> {
-    let profile_time = std::time::Instant::now();
     // Column widths from the header and the first rows, set before any data is written.
     let sample: Vec<Vec<Out>> = (0..nrows.min(WIDTH_SAMPLE))
         .map(|r| {
@@ -72,15 +70,12 @@ fn write_grid(
         for (c, h) in headers.iter().enumerate() {
             ws.write_string_with_format(0, c as u16, h, &bold).map_err(xerr)?;
         }
-        profile[0] += profile_time.elapsed();
         return Ok(());
     }
     // The table writes the header row; data rows follow in order.
     let cols: Vec<TableColumn> = headers.iter().map(|h| TableColumn::new().set_header(h)).collect();
     let table = XTable::new().set_name(name).set_columns(&cols);
     ws.add_table(0, 0, nrows as u32, (headers.len() - 1) as u16, &table).map_err(xerr)?;
-    profile[0] += profile_time.elapsed();
-    let profile_time = std::time::Instant::now();
     let mut buf = Vec::with_capacity(headers.len());
     for r in 0..nrows {
         let row = match sample.get(r) {
@@ -112,11 +107,10 @@ fn write_grid(
             }
         }
     }
-    profile[1] += profile_time.elapsed();
     Ok(())
 }
 
-fn table_sheet(wb: &mut Workbook, t: &Table, profile: &mut [std::time::Duration; 2]) -> Result<(), Error> {
+fn table_sheet(wb: &mut Workbook, t: &Table) -> Result<(), Error> {
     let ws = wb.add_worksheet_with_low_memory();
     ws.set_name(&t.sheet).map_err(xerr)?;
     let ncols = t.columns.len().min(MAX_COLS);
@@ -127,7 +121,7 @@ fn table_sheet(wb: &mut Workbook, t: &Table, profile: &mut [std::time::Duration;
     // Column-major storage, written row by row.
     write_grid(ws, &t.sheet, &headers, &formats, t.rows().min(MAX_ROWS), |i, row| {
         row.extend(cols.iter().map(|c| c.values[i].clone()))
-    }, profile)
+    })
 }
 
 fn text(s: impl Into<String>) -> Out {
@@ -206,8 +200,6 @@ pub(super) fn xlsx(
         wb.set_tempdir(dir).map_err(xerr)?;
     }
 
-    let mut profile_grid = [std::time::Duration::ZERO; 2];
-    let profile_time = std::time::Instant::now();
     // README.
     {
         let ws = wb.add_worksheet();
@@ -285,13 +277,9 @@ pub(super) fn xlsx(
         }
     }
 
-    super::trace("prof9.xlsx.readme", profile_time);
-    let profile_time = std::time::Instant::now();
     for t in &norm.tables {
-        table_sheet(&mut wb, t, &mut profile_grid)?;
+        table_sheet(&mut wb, t)?;
     }
-    super::trace("prof9.xlsx.tables", profile_time);
-    let profile_time = std::time::Instant::now();
 
     // Totals.
     {
@@ -339,11 +327,9 @@ pub(super) fn xlsx(
                 Out::Bool(x.kept_in_data),
                 Out::Num(x.count as f64),
             ])
-        }, &mut profile_grid)?;
+        })?;
     }
 
-    super::trace("prof9.xlsx.totals", profile_time);
-    let profile_time = std::time::Instant::now();
     // Notes.
     {
         let ws = wb.add_worksheet_with_low_memory();
@@ -361,16 +347,10 @@ pub(super) fn xlsx(
                 opt_text(Some(super::typing::fit(x.text.clone(), &mut Default::default()))),
                 opt_text(x.formula.clone()),
             ])
-        }, &mut profile_grid)?;
+        })?;
     }
 
-    super::trace("prof9.xlsx.notes", profile_time);
-    super::trace_ms("prof9.xlsx.grid_setup", profile_grid[0]);
-    super::trace_ms("prof9.xlsx.grid_body", profile_grid[1]);
-    let profile_time = std::time::Instant::now();
-    let saved = wb.save(path).map_err(xerr);
-    super::trace("prof9.xlsx.save", profile_time);
-    saved
+    wb.save(path).map_err(xerr)
 }
 
 fn csv_field(s: &str, out: &mut String) {

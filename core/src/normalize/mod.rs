@@ -847,24 +847,18 @@ fn layouts(wb: &Workbook, opts: &Options) -> Option<Vec<SheetAnalysis>> {
 pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &Options) -> Result<Output, Error> {
     let path = path.as_ref();
     let out_dir = out_dir.as_ref();
-    let profile_time = std::time::Instant::now();
     let bytes = std::fs::read(path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
     let sha = sha256::hex(&bytes);
     let size = bytes.len();
     drop(bytes);
-    trace("prof9.source_hash", profile_time);
     let t0 = std::time::Instant::now();
     let mut read = crate::reader::ReadOptions::default();
     read.limits.deadline = opts.deadline;
     let wb = crate::reader::open_with(path, read).map_err(|e| Error(format!("{}: {e}", path.display())))?;
     trace("open", t0);
-    let profile_time = std::time::Instant::now();
     let norm = try_normalize_workbook(&wb, opts)?;
-    trace("prof9.normalize_workbook", profile_time);
     trace("analyze", t0);
-    let profile_time = std::time::Instant::now();
     drop(wb);
-    trace("prof9.drop_source", profile_time);
     std::fs::create_dir_all(out_dir).map_err(|e| Error(format!("{}: {e}", out_dir.display())))?;
     let file_name = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
     let stem = path.file_stem().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| "workbook".into());
@@ -876,11 +870,8 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
         return Err(Error("output would overwrite the source file".into()));
     }
     let src = manifest::Source { path: path.display().to_string(), file_name, sha256: sha, size };
-    let profile_time = std::time::Instant::now();
     write::xlsx(&norm, &src, &xlsx_name, &manifest_name, &xlsx_path)?;
-    trace("prof9.xlsx.wall", profile_time);
     trace("write_xlsx", t0);
-    let profile_time = std::time::Instant::now();
     let mut csv_paths = Vec::new();
     if opts.csv {
         for t in &norm.tables {
@@ -889,15 +880,10 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
             csv_paths.push(p);
         }
     }
-    trace("prof9.csv.wall", profile_time);
-    let profile_time = std::time::Instant::now();
     let csv_names: Vec<String> =
         csv_paths.iter().map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned()).collect();
     let manifest_json = manifest::build(&norm, &src, opts, &xlsx_name, &manifest_name, &csv_names).pretty();
-    trace("prof9.manifest.build", profile_time);
-    let profile_time = std::time::Instant::now();
     std::fs::write(&manifest_path, &manifest_json).map_err(|e| Error(format!("{}: {e}", manifest_path.display())))?;
-    trace("prof9.manifest.write", profile_time);
     let mut transforms = Transforms::default();
     for t in &norm.tables {
         transforms.merge(&t.transforms);
