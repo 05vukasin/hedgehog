@@ -101,8 +101,7 @@ fn footnote_marks_json(c: &Column) -> Json {
     )
 }
 
-fn column_json(c: &Column, index: usize, left: Option<&Column>, profile: &mut [std::time::Duration; 4]) -> Json {
-    let started = std::time::Instant::now();
+fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
     let mut nulls = 0usize;
     let mut distinct: HashSet<String> = HashSet::new();
     let (mut min, mut max): (Option<f64>, Option<f64>) = (None, None);
@@ -124,8 +123,6 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>, profile: &mut [s
         example.get_or_insert(v);
         distinct.insert(key);
     }
-    profile[0] += started.elapsed();
-    let started = std::time::Instant::now();
     let numeric = matches!(c.dtype, Dtype::Integer | Dtype::Number | Dtype::Percent | Dtype::Currency);
     let dated = matches!(c.dtype, Dtype::Date | Dtype::Datetime);
     let bound = |v: Option<f64>| -> Json {
@@ -161,7 +158,7 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>, profile: &mut [s
         (Some(kind), Some(base)) => Json::obj().with("from", base.name.as_str()).with("kind", kind),
         _ => Json::Null,
     };
-    let result = Json::obj()
+    Json::obj()
         .with("name", c.name.as_str())
         .with("index", index)
         .with("letter", letter(index as u32))
@@ -179,18 +176,12 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>, profile: &mut [s
         .with("distinct", distinct.len())
         .with("min", bound(min))
         .with("max", bound(max))
-        .with("example", example.map_or(Json::Null, out_json));
-    profile[1] += started.elapsed();
-    let started = std::time::Instant::now();
-    drop(distinct);
-    profile[3] += started.elapsed();
-    result
+        .with("example", example.map_or(Json::Null, out_json))
 }
 
 /// Per-table totals: counts by status and one entry per total row (vertical totals), so an agent
 /// can tell which rows are not in the table's data.
-fn table_totals(t: &Table, totals: &[TotalItem], profile: &mut [std::time::Duration; 4]) -> Json {
-    let started = std::time::Instant::now();
+fn table_totals(t: &Table, totals: &[TotalItem]) -> Json {
     let tt = super::table_totals(t, totals);
     let rows: Vec<Json> = tt
         .rows
@@ -199,17 +190,15 @@ fn table_totals(t: &Table, totals: &[TotalItem], profile: &mut [std::time::Durat
             Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data).with("period", r.period).with("sources_outside", r.sources_outside)
         })
         .collect();
-    let result = Json::obj()
+    Json::obj()
         .with("count", tt.count)
         .with("ok", tt.ok)
         .with("mismatch", tt.mismatch)
         .with("unknown", tt.unknown)
-        .with("rows", Json::Arr(rows));
-    profile[2] += started.elapsed();
-    result
+        .with("rows", Json::Arr(rows))
 }
 
-fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>, profile: &mut [std::time::Duration; 4]) -> Json {
+fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>) -> Json {
     let body_top = t.header_top + t.header_rows;
     let header_range = (t.header_rows > 0)
         .then(|| range_a1(Rect { top: t.header_top, left: t.rect.left, bottom: body_top - 1, right: t.rect.right }));
@@ -241,11 +230,11 @@ fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>,
         .with("rows", t.rows())
         .with("confidence", t.confidence)
         .with("time_coverage", cov.map_or(Json::Null, |c| c.json(false)))
-        .with("columns", Json::Arr(t.columns.iter().enumerate().map(|(i, c)| column_json(c, i, i.checked_sub(1).map(|j| &t.columns[j]), profile)).collect()))
+        .with("columns", Json::Arr(t.columns.iter().enumerate().map(|(i, c)| column_json(c, i, i.checked_sub(1).map(|j| &t.columns[j]))).collect()))
         .with("group_column", group)
         .with("source_row_column", SRC_ROW)
         .with("row_type_column", row_type)
-        .with("totals", table_totals(t, totals, profile))
+        .with("totals", table_totals(t, totals))
         .with("transformations", tr)
         .with("warnings", t.warnings.clone())
 }
@@ -258,7 +247,6 @@ pub(super) fn build(
     manifest_name: &str,
     csv_names: &[String],
 ) -> Json {
-    let started = std::time::Instant::now();
     let sheets: Vec<Json> = norm
         .sheets
         .iter()
@@ -333,23 +321,13 @@ pub(super) fn build(
         hints.push(k, v);
     }
 
-    super::trace("prof10.manifest.metadata", started);
-    let started = std::time::Instant::now();
     let covs: Vec<Option<coverage::Coverage>> = norm.tables.iter().map(coverage::table).collect();
     let with_cov: Vec<(String, coverage::Coverage)> =
         norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
-    super::trace("prof10.manifest.coverage", started);
-    let started = std::time::Instant::now();
-    let mut profile = [std::time::Duration::ZERO; 4];
     let tables: Vec<Json> =
-        norm.tables.iter().zip(&covs).map(|(t, c)| table_json(t, &norm.totals, c.as_ref(), &mut profile)).collect();
-    super::trace("prof10.manifest.tables_wall", started);
-    for (name, took) in ["prof10.manifest.column_stats", "prof10.manifest.column_json", "prof10.manifest.table_totals", "prof10.manifest.distinct_drop"].into_iter().zip(profile) {
-        super::trace_ms(name, took);
-    }
-    let started = std::time::Instant::now();
+        norm.tables.iter().zip(&covs).map(|(t, c)| table_json(t, &norm.totals, c.as_ref())).collect();
 
-    let result = Json::obj()
+    Json::obj()
         .with("schema_version", SCHEMA_VERSION)
         .with("generator", Json::obj().with("name", "hedgehog").with("version", env!("CARGO_PKG_VERSION")))
         .with(
@@ -384,7 +362,5 @@ pub(super) fn build(
         .with("cells", cells)
         .with("unassigned_cells", unassigned)
         .with("warnings", norm.warnings.clone())
-        .with("load_hints", hints);
-    super::trace("prof10.manifest.assemble", started);
-    result
+        .with("load_hints", hints)
 }
