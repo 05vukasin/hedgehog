@@ -114,3 +114,86 @@ impl DependencyIndex {
         self.marks.get(index).is_some_and(|m| m & BY_AGGREGATE != 0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{Cell, Sheet, Value};
+
+    // The original traversal, including its per-column budget charge and self exclusion.
+    fn reference_marks(sheet: &Sheet, formulas: &[FormulaEntry]) -> Vec<u8> {
+        let mut columns: HashMap<u32, Vec<(u32, usize)>> = HashMap::new();
+        for (i, c) in sheet.cells.iter().enumerate() {
+            columns.entry(c.col).or_default().push((c.row, i));
+        }
+        let mut keys: Vec<_> = columns.keys().copied().collect();
+        keys.sort_unstable();
+        let mut marks = vec![0; sheet.cells.len()];
+        let mut budget = MARK_BUDGET;
+        'outer: for f in formulas {
+            let bits = if f.parsed.kind.is_aggregate() { REFERENCED | BY_AGGREGATE } else { REFERENCED };
+            for r in f.parsed.refs.iter().filter(|r| r.is_local(&sheet.name)) {
+                let lo = keys.partition_point(|&c| c < r.rect.left);
+                let hi = keys.partition_point(|&c| c <= r.rect.right);
+                for col in &keys[lo..hi] {
+                    let cells = &columns[col];
+                    let a = cells.partition_point(|&(row, _)| row < r.rect.top);
+                    let b = cells.partition_point(|&(row, _)| row <= r.rect.bottom);
+                    for &(row, idx) in &cells[a..b] {
+                        if (row, *col) != (f.row, f.col) { marks[idx] |= bits; }
+                    }
+                    budget = budget.saturating_sub(b - a + 1);
+                    if budget == 0 { break 'outer; }
+                }
+            }
+        }
+        marks
+    }
+
+    fn formula(row: u32, col: u32, f: &str) -> Cell {
+        Cell { row, col, value: Some(Value::Number(1.0)), formula: Some(f.into()) }
+    }
+
+    #[test]
+    fn dependency_marks_match_reference_for_overlaps_upgrades_and_self_holes() {
+        let mut sheet = Sheet { name: "Data".into(), ..Sheet::default() };
+        for row in 0..9 {
+            for col in 0..3 {
+                sheet.cells.push(Cell { row, col, value: Some(Value::Number(1.0)), formula: None });
+            }
+        }
+        for (i, f) in ["A1:A9", "SUM(A3:A6)", "A1:A9", "SUM(A1:A9)", "A1:C9+A1:C9",
+            "SUM(A20:A30)", "Other!A1", "SUM(A:A)", "B1:B2", "B5:B6", "B2:B5",
+            "SUM(C1:C2)", "SUM(C5:C6)", "SUM(C2:C5)"].iter().enumerate()
+        {
+            sheet.cells.push(formula(10 + i as u32, 4, f));
+        }
+        // Two formulas cover one another, so neither self hole may certify a full slice.
+        sheet.cells.push(formula(0, 5, "SUM(F1:F6)"));
+        sheet.cells.push(formula(1, 5, "SUM(F1:F6)"));
+        sheet.cells.push(formula(2, 5, "SUM(F1:F6)"));
+        // Duplicate source positions remain separate mark entries, including a formula at one.
+        sheet.cells.push(formula(4, 0, "A1:A9"));
+        sheet.cells.sort_by_key(|c| (c.row, c.col));
+        for reverse in [false, true] {
+            let mut input = sheet.clone();
+            if reverse { input.cells.reverse(); }
+            let actual = DependencyIndex::new(&Grid::new(&input));
+            assert_eq!(actual.marks, reference_marks(&input, &actual.formulas), "reverse={reverse}");
+        }
+    }
+
+    #[test]
+    fn dependency_mark_budget_is_charged_even_for_repeated_full_columns() {
+        let mut sheet = Sheet { name: "Data".into(), ..Sheet::default() };
+        for row in 0..5000 {
+            sheet.cells.push(Cell { row, col: 0, value: Some(Value::Number(1.0)), formula: None });
+            sheet.cells.push(formula(row, 1, if row % 100 == 0 { "SUM(A:A)" } else { "A:A" }));
+        }
+        sheet.cells.push(formula(5001, 2, "B:B"));
+        let actual = DependencyIndex::new(&Grid::new(&sheet));
+        assert_eq!(actual.marks, reference_marks(&sheet, &actual.formulas));
+        assert!(sheet.cells.iter().enumerate().filter(|(_, c)| c.col == 0).all(|(i, _)| actual.marks[i] == 3));
+        assert!(sheet.cells.iter().enumerate().filter(|(_, c)| c.col == 1).all(|(i, _)| actual.marks[i] == 0));
+    }
+}
