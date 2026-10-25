@@ -168,6 +168,13 @@ fn looks_numeric(t: &str) -> bool {
     if t.len() > 40 {
         return false;
     }
+    // A compound mean/SD measurement is body evidence, not a scalar conversion.
+    // Some statistical sources omit the final parenthesis; retain their literal Value::Text.
+    if let Some((mean, spread)) = t.split_once(" (SD ") {
+        let spread = spread.strip_suffix(')').unwrap_or(spread);
+        return mean.parse::<f64>().is_ok_and(|n| n.is_finite())
+            && spread.parse::<f64>().is_ok_and(|n| n.is_finite() && n >= 0.0);
+    }
     let mut digits = 0usize;
     let mut other = 0usize;
     for ch in t.chars() {
