@@ -38,7 +38,6 @@ fn write_grid(
     formats: &[Option<Format>],
     nrows: usize,
     mut fill: impl FnMut(usize, &mut Vec<Out>),
-    add_table_time: &mut std::time::Duration,
 ) -> Result<(), Error> {
     // Column widths from the header and the first rows, set before any data is written.
     let sample: Vec<Vec<Out>> = (0..nrows.min(WIDTH_SAMPLE))
@@ -76,10 +75,7 @@ fn write_grid(
     // The table writes the header row; data rows follow in order.
     let cols: Vec<TableColumn> = headers.iter().map(|h| TableColumn::new().set_header(h)).collect();
     let table = XTable::new().set_name(name).set_columns(&cols);
-    let table_start = std::time::Instant::now();
-    let added = ws.add_table(0, 0, nrows as u32, (headers.len() - 1) as u16, &table).map_err(xerr);
-    *add_table_time += table_start.elapsed();
-    added?;
+    ws.add_table(0, 0, nrows as u32, (headers.len() - 1) as u16, &table).map_err(xerr)?;
     let mut buf = Vec::with_capacity(headers.len());
     for r in 0..nrows {
         let row = match sample.get(r) {
@@ -114,7 +110,7 @@ fn write_grid(
     Ok(())
 }
 
-fn table_sheet(wb: &mut Workbook, t: &Table, add_table_time: &mut std::time::Duration) -> Result<(), Error> {
+fn table_sheet(wb: &mut Workbook, t: &Table) -> Result<(), Error> {
     let ws = wb.add_worksheet_with_low_memory();
     ws.set_name(&t.sheet).map_err(xerr)?;
     let ncols = t.columns.len().min(MAX_COLS);
@@ -125,7 +121,7 @@ fn table_sheet(wb: &mut Workbook, t: &Table, add_table_time: &mut std::time::Dur
     // Column-major storage, written row by row.
     write_grid(ws, &t.sheet, &headers, &formats, t.rows().min(MAX_ROWS), |i, row| {
         row.extend(cols.iter().map(|c| c.values[i].clone()))
-    }, add_table_time)
+    })
 }
 
 fn text(s: impl Into<String>) -> Out {
@@ -281,9 +277,8 @@ pub(super) fn xlsx(
         }
     }
 
-    let mut add_table_time = std::time::Duration::ZERO;
     for t in &norm.tables {
-        table_sheet(&mut wb, t, &mut add_table_time)?;
+        table_sheet(&mut wb, t)?;
     }
 
     // Totals.
@@ -332,7 +327,7 @@ pub(super) fn xlsx(
                 Out::Bool(x.kept_in_data),
                 Out::Num(x.count as f64),
             ])
-        }, &mut add_table_time)?;
+        })?;
     }
 
     // Notes.
@@ -352,10 +347,9 @@ pub(super) fn xlsx(
                 opt_text(Some(super::typing::fit(x.text.clone(), &mut Default::default()))),
                 opt_text(x.formula.clone()),
             ])
-        }, &mut add_table_time)?;
+        })?;
     }
 
-    super::trace_ms("prof9.xlsx.add_table", add_table_time);
     wb.save(path).map_err(xerr)
 }
 
