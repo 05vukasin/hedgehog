@@ -2280,13 +2280,13 @@
   }
  },
  "M": {
-  "violations": 1542,
-  "files": 760,
+  "violations": 1539,
+  "files": 758,
   "per_dataset": {
    "hitab": {
     "M5 header missing": 526,
     "M1 total row in data": 10,
-    "M5 repeated header names": 9,
+    "M5 repeated header names": 7,
     "M3 measures mixed": 26
    },
    "mimotable": {
@@ -2305,14 +2305,14 @@
     "M3 measures mixed": 17,
     "M1 total row in data": 4,
     "M5 number as header": 12,
-    "M5 repeated header names": 40,
+    "M5 repeated header names": 39,
     "M5 duplicate headers": 5
    }
   },
   "kinds": {
    "M5 header missing": 1357,
    "M3 measures mixed": 72,
-   "M5 repeated header names": 57,
+   "M5 repeated header names": 54,
    "M1 total row in data": 23,
    "M5 number as header": 14,
    "M2 percent mixed": 11,
@@ -2369,10 +2369,10 @@
   "per_dataset": {
    "hitab": {
     "files": 1303,
-    "mean": 773.7,
+    "mean": 773.5,
     "median": 692,
     "p90": 1244,
-    "max": 2438
+    "max": 2344
    },
    "mimotable": {
     "files": 401,
@@ -2473,5 +2473,5 @@
    "by": "holdout item (checked with --holdout)"
   }
  ],
- "seconds": 115
+ "seconds": 114
 }

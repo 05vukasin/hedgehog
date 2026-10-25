@@ -5,7 +5,7 @@ Every stage: goal, branch, merge commit, metrics before → after. Commits of a 
 `Stage: S<n>` (from S10 on; earlier stages are found by their merge commit). Metrics are on the **dev**
 split unless noted. Update this file whenever a stage starts, merges or is dropped.
 
-## Current state (iteration 7, implementation 2fee835, 2026-10-25)
+## Current state (iteration 9 accepted, release 53fbb72abdae, 2026-10-25)
 
 | Measure | Value | Target |
 |---|---|---|
@@ -13,7 +13,7 @@ split unless noted. Update this file whenever a stage starts, merges or is dropp
 | F unplaced / misplaced (mimotable · realhitbench · hitab · tablesense · golden · agents) | 0/134 · 0/398 · 0/0 · 0/2,512 · 0/163 · 0/6 (tablesense text_changed 5) | 0 (or documented) |
 | L lookups | 5,498 / 5,634 = 97.6 % raw, 97.7 % after audit (127 misses) | 100 % after audit |
 | C calculations | 1,198 / 2,264 proven; library misses 41; oracle-limit ≈ 989; gold/question 2 unreviewed | library misses 0 |
-| M misleading-info violations | 1,548 in 761 files (1,357 are columns without header text) | 0 (or documented policy) |
+| M misleading-info violations | 1,539 in 758 files (1,357 are columns without header text) | 0 (or documented policy) |
 | K catalog tokens / file | hitab 774, mimotable 972, realhitbench 771 | no growth |
 | S HiTab table F1@0.8 | 98.9 % (unchanged reproduced baseline; old ledger was stale) | — |
 | Installed hhc / hedgehog (~/.hedgehog-cli/bin) | built from master 134d648 on 2026-10-24 12:57 (backup of previous in scratch-archive/backup-hhc-20261024-1257) | — |
@@ -178,7 +178,7 @@ Before final review expansion: 12 GiB RAM available, 1.6/14 GiB swap used,
 
 ## Next (in order)
 
-1. S12 remainder — columns without header text (1,357 of 1,548 M violations): policy for source columns that
+1. S12 remainder — columns without header text (1,357 of 1,539 M violations): policy for source columns that
    truly have no header (generated name + catalog note) vs real lost headers; incl. the col_<letter> tables
    S10 recovered from Notes.
 2. S13 remainder — 127 audited L misses: largest raw clusters are question keys outside tables (28),
@@ -194,3 +194,18 @@ Before final review expansion: 12 GiB RAM available, 1.6/14 GiB swap used,
 
 Agent-path work B136/B141–B162 (question-aware catalog, parallel reading, total codes, …) — see
 eval/agents/BACKLOG.md and the merge commits ecdd4f6 … 02234a3.
+
+## Iteration 9 accepted
+
+See [iteration 9 evidence](iteration-9.md). Release `53fbb72abdae` preserves
+province/unit descendants under long header ancestors: three M violations
+removed, none added; L/C unchanged, HiTab lenient column/both linking +2.
+All 557 release tests, quick, Clippy, 50 identical goldens, both structure gates,
+full fidelity, Node21/TypeScript, strict 4,055-file comparison, final raw-source
+checks and 41,358-segment equivalence pass. Independent final reviews pass.
+A scoped writer dependency patch defers first-table occupancy, preserving later
+registration/error behavior. Final six-pair comparisons against iteration 8
+show NYISO normalization -12.05% and wide CSV -3.03%, each six of six wins, with
+exact exports/MCP responses. MCP and RSS changes are mixed; NYISO normalization
+median RSS rises about 3.5 MiB. The roughly 4 MB vendor footprint is documented,
+with pinned source checksums and licenses. Local integration only.
