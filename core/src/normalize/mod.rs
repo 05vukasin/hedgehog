@@ -882,7 +882,15 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
     }
     let csv_names: Vec<String> =
         csv_paths.iter().map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned()).collect();
-    let manifest_json = manifest::build(&norm, &src, opts, &xlsx_name, &manifest_name, &csv_names).pretty();
+    let started = std::time::Instant::now();
+    let manifest_value = manifest::build(&norm, &src, opts, &xlsx_name, &manifest_name, &csv_names);
+    trace("prof10.manifest.build", started);
+    let started = std::time::Instant::now();
+    let manifest_json = manifest_value.pretty();
+    trace("prof10.manifest.pretty", started);
+    let started = std::time::Instant::now();
+    drop(manifest_value);
+    trace("prof10.manifest.json_drop", started);
     std::fs::write(&manifest_path, &manifest_json).map_err(|e| Error(format!("{}: {e}", manifest_path.display())))?;
     let mut transforms = Transforms::default();
     for t in &norm.tables {
