@@ -4440,6 +4440,7 @@ mod tests {
 
     #[test]
     fn blank_measure_band_section_can_head_total_and_component_records() {
+        use super::*;
         use crate::model::{Rect, Sheet};
         let text = |s: &str| Some(Value::Text(s.into()));
         for case in 0..10 {
