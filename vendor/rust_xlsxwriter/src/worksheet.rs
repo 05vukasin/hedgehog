@@ -1553,6 +1553,7 @@ pub struct Worksheet {
     merged_cells: HashMap<(RowNum, ColNum), usize>,
     table_ranges: Vec<CellRange>,
     table_cells: HashMap<(RowNum, ColNum), usize>,
+    deferred_table_cells: Option<(CellRange, usize)>,
     dimensions: CellRange,
     xf_indices: HashMap<Format, u32>,
 
@@ -1764,6 +1765,7 @@ impl Worksheet {
             tables: vec![],
             table_ranges: vec![],
             table_cells: HashMap::new(),
+            deferred_table_cells: None,
             default_format: Format::default(),
             xf_formats: vec![Format::default()],
             dxf_formats: vec![],
@@ -9077,18 +9079,32 @@ impl Worksheet {
         // major error in Excel. Note, the ranges are stored in a separate Vec
         // to the cells to cut down on storage size.
         let new_index = self.table_ranges.len();
-        for row in first_row..=last_row {
-            for col in first_col..=last_col {
-                match self.table_cells.get_mut(&(row, col)) {
-                    Some(index) => {
-                        let previous_cell_range = self.table_ranges.get(*index).unwrap();
-                        return Err(XlsxError::TableRangeOverlaps(
-                            cell_range.to_error_string(),
-                            previous_cell_range.to_error_string(),
-                        ));
-                    }
-                    None => self.table_cells.insert((row, col), new_index),
-                };
+        if let Some((range, index)) = self.deferred_table_cells.take() {
+            for row in range.first_row..=range.last_row {
+                for col in range.first_col..=range.last_col {
+                    self.table_cells.insert((row, col), index);
+                }
+            }
+        }
+        if self.table_ranges.is_empty() && self.table_cells.is_empty() {
+            // No overlap is possible for the first table. Preserve its exact occupancy/index
+            // even if later autofilter validation fails, but only allocate cells when another
+            // registration reaches this check. All subsequent checks retain the original loop.
+            self.deferred_table_cells = Some((cell_range.clone(), new_index));
+        } else {
+            for row in first_row..=last_row {
+                for col in first_col..=last_col {
+                    match self.table_cells.get_mut(&(row, col)) {
+                        Some(index) => {
+                            let previous_cell_range = self.table_ranges.get(*index).unwrap();
+                            return Err(XlsxError::TableRangeOverlaps(
+                                cell_range.to_error_string(),
+                                previous_cell_range.to_error_string(),
+                            ));
+                        }
+                        None => self.table_cells.insert((row, col), new_index),
+                    };
+                }
             }
         }
 
