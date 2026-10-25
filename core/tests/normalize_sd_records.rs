@@ -1,5 +1,5 @@
 //! DEV StatCan 632: compound SD measurements are body records, not replacement headers.
-use hh_core::{normalize::{normalize_workbook, Dtype, Options, Out}, open};
+use hh_core::{normalize::{normalize_workbook, ColRole, Dtype, Options, Out}, open};
 use rust_xlsxwriter::{Format, Workbook};
 
 const ROWS: &[(u32, [&str; 5])] = &[
@@ -114,7 +114,7 @@ fn compound_sd_records_preserve_complete_cohort_table() {
             if values[1].is_empty() { group = values[0]; }
             else {
                 if !group.is_empty() {
-                    assert!(t.columns.iter().any(|c| c.is_derived() && c.values[index] == Out::Text(group.into())), "missing group {group} at {index}, rules={rules_only}");
+                    assert!(t.columns.iter().any(|c| c.role == ColRole::Group && c.values[index] == Out::Text(group.into())), "missing group {group} at {index}, rules={rules_only}; groups={:?}", t.columns.iter().filter(|c| c.role == ColRole::Group).map(|c| (&c.name, c.values.get(index))).collect::<Vec<_>>());
                 }
                 index += 1;
             }
