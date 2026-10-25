@@ -4439,6 +4439,39 @@ mod tests {
     }
 
     #[test]
+    fn blank_measure_band_section_can_head_total_and_component_records() {
+        use crate::model::{Rect, Sheet};
+        let text = |s: &str| Some(Value::Text(s.into()));
+        for case in 0..10 {
+            let mut data = vec![
+                vec![text("Average community score"), None, None, None, None],
+                vec![text("Total"), text("55 (SD 13"), text("..."), text("57 (SD 14"), text("...")],
+                vec![text("Income component"), text("55 (SD 17"), text("..."), text("57 (SD 17"), text("...")],
+            ];
+            let mut merges = vec![Rect { top: 0, bottom: 0, left: 1, right: 4 }];
+            match case {
+                1 => merges.clear(),
+                2 => merges[0].right = 3,
+                3 => data[0][1] = text("55 (SD 13"),
+                4 => { data.pop(); }
+                5 => data.insert(1, vec![]),
+                6 => data[2] = vec![text("Next section"), None, None, None, None],
+                7 => merges[0].bottom = 1,
+                8 => data[2][0] = None,
+                _ => {}
+            }
+            let refs: Vec<_> = data.iter().map(Vec::as_slice).collect();
+            let (mut cells, mut rows) = grid_rows(&refs);
+            if case == 9 { rows[0].1.push(cells.len()); cells.push(Cell { row: 0, col: 1, value: None, formula: Some("1+1".into()) }); }
+            let mut roles = vec![Role::Data; cells.len()];
+            roles[0] = Role::Total;
+            let sheet = Sheet { cells, merges, ..Sheet::default() };
+            let grid = Grid::new(&sheet);
+            assert_eq!(super::section_rows(&grid, &rows, 0, Some(0), &roles).contains(&0), case == 0, "case {case}");
+        }
+    }
+
+    #[test]
     fn merged_parent_recovery_does_not_reuse_owned_cells() {
         use crate::model::{Rect, Sheet};
         let rows = vec![
