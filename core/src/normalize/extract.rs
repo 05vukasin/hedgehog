@@ -2798,6 +2798,20 @@ fn build_table(
             tr.add(T::HeadersCleaned, 1);
         }
         if name.chars().count() > MAX_HEADER_LEN {
+            // Budget from actual source parts: a slash inside a cell is not a
+            // hierarchy boundary. Keep complete descendants when they fit, and
+            // mark the shortened ancestor instead of erasing the column's label.
+            if named.len() > 1 {
+                let descendants = clean_name(grid, &named[1..]);
+                let count = descendants.chars().count();
+                if count > 0 && count + 4 < MAX_HEADER_LEN {
+                    let parent = clean_name(grid, &named[..1]);
+                    if !parent.is_empty() {
+                        let prefix: String = parent.chars().take(MAX_HEADER_LEN - count - 4).collect();
+                        name = format!("{prefix}… / {descendants}");
+                    }
+                }
+            }
             name = name.chars().take(MAX_HEADER_LEN).collect();
         }
         let label = if !name.is_empty() {
