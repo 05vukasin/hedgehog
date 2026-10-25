@@ -21,3 +21,15 @@ source of rust_xlsxwriter; transitive dependency versions remain unchanged.
 Subsequent changes, if accepted, must be reviewed separately from this pristine
 source import. The vendor is not a workspace member. Public-API regressions belong
 in core/tests so they run without the upstream examples or fixture suite.
+
+The active experiment defers the first table's cell-occupancy map as one private
+rectangle/index pair. A later registration reaching the original overlap check
+materializes that map before running the unchanged subsequent-table loop. Pending
+occupancy survives later autofilter errors; early validation errors do not touch
+it. A worksheet saved with one table drops the pending pair without materializing
+the map. This targets measured registration cost without changing table output.
+
+SOURCE_SHA256.txt records the PRISTINE upstream files. The patched worksheet.rs
+intentionally differs; review its isolated runtime commit against the pristine
+vendor commit. Remove the experiment/vendor if exact outputs or measured useful
+end-to-end improvement are not demonstrated.
