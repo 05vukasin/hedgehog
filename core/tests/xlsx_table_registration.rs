@@ -63,5 +63,8 @@ fn single_low_memory_table_serializes_cells_and_registration_metadata() {
     assert!(table.contains("name=\"Values\"") && table.contains("ref=\"A1:B4\""));
     let mut sheet = String::new();
     zip.by_name("xl/worksheets/sheet1.xml").unwrap().read_to_string(&mut sheet).unwrap();
-    assert!(sheet.contains("<tableParts count=\"1\">") && sheet.contains("row 3"));
+    assert!(sheet.contains("<tableParts count=\"1\">") && sheet.contains("r=\"A4\""));
+    let mut strings = String::new();
+    zip.by_name("xl/sharedStrings.xml").unwrap().read_to_string(&mut strings).unwrap();
+    assert!(strings.contains("row 3"));
 }
