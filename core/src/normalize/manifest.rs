@@ -364,3 +364,58 @@ pub(super) fn build(
         .with("warnings", norm.warnings.clone())
         .with("load_hints", hints)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn column(values: Vec<Out>) -> Column {
+        Column {
+            name: "Value".into(), role: ColRole::Data, source_col: Some(0), original_header: Vec::new(),
+            dtype: Dtype::Number, unit: None, currency: None, decimal: None, date_order: None,
+            ambiguous: 0, footnote_marks: Vec::new(), values,
+        }
+    }
+
+    #[test]
+    fn column_stats_preserve_prefixed_formatted_distinct_identity() {
+        let mut mixed = vec![Out::Null, Out::Num(-0.0), Out::Num(0.0), Out::Date(0.0),
+            Out::Num(f64::NAN), Out::Num(f64::INFINITY), Out::Date(f64::NEG_INFINITY),
+            Out::Num(1.0), Out::Date(1.0), Out::Num(f64::from_bits(1.0f64.to_bits() + 1)),
+            Out::Num(1e15), Out::Num(1e15 - 1.0), Out::Num(1e-16),
+            Out::Bool(true), Out::Bool(false)];
+        mixed.extend(["0", "null", "NaN", "true", "false", "n1", "btrue", "s0", ""]
+            .into_iter().map(|s| Out::Text(s.into())));
+        mixed.push(Out::Text("東京é".repeat(256)));
+        let mut repeated = mixed.clone();
+        repeated.extend(mixed.clone());
+        repeated.reverse();
+        for values in [Vec::new(), vec![Out::Null; 5], mixed, repeated] {
+            // This is the original key contract, independent of any new storage layout.
+            let expected: HashSet<String> = values.iter().filter_map(|v| match v {
+                Out::Null => None,
+                Out::Num(x) | Out::Date(x) => Some(format!("n{}", fmt_num(*x))),
+                Out::Bool(b) => Some(format!("b{b}")),
+                Out::Text(s) => Some(format!("s{s}")),
+            }).collect();
+            let json = column_json(&column(values.clone()), 0, None);
+            let Json::Obj(fields) = json else { panic!("column JSON must be an object") };
+            let field = |key| &fields.iter().find(|(k, _)| k == key).unwrap().1;
+            assert_eq!(field("distinct"), &Json::Int(expected.len() as i64));
+            assert_eq!(field("nulls"), &Json::Int(values.iter().filter(|v| matches!(v, Out::Null)).count() as i64));
+            assert_eq!(field("example").pretty(), values.iter().find(|v| !matches!(v, Out::Null)).map_or(Json::Null, out_json).pretty());
+        }
+    }
+
+    #[test]
+    fn column_stats_keep_bounds_and_first_non_null_example() {
+        let c = column(vec![Out::Null, Out::Text("first".into()), Out::Num(12.5), Out::Date(-2.0), Out::Bool(true)]);
+        let Json::Obj(fields) = column_json(&c, 0, None) else { panic!("column JSON must be an object") };
+        let field = |key| &fields.iter().find(|(k, _)| k == key).unwrap().1;
+        assert_eq!(field("distinct"), &Json::Int(4));
+        assert_eq!(field("nulls"), &Json::Int(1));
+        assert_eq!(field("min"), &Json::Num(-2.0));
+        assert_eq!(field("max"), &Json::Num(12.5));
+        assert_eq!(field("example"), &Json::Str("first".into()));
+    }
+}
