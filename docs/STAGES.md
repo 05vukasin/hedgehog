@@ -161,14 +161,20 @@ Formula allocation experiment rejected/reverted; semantic regression retained.
 Final paired medians stay within 1% of accepted iteration 6 with exact outputs
 and no median RSS increase. No speed improvement is claimed.
 
-## Running
+## Iteration 8 accepted
 
 Iteration 8 baseline: accepted local master `c6638e7`, release `d119f31186d5`.
-Lead `codex/iteration-8`; accuracy `codex/accuracy-iter8` and performance
-`codex/performance-iter8` in existing worktrees, plus independent source reviewer.
-Three lightweight workers active; no heavy jobs until source/review completes.
-Before expansion: 12 GiB RAM available, 1.5/14 GiB swap used, 120 GiB disk free,
-btrfs metadata 17.40/18.50 GiB, memory guard active and three free worker slots.
+Candidate `33bf81151fab` corrects Health01 stacked independent lists with explicit
+private provenance, preserving legacy splits. Six M violations removed, none
+added; L/C unchanged. All 551 release tests, Clippy, goldens, structure, fidelity,
+Node/TypeScript, strict 4,055-file comparison, final raw-source checks and
+41,358-segment feature equivalence pass. Per-file TableSense F1 is unchanged.
+The dependency-marking performance experiment was rejected and reverted;
+semantic regressions remain. Final independent review passes. Six-pair latency changes range -1.59% to +0.39%,
+with exact outputs; NYISO MCP median RSS rises about 2.9 MiB. No speed gain is
+claimed. See [iteration 8 evidence](iteration-8.md).
+Before final review expansion: 12 GiB RAM available, 1.6/14 GiB swap used,
+120 GiB disk free, metadata 17.44/18.50 GiB, memory guard active, three free slots.
 
 ## Next (in order)
 
