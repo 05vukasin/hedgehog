@@ -103,11 +103,13 @@ fn footnote_marks_json(c: &Column) -> Json {
 
 fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
     let mut nulls = 0usize;
-    let mut distinct: HashSet<String> = HashSet::new();
+    let mut numbers: HashSet<String> = HashSet::new();
+    let mut texts: HashSet<&str> = HashSet::new();
+    let mut booleans = 0u8;
     let (mut min, mut max): (Option<f64>, Option<f64>) = (None, None);
     let mut example: Option<&Out> = None;
     for v in &c.values {
-        let key = match v {
+        match v {
             Out::Null => {
                 nulls += 1;
                 continue;
@@ -115,13 +117,12 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
             Out::Num(x) | Out::Date(x) => {
                 min = Some(min.map_or(*x, |m| m.min(*x)));
                 max = Some(max.map_or(*x, |m| m.max(*x)));
-                format!("n{}", fmt_num(*x))
+                numbers.insert(fmt_num(*x));
             }
-            Out::Bool(b) => format!("b{b}"),
-            Out::Text(s) => format!("s{s}"),
-        };
+            Out::Bool(b) => booleans |= 1 << (*b as u8),
+            Out::Text(s) => { texts.insert(s.as_str()); }
+        }
         example.get_or_insert(v);
-        distinct.insert(key);
     }
     let numeric = matches!(c.dtype, Dtype::Integer | Dtype::Number | Dtype::Percent | Dtype::Currency);
     let dated = matches!(c.dtype, Dtype::Date | Dtype::Datetime);
@@ -173,7 +174,8 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
         .with("locale", locale)
         .with("footnote_marks", footnote_marks_json(c))
         .with("nulls", nulls)
-        .with("distinct", distinct.len())
+        // The old n/s/b-prefixed keys were disjoint; only numbers/dates share an identity.
+        .with("distinct", numbers.len() + texts.len() + booleans.count_ones() as usize)
         .with("min", bound(min))
         .with("max", bound(max))
         .with("example", example.map_or(Json::Null, out_json))
