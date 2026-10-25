@@ -511,6 +511,7 @@ fn section_rows(
     let cells = &grid.sheet.cells;
     let filled = |i: usize| cells[i].value.as_ref().is_some_and(|v| !display(v).trim().is_empty());
     let body: Vec<&(u32, Vec<usize>)> = rows.iter().filter(|(row, _)| *row >= body_top).collect();
+    let right = rows.iter().flat_map(|(_, ix)| ix.iter().map(|&i| cells[i].col)).max().unwrap_or(lc);
     let label = |idxs: &[usize]| idxs.iter().copied().find(|&i| cells[i].col == lc && filled(i));
     let fmt = |i: usize| grid.sheet.formats.get(i).and_then(|f| f.unpack()).unwrap_or_default();
     let level = |i: usize| {
@@ -565,13 +566,21 @@ fn section_rows(
             continue;
         };
         let Some(j) = label(next) else { continue };
+        // An explicitly empty merge across all measure columns separates a lone section
+        // label from at least two immediate labeled records, even when the first is Total.
+        let empty_band = lc.checked_add(1).is_some_and(|left| left < right && grid.sheet.merges.iter().any(|m| {
+            m.top == *row && m.bottom == *row && m.left == left && m.right == right
+        })) && !idxs.iter().any(|&x| cells[x].col != lc && cells[x].formula.is_some())
+            && body.iter().skip(k + 1).take(2).enumerate().filter(|(offset, (r, ix))| {
+                row.checked_add(1 + *offset as u32) == Some(*r) && label(ix).is_some() && values(ix)
+            }).count() == 2;
         // A section heads data rows: not only a total row (`CONTINGENCY` over its `TOTAL`).
         let total_next = next.iter().any(|&x| matches!(&cells[x].value, Some(Value::Text(t)) if crate::totals::total_keyword(t.trim()).is_some()));
-        if total_next {
+        if total_next && !empty_band {
             continue;
         }
         let deeper = level(j) > level(i);
-        let apart = (fmt(i).bold && !fmt(j).bold) || (caps(i) && !caps(j)) || merged(*row);
+        let apart = (fmt(i).bold && !fmt(j).bold) || (caps(i) && !caps(j)) || merged(*row) || empty_band;
         let heading = caps(i) || matches!(&cells[i].value, Some(Value::Text(t)) if t.trim_end().ends_with(':'));
         let next_section = !values(next) && (out.contains(&next_row) || matches!(roles[j], Role::GroupHeader)) && level(j) >= level(i);
         if deeper || (apart && values(next)) || (heading && next_section) {
