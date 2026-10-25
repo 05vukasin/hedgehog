@@ -172,6 +172,9 @@ mod tests {
         sheet.cells.push(formula(0, 5, "SUM(F1:F6)"));
         sheet.cells.push(formula(1, 5, "SUM(F1:F6)"));
         sheet.cells.push(formula(2, 5, "SUM(F1:F6)"));
+        // A later self-containing range may use coverage certified by a different formula.
+        sheet.cells.push(formula(9, 4, "SUM(F:F)"));
+        sheet.cells.push(formula(21, 5, "SUM(F:F)"));
         // Duplicate source positions remain separate mark entries, including a formula at one.
         sheet.cells.push(formula(4, 0, "A1:A9"));
         sheet.cells.sort_by_key(|c| (c.row, c.col));
