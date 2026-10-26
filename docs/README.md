@@ -28,7 +28,7 @@ need.
 | Page | What it covers |
 |---|---|
 | [Command line](cli.md) | every `hedgehog` command, flag and exit code |
-| [Python API](python-api.md) | every public function, class and result field |
+| [Python API](python-api.md) | every public function, class and result field, including the agent tools (`hedgehog.Session`) |
 | [Node.js API](node-api.md) | the npm package `hedgehog-sheets`, with the agent tools in-process |
 | [Detection rules](detection-rules.md) | the exact rules behind tables, roles, headers and totals |
 

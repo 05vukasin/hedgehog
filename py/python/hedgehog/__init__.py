@@ -7,8 +7,8 @@ from ._native import open as _open
 from .citations import check_citations
 from .facts import facts, facts_json
 from .normalize import NormalizeResult, normalize
+from .session import Session, tool_specs
 from .summary import Summary, summarize
-
 
 
 def open(path: "str | _os.PathLike[str]") -> Workbook:  # noqa: A001 - mirrors the native name
@@ -19,6 +19,7 @@ def open(path: "str | _os.PathLike[str]") -> Workbook:  # noqa: A001 - mirrors t
 
 __all__ = [
     "NormalizeResult",
+    "Session",
     "Summary",
     "Workbook",
     "check_citations",
@@ -27,4 +28,5 @@ __all__ = [
     "normalize",
     "open",
     "summarize",
+    "tool_specs",
 ]

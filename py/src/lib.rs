@@ -316,9 +316,125 @@ fn normalize<'py>(
     Ok(d)
 }
 
+/// The agent tools of `hedgehog mcp` in-process (`hh_agent::Session`): every method returns the
+/// tool's compact text; a tool error raises `ValueError` with its one-line message. Wrapped by
+/// `hedgehog.Session`.
+#[pyclass(frozen)]
+struct NativeSession(std::sync::Mutex<hh_agent::Session>);
+
+impl NativeSession {
+    /// Runs one tool without the GIL, so other Python threads keep going during a long open.
+    fn run(&self, py: Python<'_>, what: &str, f: impl FnOnce(&mut hh_agent::Session) -> hh_agent::ToolResult + Send) -> PyResult<String> {
+        py.detach(|| {
+            guarded(what, || {
+                // A panic inside a tool poisons the mutex; the session holds only caches, so keep going.
+                let mut s = self.0.lock().unwrap_or_else(|p| p.into_inner());
+                f(&mut s).map_err(|e| PyValueError::new_err(e.0))
+            })
+        })
+    }
+}
+
+#[pymethods]
+impl NativeSession {
+    #[new]
+    #[pyo3(signature = (root, allow = Vec::new(), max_cells = None, max_seconds = None, max_file_mb = None, query_timeout_ms = None, cache = true, cache_dir = None))]
+    #[allow(clippy::too_many_arguments)] // one per Python keyword argument
+    fn new(
+        root: &str,
+        allow: Vec<String>,
+        max_cells: Option<u64>,
+        max_seconds: Option<f64>,
+        max_file_mb: Option<u64>,
+        query_timeout_ms: Option<u64>,
+        cache: bool,
+        cache_dir: Option<String>,
+    ) -> PyResult<Self> {
+        let mut opts = hh_agent::Options::default();
+        if !cache {
+            opts.cache = None;
+        } else if let Some(dir) = cache_dir {
+            let max_bytes = opts.cache.as_ref().map_or(2048 << 20, |c| c.max_bytes);
+            opts.cache = Some(hh_agent::cache::Cache { dir: dir.into(), max_bytes });
+        }
+        if let Some(n) = max_cells {
+            opts.max_cells = n;
+        }
+        if let Some(s) = max_seconds {
+            opts.max_seconds = std::time::Duration::from_secs_f64(s);
+        }
+        if let Some(mb) = max_file_mb {
+            opts.max_file_bytes = mb << 20;
+        }
+        if let Some(ms) = query_timeout_ms {
+            opts.query_timeout = std::time::Duration::from_millis(ms);
+        }
+        let allow: Vec<std::path::PathBuf> = allow.into_iter().map(Into::into).collect();
+        let session = hh_agent::Session::with_options(root, &allow, opts).map_err(|e| PyValueError::new_err(e.0))?;
+        Ok(NativeSession(std::sync::Mutex::new(session)))
+    }
+
+    #[getter]
+    fn root(&self) -> String {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).bounds().root().to_string_lossy().into_owned()
+    }
+
+    fn allow(&self, path: &str) -> PyResult<()> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).allow(path).map_err(|e| PyValueError::new_err(e.0))
+    }
+
+    #[pyo3(signature = (path, question = None))]
+    fn open_file(&self, py: Python<'_>, path: &str, question: Option<&str>) -> PyResult<String> {
+        self.run(py, "open_file", |s| s.open_file_for(path, question))
+    }
+
+    fn describe_table(&self, py: Python<'_>, path: &str, table: &str) -> PyResult<String> {
+        self.run(py, "describe_table", |s| s.describe_table(path, table))
+    }
+
+    #[pyo3(signature = (path, sql, limit = None))]
+    fn query(&self, py: Python<'_>, path: &str, sql: &str, limit: Option<usize>) -> PyResult<String> {
+        self.run(py, "query", |s| s.query(path, sql, limit))
+    }
+
+    fn cells(&self, py: Python<'_>, path: &str, sheet: &str, range: &str) -> PyResult<String> {
+        self.run(py, "cells", |s| s.cells(path, sheet, range))
+    }
+
+    #[pyo3(signature = (path, table = None, status = None))]
+    fn totals(&self, py: Python<'_>, path: &str, table: Option<&str>, status: Option<&str>) -> PyResult<String> {
+        self.run(py, "totals", |s| s.totals(path, table, status))
+    }
+
+    #[pyo3(signature = (folder = None, pattern = None))]
+    fn list_files(&self, py: Python<'_>, folder: Option<&str>, pattern: Option<&str>) -> PyResult<String> {
+        self.run(py, "list_files", |s| s.list_files(folder, pattern))
+    }
+
+    /// `[(prefix, path)]` of the files opened so far: `f1`, `f2`, … name their tables in SQL.
+    fn open_files(&self) -> Vec<(String, String)> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).open_files()
+    }
+
+    /// Runs a tool by its MCP name with JSON-encoded arguments.
+    fn call(&self, py: Python<'_>, name: &str, args_json: &str) -> PyResult<String> {
+        let args: serde_json::Value =
+            serde_json::from_str(args_json).map_err(|e| PyValueError::new_err(format!("arguments are not JSON: {e}")))?;
+        self.run(py, "call", |s| s.call(name, &args))
+    }
+}
+
+/// The tools as MCP `tools/list` entries, JSON-encoded.
+#[pyfunction]
+fn tool_specs_json() -> String {
+    hh_agent::tool_specs().to_string()
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Workbook>()?;
+    m.add_class::<NativeSession>()?;
+    m.add_function(wrap_pyfunction!(tool_specs_json, m)?)?;
     m.add_function(wrap_pyfunction!(open, m)?)?;
     m.add_function(wrap_pyfunction!(normalize, m)?)?;
     Ok(())

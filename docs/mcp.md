@@ -13,7 +13,8 @@ own read-only in-memory SQLite database and cached for the session by its conten
 - Capabilities: `tools` only. Methods: `initialize`, `ping`, `tools/list`, `tools/call`; notifications
   (`notifications/initialized`, `notifications/cancelled`, …) are accepted and ignored.
 
-The same tools are available without MCP from Rust through the `hh_agent` crate
+The same tools are available without MCP: in Python as [`hedgehog.Session`](python-api.md#hedgehogsession),
+in Node.js as [`HedgehogSession`](node-api.md), and in Rust through the `hh_agent` crate
 (`hh_agent::Session`), which the server wraps.
 
 ## Run it

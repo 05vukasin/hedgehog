@@ -9,16 +9,92 @@ print(hedgehog.__all__)
 ```
 
 ```text
-['NormalizeResult', 'Summary', 'Workbook', 'check_citations', 'facts', 'facts_json', 'normalize', 'open', 'summarize']
+['NormalizeResult', 'Session', 'Summary', 'Workbook', 'check_citations', 'facts', 'facts_json', 'normalize', 'open', 'summarize', 'tool_specs']
 ```
 
 The optional LLM layer lives in `hedgehog.llm` and is documented in [llm.md](llm.md). Examples use
 `sales.xlsx` from the [quickstart](quickstart.md#a-sample-messy-workbook).
 
-Contents: [`normalize`](#hedgehognormalize) · [`NormalizeResult`](#normalizeresult) ·
+Contents: [`Session`](#hedgehogsession) · [`tool_specs`](#hedgehogtool_specs) · [`normalize`](#hedgehognormalize) · [`NormalizeResult`](#normalizeresult) ·
 [`open`](#hedgehogopen) · [`Workbook`](#workbook) · [`summarize`](#hedgehogsummarize) ·
 [`Summary`](#summary) · [`facts`](#hedgehogfacts) · [`check_citations`](#hedgehogcheck_citations) ·
 [Errors](#errors) · [Conventions](#conventions)
+
+## `hedgehog.Session`
+
+The agent tools of [`hedgehog mcp`](mcp.md) in-process: an AI agent's catalog of a file and
+read-only SQL over its tables, without starting a server. Use it to give the model in your own chat
+loop hedgehog's tools.
+
+```
+Session(root, allow=(), *, max_cells=None, max_seconds=None, max_file_mb=None,
+        query_timeout_ms=None, cache=True, cache_dir=None)
+```
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `root` | | Folder the tools may read. Paths given to the tools are relative to it. |
+| `allow` | `()` | More files or folders outside the root. |
+| `max_cells` | 10,000,000 | Workbooks with more non-empty cells are refused. |
+| `max_seconds` | 120 | Time limit for reading and normalizing one file. |
+| `max_file_mb` | 256 | Larger files are refused. |
+| `query_timeout_ms` | 2,000 | Time limit of one SQL query. |
+| `cache` | `True` | Keep normalized files in a disk cache by content hash, so the next session opens them in milliseconds. A file found in the cache skips the limits, since it was read once already. |
+| `cache_dir` | `HEDGEHOG_CACHE_DIR` or the user's cache folder | Where the cache lives. |
+
+Every method returns the tool's compact text, at most ~12,000 characters. A tool error raises
+`ValueError` with one line the model can act on.
+
+| Method | Returns |
+|---|---|
+| `open_file(path, question=None)` | The catalog: tables, columns, total rows, traps. With the user's `question`, the tables it is about come first. |
+| `describe_table(path, table)` | Every column of `T1`, `T2`, … with its source cells, and the first rows. |
+| `query(path, sql, limit=None)` | One read-only SQLite `SELECT`/`WITH` as CSV (default 50 rows, at most 200). |
+| `cells(path, sheet, range)` | Source cells (at most 200), with formulas. |
+| `totals(path, table=None, status=None)` | Total rows and whether they add up. |
+| `list_files(folder=None, pattern=None)` | Spreadsheets under a folder of the root. |
+| `open_files()` | `[(prefix, path)]` of the files opened so far; `f2.T1` names table T1 of the second file in SQL. |
+| `call(name, args)` | Runs a tool by its name with the model's arguments (a dict), for a tool-calling loop. |
+| `root` | The canonical root folder (a property). `allow(path)` adds a path. |
+
+```python
+import hedgehog
+
+s = hedgehog.Session(".")
+print(s.open_file("sales.xlsx").splitlines()[2])
+print(s.query("sales.xlsx", 'SELECT Region, SUM("Revenue / Q1") AS q1 FROM T1 GROUP BY Region'))
+s.query("sales.xlsx", "SELECT Revenue FROM T1")
+```
+
+```text
+T1  'Sales report 2024' ← Sales!A3:E13 · 4 rows (+3 total rows only in T1_all)
+Region,q1
+North,1500.5
+South,3025
+(2 rows)
+ValueError: SQL error: no such column: Revenue (at character 7) — did you mean T1."Revenue / Q1", T1."Revenue / Q2"? (quote names with double quotes)
+```
+
+The catalog, the SQL views (`T1`, `T1_all`, `T1_long`, union views, `f2.T1`) and the error hints
+are described in [mcp.md](mcp.md#tools). Calls release the GIL; a session can be shared between
+threads, and its calls run one at a time.
+
+## `hedgehog.tool_specs`
+
+```
+tool_specs() -> list[dict]
+```
+
+The tools as MCP `tools/list` entries: `{name, title, description, inputSchema, annotations}`, with
+`name` one of `open_file`, `describe_table`, `query`, `cells`, `totals`, `list_files`. Map them to
+your model provider's tool format and send each tool call to `Session.call`:
+
+```python
+tools = [{"name": t["name"], "description": t["description"], "input_schema": t["inputSchema"]}
+         for t in hedgehog.tool_specs()]
+# … the model asks for a tool …
+result = session.call(tool_name, tool_arguments)
+```
 
 ## `hedgehog.normalize`
 

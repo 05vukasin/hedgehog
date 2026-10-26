@@ -21,13 +21,13 @@ The package is called **`hedgehog-sheets`** on the package index; you import it 
 
 ### From GitHub Releases
 
-Prebuilt wheels are attached to every GitHub Release (latest: v0.3.1). Point pip at the release page:
+Prebuilt wheels are attached to every GitHub Release (latest: v0.5.0). Point pip at the release page:
 
 ```sh
-pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.1
+pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.5.0
 ```
 
-pip picks the wheel for your platform from that page. No Rust toolchain is needed. Replace `v0.3.1`
+pip picks the wheel for your platform from that page. No Rust toolchain is needed. Replace `v0.5.0`
 with a later tag to get a later release; the [releases page](https://github.com/05vukasin/hedgehog/releases)
 lists them. You can also download the `.whl` file for your platform and run `pip install` on it.
 
@@ -68,7 +68,7 @@ hedgehog itself has no Python dependencies. LLM providers are optional extras:
 | `hedgehog-sheets[llm]` | all three | Comparing providers |
 
 ```sh
-pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.1
+pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.5.0
 ```
 
 (Quote the name in shells such as zsh, where `[` is special.) See [llm.md](llm.md) for API keys.

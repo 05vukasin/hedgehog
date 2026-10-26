@@ -6,6 +6,18 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-26
+
+### Added
+
+- **The agent tools in Python** (`hedgehog.Session`, `hedgehog.tool_specs()`): the catalog and
+  read-only SQL of `hedgehog mcp` in-process, as the Node package has them. `open_file`
+  (with the user's `question`), `describe_table`, `query`, `cells`, `totals`, `list_files`,
+  `open_files` and `call(name, args)` for a model's tool call; `tool_specs()` gives the JSON
+  schemas to hand to any model provider. Limits per session (`max_cells`, `max_seconds`,
+  `max_file_mb`, `query_timeout_ms`) and the disk cache (`cache`, `cache_dir`) are keyword
+  arguments. Calls release the GIL; a session can be shared between threads.
+
 ### Changed
 
 - **Total codes are said once, with their numbers** (B160): a code column that splits every group

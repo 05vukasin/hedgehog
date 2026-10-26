@@ -124,10 +124,10 @@ Prebuilt for Linux, macOS and Windows (Python 3.9 or newer). **No Rust needed.**
 called **`hedgehog-sheets`**; in Python you `import hedgehog`.
 
 ```sh
-pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.1
+pip install hedgehog-sheets --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.5.0
 
 # With an optional AI provider for summaries: [openai], [anthropic], [bedrock], or [llm] for all three
-pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.3.1
+pip install "hedgehog-sheets[openai]" --find-links https://github.com/05vukasin/hedgehog/releases/expanded_assets/v0.5.0
 ```
 
 It is not on PyPI yet; once it is, `pip install hedgehog-sheets` will be enough.

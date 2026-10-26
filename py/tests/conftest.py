@@ -21,9 +21,11 @@ ENV_VARS = [
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch, tmp_path):
-    """No real credentials leak into tests, and no repo .env is picked up."""
+    """No real credentials leak into tests, no repo .env is picked up, and the agent tools' disk
+    cache stays in the test's folder."""
     for v in ENV_VARS:
         monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("HEDGEHOG_CACHE_DIR", str(tmp_path / "hh-cache"))
     monkeypatch.chdir(tmp_path)
     import hedgehog.llm.env as env_mod
 

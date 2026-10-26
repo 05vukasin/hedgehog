@@ -35,7 +35,7 @@ Until it is on npm, every [GitHub Release](https://github.com/05vukasin/hedgehog
 tarballs. Install the main package together with the one for your platform:
 
 ```sh
-v=0.3.1   # a release that has the npm tarballs (from the next release on)
+v=0.5.0   # a release with the npm tarballs
 npm install \
   https://github.com/05vukasin/hedgehog/releases/download/v$v/hedgehog-sheets-$v.tgz \
   https://github.com/05vukasin/hedgehog/releases/download/v$v/hedgehog-sheets-linux-x64-gnu-$v.tgz
