@@ -18,6 +18,21 @@ All notable changes to hedgehog are listed here. The format follows
   `max_file_mb`, `query_timeout_ms`) and the disk cache (`cache`, `cache_dir`) are keyword
   arguments. Calls release the GIL; a session can be shared between threads.
 
+### Fixed
+
+- **Central European CSV files** (Serbian, Croatian, Polish, Czech, …) are read as Windows-1250
+  when they are not UTF-8: `Početno stanje`, `Račun partnera`, `Działalność` instead of
+  `Poèetno stanje`, `Raèun partnera`, `Dzia³alnoœæ`. The code page is chosen from the bytes;
+  Western files stay Windows-1252.
+- **A balance row under the totals is no data row**: `SALDO (D - P)` right below a ledger's
+  `UKUPNO`, whose value is the difference of two totals, moves to `T<n>_all` (`_row_type`
+  `total`, totals check `difference_of_totals`), so a sum over the data rows is no longer off by
+  the balance. The catalog names it: `balance 'SALDO (D - P)'@1625 (= difference of the totals)`.
+- **Amounts at a stated rate are amounts**: columns such as `PDV 20%`, `Osnovica 10%`,
+  `Porez 10%` or `Zdravstvo 5,15%` with money values are no longer marked `rate — do not sum`;
+  a title that only states percentages no longer makes its columns rates. Real rates
+  (`Stopa PDV` 0.2, `Veränderung in %`, `Anteil`) stay flagged.
+
 ### Changed
 
 - **Total codes are said once, with their numbers** (B160): a code column that splits every group
