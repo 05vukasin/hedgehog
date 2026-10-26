@@ -4,7 +4,7 @@ hedgehog turns messy Excel workbooks into a clean, typed workbook plus a machine
 that an AI agent with a code sandbox can load with pandas or openpyxl. This folder explains every
 way to use it.
 
-New here? Read [installation](installation.md), then the [quickstart](quickstart.md).
+New here? Start with [OVERVIEW.md](OVERVIEW.md) (the whole picture: idea, how it works, where things stand, how to work in the code), then [installation](installation.md) and the [quickstart](quickstart.md).
 
 ## Guides
 

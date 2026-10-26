@@ -10,6 +10,7 @@ numbered **stages** on their own branches; the lead merges them after the gates.
 
 ## Read first (in this order)
 
+0. `docs/OVERVIEW.md` — the whole picture of both projects, if you are new.
 1. `docs/STAGES.md` — current numbers, what is done, what is **running** (branch + worktree) and **next**.
 2. `docs/AGENT_PLAYBOOK.md` — standing rules, machine limits (memory, btrfs metadata), the gates, the
    stage workflow, the brief and report templates, the commit trailer `Stage: S<n>`.
