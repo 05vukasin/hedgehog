@@ -9,8 +9,10 @@
 //!   malformed input: text after a closing quote is kept, an unclosed quote runs to the end of
 //!   the file. A record ends at `\n`, `\r\n` or a lone `\r`; one record is one row, so a blank
 //!   line is an empty row.
-//! - Encoding: UTF-8 (BOM stripped) or UTF-16 with a BOM. A file that is not valid UTF-8 is read
-//!   as Windows-1252, decided for the whole file at the first invalid field.
+//! - Encoding: UTF-8 (BOM stripped) or UTF-16 with a BOM. A file that is not valid UTF-8 (decided
+//!   for the whole file at the first invalid field) is read as Windows-1250 when its bytes read as
+//!   Central European words ([`single_byte_encoding`]: `Ra\xE8un` is `Račun`, not `Raèun`),
+//!   otherwise as Windows-1252.
 //! - Values: a field becomes a [`Value::Number`] only when it is an unambiguous plain number
 //!   ([`plain_number`]); everything else stays [`Value::Text`], and the value normalizer parses it
 //!   with per-column locale inference (`1.200,50`, `1,200.50`, `12%`, dates) exactly like numbers
@@ -36,6 +38,7 @@ const DELIMITERS: [u8; 4] = *b"\t;|,";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Encoding {
     Utf8,
+    Windows1250,
     Windows1252,
 }
 
@@ -92,7 +95,10 @@ fn read_cells<R: BufRead>(mut open: impl FnMut() -> io::Result<R>, head: &[u8], 
     let delim = if tsv { b'\t' } else { sniff_delimiter(head) };
     match collect(open().map_err(err)?, delim, Encoding::Utf8, max_cells)? {
         Some(cells) => Ok(cells),
-        None => Ok(collect(open().map_err(err)?, delim, Encoding::Windows1252, max_cells)?.unwrap_or_default()),
+        None => {
+            let enc = single_byte_encoding(open().map_err(err)?).map_err(err)?;
+            Ok(collect(open().map_err(err)?, delim, enc, max_cells)?.unwrap_or_default())
+        }
     }
 }
 
@@ -110,6 +116,7 @@ fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding, max_cells: u64) -> Result
                     Ok(s) => typed_str(s),
                     Err(_) => return Ok(None),
                 },
+                Encoding::Windows1250 => typed(bytes.iter().map(|&b| windows_1250(b)).collect()),
                 Encoding::Windows1252 => typed(bytes.iter().map(|&b| windows_1252(b)).collect()),
             };
             if let Some(value) = value {
@@ -359,6 +366,125 @@ impl<R: BufRead> Parser<R> {
     }
 }
 
+/// Windows-1250 byte → char (Central European: Polish, Czech, Slovak, Slovene, Croatian,
+/// Serbian Latin, Hungarian, Romanian). Unassigned bytes map to the C1 control of the same value.
+fn windows_1250(b: u8) -> char {
+    const HIGH: [char; 128] = [
+        '€', '\u{81}', '\u{201A}', '\u{83}', '\u{201E}', '…', '†', '‡', //
+        '\u{88}', '‰', 'Š', '\u{2039}', 'Ś', 'Ť', 'Ž', 'Ź', //
+        '\u{90}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '•', '\u{2013}', '\u{2014}', //
+        '\u{98}', '™', 'š', '\u{203A}', 'ś', 'ť', 'ž', 'ź', //
+        '\u{A0}', 'ˇ', '˘', 'Ł', '¤', 'Ą', '¦', '§', '¨', '©', 'Ş', '«', '¬', '\u{AD}', '®', 'Ż', //
+        '°', '±', '˛', 'ł', '´', 'µ', '¶', '·', '¸', 'ą', 'ş', '»', 'Ľ', '˝', 'ľ', 'ż', //
+        'Ŕ', 'Á', 'Â', 'Ă', 'Ä', 'Ĺ', 'Ć', 'Ç', 'Č', 'É', 'Ę', 'Ë', 'Ě', 'Í', 'Î', 'Ď', //
+        'Đ', 'Ń', 'Ň', 'Ó', 'Ô', 'Ő', 'Ö', '×', 'Ř', 'Ů', 'Ú', 'Ű', 'Ü', 'Ý', 'Ţ', 'ß', //
+        'ŕ', 'á', 'â', 'ă', 'ä', 'ĺ', 'ć', 'ç', 'č', 'é', 'ę', 'ë', 'ě', 'í', 'î', 'ď', //
+        'đ', 'ń', 'ň', 'ó', 'ô', 'ő', 'ö', '÷', 'ř', 'ů', 'ú', 'ű', 'ü', 'ý', 'ţ', '˙',
+    ];
+    match b {
+        0x80.. => HIGH[(b - 0x80) as usize],
+        _ => b as char,
+    }
+}
+
+/// Windows-1250 or Windows-1252 for a file that is not UTF-8, from the whole byte stream.
+///
+/// Only the bytes that are a letter in both code pages but a consonant in 1250 and a vowel in
+/// 1252 (`0xE8` č/è, `0xE6` ć/æ, `0xF8` ř/ø, `0xE0` ŕ/à, `0xE5` ĺ/å, `0xEF` ď/ï, `0xF2` ň/ò and
+/// their capitals) vote, by the letters around them: between vowels or after a vowel at a word
+/// end it is a consonant (`Poèetno` → `Početno`, `Petroviæ` → `Petrović`: 1250); between
+/// consonants, after a consonant at a word end, or alone it is a vowel (`crème`, `caffè`, `à`:
+/// 1252). `0xF0`/`0xD0` next to a letter (đ/Đ, while ð is Icelandic only) and the bytes that are
+/// a letter in 1250 but a symbol in 1252 (`ł`, `ą`, `ż`, … with letters on both sides: `m³`,
+/// `£5` don't vote; a lowercase one needs a lowercase neighbour: `O\xBFROURKE` is a mangled
+/// apostrophe, not `OżROURKE`) count for 1250. 1250 wins only with more votes (ties stay 1252) and
+/// only when most high bytes stand alone between ASCII bytes (runs are a multi-byte encoding).
+fn single_byte_encoding<R: BufRead>(mut r: R) -> io::Result<Encoding> {
+    let (mut prev, mut cur) = (b' ', b' ');
+    let (mut score, mut high, mut alone) = (0i64, 0u64, 0u64);
+    let mut step = |prev: u8, cur: u8, next: u8| {
+        if cur >= 0x80 {
+            score += vote_1250(prev, cur, next);
+            high += 1;
+            alone += u64::from(prev < 0x80 && next < 0x80);
+        }
+    };
+    loop {
+        let chunk = match r.fill_buf() {
+            Ok(c) => c,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if chunk.is_empty() {
+            break;
+        }
+        for &next in chunk {
+            step(prev, cur, next);
+            (prev, cur) = (cur, next);
+        }
+        let n = chunk.len();
+        r.consume(n);
+    }
+    step(prev, cur, b' ');
+    // Mostly runs of high bytes: a multi-byte encoding (Shift-JIS, …), not Latin letters.
+    let latin = alone * 2 >= high;
+    Ok(if latin && score > 0 { Encoding::Windows1250 } else { Encoding::Windows1252 })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Sound {
+    Vowel,
+    Consonant,
+    /// A letter whose sound depends on the code page.
+    Either,
+    /// Not a letter.
+    Gap,
+}
+
+/// The sound of a byte as a letter, where Windows-1250 and Windows-1252 agree on it.
+fn sound(b: u8) -> Sound {
+    match b {
+        b'a' | b'e' | b'i' | b'o' | b'u' | b'y' | b'A' | b'E' | b'I' | b'O' | b'U' | b'Y' => Sound::Vowel,
+        _ if b.is_ascii_alphabetic() => Sound::Consonant,
+        0x8A | 0x8E | 0x9A | 0x9E | 0xDF => Sound::Consonant, // Š Ž š ž ß
+        0x8C | 0x8D | 0x8F | 0x9C | 0x9D | 0x9F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xB3 | 0xB9 | 0xBA | 0xBC | 0xBE | 0xBF | 0xFF => {
+            Sound::Either
+        }
+        0xD7 | 0xF7 => Sound::Gap, // × ÷
+        0xC0..=0xFE => match b & !0x20 {
+            0xC0 | 0xC5 | 0xC6 | 0xC8 | 0xCF | 0xD2 | 0xD8 => Sound::Either,
+            0xC7 | 0xD0 | 0xD1 | 0xDE => Sound::Consonant, // Ç, Ð/Đ, Ñ/Ń, Þ/Ţ
+            _ => Sound::Vowel,                             // Á, Ã/Ă, Ê/Ę, Õ/Ő, Ù/Ů, …
+        },
+        _ => Sound::Gap,
+    }
+}
+
+/// +1/+2 when byte `b` between `prev` and `next` reads as Windows-1250, −1 when as Windows-1252.
+fn vote_1250(prev: u8, b: u8, next: u8) -> i64 {
+    use Sound::*;
+    let letter = |s: Sound| s != Gap;
+    let (p, n) = (sound(prev), sound(next));
+    let upper = matches!(b, 0x8C | 0x8D | 0x8F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xBC);
+    match b {
+        // Consonant in 1250, vowel in 1252.
+        0xC0 | 0xC5 | 0xC6 | 0xC8 | 0xCF | 0xD2 | 0xD8 | 0xE0 | 0xE5 | 0xE6 | 0xE8 | 0xEF | 0xF2 | 0xF8 => match (p, n) {
+            (Gap, Gap) | (Consonant, Consonant | Gap) | (Gap, Consonant) => -1,
+            (Vowel | Gap, Vowel | Gap) => 1,
+            _ => 0,
+        },
+        // đ/Đ: ð is Icelandic only.
+        0xD0 | 0xF0 if letter(p) || letter(n) => 1,
+        // A letter in 1250 (Ś Ť Ź ś ť ź Ł Ą Ş Ż ł ą ş Ľ ľ ż), a symbol or a rare letter in 1252.
+        0x8C | 0x8D | 0x8F | 0x9C | 0x9D | 0x9F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xB3 | 0xB9 | 0xBA | 0xBC | 0xBE | 0xBF
+            if letter(p) && letter(n) && (upper || prev.is_ascii_lowercase() || next.is_ascii_lowercase()) =>
+        {
+            2
+        }
+        _ => 0,
+    }
+}
+
 /// Windows-1252 byte → char. 0x80–0x9F hold typographic characters; the five unassigned bytes
 /// map to the C1 control of the same value, as WHATWG decoders do. Everything else is Latin-1.
 fn windows_1252(b: u8) -> char {
@@ -574,6 +700,43 @@ mod tests {
         let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain(le).collect();
         assert_eq!(rows(&read(&utf16)), [[t("a"), t("b")], [n(1.0), t("€")]]);
         assert!(read_bytes(b"PK\x03\x04\x00\x00binary", false, u64::MAX).is_err());
+    }
+
+    #[test]
+    fn central_european_files_read_as_windows_1250() {
+        // A Serbian bank export in cp1250: č ć đ Č Ć Đ must not become è æ ð È Æ Ð.
+        let cells = read(b"Opis;Ra\xe8un partnera\nPo\xe8etno stanje;100\nUplata \xd0or\xf0e Petrovi\xe6;5\n\xc8a\xe8ak \x9aum\x9e;3\n");
+        assert_eq!(
+            rows(&cells),
+            [
+                [t("Opis"), t("Račun partnera")],
+                [t("Početno stanje"), n(100.0)],
+                [t("Uplata Đorđe Petrović"), n(5.0)],
+                [t("Čačak šumž"), n(3.0)]
+            ]
+        );
+        // Polish and Czech letters that are symbols in Windows-1252.
+        let cells = read(b"Miasto;Kwota\nWa\xb3brzych;1\nm\xb9ka \xbfona;2\nP\xf8\xedbram;3\n");
+        assert_eq!(rows(&cells)[1..], [[t("Wałbrzych"), n(1.0)], [t("mąka żona"), n(2.0)], [t("Příbram"), n(3.0)]]);
+        // Western files stay Windows-1252: French, German, Spanish, Italian, Danish.
+        let cells = read(b"Nom;Prix\nCr\xe8me br\xfbl\xe9e;1\nTr\xe8s \xe0 la mode;2\nGr\xf6\xdfe;3\nNi\xf1o a\xf1o;4\ncaff\xe8;5\nK\xf8benhavn S\xf8ren;6\n");
+        assert_eq!(
+            rows(&cells)[1..],
+            [
+                [t("Crème brûlée"), n(1.0)],
+                [t("Très à la mode"), n(2.0)],
+                [t("Größe"), n(3.0)],
+                [t("Niño año"), n(4.0)],
+                [t("caffè"), n(5.0)],
+                [t("København Søren"), n(6.0)]
+            ]
+        );
+        // Units and prices keep their 1252 symbols.
+        let cells = read(b"Fl\xe4che;Preis\n12 m\xb2;\xa35\n1 m\xb3;\xbd\nLAING O\xbfROURKE;1\n");
+        assert_eq!(rows(&cells)[1..], [[t("12 m²"), t("£5")], [t("1 m³"), t("½")], [t("LAING O¿ROURKE"), n(1.0)]]);
+        // Shift-JIS (runs of high bytes) is not a Latin code page: left as Windows-1252.
+        let sjis = b"\x93\xc1\x92\xe8\x94\xed\x8d\xd0\x92\x6e\x95\xfb;1\n";
+        assert_eq!(single_byte_encoding(&sjis[..]).unwrap(), Encoding::Windows1252);
     }
 
     #[test]
