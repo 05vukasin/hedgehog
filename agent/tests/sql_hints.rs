@@ -201,6 +201,66 @@ fn long_form_of_a_wide_table() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// Amounts at a tax rate (`PDV 20%`, `PIO 14%`, `Osnovica za porez` under a title that lists the
+/// rates) are amounts that add up; only columns whose values are rates are "do not sum".
+#[test]
+fn amounts_at_a_stated_rate_are_summable() {
+    let d = dir("rates");
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet().set_name("Obračun").unwrap();
+    ws.write_string(0, 0, "Firma d.o.o. - Obračun zarada za septembar 2026").unwrap();
+    ws.write_string(1, 0, "Neoporezivi iznos: 28.423,00 RSD; porez 10%; doprinosi zaposleni: PIO 14%, zdravstvo 5,15%, nezaposlenost 0,75%").unwrap();
+    let heads = [
+        "Šifra", "Bruto zarada", "Osnovica za porez", "Porez 10%", "PIO 14%", "Zdravstvo 5,15%", "Nezaposlenost 0,75%",
+        "Doprinosi zaposleni ukupno", "Neto zarada", "Ukupan trošak poslodavca", "Stopa PDV", "Veränderung in %", "Anteil",
+    ];
+    for (c, h) in heads.iter().enumerate() {
+        ws.write_string(3, c as u16, *h).unwrap();
+    }
+    for i in 0..12u32 {
+        let bruto = 85_000.0 + 30_000.0 * f64::from(i);
+        let base = bruto - 28_423.0;
+        let (tax, pio, zdr, nez) = (base * 0.1, bruto * 0.14, bruto * 0.0515, bruto * 0.0075);
+        let contrib = pio + zdr + nez;
+        let row = 4 + i;
+        ws.write_string(row, 0, format!("R{}", 101 + i)).unwrap();
+        for (c, v) in [bruto, base, tax, pio, zdr, nez, contrib, bruto - tax - contrib, bruto * 1.1515].iter().enumerate() {
+            ws.write_number(row, 1 + c as u16, (v * 100.0).round() / 100.0).unwrap();
+        }
+        ws.write_number(row, 10, if i % 3 == 0 { 0.1 } else { 0.2 }).unwrap();
+        ws.write_number(row, 11, f64::from(i) * 0.7 - 3.5).unwrap();
+        ws.write_number(row, 12, 0.02 + f64::from(i) * 0.01).unwrap();
+    }
+    let inv = wb.add_worksheet().set_name("Fakture").unwrap();
+    for (c, h) in ["Broj fakture", "Osnovica 20%", "PDV 20%", "Ukupno"].iter().enumerate() {
+        inv.write_string(0, c as u16, *h).unwrap();
+    }
+    for i in 0..15u32 {
+        let base = 13_058.11 + 61_000.0 * f64::from(i);
+        inv.write_string(1 + i, 0, format!("FA-2026-{:04}", 401 + i)).unwrap();
+        inv.write_number(1 + i, 1, base).unwrap();
+        inv.write_number(1 + i, 2, (base * 20.0).round() / 100.0).unwrap();
+        inv.write_number(1 + i, 3, (base * 120.0).round() / 100.0).unwrap();
+    }
+    wb.save(d.join("plate.xlsx")).unwrap();
+    let mut s = Session::new(&d, &[]).unwrap();
+    let cat = s.open_file("plate.xlsx").unwrap();
+    let no_sum: Vec<&str> = cat.lines().filter(|l| l.contains("do not sum:")).collect();
+    assert_eq!(no_sum.len(), 1, "{cat}");
+    for real in ["\"Stopa PDV\" (rate)", "\"Veränderung in %\" (rate)", "Anteil (rate)"] {
+        assert!(no_sum[0].contains(real), "{real} is a rate:\n{cat}");
+    }
+    for amount in [
+        "Osnovica za porez", "Porez 10%", "PIO 14%", "Zdravstvo 5,15%", "Nezaposlenost 0,75%", "Doprinosi zaposleni",
+        "Ukupan trošak", "Osnovica 20%", "PDV 20%",
+    ] {
+        assert!(!no_sum[0].contains(amount), "{amount} is an amount:\n{cat}");
+        assert!(!cat.contains(&format!("{amount}\"[rate")) && !cat.contains(&format!("{amount}\"[RSD rate")), "{amount}:\n{cat}");
+    }
+    let desc = s.describe_table("plate.xlsx", "T2").unwrap();
+    assert!(desc.contains("\"PDV 20%\" | number |") || desc.contains("\"PDV 20%\" | number · amount"), "{desc}");
+}
+
 /// A ledger's `SALDO (D - P)` under its `UKUPNO` row is the difference of the totals: out of the
 /// data rows, listed with the total rows, and the catalog says what it is.
 #[test]

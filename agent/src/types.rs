@@ -260,6 +260,45 @@ fn money_words(ws: &[String], low: &str) -> bool {
     STEMS.iter().any(|s| low.contains(s))
 }
 
+/// Words of an amount that is computed at a rate: a tax, a base, a contribution, a total
+/// (`PDV 20%`, `Osnovica 10%`, `Porez 10%`, `VAT 19%`, `MwSt 7%`): lowercase words or stems.
+fn amount_at_rate_words(ws: &[String], low: &str) -> bool {
+    const EXACT: &[&str] = &[
+        "pdv", "porez", "osnovica", "doprinos", "doprinosi", "neto", "bruto", "ukupno", "ukupan", "ukupna", "tax", "taxes",
+        "vat", "gst", "base", "net", "gross", "total", "amount", "mwst", "ust", "steuer", "tva", "iva", "impuesto",
+        "imposto", "imposta", "btw", "ddv", "dph", "netto", "brutto", "basis", "summe", "betrag",
+    ];
+    const STEMS: &[&str] = &["osnovic", "doprinos", "trošk", "trošak", "troskov", "trosak", "steuer", "abgabe", "beitr"];
+    any_word(ws, EXACT, STEMS) || money_words(ws, low)
+}
+
+/// A header that is a rate only by its `%` sign (`PDV 20%`, `Veränderung in %`), no rate word.
+fn percent_sign_only(ws: &[String]) -> bool {
+    let others: Vec<String> = ws.iter().filter(|w| *w != "%").cloned().collect();
+    others.len() < ws.len() && !rate_words(&others)
+}
+
+/// A header that names a rate only by stating one (`Porez 10%`, `PIO 14%`, `Zdravstvo 5,15%`):
+/// a `%` right after a number and no rate word (`Stopa`, `Anteil`, `Rate`). Such a header names
+/// the rate the column's amounts are computed at.
+fn stated_rate_only(ws: &[String]) -> bool {
+    ws.windows(2).any(|w| w[1] == "%" && w[0].chars().all(|c| c.is_ascii_digit())) && percent_sign_only(ws)
+}
+
+/// The column's values are not rates: some is beyond ±100 (no percentage, no fraction), or, for a
+/// header that states the rate and names an amount, they vary (a rate column at one stated rate
+/// holds that rate).
+fn amounts_not_rates(c: &Column, rows: &[usize], stated_amount: bool) -> bool {
+    let nums: Vec<f64> = rows.iter().filter_map(|&r| if let Some(Out::Num(x)) = c.values.get(r) { Some(*x) } else { None }).collect();
+    if nums.is_empty() {
+        return false;
+    }
+    let big = nums.iter().any(|x| x.abs() > 100.0);
+    let fractions = nums.iter().all(|x| x.abs() <= 1.0);
+    let (_, distinct) = distinct_nums(c, rows);
+    big || (stated_amount && !fractions && distinct > 2)
+}
+
 // ------------------------------------------------------------------------------------------------
 // classification
 
@@ -343,7 +382,10 @@ pub fn summed_cols(norm: &Normalized, t: &Table) -> Vec<u32> {
 pub fn classify(t: &Table, names: &[String], mixed: Option<usize>, summed: &[u32]) -> Vec<Option<ColType>> {
     let rows = sample(&data_rows(t));
     let title = t.title.as_ref().map(|(s, _)| s.as_str()).unwrap_or("");
-    let title_measure = measure_of_label(title).filter(|m| m.sem != Sem::Count);
+    // A title that states the rates ("porez 10%; PIO 14%") says what the amounts are computed at,
+    // not that the columns are rates.
+    let title_measure =
+        measure_of_label(title).filter(|m| m.sem != Sem::Count && !(m.sem == Sem::Rate && stated_rate_only(&words(title))));
     let period_cols: Vec<String> = table_time_coverage(t)
         .filter(|c| c.source == "column")
         .map(|c| c.columns)
@@ -424,6 +466,23 @@ fn classify_col(
             if let Some(mut m) = measure_of_label(name) {
                 if m.currency.is_none() {
                     m.currency = currency.clone();
+                }
+                // A rate by its header only (`PDV 20%`, `PIO 14%`): the values decide. Amounts at a
+                // stated rate, or under an amount word, add up.
+                if m.sem == Sem::Rate {
+                    let low = name.to_lowercase();
+                    let amount_word = amount_at_rate_words(&ws, &low);
+                    let amounts = if percent_sign_only(&ws) {
+                        let stated = stated_rate_only(&ws);
+                        (stated || amount_word || currency.is_some()) && amounts_not_rates(c, rows, stated && amount_word)
+                    } else {
+                        // A rate word (`Stopa PDV`, `Exchange rate EUR`): only an amount word over
+                        // values that are no rates.
+                        amount_word && amounts_not_rates(c, rows, false)
+                    };
+                    if amounts {
+                        m.sem = Sem::Amount;
+                    }
                 }
                 if m.sem == Sem::Count && currency.is_some() {
                     m.sem = Sem::Amount;
