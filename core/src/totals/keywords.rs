@@ -348,6 +348,9 @@ pub enum NonSumKind {
     OfWhich,
     /// "Average", "Mean", "Median", "Ø", "Durchschnitt", "Moyenne", "Prosek": a mean of the rows above.
     Average,
+    /// "SALDO (D - P)", "Balance", "Differenz", "Razlika", "Net" right under a total row: the
+    /// difference of that row's totals (debit − credit), not a record.
+    Balance,
 }
 
 /// "of which" phrases (folded tokens) at the start of a label, in English, German, French,
@@ -396,6 +399,16 @@ const AVERAGE: &[&str] = &[
     "gemiddeld", "gennemsnit", "gjennomsnitt", "genomsnitt", "keskiarvo", "atlag", "prumer", "priemer", "povprecje",
 ];
 
+/// Balance words (folded), as the first word of a label.
+const BALANCE: &[&str] = &[
+    "saldo", "salda", "balance", "bal", "solde", "differenz", "difference", "diff", "differenza", "diferencia",
+    "diferenca", "razlika", "rozdil", "roznica", "verschil", "skillnad", "forskel", "forskjell", "erotus",
+    "kulonbseg", "net", "netto", "nett",
+];
+
+/// Balance labels have at most this many words ("SALDO (D - P)", "Balance debit - credit").
+const BALANCE_LABEL_MAX_WORDS: usize = 5;
+
 /// Average labels have at most this many words ("Average", "Ø 2012", "Average North region").
 const AVERAGE_LABEL_MAX_WORDS: usize = 4;
 
@@ -413,13 +426,13 @@ pub enum NonSumLabel {
     Phrase,
 }
 
-/// First words (folded) of [`AVERAGE`] and [`OF_WHICH`]: everything else is rejected after
+/// First words (folded) of [`AVERAGE`], [`BALANCE`] and [`OF_WHICH`]: everything else is rejected after
 /// folding one word.
 fn nonsum_first_word(w: &str) -> bool {
-    AVERAGE.contains(&w) || OF_WHICH.iter().any(|p| p[0] == w)
+    AVERAGE.contains(&w) || BALANCE.contains(&w) || OF_WHICH.iter().any(|p| p[0] == w)
 }
 
-/// The kind of non-sum row a label announces ("of which: …", "Average", "Ø 2012") and how plainly
+/// The kind of non-sum row a label announces ("of which: …", "Average", "Ø 2012", "Saldo") and how plainly
 /// ([`NonSumLabel`]), or `None`.
 pub fn nonsum_keyword(text: &str) -> Option<(NonSumKind, NonSumLabel)> {
     let t = text.trim().trim_start_matches(['-', '–', '—', '•', '·', '(', ' ', '\u{a0}']);
@@ -462,6 +475,11 @@ pub fn nonsum_keyword(text: &str) -> Option<(NonSumKind, NonSumLabel)> {
     if AVERAGE.contains(&first.as_str()) && toks.len() <= AVERAGE_LABEL_MAX_WORDS {
         let bare = toks[1..].iter().all(|w| w.bytes().all(|b| b.is_ascii_digit()));
         return Some((NonSumKind::Average, if bare { NonSumLabel::Bare } else { NonSumLabel::Phrase }));
+    }
+    // Only a candidate: the row must sit under a total row and hold a difference of its numbers.
+    if BALANCE.contains(&first.as_str()) && toks.len() <= BALANCE_LABEL_MAX_WORDS {
+        let bare = toks.len() == 1;
+        return Some((NonSumKind::Balance, if bare { NonSumLabel::Bare } else { NonSumLabel::Phrase }));
     }
     // The phrase and what the part is ("davon Inland", "of which: exports"), or the phrase ending in
     // a colon: "Josta" alone is a first name, not Finnish "of which".
@@ -621,6 +639,10 @@ mod tests {
         assert_eq!(ns("Średnia"), Some((Average, Bare)));
         assert_eq!(ns("Average North"), Some((Average, Phrase)));
         assert_eq!(ns("Median"), Some((Average, Bare)));
+        assert_eq!(ns("SALDO (D - P)"), Some((Balance, Phrase)));
+        assert_eq!(ns("Saldo"), Some((Balance, Bare)));
+        assert_eq!(ns("Différence"), Some((Balance, Bare)));
+        assert_eq!(ns("Разлика"), Some((Balance, Bare)));
         for s in ["Østfold", "Durchschnittshöhe in Euro", "Average hourly earnings of all full-time employees", "Dontworry",
             "Of course", "Total", "Josta", "Davon"]
         {

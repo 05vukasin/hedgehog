@@ -2463,6 +2463,8 @@ fn build_table(
             (RowKind::Total, _) => RowType::Total,
             (RowKind::NonSum(NonSumKind::Average), _) => RowType::Average,
             (RowKind::NonSum(NonSumKind::OfWhich), _) => RowType::OfWhich,
+            // A balance of the totals above ("SALDO (D - P)") goes with the totals.
+            (RowKind::NonSum(NonSumKind::Balance), _) => RowType::Total,
             _ => RowType::Data,
         };
         if rt != RowType::Data {
@@ -2573,7 +2575,7 @@ fn build_table(
                 && idxs.iter().any(|&i| matches!(&cells[i].value, Some(Value::Text(t)) if norm_key(t).contains(g.as_str())))
         });
         let depth = match (level, row_total.get(row).and_then(|t| t.top)) {
-            _ if matches!(rt, RowType::Data | RowType::Average | RowType::OfWhich) => path.len(),
+            _ if matches!(rt, RowType::Data | RowType::Average | RowType::OfWhich) || matches!(kind, RowKind::NonSum(_)) => path.len(),
             _ if names_group => path.len(),
             // A total right under its section label (`Constant 2012 $` over `Total R&D, all
             // performers` and its parts) heads that section, whatever rows above it add up to.
@@ -3614,15 +3616,19 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
     }
     // "Of which" and average rows that ended up as such in a table (removed, or kept with
     // `keep_totals`): one item per number, checked against the rows above.
+    let balance_rows: HashSet<u32> = det.nonsum.iter().filter(|n| n.kind == NonSumKind::Balance).map(|n| n.row).collect();
+    let nonsum_type = |row: u32, rt: RowType| {
+        matches!(rt, RowType::Average | RowType::OfWhich) || (rt == RowType::Total && balance_rows.contains(&row))
+    };
     let nonsum_rows: HashSet<(usize, u32)> = removed
         .iter()
-        .filter(|(_, _, rt, _)| matches!(rt, RowType::Average | RowType::OfWhich))
+        .filter(|(_, row, rt, _)| nonsum_type(*row, *rt))
         .map(|(n, row, _, _)| (*n, *row))
         .chain(tables.iter().flat_map(|t| {
             t.src_rows
                 .iter()
                 .zip(&t.row_types)
-                .filter(|(_, rt)| matches!(rt, RowType::Average | RowType::OfWhich))
+                .filter(|&(&r, &rt)| nonsum_type(r, rt))
                 .map(move |(&r, _)| (t.n, r))
         }))
         .collect();
@@ -3642,6 +3648,7 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
         let (level, median) = match ns.kind {
             NonSumKind::Average => ("average", label.as_deref().is_some_and(|l| norm_key(l).starts_with("median"))),
             NonSumKind::OfWhich => ("of_which", false),
+            NonSumKind::Balance => ("balance", false),
         };
         for ch in &ns.cells {
             let Some((k, n)) = nonsum_table(ns.row, ch.col) else { continue };
@@ -3662,6 +3669,8 @@ pub(super) fn process_sheet(grid: &Grid, opts: &Options, layout: super::SheetAna
                 // A larger part is not reported as wrong: rates, shares and changes are no parts.
                 (NonSumKind::OfWhich, Some(false), _) => ("unknown", "exceeds_parent"),
                 (NonSumKind::OfWhich, None, _) => ("unknown", "no_parent"),
+                (NonSumKind::Balance, Some(true), _) => ("ok", "difference_of_totals"),
+                (NonSumKind::Balance, _, _) => ("unknown", "no_source"),
             };
             items.push(TotalItem {
                 table: Some(n),

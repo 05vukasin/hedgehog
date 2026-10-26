@@ -665,7 +665,7 @@ pub struct Detection {
 }
 
 /// A row that is neither data nor a sum of other rows ([`NonSumKind`]): an "of which" part of the
-/// row above it, or an average of the rows above it.
+/// row above it, an average of the rows above it, or the balance of the total row above it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonSumRow {
     pub row: u32,
@@ -681,7 +681,8 @@ pub struct NonSumCheck {
     pub col: u32,
     pub value: f64,
     /// Average: the mean (the median for a "Median" row) of the numbers above it in its section;
-    /// of which: the number of the row it is a part of.
+    /// of which: the number of the row it is a part of; balance: the difference of the two total
+    /// cells in `source`.
     pub expected: Option<f64>,
     /// The cells `expected` comes from.
     pub source: Option<Rect>,
@@ -1625,7 +1626,10 @@ const MAX_SPACER_ROWS: usize = 2;
 /// - average: in some column its number is the mean (median) of the numbers above it in its section
 ///   (since the previous total or average row, past one directly above it: "Total" then "Average"),
 ///   or the label is the plain sign or word ("Ø 2012", "Average") over at least two numbers and,
-///   for the word, at the end of its block (a category "Media" between data rows is data).
+///   for the word, at the end of its block (a category "Media" between data rows is data);
+/// - balance: the row sits right under a total row (past a spacer row or two) and in some column
+///   its number is the difference of two nonzero numbers of that total row (`SALDO (D - P)` =
+///   debit total − credit total).
 fn nonsum_rows(
     grid: &Grid,
     kw_rows: &KeywordRows,
@@ -1662,8 +1666,25 @@ fn nonsum_rows(
     let of_which = RowSet::new(found.iter().filter(|f| f.kind == NonSumKind::OfWhich).map(|f| f.row));
     let averages = RowSet::new(found.iter().filter(|f| f.kind == NonSumKind::Average).map(|f| f.row));
     let labelled = RowSet::new(found.iter().map(|f| f.row));
+    let total_rows = RowSet::new(kw_rows.keys().copied().chain(formula_total.iter().map(|&(r, _)| r)));
     let mut out = Vec::new();
     for f in &found {
+        // Balance: the total row right above (past a spacer row or two) and its nonzero numbers.
+        let mut totals_above: Option<(u32, Vec<(u32, f64)>)> = None;
+        if f.kind == NonSumKind::Balance {
+            let above = (f.row.saturating_sub(MAX_SPACER_ROWS as u32 + 1)..f.row).rev().find(|r| rows_with_cells.contains(r));
+            let Some(t) = above.filter(|t| total_rows.contains(t)) else { continue };
+            let nums = grid
+                .row_cells(t)
+                .iter()
+                .map(|&i| &cells[i as usize])
+                .filter_map(|c| match c.value {
+                    Some(Value::Number(v)) if v != 0.0 => Some((c.col, v)),
+                    _ => None,
+                })
+                .collect();
+            totals_above = Some((t, nums));
+        }
         let nums: Vec<(u32, f64)> = grid
             .row_cells(f.row)
             .iter()
@@ -1719,6 +1740,19 @@ fn nonsum_rows(
                             keep = true;
                         }
                         break;
+                    }
+                }
+                NonSumKind::Balance => {
+                    // The difference of two of the total row's numbers (debit − credit), either way.
+                    let (t, nums) = totals_above.as_ref().expect("balance rows have a total row above");
+                    let pair = nums.iter().find_map(|&(ca, a)| {
+                        nums.iter().find(|&&(cb, b)| cb != ca && close(value, a - b, false)).map(|&(cb, b)| (ca, cb, a - b))
+                    });
+                    if let Some((ca, cb, diff)) = pair {
+                        check.expected = Some(diff);
+                        check.source = Some(Rect { top: *t, left: ca.min(cb), bottom: *t, right: ca.max(cb) });
+                        check.ok = Some(true);
+                        keep = true;
                     }
                 }
                 NonSumKind::Average => {

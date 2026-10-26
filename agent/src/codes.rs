@@ -485,7 +485,7 @@ mod tests {
         let names: Vec<String> = t.columns.iter().map(|c| c.name.clone()).collect();
         let entries: Vec<TotalEntry> = [(7, T), (8, T), (9, T), (12, S), (15, S)]
             .iter()
-            .map(|&(row, kind)| TotalEntry { label: String::new(), row, kind, kept: false, scope: Vec::new(), grand: false })
+            .map(|&(row, kind)| TotalEntry { label: String::new(), row, kind, kept: false, scope: Vec::new(), grand: false, balance_of: None })
             .collect();
         let (text, covered) = coded_totals(&t, &names, &codes[0], &entries).unwrap();
         assert_eq!(
@@ -552,7 +552,7 @@ mod tests {
         let names: Vec<String> = t.columns.iter().map(|c| c.name.clone()).collect();
         let entries: Vec<TotalEntry> = [7, 8, 9]
             .iter()
-            .map(|&row| TotalEntry { label: String::new(), row, kind: T, kept: false, scope: Vec::new(), grand: false })
+            .map(|&row| TotalEntry { label: String::new(), row, kind: T, kept: false, scope: Vec::new(), grand: false, balance_of: None })
             .collect();
         let (text, _) = coded_totals(&t, &names, &codes[0], &entries).unwrap();
         assert!(text.ends_with("2 'T' rows stay in T1: filter Sexo <> 'T' before summing"), "{text}");

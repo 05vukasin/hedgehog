@@ -200,3 +200,40 @@ fn long_form_of_a_wide_table() {
     assert!(!cat.contains("long form"), "{cat}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// A ledger's `SALDO (D - P)` under its `UKUPNO` row is the difference of the totals: out of the
+/// data rows, listed with the total rows, and the catalog says what it is.
+#[test]
+fn ledger_balance_row_is_not_data() {
+    let d = dir("saldo");
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet().set_name("Glavna knjiga").unwrap();
+    for (c, h) in ["Konto", "Opis", "Duguje", "Potražuje"].iter().enumerate() {
+        ws.write_string(0, c as u16, *h).unwrap();
+    }
+    let rows = [("0230", "Početno stanje", 1200.0, 0.0), ("2040", "Kupci", 0.0, 300.0), ("4350", "Dobavljači", 450.0, 0.0), ("2410", "Banka", 0.0, 2250.0)];
+    for (i, (k, o, dug, pot)) in rows.iter().enumerate() {
+        let r = 1 + i as u32;
+        ws.write_string(r, 0, *k).unwrap();
+        ws.write_string(r, 1, *o).unwrap();
+        if *dug != 0.0 {
+            ws.write_number(r, 2, *dug).unwrap();
+        }
+        if *pot != 0.0 {
+            ws.write_number(r, 3, *pot).unwrap();
+        }
+    }
+    ws.write_string(5, 1, "UKUPNO").unwrap();
+    ws.write_formula(5, 2, Formula::new("=SUM(C2:C5)").set_result("1650")).unwrap();
+    ws.write_formula(5, 3, Formula::new("=SUM(D2:D5)").set_result("2550")).unwrap();
+    ws.write_string(6, 1, "SALDO (D - P)").unwrap();
+    ws.write_formula(6, 2, Formula::new("=C6-D6").set_result("-900")).unwrap();
+    wb.save(d.join("knjiga.xlsx")).unwrap();
+    let mut s = Session::new(&d, &[]).unwrap();
+    let cat = s.open_file("knjiga.xlsx").unwrap();
+    assert!(cat.contains("grand total 'UKUPNO'@6 (= rows 2–5); balance 'SALDO (D - P)'@7 (= difference of the totals @6)"), "{cat}");
+    let q = s.query("knjiga.xlsx", "SELECT SUM(Duguje) AS d, COUNT(*) AS n FROM T1", None).unwrap();
+    assert!(q.starts_with("d,n\n1650,4\n"), "{q}");
+    let q = s.query("knjiga.xlsx", "SELECT _row_type FROM T1_all WHERE _src_row = 7", None).unwrap();
+    assert!(q.starts_with("_row_type\ntotal\n"), "{q}");
+}

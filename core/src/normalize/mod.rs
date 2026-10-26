@@ -430,7 +430,7 @@ pub struct TotalItem {
     pub row_end: u32,
     pub label: Option<String>,
     pub label_cell: Option<(u32, u32)>,
-    /// total | subtotal | grand_total | average | of_which
+    /// total | subtotal | grand_total | average | of_which | balance
     pub level: &'static str,
     /// vertical | horizontal
     pub direction: &'static str,
@@ -543,7 +543,7 @@ pub struct TableTotalRow {
     /// 1-based source row.
     pub row: u32,
     pub label: Option<String>,
-    /// total | subtotal | grand_total | average | of_which
+    /// total | subtotal | grand_total | average | of_which | balance
     pub level: &'static str,
     pub kept_in_data: bool,
     /// The row's period from the table's `<name>_period` column (B70: `Ø 22` → `2022`, the

@@ -174,6 +174,9 @@ pub struct RowInfo {
     pub scopes: HashMap<u32, Vec<(u32, u32)>>,
     /// B74: total rows the totals check calls the grand total.
     pub grand_rows: HashSet<u32>,
+    /// Balance rows (`SALDO (D - P)`): row → the total row whose totals it is the difference of
+    /// (1-based).
+    pub balances: HashMap<u32, u32>,
     /// B160: total rows are labelled with these key columns' values joined by `/` (`Total/M`),
     /// when one column alone does not tell them apart; empty otherwise.
     pub key_cols: Vec<usize>,
@@ -232,6 +235,12 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
     let (top, bottom) = (t.rect.top + 1, t.rect.bottom + 1);
     for x in norm.totals.iter().filter(|x| x.table == Some(t.n) && x.direction == "vertical") {
         let scope = source_rows(&x.sources);
+        if x.level == "balance" {
+            if let Some(&(total_row, _)) = scope.first().filter(|_| x.status == "ok") {
+                info.balances.insert(x.row + 1, total_row);
+            }
+            continue;
+        }
         if x.status == "ok" && !scope.is_empty() && scope.iter().all(|(a, b)| *a >= top && *b <= bottom) {
             let v = votes.entry(x.row + 1).or_default();
             match v.iter_mut().find(|(s, _)| *s == scope) {
@@ -465,6 +474,8 @@ pub(crate) struct TotalEntry {
     /// Source rows it adds up (empty when unknown).
     pub scope: Vec<(u32, u32)>,
     pub grand: bool,
+    /// A balance row: the total row whose totals it is the difference of.
+    pub balance_of: Option<u32>,
 }
 
 /// A table's total rows (taken out and kept in the data), in source order, with what each adds
@@ -475,7 +486,15 @@ pub(crate) fn total_entries(info: &RowInfo) -> Vec<TotalEntry> {
     let mut out: Vec<TotalEntry> = info
         .total_rows
         .iter()
-        .map(|r| TotalEntry { label: r.label.clone(), row: r.row, kind: r.kind, kept: false, scope: scope_of(r.row), grand: false })
+        .map(|r| TotalEntry {
+            label: r.label.clone(),
+            row: r.row,
+            kind: r.kind,
+            kept: false,
+            scope: scope_of(r.row),
+            grand: false,
+            balance_of: info.balances.get(&r.row).copied(),
+        })
         .chain(info.kept_totals.iter().map(|r| TotalEntry {
             label: r.label.clone(),
             row: r.row,
@@ -483,11 +502,14 @@ pub(crate) fn total_entries(info: &RowInfo) -> Vec<TotalEntry> {
             kept: true,
             scope: scope_of(r.row),
             grand: false,
+            balance_of: info.balances.get(&r.row).copied(),
         }))
         .collect();
     out.sort_by_key(|e| e.row);
     let inside = |row: u32, e: &TotalEntry| e.row != row && e.scope.iter().any(|(a, b)| (*a..=*b).contains(&row));
-    let top: Vec<usize> = (0..out.len()).filter(|&k| !out.iter().any(|e| inside(out[k].row, e))).collect();
+    // A balance under the totals is not on top of them.
+    let top: Vec<usize> =
+        (0..out.len()).filter(|&k| out[k].balance_of.is_none() && !out.iter().any(|e| inside(out[k].row, e))).collect();
     let grand = match top.as_slice() {
         // One total on top of others, or the only total and it adds up rows.
         [k] if out[*k].kind == RowType::Total && (out.len() > 1 || !out[*k].scope.is_empty()) => Some(*k),
@@ -558,7 +580,8 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
         (RowType::Average, "average", "averages"),
         (RowType::OfWhich, "of-which row", "of-which rows"),
     ] {
-        let of_kind: Vec<&TotalEntry> = entries.iter().filter(|e| e.kind == kind && !e.grand).take(max.saturating_sub(shown)).collect();
+        let of_kind: Vec<&TotalEntry> =
+            entries.iter().filter(|e| e.kind == kind && !e.grand && e.balance_of.is_none()).take(max.saturating_sub(shown)).collect();
         // B104: rows of one label without a scope of their own once: `'T'@13/16/19`.
         let plain = |e: &TotalEntry| !e.kept && (!scopes || e.scope.is_empty());
         let mut items: Vec<String> = Vec::new();
@@ -585,6 +608,17 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
             let note = if kind == RowType::Subtotal { note } else { "" };
             groups.push(format!("{name}{note} {}", items.join(", ")));
         }
+    }
+    // Balances (`_row_type` 'total'): the difference of the totals of the row above them.
+    let balances: Vec<String> = entries
+        .iter()
+        .filter_map(|e| e.balance_of.map(|t| (e, t)))
+        .take(max.saturating_sub(shown))
+        .map(|(e, t)| format!("'{}'@{} (= difference of the totals @{t})", short(&e.label, 40), e.row))
+        .collect();
+    if !balances.is_empty() {
+        shown += balances.len();
+        groups.push(format!("{} {}", if balances.len() == 1 { "balance" } else { "balances" }, balances.join(", ")));
     }
     let mut s = groups.join("; ");
     if entries.len() > shown {

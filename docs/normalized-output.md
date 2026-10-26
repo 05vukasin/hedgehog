@@ -132,7 +132,10 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
   and no sums: **average** rows (`Average`, `Mean`, `Median`, `Ø 2024`, `Durchschnitt`, `Moyenne`,
   `Prosek`, ...) and **of-which** rows (`of which: exports`, `davon Inland`, `dont : …`, `di cui`,
   `od toga`, `w tym`, ...), which repeat a part of the row above them. Both are listed on `Totals`
-  (levels `average` and `of_which`).
+  (levels `average` and `of_which`). A **balance** row right under a total row (`SALDO (D - P)`,
+  `Balance`, `Differenz`, `Razlika`, `Net`, ...) whose number is the difference of two of the
+  total row's numbers (debit total − credit total) goes with the totals too (`_row_type` `total`,
+  level `balance` on `Totals`).
 - **Missing values are empty cells.** This covers missing tokens (`-`, `n/a`, `..`, `:`, `x`, `null`, ...),
   Excel errors (`#N/A`, `#REF!`, ...) and formulas without a cached value.
 - **Group-header rows** (a label alone on its row, followed by data rows) become a **leading column**.
@@ -178,7 +181,8 @@ Row 1 is one flat header row. Every name in it is unique and non-empty.
   Notes; a sheet needs two pairs. Agents list these tables on one `KEY/VALUE` catalog line.
 - **`_row_type`** (only with `keep_totals`): `data`, `subtotal`, `total`, `average` or `of_which`.
   Only `data` rows add up to the table's figures: a `total` or `subtotal` row sums data rows, an
-  `average` row averages them, an `of_which` row is a part of the row above it.
+  `average` row averages them, an `of_which` row is a part of the row above it (a balance under
+  the totals is a `total` row).
 
 ### Values and dtypes
 
@@ -224,11 +228,11 @@ One row per detected total or subtotal cell, registered as an Excel table named 
 | `table` | Table id (`T1`) whose range contains the cell; empty if none |
 | `sheet`, `cell` | Source sheet and address of the total |
 | `label`, `label_cell` | Text that labels it (`Grand total`) and where that text is |
-| `level` | `total`, `subtotal` or `grand_total`; `average` (a mean of the rows above it) or `of_which` (a part of the row above it) |
+| `level` | `total`, `subtotal` or `grand_total`; `average` (a mean of the rows above it), `of_which` (a part of the row above it) or `balance` (the difference of two totals of the total row above it) |
 | `direction` | `vertical` (adds the cells above, or below for a subtotal over its group and a grand total at the top) or `horizontal` (adds the cells to its left) |
 | `origin` | `formula` (SUM, SUBTOTAL, `A+B+C`), `typed` (a number in a total-labelled row), or `layout` (a number in a row the layout marked as a total, but whose source range was not found) |
 | `value` | Value in the file (the cached result for formulas) |
-| `recomputed` | Sum of the source cells, recomputed from the cached values (for `average`: their mean; for `of_which`: the value of the row above) |
+| `recomputed` | Sum of the source cells, recomputed from the cached values (for `average`: their mean; for `of_which`: the value of the row above; for `balance`: the difference of the two total cells) |
 | `status` | `ok`, `mismatch` or `unknown` |
 | `reason` | `match`, `rounded`, `mismatch`, `double_counted`, `matches_average`, `no_cached_value`, `not_numeric`, `error_in_source`, `missing_source_value`, `no_source`, `unconfirmed`, `not_verified`, `not_additive`, `rounding_difference`, `average_like`, `known_aggregate`; for average rows `matches_mean`, `matches_median`, `unconfirmed`, `no_source`; for of-which rows `within_parent`, `exceeds_parent`, `no_parent` ([meanings](detection-rules.md#totals-and-verification)) |
 | `sources` | Source ranges, for example `C6:C7` |

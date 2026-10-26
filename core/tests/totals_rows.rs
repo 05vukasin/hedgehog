@@ -116,6 +116,58 @@ fn average_rows_are_neither_data_nor_sums() {
 }
 
 #[test]
+fn balance_row_under_the_totals_is_not_data() {
+    use V::*;
+    // A ledger: UKUPNO adds the postings, SALDO (D - P) is the difference of the two totals.
+    let s = sheet(&[
+        vec![T("Konto"), T("Opis"), T("Duguje"), T("Potražuje")],
+        vec![T("0230"), T("Početno stanje"), N(1000.0), E],
+        vec![T("0239"), T("Ispravka"), E, N(400.0)],
+        vec![T("2040"), T("Kupci"), N(500.0), E],
+        vec![T("4350"), T("Dobavljači"), E, N(1200.0)],
+        vec![E, T("UKUPNO"), F("SUM(C2:C5)", 1500.0), F("SUM(D2:D5)", 1600.0)],
+        vec![E, T("SALDO (D - P)"), F("C6-D6", -100.0)],
+    ]);
+    let grid = Grid::new(&s);
+    let kinds: Vec<(u32, NonSumKind)> = totals::detection(&grid).nonsum.iter().map(|n| (n.row, n.kind)).collect();
+    assert_eq!(kinds, vec![(6, NonSumKind::Balance)]);
+    both_paths(&s, |n, rules| {
+        assert_eq!(data_rows(n), vec![1, 2, 3, 4], "rules {rules}");
+        let b = items_at(n, 6);
+        assert_eq!(b.len(), 1, "{b:?}");
+        assert!(b[0].level == "balance" && b[0].status == "ok" && b[0].reason == "difference_of_totals", "{b:?}");
+        assert_eq!(b[0].recomputed, Some(-100.0));
+        assert_eq!(b[0].sources, vec!["C6:D6".to_string()]);
+    });
+    let kept = normalize(&s, true, false);
+    assert_eq!(kept.tables[0].row_types[5], RowType::Total);
+    // Typed values, another language, a spacer row: the same.
+    let s = sheet(&[
+        vec![T("Account"), T("Debit"), T("Credit")],
+        vec![T("Cash"), N(70.0), N(20.0)],
+        vec![T("Bank"), N(30.0), N(50.0)],
+        vec![T("Fees"), N(10.0), N(25.0)],
+        vec![T("Total"), N(110.0), N(95.0)],
+        vec![],
+        vec![T("Balance"), E, N(15.0)],
+    ]);
+    let kinds: Vec<(u32, NonSumKind)> = totals::detection(&Grid::new(&s)).nonsum.iter().map(|n| (n.row, n.kind)).collect();
+    assert_eq!(kinds, vec![(6, NonSumKind::Balance)]);
+    both_paths(&s, |n, rules| assert_eq!(data_rows(n), vec![1, 2, 3], "rules {rules}"));
+    // A "Saldo" record whose number is no difference of the totals above it stays data, and so does
+    // one between the data rows.
+    let s = sheet(&[
+        vec![T("Opis"), T("Iznos"), T("Porez")],
+        vec![T("Saldo"), N(40.0), N(4.0)],
+        vec![T("Uplata"), N(60.0), N(6.0)],
+        vec![T("Isplata"), N(30.0), N(3.0)],
+        vec![T("Ukupno"), N(130.0), N(13.0)],
+        vec![T("Saldo prenos"), N(55.0), N(5.0)],
+    ]);
+    assert!(totals::detection(&Grid::new(&s)).nonsum.is_empty());
+}
+
+#[test]
 fn average_word_in_the_middle_of_a_list_is_data() {
     use V::*;
     // "Media" (a category) between data rows, its value no mean: data.
