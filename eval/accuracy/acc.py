@@ -13,7 +13,7 @@ Gold atoms (one item -> several atoms; each atom is measured by L or by C):
 - RealHiTBench: Data Analysis and Visualization -> not attempted (free text, charts). Numerical Reasoning:
   number atoms -> C, text atoms (labels a comparison or ranking names) -> L. Fact Checking, Structure
   Comprehending -> L.
-- MiMoTable (English): the gold key of eval/public/agent_mimotable.py (`gold_key`: quoted phrases, dates,
+- MiMoTable (English): the gold key of eval/public/mimotable_key.py (`gold_key`: quoted phrases, dates,
   numbers of the narrative that the question does not contain; KEY_KEEP trims; items of AUDIT_EXCLUDE
   are not attempted). Lookup items -> L; Compare / Calculate / Reasoning: number atoms -> C, others -> L.
   Chinese narratives -> not attempted (no deterministic key extractor for them).
@@ -55,7 +55,7 @@ def _default_work() -> str:
 
 os.environ.setdefault("HH_PUBLIC_WORK", _default_work())
 
-import agent_mimotable as AM  # noqa: E402
+import mimotable_key as AM  # noqa: E402
 import score as PS  # noqa: E402  (eval/public/score.py)
 import split as SPLIT  # noqa: E402
 from common import data_dir, norm_text, parse_number, read_jsonl  # noqa: E402
@@ -150,7 +150,7 @@ def mimo_items(items: list[dict]) -> list[dict]:
         elif {"Visualize", "Edit"} & set(it["ops"]):
             rec.update(atoms=[], not_attempted="visualize / edit")
         elif it["id"] in AM.AUDIT_EXCLUDE:
-            rec.update(atoms=[], not_attempted="key unfair (hand audit of agent_mimotable)")
+            rec.update(atoms=[], not_attempted="key unfair (hand audit of mimotable_key)")
         else:
             key = AM.gold_key(it)
             tc = AM.task_class(it["ops"])

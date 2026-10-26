@@ -89,8 +89,8 @@ Notes:
   `/hedgehog:spreadsheets`, or raise the budget (`SLASH_COMMAND_TOOL_CHAR_BUDGET=80000`). The MCP
   server's own instructions still tell Claude to open the file first and use SQL.
 - `claude -p --strict-mcp-config` drops plugin MCP servers too; pass the server with
-  `--mcp-config` (as the [agent comparison](../eval/agents/README.md) does) if you need both.
-- What it buys: on the four cases in [eval/agents](../eval/agents/RESULTS.md), Claude Code with the
+  `--mcp-config` if you need both.
+- What it buys: on four of the test cases, Claude Code with the
   plugin answered every check right without writing pandas, at roughly a third to two thirds less
   cost than Claude Code alone; time was about the same (opening a 4.5M-cell file takes ~45 s).
 
@@ -280,8 +280,8 @@ says which column to filter. Both also run that query and return its rows (at mo
 characters) under `Those rows (the query above, run for you; pick the columns you need):`, so the
 data is there even when the model does not retry; the call is still an error.
 
-A quoted name copied in the catalog's grouped form (`"RESTITUIÇÃO DO IMPOSTO / {Forças Armadas …}"`,
-B161) that stands for exactly one column (braces expanded, or dropped for a member with a comma of
+A quoted name copied in the catalog's grouped form (`"RESTITUIÇÃO DO IMPOSTO / {Forças Armadas …}"`)
+that stands for exactly one column (braces expanded, or dropped for a member with a comma of
 its own; compared exactly, case aside) is read as that column: the query runs and its result ends
 with `note: read "a / {b}" as "a / b" ({…} in the catalog groups column names; write each name in
 full)`. A name that fits no column, or several, stays an error. "Did you mean" lists the closest
@@ -420,7 +420,7 @@ Per table (when the whole catalog fits in ~12,000 characters):
   group of "Herkunftsland oder -region" (e.g. Österreich), not the table`: guests from Austria, not
   Austria's total). Without a label column: their `_src_row` and sign
   (`_src_row 51 positive, 65 negative`).
-- **Total codes** (B160): a code column that splits every group, such as `Sexo` with `M`, `F` and
+- **Total codes**: a code column that splits every group, such as `Sexo` with `M`, `F` and
   `T` where `T` = M + F, is found by its numbers, never by its name: in every group (the rows that
   share the other label columns) with the code and two or more other codes, the code's row must be
   the sum of theirs in the sum-like columns (a rate column may differ), in two groups with numbers
@@ -431,7 +431,7 @@ Per table (when the whole catalog fits in ~12,000 characters):
   total row would count each person twice. Code rows that stay in the data view are named with the
   filter that leaves them out. Total rows that such a code splits are labelled with their full key
   (`'Total/M'`, `'Total/F'`), not with whichever column held a word.
-- **Rolling windows** (B162): a period column of ranges (`2026-05/2026-07`, derived from labels such
+- **Rolling windows**: a period column of ranges (`2026-05/2026-07`, derived from labels such
   as `May-Jul 2026`) whose windows overlap gets one line: `periods: rolling 3-month windows, 1-month
   step — they overlap; the previous non-overlapping window is 3 rows earlier (latest col_A
   'May-Jul 2026' = period 2026-05/2026-07; the one before it without overlap: 'Feb-Apr 2026'); the
@@ -563,7 +563,7 @@ What changes, and what does not:
   reopened from the cache waits for its normalized form (a few ms to ~1 s on large files).
 - `HEDGEHOG_TRACE=1` prints each table's score, matched words and the chosen tables to stderr.
 
-Measured with [eval/info](../eval/info/QUESTION.md) (`score.py --question`, the 30 cases' prompts as
+Measured with `eval/info/score.py --question` (the 30 test cases' prompts as
 questions): 168 of 168 checks stay in the catalog or one query away, 42,360 → 34,573 catalog
 tokens over all cases (−18 %), −29 % on the 12 multi-table files and −35 % on the 9 where the
 question told tables apart; no trap warning of a matching table lost.
@@ -643,7 +643,7 @@ session, in any process, gets the catalog in a few milliseconds and query answer
 | `eu_at_opendata/003_pen_02_02.xlsx` | 12 ms / 13 ms | 2.3 ms / 2.6 ms | 11 MB / 6 MB |
 
 Times are from the request to the response (the two large files re-measured after the agent-path
-speed-ups, B120–B135, with the disk cache on; with it off the first query comes ~0.5 s sooner on
+speed-ups, with the disk cache on; with it off the first query comes ~0.5 s sooner on
 the 4.5M-cell file, since no cache entry is written). First opens of the ten largest test files (1.7–7M cells) take 1.8–9.6 s with
 the cache off, 25–55 % less than in 0.4.0, at the same or lower peak memory; see the
 [changelog](../CHANGELOG.md). A reopened file's normalized form (which

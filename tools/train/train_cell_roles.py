@@ -1,4 +1,4 @@
-"""Train the learned cell-role model (PLAN.md M6) on `hedgehog features` output.
+"""Train the learned cell-role model on `hedgehog features` output.
 
     hedgehog features --out cells.csv                 # DECO + synthetic, labelled cells
     python train_cell_roles.py cells.csv --out models/ [--device cuda] [--threads 8]

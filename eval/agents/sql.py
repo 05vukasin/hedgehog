@@ -20,7 +20,7 @@ from pathlib import Path
 
 def call(root: Path, calls: list[tuple[str, dict]]) -> list[str]:
     """Run tool calls in one `hedgehog mcp` session; returns each call's text."""
-    exe = os.environ.get("HEDGEHOG_BIN") or shutil.which("hedgehog") or str(Path.home() / ".hedgehog-cli/bin/hedgehog")
+    exe = os.environ.get("HEDGEHOG_BIN") or shutil.which("hedgehog") or "hedgehog"
     msgs = [{"jsonrpc": "2.0", "id": 0, "method": "initialize",
              "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "eval", "version": "0"}}}]
     for i, (name, args) in enumerate(calls, 1):

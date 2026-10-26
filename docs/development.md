@@ -59,11 +59,10 @@ test what the change can affect, and run the full gate once at the end of a batc
 | 0. Quick — `make quick` | after every edit | feature snapshots, mini golden on 22 real files, noise smoke, info scoreboard on 17 small cases without and with the question (`eval/quick/info.py`: no case may lose a check that's in the catalog or one query away, no trap check may fail, no catalog may grow > 5 %) (below); no LLM, no network, same output on every run | ~5 s with nothing to rebuild, ~15 s after an edit in `core/` (up to ~30 s on a busy machine), ~2–3 min cold |
 | 1. Targeted | after each small change | `cargo test -p <crate> <filter>` for the touched module; the specific files, eval cases (`check_cases.py --cases …`) or noise family (`noise_eval --families …`, `--repro`) the change is about | seconds to ~2 min |
 | 2. Merge — `make merge-check AREA=core\|agent\|docs` | when merging a branch | tests of the affected crates; clippy; golden check; only the benchmarks/noise families the changed area can affect (layout/totals/values → both benchmark analyzers and the full cell-fidelity run; agent/ → agent tests + Node; docs/eval only → nothing heavy) | ~10–15 min |
-| 3. Full verify — `make full` | once per batch, before a release or a published comparison | everything: `cargo test --workspace`, clippy, golden, both benchmark analyzers on all corpora, all noise families, the file sweep, `check_cases.py`, Node, Python, then the agent eval (by hand) | ~1–2 h |
+| 3. Full verify — `make full` | once per batch, before a release or a published comparison | everything: `cargo test --workspace`, clippy, golden, both benchmark analyzers on all corpora, all noise families, the file sweep, `check_cases.py`, Node, Python | ~1–2 h |
 
-If tier 2 turns up a surprise, widen the test for that area only. Heavy jobs go through
-`scripts/run_capped.sh` (see the memory notes in the repo's parent folder); the `make` targets do
-that for every step and keep each step's output in `target-logs/<step>.log`.
+If tier 2 turns up a surprise, widen the test for that area only. The `make` targets run each heavy
+step under a memory cap and keep its output in `target-logs/<step>.log`.
 
 #### Tier 0: `make quick`
 
@@ -75,9 +74,9 @@ rest of the output is identical on every run):
 | snapshots | `agent/tests/snapshots.rs`: one small workbook per agent-facing feature, built in the test (total, of-which and average rows, subtotals above groups; wide years and text periods; `<id> - <name>` and ID + name columns; several files with `f1`/`f2` and JOIN KEYS; union views; the quality line; signs; units from titles; booleans; notes on empty results; SQL dialect and total-label hints; footnote marks; EU/US/Latin-1 CSV numbers; side-by-side and stacked tables) — its `open_file` catalog and 1–3 query results | `agent/tests/snapshots/<feature>.txt` | nothing (also runs in CI) |
 | golden | the `open_file` catalog (one `hedgehog mcp` session) and the `hedgehog normalize` manifest of 22 small real files: finance, statistics offices, registers, xlsx/xls/ods/CSV, EU and US | `eval/quick/files.txt`, `golden.tsv` (table count, catalog and manifest hashes) | `$HEDGEHOG_DATA` |
 | noise | `noise_eval --seeds 1 --intensities 0.5`: one workbook per noise family (21), rules and model path; fails on a crash or a family that passed before | `eval/quick/noise.tsv` | `$HEDGEHOG_DATA` (its `clean/` tables) |
-| public | the public-benchmark slice (`eval/public/quick.py`): 14 trimmed HiTab tables through `hedgehog` (cells, normalize, `open_file`), their 78 lookup questions scored for value-label linking (cell found, number equal, column header exact, row labels exact / leaf); fails when a count drops or a catalog grows > 5 % | `eval/public/quick.tsv` | `$HEDGEHOG_DATA/public/hitab` ([eval/public/README.md](../eval/public/README.md)) |
+| public | the public-benchmark slice (`eval/public/quick.py`): 14 trimmed HiTab tables through `hedgehog` (cells, normalize, `open_file`), their 78 lookup questions scored for value-label linking (cell found, number equal, column header exact, row labels exact / leaf); fails when a count drops or a catalog grows > 5 % | `eval/public/quick.tsv` | `$HEDGEHOG_DATA/public/hitab` ([evaluation](evaluation.md#question-answering-accuracy)) |
 | fidelity | the cell-fidelity slice (`eval/fidelity/check.py quick`, below): 27 small files (dates without a year, weekday and time formats, IDs, percents, merged labels, multi-sheet, csv / xls / ods); fails when a file gains a changed, unplaced or misplaced cell | `eval/fidelity/quick.tsv` | `$HEDGEHOG_DATA`, the readers' venv (`eval/fidelity/setup.sh`) |
-| info | the info scoreboard (`eval/info/score.py --question`) on 17 small cases (with the naive-query traps of pt-social-report, uk-ons-labour and enron-henry-hub), two lines: the catalog as usual, and with each case's prompt as `open_file`'s `question` (B150; the line gives the size change). Fails when a case loses a check that is in the catalog or one query away, a trap check fails, or a catalog grows > 5 % | `eval/quick/info.tsv`, `eval/quick/info_question.tsv` | `$HEDGEHOG_DATA` |
+| info | the info scoreboard (`eval/info/score.py --question`) on 17 small cases (with the naive-query traps of pt-social-report, uk-ons-labour and enron-henry-hub), two lines: the catalog as usual, and with each case's prompt as `open_file`'s `question` (the line gives the size change). Fails when a case loses a check that is in the catalog or one query away, a trap check fails, or a catalog grows > 5 % | `eval/quick/info.tsv`, `eval/quick/info_question.tsv` | `$HEDGEHOG_DATA` |
 
 A difference fails with a readable line diff: the snapshot lines that changed, or for the golden
 files the catalog lines (against the texts in `eval/quick/catalogs/`, kept locally and gitignored
@@ -152,7 +151,7 @@ per file (heap capped at 2.3 GB, 300 s timeout), and writes a resumable TSV of o
 `error`, `limit`, `crash`, `timeout`):
 `$S 2500M sweep.log python3 -I fuzz/sweep.py target/release/hedgehog $HEDGEHOG_DATA /tmp/sweep.tsv`.
 
-`fuzz/determinism.py` checks that the output is repeatable (B68): it normalizes every file of a
+`fuzz/determinism.py` checks that the output is repeatable: it normalizes every file of a
 folder or file list several times (`--runs N` threaded, `--single N` pinned to one CPU) and compares
 the manifest and every part of the normalized xlsx byte for byte; any difference is a bug (see
 [normalized-output.md](normalized-output.md#repeatable-output)):
@@ -274,4 +273,3 @@ publishing anything. Build artifacts are kept for one day; the release assets ar
 - [architecture.md](architecture.md): modules and data flow
 - [evaluation.md](evaluation.md): metrics and how to read the scoreboard
 - [installation.md](installation.md): installing as a user
-- [`PLAN.md`](../PLAN.md): milestones

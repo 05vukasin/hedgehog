@@ -30,6 +30,16 @@ __pycache__/
 /node/dist/
 /node/target*
 /eval/agents/runs/
-!eval/agents/results.jsonl
+# Generated reports and agent-run outputs: kept locally, never committed (notes live in the private lab)
+/eval/accuracy/RESULTS.md
+/eval/public/RESULTS.md
+/eval/public/RESULTS.head.md
+/eval/info/REPORT.md
+/eval/info/QUESTION.md
+/eval/noise/REPORT.md
+/eval/agents/answers/
+/eval/agents/results.jsonl
+/eval/agents/grades.json
+/eval/agents/RESULTS.md
 /eval/agents/work/
 /eval/info/cache/

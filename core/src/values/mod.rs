@@ -1,4 +1,4 @@
-//! Cell content: value parsing and per-cell content features (workstream `values`, see PLAN.md).
+//! Cell content: value parsing and per-cell content features (workstream `values`).
 //!
 //! * [`number`] — numbers stored as text in any locale, with currency / units / % / scale.
 //! * [`currency`] — ISO 4217 codes and currency symbols.

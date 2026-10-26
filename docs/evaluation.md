@@ -1,21 +1,71 @@
 # Evaluation
 
-How hedgehog's table detection and cell roles are measured, how to run the evaluation, and the
-current scores.
+How well hedgehog works, measured, and how to run the measurements yourself. Two questions are
+measured separately:
 
-Every change to detection is measured before and after on the same annotated data. This page lists
-only numbers that were measured with `hedgehog eval`.
+1. **Can an agent answer from hedgehog's output?** Public question-answering benchmarks, scored
+   without any AI model: [Question-answering accuracy](#question-answering-accuracy).
+2. **Does hedgehog find the tables and cell roles?** Spreadsheets labelled by hand, cell by cell:
+   everything from [The DECO corpus](#the-deco-corpus) on.
 
-Contents: [The DECO corpus](#the-deco-corpus) · [Metrics](#metrics) · [Current scores](#current-scores) ·
+Every change is measured before and after on the same data. This page lists only measured numbers.
+
+Contents: [Question-answering accuracy](#question-answering-accuracy) · [The DECO corpus](#the-deco-corpus) · [Metrics](#metrics) · [Current scores](#current-scores) ·
 [Running the evaluation](#running-the-evaluation) · [Reading the scoreboard](#reading-the-scoreboard) ·
 [Other measurements](#other-measurements) · [What is not measured yet](#what-is-not-measured-yet)
+
+## Question-answering accuracy
+
+Three public benchmarks pair real spreadsheets with questions and their answers: **HiTab** (statistical
+reports from StatCan and the US NSF), **MiMoTable** (business and government spreadsheets) and
+**RealHiTBench** (complex hierarchical tables). hedgehog is scored on them without an AI model: for each
+question, the scorers check whether hedgehog's output contains what an agent needs to answer it. That
+separates hedgehog's own mistakes from a model's reasoning mistakes, costs nothing to run and points to
+the exact cell that went wrong.
+
+| Measure | What it checks | Result |
+|---|---|---|
+| **Fidelity** | every value hedgehog hands over equals the source cell (numbers, dates, text, IDs) | 0 values changed on all three benchmarks |
+| **Lookup** | the answer cell sits under the row labels and column header the question names | 5,498 of 5,634 questions (97.7 % after audit) |
+| **Computation** | a calculated answer (a sum, share, difference, rank) equals a small SQL query over hedgehog's tables | 1,201 proven; 37 known hedgehog misses |
+| **Nothing misleading** | no total row left among the data, no mixed units or measures without a warning, no misread sign or date | 1,539 warnings left, 1,357 of them columns with no header text in the source |
+| **Compact** | tokens of the catalog an agent reads first | about 770–970 tokens per file |
+
+Measured on the development split (25 October 2026). For computation, a question counts as "proven"
+only when a search over small SQL programs actually finds the gold answer in hedgehog's tables; most
+of the questions not proven need a computation that search does not try, rather than a hedgehog fix.
+
+How the numbers stay honest:
+
+- **A frozen holdout.** HiTab's test split and a fixed random fifth of MiMoTable and RealHiTBench
+  (whole files, seeded) are never looked at while hedgehog is being improved. They are scored only at
+  release time.
+- **Audits with evidence.** A question may be excluded only when the benchmark's answer is wrong, the
+  file does not contain the information, the question needs outside knowledge, or it has two
+  reasonable readings. Each exclusion lists its source cells and computation in
+  `eval/accuracy/audit.tsv`.
+- **No regressions.** A change that fixes one benchmark and breaks another is not merged.
+
+Compared with reading the same files with `pandas.read_excel` or converting them to markdown
+(MarkItDown):
+
+| | hedgehog | pandas | MarkItDown |
+|---|---|---|---|
+| HiTab: column header exact | 93.7 % | 0 % (the title becomes the header) | — |
+| HiTab: numbers stored as numbers, equal to the source | 99.8 % | 11.5 % (kept as text) | — |
+| Tokens of the first result (MiMoTable / RealHiTBench / HiTab) | 0.48 M / 0.51 M / 1.16 M | — | 3.19 M / 4.02 M / 1.33 M |
+| Open time (median) and memory | 12–13 ms, 17 MB | 72–86 ms, 70 MB | 44–83 ms, 113 MB |
+
+To reproduce: fetch the benchmarks with the scripts in `eval/public/` (`fetch_*.py`; checksums
+included), then run `make score` (the scoreboard, about 2 minutes) and `make fidelity` (every cell,
+about 5 minutes).
 
 ## The DECO corpus
 
 DECO (Koci et al., ICDAR 2019)
 annotates real Enron spreadsheets with table ranges and a label for every non-empty cell. hedgehog's
 loader matches 854 annotated sheets to their files and maps the DECO labels to its seven
-[cell roles](concepts.md#cell-roles):
+[cell roles](concepts.md#2-cell-roles):
 
 | DECO label | hedgehog role |
 |---|---|
@@ -78,7 +128,7 @@ What this means in practice:
   every cell (misplaced ones end up on `Notes`), so these errors lose structure, not data.
 - The dev/test gap on tables (75.1 vs 65.5) shows the rules are tuned on dev. Published systems
   report roughly 0.8 table precision at IoU 0.5 and 0.9 role F1 on comparable data; the learned cell
-  model on the [roadmap](../README.md#status-and-roadmap) is meant to close that gap.
+  model on the [roadmap](../README.md#roadmap) is meant to close that gap.
 
 ## Running the evaluation
 
@@ -302,7 +352,7 @@ labels move these a lot):
 - **Noise robustness:** `eval/noise` applies 21 independently designed noise families (intensity 0–1) to
   clean tables with known content and checks invariants on the normalized output (every value once, in
   the right column with its labels; totals found and verified; notes out of the data). Robustness
-  curves per family, rules vs model, and failing seeds: [eval/noise/REPORT.md](../eval/noise/REPORT.md).
+  curves per family, rules vs model, and failing seeds: `eval/noise` (`sweep.sh` writes the report).
 - **Normalization:** covered by tests on generated messy workbooks (`core/tests/normalize_messy.rs`,
   `py/tests/test_normalize.py`); there is no corpus-level score for it yet.
 
@@ -317,4 +367,3 @@ labels move these a lot):
 
 - [concepts.md](concepts.md): what tables and roles are
 - [development.md](development.md): building the CLI and running the tests
-- [`PLAN.md`](../PLAN.md): milestones and their "done when" criteria

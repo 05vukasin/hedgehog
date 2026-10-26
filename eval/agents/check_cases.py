@@ -110,7 +110,7 @@ def first_value(text: str) -> float:
 
 
 def hedgehog() -> str:
-    return os.environ.get("HEDGEHOG_BIN") or shutil.which("hedgehog") or str(Path.home() / ".hedgehog-cli/bin/hedgehog")
+    return os.environ.get("HEDGEHOG_BIN") or shutil.which("hedgehog") or "hedgehog"
 
 
 def cell_values(path: Path) -> dict[tuple[str, str], str]:
@@ -229,3 +229,37 @@ def report(errs: list[str], cases: list, want: set, n_refs: int) -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# The answer checks' number reader (eval/info/score.py).
+MULT = [(r"bn|b\b|billion|mil milhões|mrd\.?|milliard\w*", 1e9), (r"m\b|mn\b|million\w*|mio\.?|milhões", 1e6),
+        (r"k\b|thousand|tsd\.?", 1e3)]
+NUM = re.compile(r"(?<![\w.])[-−]?\d(?:[\d.,  ]*\d)?")
+
+
+def numbers(text: str, pct_only: bool = False) -> list[float]:
+    """Every reading of every number in the text (thousands/decimal separators are ambiguous)."""
+    out = []
+    for m in NUM.finditer(text):
+        s = m.group().replace("−", "-").replace(" ", "").replace(" ", "")
+        rest = text[m.end():m.end() + 16].lstrip().lower()
+        if pct_only and not rest.startswith("%"):
+            continue
+        cands = set()
+        if "," in s and "." in s:
+            dec = "," if s.rfind(",") > s.rfind(".") else "."
+            cands.add(float(s.replace("." if dec == "," else ",", "").replace(",", ".")))
+        elif "," in s:
+            if all(len(g) == 3 for g in s.split(",")[1:]):
+                cands.add(float(s.replace(",", "")))
+            if s.count(",") == 1:
+                cands.add(float(s.replace(",", ".")))
+        elif s.count(".") > 1:
+            cands.add(float(s.replace(".", "")))
+        else:
+            cands.add(float(s))
+            if "." in s and len(s.split(".")[1]) == 3:
+                cands.add(float(s.replace(".", "")))
+        mult = next((f for pat, f in MULT if re.match(pat, rest)), 1)
+        out += [c * mult for c in cands] + ([c for c in cands] if mult != 1 else [])
+    return out

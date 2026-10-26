@@ -1,4 +1,4 @@
-//! Row-level training data (PLAN.md M6, phase 1): one CSV row per **row segment** — the filled
+//! Row-level training data: one CSV row per **row segment** — the filled
 //! cells of one sheet row, split where more than [`MAX_GAP`] empty columns separate them — that
 //! contains labelled cells.
 //!

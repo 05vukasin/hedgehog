@@ -37,7 +37,7 @@ All notable changes to hedgehog are listed here. The format follows
   column's labels carry a mark; names and units keep theirs (`km²`, `CO₂`, `Fund II`, `Area 51`,
   `Formula 1`).
 - **The `open_file` catalog gives more information per token** (B100–B105, B130; measured with
-  [eval/info](eval/info/README.md)): 168 of 168 checks in the catalog or one query away (was 159), at
+  `eval/info`): 168 of 168 checks in the catalog or one query away (was 159), at
   42,360 catalog tokens over the 30 cases (was 53,867, −21 %), no case lower, no trap warning lost.
   - Column items keep only what changes an answer: the currency or unit, `id`, `rate` / `avg` /
     `index` (do not add up), `percent`, ranges of measures and dates (4 significant digits) and text
@@ -81,9 +81,9 @@ All notable changes to hedgehog are listed here. The format follows
   table, or when focusing would not be shorter, the catalog is unchanged (byte-identical without
   it). On the 30 info cases with their prompts as questions: 168 of 168 checks still in the
   catalog or one query away, catalog tokens −18 % overall, −29 % on multi-table files, −35 % where
-  the question told tables apart ([eval/info/QUESTION.md](eval/info/QUESTION.md)). `score.py
+  the question told tables apart (`eval/info/score.py --question`). `score.py
   --question` measures it; `make quick` has it as a second `info` line.
-- **Information scoreboard without a model** ([eval/info](eval/info/README.md)). For each automatic
+- **Information scoreboard without a model** (`eval/info`). For each automatic
   check of the 30 agent cases, `eval/info/score.py` decides from the `open_file` catalog and
   `hedgehog mcp` query results whether the answer is **a** in the catalog, **b** one query away
   (the reference query uses only tables, columns and values the catalog names, and it reproduces
@@ -239,7 +239,7 @@ All notable changes to hedgehog are listed here. The format follows
   call runs; `notifications/cancelled` drops a queued call or stops a running query (SQLite
   interrupt) or the wait for a normalization. See [docs/mcp.md](docs/mcp.md#cancelling-a-call).
 
-- **Long views of wide period tables** (`hedgehog mcp`, Node, hedgehog-cli; B20): a table with 4 or
+- **Long views of wide period tables** (`hedgehog mcp`, Node; B20): a table with 4 or
   more numeric columns named by periods (`"2011".."2025"`, `Jan 2024`, `2024 Q1`, `Thu / 2002-01-31`)
   gets a SQL view `T<n>_long` with its key columns, `period` (normalized: `2025`, `2025-Q1`,
   `2025-03`, `2025-03-31`), `period_label`, `value`, `_src_row` and `_src_col` (plus `measure`
@@ -257,7 +257,7 @@ All notable changes to hedgehog are listed here. The format follows
   the file adds up itself are never flagged. Catalog size on the four agent-eval files (with B15–B19):
   6,517 → 6,788 (pt-contracts), 3,396 → 4,068 (at-pension), 9,982 → 11,415 (enron-henry-hub, all
   rows of T1/T2 still inline), 4,782 → 5,310 characters (de-truck-toll). See [docs/mcp.md](docs/mcp.md#the-catalog).
-- **Agent accuracy with small models (B15, B16, B18, B19)**, from the hedgehog-cli runs:
+- **Agent accuracy with small models (B15, B16, B18, B19)**, from agent test runs:
   - A `no such column` that names a total-row label (`"Total"`, `"Gesamt"`) or a value of a text
     column (`"SEA ROBIN"`) still explains where those rows are, and now also returns them: the
     suggested query is run and up to 10 rows (~3,000 characters) follow under `Those rows (the
@@ -296,7 +296,7 @@ All notable changes to hedgehog are listed here. The format follows
   (`--skill-budget` sets the skill-listing budget). See [docs/mcp.md](docs/mcp.md#claude-code).
 - Agent comparison: amounts written as `€2.41B` are read as billions.
 
-- **Entity columns in the agent tools' SQL** (`hedgehog mcp`, Node, hedgehog-cli): a text column
+- **Entity columns in the agent tools' SQL** (`hedgehog mcp`, Node): a text column
   whose values are `"<id> - <name>"` (a tax number, a CPV / NUTS code before the name) gets
   `<col>_id` and `<col>_name` in `T<n>` and `T<n>_all`, and a catalog / `describe_table` line with
   the number of IDs, how many have several spellings and to group by `<col>_id`. On the Portuguese
@@ -489,8 +489,7 @@ All notable changes to hedgehog are listed here. The format follows
   values of small label columns and the same mixed-measures line. `hh_agent::TimeCoverage` is now
   the manifest's; `hh_agent::mentioned_years` gives the weak hints.
 - The Node addon is stripped (`strip = true` in the `node-release` profile; `panic = "unwind"`
-  kept): `hedgehog.linux-x64-gnu.node` 11.8 MB → 9.1 MB here (89.5 MB → 15.8 MB in the
-  hedgehog-cli pilot build).
+  kept): `hedgehog.linux-x64-gnu.node` 11.8 MB → 9.1 MB here.
 
 - Totals in the normalized output: a typed total that does not add up is `unknown`, not
   `mismatch`, when its column header or row label names a rate, share, index, average or

@@ -26,8 +26,8 @@ MCP_MAX_OUT = 32000     # characters of an MCP tool result (≈ 8k tokens)
 # HH_HIDE_KINDS=quality,types: drop these catalog line kinds (eval/info/score.py KINDS / SEGMENTS) from
 # open_file results, to measure with a model what they are worth.
 HIDE_KINDS = {k for k in os.environ.get("HH_HIDE_KINDS", "").split(",") if k}
-# B150, test-only: HH_QUESTION=host passes the case's question to every open_file call (as a host such
-# as hedgehog-cli would); HH_QUESTION=off drops a question the model passed; unset: the model decides.
+# B150, test-only: HH_QUESTION=host passes the case's question to every open_file call (as a chat host
+# would); HH_QUESTION=off drops a question the model passed; unset: the model decides.
 QUESTION_MODE = os.environ.get("HH_QUESTION", "")
 # Read and analysis tools of excel-csv-mcp-server (ishayoyo/excel-mcp); its write, export, formatting
 # and LLM-calling tools are not offered.
@@ -150,7 +150,7 @@ class Mcp:
                 self.start()
             return f"error: {e}", True
         text = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
-        if HIDE_KINDS and name == "open_file":  # catalog line ablation (eval/info/README.md); test-only
+        if HIDE_KINDS and name == "open_file":  # catalog line ablation; test-only
             import sys
             sys.path.insert(0, str(HERE.parents[1] / "info"))
             from score import strip_kinds

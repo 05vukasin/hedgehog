@@ -149,7 +149,7 @@ diacritics and script: `Beograd`, ` BEOGRAD ` and `Београд` all match; `�
   `Durchschnitt`, `Mittelwert`, `Moyenne`, `Media`, `Promedio`, `Prosek`, `Średnia`, `Gemiddelde`,
   `Gennemsnit`, `Keskiarvo`, `Átlag`, `Průměr`; `of which`, `thereof`, `davon`, `darunter`, `dont`,
   `di cui`, `de los cuales`, `dos quais`, `od toga`, `w tym`, `z toho`, `waarvan`, `varav`, `heraf`,
-  `josta`, `ebből`, `из них` ([concepts](concepts.md#average-and-of-which-rows)).
+  `josta`, `ebből`, `из них` ([concepts](detection-rules.md#average-and-of-which-rows)).
 
 ## Ambiguous values
 

@@ -187,9 +187,31 @@ print(hedgehog.summarize(wb).text)
 - Sales!C13 "Grand total" = 4,630 = sum of C6:C12
 ```
 
+## 5. Let an AI agent ask the questions
+
+Agents don't need the clean workbook: they call hedgehog's tools and ask with SQL. With the `hedgehog`
+command installed, add it to Claude Code as a plugin:
+
+```text
+/plugin marketplace add 05vukasin/hedgehog
+/plugin install hedgehog@hedgehog
+```
+
+Then ask Claude about `sales.xlsx` in that folder. It opens the file with `open_file`, reads the
+catalog, and answers with a query such as:
+
+```text
+SELECT SUM("Revenue / Q1") FROM T1 WHERE Region = 'North'
+1500.5
+```
+
+Any other MCP client works the same way with `hedgehog mcp --root <folder>`; see
+[mcp.md](mcp.md).
+
 ## Next steps
 
-- Hand the output to an agent: [agent-recipes.md](agent-recipes.md)
+- Understand what you just saw: [concepts.md](concepts.md)
+- Hand the clean workbook to an agent with a code sandbox: [agent-recipes.md](agent-recipes.md)
 - Every output sheet and manifest field: [normalized-output.md](normalized-output.md)
 - European files, ambiguous `1.200` and `03/04/2024`: [locales.md](locales.md)
 - Have an LLM phrase the summary: [llm.md](llm.md)

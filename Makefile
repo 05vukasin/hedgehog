@@ -138,7 +138,7 @@ ifeq ($(AREA),agent)
 endif
 	@echo "merge-check $(AREA): OK"
 
-# Tier 3: everything except the LLM agent comparison (run that by hand, see eval/agents/README.md).
+# Tier 3: everything model-free.
 full:
 	@$(MAKE) --no-print-directory quick
 	@$(call capped,4G,test-workspace,cargo test --release --workspace --exclude hh_py)
@@ -147,9 +147,9 @@ full:
 	@$(call capped,2500M,file-sweep,python3 -I fuzz/sweep.py $(HH) $(HEDGEHOG_DATA) $(LOGS)/sweep.tsv)
 	@$(call capped,4G,check-cases,env HEDGEHOG_BIN=$(HH) python3 -I eval/agents/check_cases.py)
 	@$(MAKE) --no-print-directory node-test py-test
-	@echo "full: OK; run the agent comparison too if the change affects answers (eval/agents/README.md)"
+	@echo "full: OK"
 
-# Model-free accuracy scoreboard (docs/ACCURACY_PLAN.md, eval/accuracy/README.md): hedgehog over the public
+# Model-free accuracy scoreboard (docs/evaluation.md): hedgehog over the public
 # QA files with the current build (outputs per build under ../scratch-archive/accuracy/work/<sha>), then
 # F/S/L/C/M/K on the dev split -> eval/accuracy/RESULTS.md + results.json. score-holdout: release only.
 SCORE_PY   ?= $(firstword $(wildcard ../scratch-archive/public-bench/swap/venv-markitdown/bin/python) python3)

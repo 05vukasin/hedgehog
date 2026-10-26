@@ -220,7 +220,7 @@ compact JSON with cell addresses:
 | `check_totals` | optional `sheet` | Counts per status and the totals (mismatches first) with source ranges, recomputed sum and status: the same `ok` / `mismatch` / `unknown` as the normalize manifest. |
 
 These five tools are the current agent interface; an MCP server exposing them (and more) is
-[planned](../README.md#status-and-roadmap).
+[planned](../README.md#roadmap).
 
 ## Comparing models with bench
 

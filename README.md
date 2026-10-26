@@ -282,8 +282,7 @@ Standalone `hedgehog` binaries for Linux, macOS and Windows are attached to each
 **Claude Code plugin:** with `hedgehog` on your PATH, run `/plugin marketplace add 05vukasin/hedgehog`
 and `/plugin install hedgehog@hedgehog` in Claude Code. It adds the tools for the project folder and a
 `spreadsheets` skill that tells Claude to answer from the catalog and SQL instead of writing pandas.
-On the four cases in [eval/agents](eval/agents/RESULTS.md), that took a third to two thirds less cost
-for the same answers. See [docs/mcp.md](docs/mcp.md#claude-code).
+On four of the test cases, that took a third to two thirds less cost for the same answers. See [docs/mcp.md](docs/mcp.md#claude-code).
 
 ## How good is it?
 
@@ -307,34 +306,19 @@ up on the `Notes` sheet, so a mistake costs structure, never data. Details:
 **Messy layouts.** An independent noise generator (21 kinds of mess: "of which" rows, average rows,
 footnote marks, locale formats, separators, side-by-side tables, ...) builds workbooks whose right
 answer is known. hedgehog recovers every value in its place in 100 % of the clean ones and 89–91 %
-at the highest noise level, with 0 crashes ([eval/noise/REPORT.md](eval/noise/REPORT.md)). A fuzzer
+at the highest noise level, with 0 crashes ([evaluation](docs/evaluation.md#other-measurements)). A fuzzer
 and a sweep over 24,000 real files found 0 crashes; output is byte-identical from run to run.
 
 **With an AI agent: the tool does the work.** On 30 real analyst questions (finance, sales, HR,
-public statistics, registers; 200 cells to 4.5M cells; 4 questions that need two files), a simple
-chat loop on a small model with only hedgehog's tools passes **86 %** of the automatic checks; Claude
-Code (a frontier model writing its own Python) passes 97 %. hedgehog does it **2.9× faster and 51×
-cheaper** ($0.21 for all 30 cases vs $10.45) and reads 5× fewer tokens. With the same small model and
-the same minimal loop, hedgehog's tools score 85 % on the 30 cases; on the first 4 cases, the other
-tool sets scored 27 % (a generic Excel MCP server), 45 % (a pandas tool) and 55 % (the sheet as
-markdown in the prompt). Every run, answer and check: [eval/agents](eval/agents/RESULTS.md);
-an earlier walk-through: [docs/case-study-contracts.md](docs/case-study-contracts.md).
+public statistics, registers; 200 cells to 4.5M cells; 4 questions that need two files), a minimal
+chat loop on a small model (gpt-4.1-mini) with only hedgehog's tools passes 85 % of the automatic
+checks. On the first 4 cases, the same model and loop with other tools scored 27 % (a generic Excel
+MCP server), 45 % (a pandas tool) and 55 % (the sheet as markdown in the prompt).
 
 ## Documentation
 
-| | |
-|---|---|
-| [Installation](docs/installation.md) | wheels, extras, command line, from source |
-| [Quickstart](docs/quickstart.md) | a messy sample workbook, end to end |
-| [Agent recipes](docs/agent-recipes.md) | pandas/openpyxl code for AI agents |
-| [MCP server](docs/mcp.md) | `hedgehog mcp`: tools for AI clients over stdio |
-| [Claude Code plugin](docs/mcp.md#claude-code) | `/plugin install hedgehog@hedgehog`: the tools plus a `spreadsheets` skill |
-| [Normalized output](docs/normalized-output.md) | every sheet and manifest field |
-| [CLI](docs/cli.md) · [Python API](docs/python-api.md) · [Node API](docs/node-api.md) | full reference |
-| [LLMs](docs/llm.md) · [Locales](docs/locales.md) | AI providers and keys; numbers, dates, currencies |
-| [Concepts](docs/concepts.md) · [Evaluation](docs/evaluation.md) | how it works; how well it works |
-| [Case study: 176k contracts](docs/case-study-contracts.md) | hedgehog tools + gpt-4o-mini vs Claude Code on one real file |
-| [Architecture](docs/architecture.md) · [Development](docs/development.md) · [Troubleshooting](docs/troubleshooting.md) | for contributors and when something goes wrong |
+Start with [What hedgehog is](docs/introduction.md), then the [quickstart](docs/quickstart.md) and the
+[concepts](docs/concepts.md). The [documentation index](docs/README.md) lists every page in reading order.
 
 ## Roadmap
 
@@ -350,6 +334,7 @@ Done (0.1 to 0.3):
 - [x] CSV and TSV input
 - [x] A learned row model (gradient-boosted trees in Rust, no GPU) combined with the rules, tested on
       four independent benchmarks (0.3)
+- [x] An MCP server and a Claude Code plugin, so agents can call hedgehog as a tool (0.4)
 
 Next:
 
@@ -357,10 +342,9 @@ Next:
 - [ ] Tables rebuilt from the model's cell roles
 - [ ] Column meaning: city, country, tax ID, amount, period, …
 - [ ] Ready-made formulas and metrics (quarterly totals, year over year)
-- [ ] An MCP server, so agents can call hedgehog as a tool
 - [ ] PyPI release
 
-Milestones: [PLAN.md](PLAN.md). Changes: [CHANGELOG.md](CHANGELOG.md).
+Changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 

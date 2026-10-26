@@ -204,7 +204,7 @@ if want public; then
   t0=$(now)
   rc=0
   if [ -z "$HEDGEHOG_DATA" ] || [ ! -d "$HEDGEHOG_DATA/public/hitab" ]; then
-    echo "public: skipped (no HiTab data; eval/public/README.md)"
+    echo "public: skipped (no HiTab data; see docs/evaluation.md)"
   else
     log=$WORK/public.log
     BIN=${HEDGEHOG_BIN:-}

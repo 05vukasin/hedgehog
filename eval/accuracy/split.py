@@ -3,7 +3,7 @@
     python3 -I eval/accuracy/split.py            # writes eval/accuracy/split/<dataset>.{dev,holdout}.txt
     python3 -I eval/accuracy/split.py --check    # recompute and compare with the committed lists
 
-Rules (docs/ACCURACY_PLAN.md, "Honest data split"):
+Rules (docs/evaluation.md, "Question-answering accuracy"):
 
 - HiTab: the official split. train + dev -> dev, test -> holdout. HiTab's splits are file-disjoint
   (every trimmed workbook belongs to exactly one split; checked here).

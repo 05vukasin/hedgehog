@@ -1,4 +1,4 @@
-//! Formulas, total rows and their verification (owned by the `totals` workstream — see PLAN.md).
+//! Formulas, total rows and their verification (owned by the `totals` workstream).
 //!
 //! * [`formula`] — small reference parser + formula classification (SUM, SUBTOTAL, `C5+C6+C7`, …).
 //! * [`deps`] — per-sheet dependency index (`precedents` / `dependents`) for `trace(cell)`.

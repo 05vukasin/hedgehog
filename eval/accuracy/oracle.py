@@ -48,7 +48,7 @@ filtered by a question entity or its column is question-grounded; a binary progr
 are. An atom is reachable only through a grounded witness; when only ungrounded programs match, the
 item is reported as "ungrounded only" (counted as a miss). Each atom reports how many witnesses exist.
 
-Matching (agent_mimotable's matcher, at the gold's shown precision): absolute values (a narrative
+Matching (mimotable_key's matcher, at the gold's shown precision): absolute values (a narrative
 writes "a decrease of 41.67 %"); |x - gold| <= half a unit of the gold's last shown digit (plus 1e-9
 relative), or the gold is x truncated to its decimals (when it shows decimals); a percent gold also
 matches its fraction; a scale word after a narrative number (million, ten thousand, ...) applies;

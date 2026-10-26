@@ -1,4 +1,4 @@
-//! Training data for the learned cell-role model (PLAN.md M6): one CSV row per labelled cell with
+//! Training data for the learned cell-role model: one CSV row per labelled cell with
 //! every core feature ([`crate::context`], [`crate::values`], [`crate::totals`]), the rule layout's
 //! role for the cell and its neighbours (`l_*`), and the ground-truth role.
 //!

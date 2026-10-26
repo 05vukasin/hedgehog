@@ -1,13 +1,10 @@
-"""End-to-end agent run on MiMoTable: hedgehog-cli answers English questions, a model-free matcher scores them.
+"""MiMoTable gold keys: a fixed English subset, the checkable key of each free-text answer, and a
+model-free matcher that decides whether an answer text contains that key. The accuracy scoreboard
+(eval/accuracy/acc.py) reads its keys from here.
 
-    python3 -I eval/public/agent_mimotable.py sample            # the subset + gold keys (for the audit)
-    S=../scripts/run_capped.sh
-    $S 4G <log> python3 -I eval/public/agent_mimotable.py run [--limit N] [--arm verify|noverify]
-    python3 -I eval/public/agent_mimotable.py score [--arm verify|noverify] [--show failures]
+    python3 -I eval/public/mimotable_key.py sample [--show]     # the subset + gold keys (for the audit)
 
-Needs `items.jsonl` from convert_mimotable.py. Per-item outputs (answers, which contain question text)
-go to $HH_AGENT_WORK (default ../scratch-archive/mimo-agent/), never into git; only this script and the
-aggregates in AGENT_RESULTS.md are committed (the convention of eval/public).
+Needs `items.jsonl` from convert_mimotable.py.
 
 Subset (fixed, reproducible)
 ----------------------------
@@ -33,7 +30,7 @@ ask for an amount, numbers are dropped when a phrase atom exists (they support t
 
 Matcher
 -------
-The candidate is hedgehog-cli's final answer. Correct when every key atom is found in it:
+The candidate is an answer text. Correct when every key atom is found in it:
 - number: some number of the candidate (US/European grouping, %, number words zero..twenty, a scale word
   million/billion/thousand/ten thousand/万/亿 applied or not) equals the gold value in absolute value
   (narratives write "a decrease of 41.67 %" for -41.67 %) within 0.5 % relative, or after rounding either
@@ -44,36 +41,25 @@ The candidate is hedgehog-cli's final answer. Correct when every key atom is fou
 - phrase: its normalised text (common.norm_text) occurs at word boundaries in the normalised candidate;
 - a list = several atoms: all must occur (a set; order and extra items are not judged).
 Unscored (not counted in accuracy, reported): a phrase atom not found exactly while >= 60 % of its words
-are in the candidate (a paraphrase the matcher cannot judge). Runs that fail or time out count as wrong
-and are reported as errors.
+are in the candidate (a paraphrase the matcher cannot judge).
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.util
-import json
 import math
-import os
 import re
-import shutil
-import subprocess
 import sys
-import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import PROJECT, REPO, _NUMBER, data_dir, norm_text, parse_number, read_jsonl  # noqa: E402
+from common import _NUMBER, data_dir, norm_text, parse_number, read_jsonl  # noqa: E402
 
 ROOT = data_dir() / "mimotable"
-WORK = Path(os.environ.get("HH_AGENT_WORK") or PROJECT / "scratch-archive" / "mimo-agent")
 SEED = "mimotable-agent-2026-10-23"
 N = 150
-MODEL = "gpt-4.1-mini"
-TIMEOUT = 180
-PRICES = {"gpt-4.1-mini": (0.4, 0.1, 1.6)}  # USD per 1M tokens: input, cached input, output (list prices)
 MAX_LEN = 260
 CONCLUSION = re.compile(r"^(in summary|in conclusion|to summarize|therefore|thus|so,|overall|in total|finally|based on (the|this|these) (calculation|analysis|data))", re.I)
 
@@ -295,106 +281,6 @@ def subset(n: int = N) -> list[dict]:
 
 
 # ------------------------------------------------------------------------------------------------
-# running
-
-def prompt_of(x: dict) -> str:
-    """MiMoTable gives the model each workbook under <Table Name>file name</Table Name>; here the file
-    names come first, then the question as given."""
-    names = [Path(f).name for f in x["files"]]
-    head = "\n".join(f"Table Name: {n}" for n in names)
-    return f"{head}\nQuestion: {x['question'].strip()}"
-
-
-def dotenv_keys() -> dict:
-    """The API keys of hedgehog/.env, through the agent harness's own reader (eval/agents/run.py)."""
-    spec = importlib.util.spec_from_file_location("agents_run", REPO / "eval" / "agents" / "run.py")
-    sys.path.insert(0, str(REPO / "eval" / "agents"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return {k: v for k, v in mod.dotenv().items() if k.endswith("_API_KEY")}
-
-
-def first_json(text: str):
-    dec = json.JSONDecoder()
-    for m in re.finditer(r"^[\[{]", text, re.M):
-        try:
-            return dec.raw_decode(text[m.start():])[0]
-        except json.JSONDecodeError:
-            continue
-    return None
-
-
-def run_one(x: dict, binary: str, env: dict, arm: str) -> dict:
-    d = WORK / "items" / arm / x["id"]
-    if d.exists():
-        shutil.rmtree(d)
-    d.mkdir(parents=True)
-    for f in x["files"]:
-        shutil.copy2(ROOT / f, d / Path(f).name)
-    cmd = [binary, "-m", MODEL, "-o", "json", prompt_of(x)]
-    t0 = time.time()
-    rec = {"id": x["id"], "arm": arm, "date": time.strftime("%Y-%m-%dT%H:%M:%S"), "model": MODEL}
-    try:
-        p = subprocess.run(cmd, cwd=d, env=env, capture_output=True, text=True, timeout=TIMEOUT)
-        rec["rc"] = p.returncode
-        out = first_json(p.stdout)
-        (d.parent / f"{x['id']}.stdout.json").write_text(p.stdout)
-        if p.stderr:
-            (d.parent / f"{x['id']}.stderr.txt").write_text(p.stderr[-20000:])
-    except subprocess.TimeoutExpired:
-        rec.update(rc=None, error="timeout")
-        out = None
-    rec["wall_s"] = round(time.time() - t0, 1)
-    res = next((e for e in reversed(out) if isinstance(e, dict) and e.get("type") == "result"), None) if isinstance(out, list) else (out if isinstance(out, dict) else None)
-    if res is None:
-        rec.setdefault("error", "no result")
-        rec["answer"] = ""
-        return rec
-    stats = res.get("stats") or {}
-    model, ms = next(iter(stats.get("models", {}).items()), (None, {}))
-    tok = ms.get("tokens", {})
-    inp, cached, outp = tok.get("prompt", 0), tok.get("cached", 0), tok.get("candidates", 0)
-    pr = PRICES.get(model or MODEL)
-    rec.update(model=model or MODEL, answer=res.get("result", "") or "", is_error=res.get("is_error"),
-               seconds=round(res.get("duration_ms", 0) / 1000, 1), turns=res.get("num_turns"),
-               input_tokens=inp, cached_tokens=cached, output_tokens=outp,
-               cost_usd=round(((inp - cached) * pr[0] + cached * pr[1] + outp * pr[2]) / 1e6, 5) if pr else None,
-               tool_calls=(stats.get("tools") or {}).get("totalCalls"), tool_errors=(stats.get("tools") or {}).get("totalFail"),
-               verification=res.get("verification"))
-    if res.get("is_error"):
-        rec["error"] = "is_error"
-    return rec
-
-
-def cmd_run(a) -> None:
-    items = subset()
-    if a.limit:
-        items = items[:a.limit]
-    out = WORK / f"results-{a.arm}.jsonl"
-    done = {r["id"] for r in read_jsonl(out) if not r.get("error") or r.get("error") == "is_error"}
-    env = dict(os.environ)
-    env.update(dotenv_keys())
-    if a.arm == "noverify":
-        env["HH_VERIFY"] = "0"
-    else:
-        env.pop("HH_VERIFY", None)
-        env.pop("HEDGEHOG_VERIFY", None)
-    spent = sum((r.get("cost_usd") or 0) for r in read_jsonl(out))
-    for i, x in enumerate(items):
-        if x["id"] in done:
-            continue
-        if spent >= a.max_usd:
-            print(f"stop: spent ${spent:.4f} >= ${a.max_usd}", flush=True)
-            break
-        rec = run_one(x, a.binary, env, a.arm)
-        spent += rec.get("cost_usd") or 0
-        with out.open("a") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        print(f"[{i + 1}/{len(items)}] {x['id']} {rec.get('error') or 'ok'} {rec.get('wall_s')}s "
-              f"${rec.get('cost_usd')} total ${spent:.4f}", flush=True)
-
-
-# ------------------------------------------------------------------------------------------------
 # matching
 
 _SCALE = {"thousand": 1e3, "k": 1e3, "million": 1e6, "mn": 1e6, "m": 1e6, "billion": 1e9, "bn": 1e9,
@@ -479,56 +365,6 @@ def judge(key: list[dict], answer: str) -> tuple[str, list[str]]:
     return "wrong", notes
 
 
-def cmd_score(a) -> dict:
-    items = {x["id"]: x for x in subset()}
-    rs = {r["id"]: r for r in read_jsonl(WORK / f"results-{a.arm}.jsonl")}  # last run of an id wins
-    rows = []
-    for i, x in items.items():
-        r = rs.get(i)
-        if r is None:
-            continue
-        v, notes = judge(x["key"], r.get("answer", "")) if not r.get("error") or r.get("answer") else ("wrong", ["run " + str(r.get("error"))])
-        rows.append({**r, "verdict": v, "notes": notes, "tclass": x["tclass"], "table_type": x["table_type"],
-                     "difficulty": x["table_difficulty"]})
-    by = lambda f: defaultdict(list, {k: [r for r in rows if f(r) == k] for k in {f(r) for r in rows}})
-
-    def acc(rr):
-        s = [r for r in rr if r["verdict"] != "unscored"]
-        c = sum(r["verdict"] == "correct" for r in s)
-        return {"n": len(rr), "scored": len(s), "correct": c, "acc": round(100 * c / len(s), 1) if s else None,
-                "unscored": len(rr) - len(s)}
-    rep = {"arm": a.arm, "model": MODEL, "items": len(rows), "overall": acc(rows),
-           "by_task": {k: acc(v) for k, v in sorted(by(lambda r: r["tclass"]).items())},
-           "by_table_type": {k: acc(v) for k, v in sorted(by(lambda r: r["table_type"]).items())},
-           "by_table_difficulty": {k: acc(v) for k, v in sorted(by(lambda r: r["difficulty"]).items())},
-           "errors": Counter(r.get("error") for r in rows if r.get("error"))}
-    num = lambda f: [r[f] for r in rows if isinstance(r.get(f), (int, float))]
-    mean = lambda v: round(sum(v) / len(v), 4) if v else None
-    med = lambda v: sorted(v)[len(v) // 2] if v else None
-    rep["cost"] = {"usd_total": round(sum(num("cost_usd")), 4), "usd_mean": mean(num("cost_usd")),
-                   "input_tokens_mean": mean(num("input_tokens")), "input_tokens_median": med(num("input_tokens")),
-                   "cached_tokens_mean": mean(num("cached_tokens")), "output_tokens_mean": mean(num("output_tokens")),
-                   "seconds_mean": mean(num("wall_s")), "seconds_median": med(num("wall_s")),
-                   "tool_calls_mean": mean(num("tool_calls")), "turns_mean": mean(num("turns"))}
-    ver = [r.get("verification") for r in rows if r.get("verification")]
-    rep["verification"] = {"with_verification": len(ver), "ok": sum(bool(v.get("ok")) for v in ver),
-                           "rounds>0": sum((v.get("rounds") or 0) > 0 for v in ver),
-                           "rounds_total": sum(v.get("rounds") or 0 for v in ver),
-                           "salvaged": sum(bool(v.get("salvaged")) for v in ver),
-                           "acc_when_ok": acc([r for r in rows if (r.get("verification") or {}).get("ok")]),
-                           "acc_when_not_ok": acc([r for r in rows if r.get("verification") and not r["verification"].get("ok")])}
-    print(json.dumps(rep, indent=1, ensure_ascii=False))
-    (WORK / f"scored-{a.arm}.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-    if a.show:
-        for r in rows:
-            if r["verdict"] != "correct" or a.show == "all":
-                x = items[r["id"]]
-                print(f"\n== {r['id']} {r['verdict']} {x['tclass']} | {x['table_type']} | {r['notes']}\nQ: {x['question']}\n"
-                      f"GOLD: {x['answer'][:400]}\nKEY: {[k['text'] for k in x['key']]}\nANS: {r.get('answer', '')[:700]}"
-                      f"\nVER: {r.get('verification')}")
-    return rep
-
-
 def cmd_sample(a) -> None:
     c = candidates()
     print(f"English, not Visualize/Edit, with a checkable key: {len(c)}")
@@ -543,15 +379,9 @@ def cmd_sample(a) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["sample", "run", "score"])
-    ap.add_argument("--arm", default="verify", choices=["verify", "noverify"])
-    ap.add_argument("--limit", type=int)
-    ap.add_argument("--max-usd", type=float, default=0.75, help="stop the run when its estimated cost reaches this")
-    ap.add_argument("--binary", default=str(Path.home() / ".hedgehog-cli/bin/hedgehog-cli"))
-    ap.add_argument("--show", nargs="?", const="failures")
-    a = ap.parse_args()
-    WORK.mkdir(parents=True, exist_ok=True)
-    {"sample": cmd_sample, "run": cmd_run, "score": cmd_score}[a.cmd](a)
+    ap.add_argument("cmd", choices=["sample"])
+    ap.add_argument("--show", action="store_true")
+    cmd_sample(ap.parse_args())
 
 
 if __name__ == "__main__":

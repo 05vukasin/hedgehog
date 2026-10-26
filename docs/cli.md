@@ -190,7 +190,7 @@ The scoreboard format is shown in [evaluation.md](evaluation.md#reading-the-scor
 
 Throughput and per-stage timing of the analysis pipeline (read, grid, context, values, totals,
 total detection and verification, baseline layout) over a directory of workbooks or a text file
-with one path per line. A development tool for performance work; see [PERF.md](PERF.md).
+with one path per line. A development tool for performance work.
 
 | Flag | Default | Meaning |
 |---|---|---|

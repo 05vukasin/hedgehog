@@ -30,7 +30,7 @@ const USAGE: &str = "usage:
   hedgehog golden <dir|filelist> [--limit N] [--check GOLDEN.txt]
   hedgehog benchmark [--corpora deco,statsheets,strudel,synthetic,eu] [--analyzer NAME] [--split test|dev|all] [--threads N] [--out FILE.tsv]
                      (eu, the hand-labelled European sample, is opt-in and always scored whole;
-                      public:<name> scores <data>/public/<name>/labels.tsv + tables.tsv, see eval/public/README.md)
+                      public:<name> scores <data>/public/<name>/labels.tsv + tables.tsv, see docs/evaluation.md)
   hedgehog pack-model <dir>   (row_coarse.json + row_fine.json → row_model.bin)
   hedgehog features --out FILE.csv [--corpus deco,synthetic,statsheets,strudel] [--dir DIR] [--split dev|test|all] [--data-keep F] [--limit N] [--level cell|row]
 

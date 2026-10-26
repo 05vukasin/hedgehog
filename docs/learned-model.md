@@ -246,5 +246,5 @@ embedded binary decodes to the same trees as the JSON files.
 ## See also
 
 - [evaluation.md](evaluation.md): benchmarks, metrics, how to run them
-- [concepts.md](concepts.md#cell-roles): the seven cell roles
+- [concepts.md](concepts.md#2-cell-roles): the seven cell roles
 - [architecture.md](architecture.md): where the code lives

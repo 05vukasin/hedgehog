@@ -1,4 +1,4 @@
-//! Learned cell-role model (PLAN.md M6): gradient-boosted trees trained in Python
+//! Learned cell-role model: gradient-boosted trees trained in Python
 //! (`tools/train/train_cell_roles.py`) and exported to the compact `hh-trees-1` JSON format
 //! (`tools/train/export_trees.py`), evaluated here without any ML dependency.
 //!

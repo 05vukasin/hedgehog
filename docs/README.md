@@ -1,46 +1,47 @@
 # hedgehog documentation
 
-hedgehog turns messy Excel workbooks into a clean, typed workbook plus a machine-readable manifest
-that an AI agent with a code sandbox can load with pandas or openpyxl. This folder explains every
-way to use it.
+hedgehog reads messy spreadsheets and gives AI agents and programs clean, exact tables. These pages
+take you from "what is this" to every detail. Read the first three in order; after that, pick what you
+need.
 
-New here? Start with [OVERVIEW.md](OVERVIEW.md) (the whole picture: idea, how it works, where things stand, how to work in the code), then [installation](installation.md) and the [quickstart](quickstart.md).
+## Start here
 
-## Guides
+1. [What hedgehog is](introduction.md): the problem, what you get back, how a question gets answered.
+2. [Installation](installation.md): the Python package, the Node package or the `hedgehog` command.
+3. [Quickstart](quickstart.md): a messy sample workbook, cleaned and loaded with pandas.
+4. [Concepts](concepts.md): tables, cell roles, headers, row labels, values, totals, the catalog,
+   one idea at a time.
 
-| Page | What it covers |
+## Use it
+
+| Page | When you want to |
 |---|---|
-| [installation.md](installation.md) | Prebuilt wheels, optional LLM extras, the `hedgehog` command, building from source |
-| [quickstart.md](quickstart.md) | From a messy sample workbook to a clean pandas DataFrame, CLI and Python |
-| [agent-recipes.md](agent-recipes.md) | pandas and openpyxl code for sandbox agents: load tables, apply dtypes, find wrong totals, trace values, write changes back |
-| [llm.md](llm.md) | Optional LLM layer: providers, API keys, summaries, the tool loop, model benchmarks, cost |
-| [locales.md](locales.md) | US and European numbers, dates, currencies, missing values; ambiguity and locale presets |
-| [troubleshooting.md](troubleshooting.md) | Files that do not open, misread values, missing tables, LLM errors |
+| [MCP server and Claude Code plugin](mcp.md) | let an AI agent ask questions about spreadsheets: the tools, the catalog, the SQL views |
+| [Agent recipes](agent-recipes.md) | give an agent with a code sandbox the clean workbook: pandas and openpyxl code |
+| [Normalized output](normalized-output.md) | know every sheet, column and manifest field of the clean workbook |
+| [Locales](locales.md) | read US and European numbers, dates and currencies, and see how doubtful values are handled |
+| [LLMs](llm.md) | have a language model write a summary (optional) |
+| [Troubleshooting](troubleshooting.md) | fix a file that doesn't open, a misread value, a missing table |
 
 ## Reference
 
 | Page | What it covers |
 |---|---|
-| [cli.md](cli.md) | Every `hedgehog` subcommand, flag, environment variable and exit code |
-| [python-api.md](python-api.md) | Every public Python function, class, method and result field |
-| [node-api.md](node-api.md) | The npm package `hedgehog-sheets`: install, TypeScript API, agent tools in-process, mapping to Python |
-| [normalized-output.md](normalized-output.md) | The normalized workbook's sheets and the manifest schema |
+| [Command line](cli.md) | every `hedgehog` command, flag and exit code |
+| [Python API](python-api.md) | every public function, class and result field |
+| [Node.js API](node-api.md) | the npm package `hedgehog-sheets`, with the agent tools in-process |
+| [Detection rules](detection-rules.md) | the exact rules behind tables, roles, headers and totals |
 
-## Background
+## How it works and how well
 
 | Page | What it covers |
 |---|---|
-| [concepts.md](concepts.md) | Tables, cell roles, headers, totals and verification, provenance |
-| [learned-model.md](learned-model.md) | The built-in learned row model: how it works with the rules, accuracy, speed, retraining |
-| [evaluation.md](evaluation.md) | Benchmarks (DECO, StatSheets, Strudel, synthetic), metrics, current scores, how to run them |
-| [architecture.md](architecture.md) | Rust core modules, PyO3 bindings, Python layer, data flow |
-| [development.md](development.md) | Building, testing, test data, CI and the release process |
-| [PERF.md](PERF.md) | Performance work: benchmarks, hotspots found, optimizations (engineering notes) |
+| [Architecture](architecture.md) | the Rust modules, the bindings and how data flows through them |
+| [The learned model](learned-model.md) | the built-in row model: how it works with the rules, accuracy, retraining |
+| [Evaluation](evaluation.md) | the benchmarks, the accuracy measurements and how to run them |
 
-[NORMALIZE.md](NORMALIZE.md) is an old path that points to normalized-output.md.
+## Contributing
 
-## See also
+[Development](development.md): building, testing, test data, CI and releases.
 
-- [Project README](../README.md): overview, status and roadmap
-- [CHANGELOG.md](../CHANGELOG.md): what changed in each release
-- [PLAN.md](../PLAN.md): the milestone plan
+Also: [project README](../README.md) · [CHANGELOG](../CHANGELOG.md)

@@ -230,7 +230,7 @@ One row per detected total or subtotal cell, registered as an Excel table named 
 | `value` | Value in the file (the cached result for formulas) |
 | `recomputed` | Sum of the source cells, recomputed from the cached values (for `average`: their mean; for `of_which`: the value of the row above) |
 | `status` | `ok`, `mismatch` or `unknown` |
-| `reason` | `match`, `rounded`, `mismatch`, `double_counted`, `matches_average`, `no_cached_value`, `not_numeric`, `error_in_source`, `missing_source_value`, `no_source`, `unconfirmed`, `not_verified`, `not_additive`, `rounding_difference`, `average_like`, `known_aggregate`; for average rows `matches_mean`, `matches_median`, `unconfirmed`, `no_source`; for of-which rows `within_parent`, `exceeds_parent`, `no_parent` ([meanings](concepts.md#totals-and-verification)) |
+| `reason` | `match`, `rounded`, `mismatch`, `double_counted`, `matches_average`, `no_cached_value`, `not_numeric`, `error_in_source`, `missing_source_value`, `no_source`, `unconfirmed`, `not_verified`, `not_additive`, `rounding_difference`, `average_like`, `known_aggregate`; for average rows `matches_mean`, `matches_median`, `unconfirmed`, `no_source`; for of-which rows `within_parent`, `exceeds_parent`, `no_parent` ([meanings](detection-rules.md#totals-and-verification)) |
 | `sources` | Source ranges, for example `C6:C7` |
 | `formula` | The formula, if any |
 | `kept_in_data` | The total is also in the table data: `keep_totals` is set, or it is a total column (horizontal) |
@@ -405,7 +405,7 @@ Column fields:
 | `role` | `data` (from a source column), `group` (from group-header rows), `source_row` (`_src_row`), `row_type` (`_row_type`). |
 | `dtype` | See [Values and dtypes](#values-and-dtypes). Authoritative: trust it over pandas' guess. |
 | `number_format` | Excel number format written for the column, or `null`. |
-| `source_column` | Source column letter, or `null` for non-data roles, derived columns and row labels copied from another table (`row_labels_copied`; see [concepts](concepts.md#tables)). |
+| `source_column` | Source column letter, or `null` for non-data roles, derived columns and row labels copied from another table (`row_labels_copied`; see [concepts](detection-rules.md#tables)). |
 | `derived` | `null`, or `{"from": "<column>", "kind": "period" \| "key"}` for a [derived column](#rows). |
 | `original_header` | The header cells joined into `name`, top to bottom, with their addresses. |
 | `unit`, `currency` | Unit or ISO currency code carried by more than half of the numeric values (the most common one), or `null`. Mixed currencies are also listed in `warnings`. |

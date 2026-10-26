@@ -1,6 +1,6 @@
 //! Spatial / structural context of every cell — the `c_*` feature columns.
 //!
-//! Owned by the `context` workstream — see PLAN.md. Everything here is computed from coarse cell
+//! Owned by the `context` workstream — see docs/architecture.md. Everything here is computed from coarse cell
 //! types ([`Kind`]), positions and merged areas; no text parsing.
 //!
 //! "Block" below means the cell's 8-connected [`Component`] (see [`components`]). Row and column

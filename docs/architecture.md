@@ -131,7 +131,7 @@ checked against the previous code path (design and measurements: the P7 research
   materialized one, with the rows in 1 and in several chunks; `core/tests/p7_equivalence.rs`
   runs it over a file list. The golden check (`hedgehog golden`) covers the per-cell feature
   columns.
-- **Large sheets, one at a time** (B122–B135). A workbook whose sheets go one at a time (all but
+- **Large sheets, one at a time**. A workbook whose sheets go one at a time (all but
   small model workbooks) builds one `Grid` per sheet for both the layout and the extraction, so
   the cell index, the row and column lines, the parsed formulas (`Grid::deps`, shared by the
   model's total features, the detection and `verify`) and the total detection are built once.
@@ -152,10 +152,10 @@ checked against the previous code path (design and measurements: the P7 research
   Typing keeps parse results only for texts that read as something. The labelled-rows pass and
   the detection share the keyword cells and rows. Each of these has a unit test against the
   general path where the equivalence is not obvious.
-- **Agent path** (`agent/`, B120–B121). `open_file` never writes an xlsx, CSV or manifest. The
+- **Agent path** (`agent/`). `open_file` never writes an xlsx, CSV or manifest. The
   SQLite load (or the disk cache entry) starts right after normalizing, beside the catalog; the
   cache entry takes the catalog once it is there. Inserts bind values in place (text borrowed).
-- **Reading** (B136; `vendor/calamine/src/xlsx/parallel.rs`, `parallel_content` in
+- **Reading** (`vendor/calamine/src/xlsx/parallel.rs`, `parallel_content` in
   `vendor/calamine/src/ods.rs`, `core/src/reader.rs`). A sheet part of 2 MB or more (uncompressed),
   a shared string table of 2 MB or more and the tables of an ODS `content.xml` of 2 MB or more are
   read on up to `min(4, CPUs)` threads (CPU affinity respected: pinned to one CPU, everything reads
@@ -205,7 +205,7 @@ Python version. `normalize` releases the GIL while it runs.
 
 ## Planned components
 
-Not built yet; see the roadmap in the [README](../README.md#status-and-roadmap):
+Not built yet; see the roadmap in the [README](../README.md#roadmap):
 
 - semantic column types (city, country, tax ID, currency amount, period, ...);
 - metric definitions that become Excel formulas;
@@ -216,4 +216,3 @@ Not built yet; see the roadmap in the [README](../README.md#status-and-roadmap):
 
 - [concepts.md](concepts.md): what each stage does, without the code
 - [development.md](development.md): building and testing
-- [`PLAN.md`](../PLAN.md): the milestone plan

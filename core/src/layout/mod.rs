@@ -1,4 +1,4 @@
-//! Owned by the `layout` workstream — see PLAN.md.
+//! Owned by the `layout` workstream — see docs/architecture.md.
 //!
 //! Rule-based table detection and cell roles (M2):
 //! 1. blocks: 8-connected components of filled cells + merged areas, merged across 1–2 blank

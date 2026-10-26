@@ -224,7 +224,7 @@ totals(sheet: str) -> list[dict]
 ```
 
 Every total and subtotal cell found on the sheet, recomputed from the cached values of its source
-range. See [concepts.md](concepts.md#totals-and-verification) for how totals are found.
+range. See [concepts.md](detection-rules.md#totals-and-verification) for how totals are found.
 
 | Key | Meaning |
 |---|---|

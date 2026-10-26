@@ -1,5 +1,5 @@
 //! Scoring harness: ground truth from annotated corpora, metrics, and a runner that scores any
-//! analyzer (`Fn(&Grid) -> SheetLayout`) against it. Owned by the `eval` workstream (PLAN.md M1).
+//! analyzer (`Fn(&Grid) -> SheetLayout`) against it. Owned by the `eval` workstream.
 //!
 //! Pieces:
 //! - [`gt`]: one corpus-independent ground-truth schema (files → sheets → table rects + cell roles).
