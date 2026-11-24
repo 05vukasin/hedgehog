@@ -9,9 +9,7 @@
 //! `sharedStrings.xml` has its `<si>` entries counted. Cells and time are checked again while
 //! reading.
 
-use std::fs::File;
-use std::io::{BufReader, Read};
-use std::path::Path;
+use std::io::{BufReader, Read, Seek};
 use std::time::Instant;
 
 use memchr::memmem;
@@ -92,11 +90,11 @@ const PASSWORD: &str =
 
 /// An OLE container holding an `EncryptedPackage` stream is an encrypted xlsx / xlsb (Office's
 /// "Encrypt with password"); calamine would report it as a broken xls.
-pub(super) fn check_ole(path: &Path) -> Result<(), Error> {
+pub(super) fn check_ole(file: impl Read) -> Result<(), Error> {
     // The directory entry's name, UTF-16LE.
     let name: Vec<u8> = "EncryptedPackage".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
     let finder = memmem::Finder::new(&name);
-    let mut f = BufReader::with_capacity(1 << 20, File::open(path).map_err(Error::from_io)?);
+    let mut f = BufReader::with_capacity(1 << 20, file);
     let mut buf = vec![0u8; 1 << 20];
     let keep = name.len() - 1;
     let mut filled = 0;
@@ -123,8 +121,8 @@ pub(super) fn password_error(msg: &str) -> Option<Error> {
 }
 
 /// Checks a zip package (xlsx / xlsb / ods) before it is parsed.
-pub(super) fn check_zip(path: &Path, limits: &Limits) -> Result<(), Error> {
-    let Ok(mut zip) = zip::ZipArchive::new(BufReader::new(File::open(path).map_err(Error::from_io)?)) else {
+pub(super) fn check_zip(file: impl Read + Seek, limits: &Limits) -> Result<(), Error> {
+    let Ok(mut zip) = zip::ZipArchive::new(file) else {
         return Ok(()); // not a readable zip: calamine reports it
     };
     let mut total: u64 = 0;

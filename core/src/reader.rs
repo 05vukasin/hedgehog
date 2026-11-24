@@ -10,7 +10,7 @@ use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::path::Path;
 
 use calamine::{
-    open_workbook_auto, open_workbook_auto_from_rs, Data, DataRef, Dimensions, Range, Reader, Sheets, Xlsx, XlsxError,
+    open_workbook_auto_from_rs, Data, DataRef, Dimensions, Range, Reader, Sheets, Xlsx, XlsxError,
 };
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
@@ -64,6 +64,77 @@ fn err(e: impl fmt::Display) -> Error {
     Error(if line.is_empty() { "unreadable file".into() } else { line })
 }
 
+/// Where a workbook's bytes come from: a file, read where it lies (never copied into memory as a
+/// whole), or a buffer already in memory ([`open_bytes_with`]). Every step of [`read`] takes its
+/// own view of the content from the start, so both sources go through exactly the same checks
+/// and readers.
+trait Source {
+    /// A plain view: format sniff, limit checks, the merge scanner.
+    type Raw: Read + Seek + Send;
+    /// A buffered view for calamine (what its `open_workbook` uses for a path).
+    type Buf: Read + Seek + Send;
+    fn raw(&self) -> std::io::Result<Self::Raw>;
+    fn buffered(&self) -> std::io::Result<Self::Buf>;
+    /// Size in bytes; `None` when unknown.
+    fn size(&self) -> Option<u64>;
+    /// The file name: its extension is a format hint, its stem names a CSV sheet.
+    fn name(&self) -> Option<&Path>;
+    /// Reads the content as delimited text.
+    fn csv(&self, max_cells: u64) -> Result<Workbook, Error>;
+
+    /// The extension, lowercase.
+    fn extension(&self) -> Option<String> {
+        self.name()?.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)
+    }
+}
+
+struct FileSource<'a>(&'a Path);
+
+impl Source for FileSource<'_> {
+    type Raw = File;
+    type Buf = BufReader<File>;
+    fn raw(&self) -> std::io::Result<File> {
+        File::open(self.0)
+    }
+    fn buffered(&self) -> std::io::Result<BufReader<File>> {
+        File::open(self.0).map(BufReader::new)
+    }
+    fn size(&self) -> Option<u64> {
+        std::fs::metadata(self.0).ok().map(|m| m.len())
+    }
+    fn name(&self) -> Option<&Path> {
+        Some(self.0)
+    }
+    fn csv(&self, max_cells: u64) -> Result<Workbook, Error> {
+        csv::open(self.0, max_cells)
+    }
+}
+
+struct BytesSource<'a> {
+    bytes: &'a [u8],
+    name: Option<&'a Path>,
+}
+
+impl<'a> Source for BytesSource<'a> {
+    type Raw = Cursor<&'a [u8]>;
+    type Buf = Cursor<&'a [u8]>;
+    fn raw(&self) -> std::io::Result<Self::Raw> {
+        Ok(Cursor::new(self.bytes))
+    }
+    fn buffered(&self) -> std::io::Result<Self::Buf> {
+        Ok(Cursor::new(self.bytes))
+    }
+    fn size(&self) -> Option<u64> {
+        Some(self.bytes.len() as u64)
+    }
+    fn name(&self) -> Option<&Path> {
+        self.name
+    }
+    fn csv(&self, max_cells: u64) -> Result<Workbook, Error> {
+        csv::open_bytes(self.bytes, self.name, max_cells)
+    }
+}
+
 /// File format from the file's content, not its name (`.xls` files that are really xlsx are
 /// common in open-data portals). `None`: unknown, let calamine go by the extension.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,15 +145,18 @@ enum Format {
     Ods,
 }
 
-fn sniff(path: &Path) -> Option<Format> {
-    let mut f = File::open(path).ok()?;
-    let mut magic = [0u8; 4];
-    f.read_exact(&mut magic).ok()?;
-    match magic {
-        [0xD0, 0xCF, 0x11, 0xE0] => Some(Format::Xls),
-        [b'P', b'K', 3, 4] => {
-            f.rewind().ok()?;
-            let mut zip = zip::ZipArchive::new(std::io::BufReader::new(f)).ok()?;
+/// The first (up to) four bytes.
+fn head(src: &impl Source) -> std::io::Result<Vec<u8>> {
+    let mut magic = Vec::with_capacity(4);
+    src.raw()?.take(4).read_to_end(&mut magic)?;
+    Ok(magic)
+}
+
+fn sniff(src: &impl Source) -> Option<Format> {
+    match magic(src)? {
+        Magic::Ole => Some(Format::Xls),
+        Magic::Zip => {
+            let mut zip = zip::ZipArchive::new(src.buffered().ok()?).ok()?;
             // ODF: a `mimetype` entry (normally stored, sometimes deflated) names the type.
             if let Ok(mut m) = zip.by_name("mimetype") {
                 let mut t = String::new();
@@ -105,42 +179,54 @@ fn sniff(path: &Path) -> Option<Format> {
                 None
             }
         }
-        _ => None,
     }
 }
 
 /// CSV / TSV: any name but a workbook extension (`.csv`, `.tsv`, `.txt`, `.asp`, none, ...) with
 /// content that is not a zip or OLE container (a workbook saved as `.csv` opens as the workbook
 /// it is). Unreadable files go to calamine, which reports the error.
-fn is_delimited_text(path: &Path) -> bool {
-    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
-    if matches!(ext.as_deref(), Some("xls" | "xla" | "xlsx" | "xlsm" | "xlam" | "xlsb" | "ods")) {
+fn is_delimited_text(src: &impl Source) -> bool {
+    if matches!(src.extension().as_deref(), Some("xls" | "xla" | "xlsx" | "xlsm" | "xlam" | "xlsb" | "ods")) {
         return false;
     }
-    let mut magic = Vec::with_capacity(4);
-    match File::open(path).and_then(|f| f.take(4).read_to_end(&mut magic)) {
-        Ok(_) => !matches!(magic[..], [0xD0, 0xCF, 0x11, 0xE0] | [b'P', b'K', 3, 4]),
+    match head(src) {
+        Ok(magic) => !matches!(magic[..], [0xD0, 0xCF, 0x11, 0xE0] | [b'P', b'K', 3, 4]),
         Err(_) => false,
     }
 }
 
-/// Opens the workbook with the reader its content calls for (extension as a fallback).
-fn open_sheets(path: &Path) -> Result<Sheets<BufReader<File>>, calamine::Error> {
-    use calamine::{open_workbook, Error as E};
-    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
-    let by_ext = match ext.as_deref() {
+/// Opens the workbook with the reader its content calls for (extension as a fallback; neither:
+/// each reader in turn, like calamine's `open_workbook_auto` for an unknown extension).
+fn open_sheets<S: Source>(src: &S) -> Result<Sheets<S::Buf>, calamine::Error> {
+    use calamine::{Error as E, Ods, Xls, Xlsb};
+    fn new<R: Reader<B>, B: Read + Seek>(view: std::io::Result<B>) -> Result<R, R::Error> {
+        R::new(view?)
+    }
+    let by_ext = match src.extension().as_deref() {
         Some("xls" | "xla") => Some(Format::Xls),
         Some("xlsx" | "xlsm" | "xlam") => Some(Format::Xlsx),
         Some("xlsb") => Some(Format::Xlsb),
         Some("ods") => Some(Format::Ods),
         _ => None,
     };
-    match sniff(path).or(by_ext) {
-        Some(Format::Xls) => Ok(Sheets::Xls(open_workbook(path).map_err(E::Xls)?)),
-        Some(Format::Xlsx) => Ok(Sheets::Xlsx(open_workbook(path).map_err(E::Xlsx)?)),
-        Some(Format::Xlsb) => Ok(Sheets::Xlsb(open_workbook(path).map_err(E::Xlsb)?)),
-        Some(Format::Ods) => Ok(Sheets::Ods(open_workbook(path).map_err(E::Ods)?)),
-        None => open_workbook_auto(path),
+    match sniff(src).or(by_ext) {
+        Some(Format::Xls) => Ok(Sheets::Xls(new(src.buffered()).map_err(E::Xls)?)),
+        Some(Format::Xlsx) => Ok(Sheets::Xlsx(new(src.buffered()).map_err(E::Xlsx)?)),
+        Some(Format::Xlsb) => Ok(Sheets::Xlsb(new(src.buffered()).map_err(E::Xlsb)?)),
+        Some(Format::Ods) => Ok(Sheets::Ods(new(src.buffered()).map_err(E::Ods)?)),
+        None => {
+            if let Ok(x) = new::<Xls<_>, _>(src.buffered()) {
+                Ok(Sheets::Xls(x))
+            } else if let Ok(x) = new::<Xlsx<_>, _>(src.buffered()) {
+                Ok(Sheets::Xlsx(x))
+            } else if let Ok(x) = new::<Xlsb<_>, _>(src.buffered()) {
+                Ok(Sheets::Xlsb(x))
+            } else if let Ok(x) = new::<Ods<_>, _>(src.buffered()) {
+                Ok(Sheets::Ods(x))
+            } else {
+                Err(E::Msg("Cannot detect file format"))
+            }
+        }
     }
 }
 
@@ -170,40 +256,66 @@ pub fn open(path: impl AsRef<Path>) -> Result<Workbook, Error> {
 /// Files up to this size are read with their cell formats whatever [`ReadOptions::formats`] says.
 pub const FORMATS_MAX_BYTES: u64 = 2 << 20;
 
+/// Opens a workbook file. The format comes from the content (zip entries, the OLE signature),
+/// the extension only when the content does not tell; any other name with content that is no
+/// zip or OLE container reads as CSV / TSV.
 pub fn open_with(path: impl AsRef<Path>, opts: ReadOptions) -> Result<Workbook, Error> {
-    let path = path.as_ref();
-    let small = || std::fs::metadata(path).is_ok_and(|m| m.len() <= FORMATS_MAX_BYTES);
+    read(&FileSource(path.as_ref()), opts)
+}
+
+/// [`open_bytes_with`] with [`ReadOptions::default`].
+pub fn open_bytes(bytes: &[u8], name: Option<&str>) -> Result<Workbook, Error> {
+    open_bytes_with(bytes, name, ReadOptions::default())
+}
+
+/// Opens a workbook held in memory (an object streamed from storage, an upload), exactly as
+/// [`open_with`] opens a file with these bytes: the same format detection, [`Limits`] and
+/// readers, and the same result.
+///
+/// `name` is the file name or object key it came from, if known (`"reports/q3.xlsx"`). Like a
+/// path's, its extension only matters when the content does not tell the format: content that
+/// is no zip or OLE container reads as CSV / TSV unless the name has a workbook extension
+/// (`.tsv` means tab-separated), and a zip or OLE container is read as what its content is,
+/// whatever the name says. The CSV sheet is named after the name's stem, `Sheet1` without one.
+/// [`FORMATS_MAX_BYTES`] applies to `bytes.len()`.
+pub fn open_bytes_with(bytes: &[u8], name: Option<&str>, opts: ReadOptions) -> Result<Workbook, Error> {
+    read(&BytesSource { bytes, name: name.map(Path::new) }, opts)
+}
+
+/// [`open_with`] and [`open_bytes_with`].
+fn read<S: Source>(src: &S, opts: ReadOptions) -> Result<Workbook, Error> {
+    let small = || src.size().is_some_and(|n| n <= FORMATS_MAX_BYTES);
     let opts = ReadOptions { formats: opts.formats || small(), ..opts };
     let limits = &opts.limits;
-    if is_delimited_text(path) {
+    if is_delimited_text(src) {
         let t = std::time::Instant::now();
-        let wb = csv::open(path, limits.max_cells)?;
+        let wb = src.csv(limits.max_cells)?;
         trace("read.csv", t);
         limits.check_cells(wb.sheets.iter().map(|s| s.cells.len() as u64).sum())?;
         return Ok(wb);
     }
     let t = std::time::Instant::now();
-    match magic(path) {
-        Some(Magic::Ole) => limits::check_ole(path)?,
-        Some(Magic::Zip) => limits::check_zip(path, limits)?,
+    match magic(src) {
+        Some(Magic::Ole) => limits::check_ole(src.raw().map_err(Error::from_io)?)?,
+        Some(Magic::Zip) => limits::check_zip(src.buffered().map_err(Error::from_io)?, limits)?,
         None => {}
     }
     trace("read.limits", t);
     let t = std::time::Instant::now();
-    let opened = open_sheets(path);
+    let opened = open_sheets(src);
     // ODS content and large shared string tables are parsed on several threads: what they
     // freed goes back to the system before the sheets are read.
     crate::normalize::release_free_memory();
     trace("read.workbook", t);
     match opened {
         Ok(wb) => {
-            let scan = || merges::Scanner::new(File::open(path).ok()?, opts.formats);
+            let scan = || merges::Scanner::new(src.raw().ok()?, opts.formats);
             read_all(wb, scan, limits)
         }
         // Some converted workbooks list a veryHidden sheet with `r:id=""` (a leftover VBA module
         // sheet); calamine rejects the whole file. Drop those entries and retry from memory.
         Err(e) if e.to_string().contains("Relationship not found") => {
-            let repaired = repair_unlinked_sheets(path).map_err(|_| err(e))?;
+            let repaired = src.raw().map_err(Into::into).and_then(repair_unlinked_sheets).map_err(|_| err(e))?;
             let wb = open_workbook_auto_from_rs(Cursor::new(repaired.as_slice())).map_err(err)?;
             read_all(wb, || merges::Scanner::new(Cursor::new(repaired.as_slice()), opts.formats), limits)
         }
@@ -216,10 +328,8 @@ enum Magic {
     Zip,
 }
 
-fn magic(path: &Path) -> Option<Magic> {
-    let mut m = [0u8; 4];
-    File::open(path).ok()?.read_exact(&mut m).ok()?;
-    match m {
+fn magic(src: &impl Source) -> Option<Magic> {
+    match head(src).ok()?[..] {
         [0xD0, 0xCF, 0x11, 0xE0] => Some(Magic::Ole),
         [b'P', b'K', 3, 4] => Some(Magic::Zip),
         _ => None,
@@ -620,8 +730,8 @@ fn xlsx_cells_fallback<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str, limits: &L
 }
 
 /// Copies the xlsx zip into memory with `<sheet … r:id="">` entries removed from `xl/workbook.xml`.
-fn repair_unlinked_sheets(path: &Path) -> zip::result::ZipResult<Vec<u8>> {
-    let mut src = zip::ZipArchive::new(File::open(path)?)?;
+fn repair_unlinked_sheets(file: impl Read + Seek) -> zip::result::ZipResult<Vec<u8>> {
+    let mut src = zip::ZipArchive::new(file)?;
     let mut out = zip::ZipWriter::new(Cursor::new(Vec::new()));
     for i in 0..src.len() {
         let entry = src.by_index(i)?;
