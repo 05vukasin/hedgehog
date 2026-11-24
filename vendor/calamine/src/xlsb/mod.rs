@@ -91,6 +91,16 @@ pub enum XlsbError {
     WorksheetNotFound(String),
     /// XML Encoding error
     Encoding(quick_xml::encoding::EncodingError),
+    /// hedgehog: a record or formula token shorter than its fields, or a length, offset or
+    /// index read from the file that points past the data (these used to panic)
+    Len {
+        /// bytes needed
+        expected: usize,
+        /// bytes there
+        found: usize,
+        /// record or token
+        typ: &'static str,
+    },
 }
 
 from_err!(std::io::Error, XlsbError, Io);
@@ -129,6 +139,14 @@ impl std::fmt::Display for XlsbError {
             XlsbError::Password => write!(f, "Workbook is password protected"),
             XlsbError::WorksheetNotFound(name) => write!(f, "Worksheet '{name}' not found"),
             XlsbError::Encoding(e) => write!(f, "XML encoding error: {e}"),
+            XlsbError::Len {
+                expected,
+                found,
+                typ,
+            } => write!(
+                f,
+                "Invalid {typ} length, expected at least {expected}, found {found}",
+            ),
         }
     }
 }
@@ -225,9 +243,11 @@ impl<RS: Read + Seek> Xlsb<RS> {
                     let len = read_usize(&buf);
 
                     for _ in 0..len {
-                        let _ = iter.next_skip_blocks(0x002C, &[], &mut buf)?; // BrtFmt
-                        let fmt_code = read_u16(&buf);
-                        let fmt_str = wide_str(&buf[2..], &mut 0)?;
+                        let n = iter.next_skip_blocks(0x002C, &[], &mut buf)?; // BrtFmt
+                        // hedgehog: read from the record, bounds-checked (a short record panicked)
+                        let rec = &buf[..n];
+                        let fmt_code = read_u16(rec);
+                        let fmt_str = wide_str(tail(rec, 2, "BrtFmt")?, &mut 0)?;
                         number_formats
                             .insert(fmt_code, detect_custom_number_format(fmt_str.as_ref()));
                     }
@@ -237,8 +257,9 @@ impl<RS: Read + Seek> Xlsb<RS> {
                     let _len = iter.fill_buffer(&mut buf)?;
                     let len = read_usize(&buf);
                     for _ in 0..len {
-                        let _ = iter.next_skip_blocks(0x002F, &[], &mut buf)?; // BrtXF
-                        let fmt_code = read_u16(&buf[2..4]);
+                        let n = iter.next_skip_blocks(0x002F, &[], &mut buf)?; // BrtXF
+                        // hedgehog: read from the record, bounds-checked (a short record panicked)
+                        let fmt_code = read_u16(slice(&buf[..n], 2, 4, "BrtXF")?);
                         match builtin_format_by_code(fmt_code) {
                             CellFormat::DateTime => self.formats.push(CellFormat::DateTime),
                             CellFormat::TimeDelta => self.formats.push(CellFormat::TimeDelta),
@@ -273,19 +294,25 @@ impl<RS: Read + Seek> Xlsb<RS> {
             };
         let mut buf = Vec::with_capacity(1024);
 
-        let _ = iter.next_skip_blocks(0x009F, &[], &mut buf)?; // BrtBeginSst
-        let len = read_usize(&buf[4..8]);
+        let n = iter.next_skip_blocks(0x009F, &[], &mut buf)?; // BrtBeginSst
+        // hedgehog: read from the record, bounds-checked (a short record panicked). The count is
+        // untrusted: the loop below ends with the records, and hh_core checks
+        // `Limits::max_shared_strings` before calamine opens the file.
+        let len = read_usize(slice(&buf[..n], 4, 8, "BrtBeginSst")?);
 
         // BrtSSTItems
         for _ in 0..len {
-            let _ = iter.next_skip_blocks(
+            let n = iter.next_skip_blocks(
                 0x0013,
                 &[
                     (0x0023, Some(0x0024)), // future
                 ],
                 &mut buf,
             )?; // BrtSSTItem
-            self.strings.push(wide_str(&buf[1..], &mut 0)?.into_owned());
+            // hedgehog: read from the record, bounds-checked. The buffer keeps the bytes of
+            // longer earlier records: an empty BrtSSTItem copied the previous string again (two
+            // bytes of input for every copy of a string of any length).
+            self.strings.push(wide_str(tail(&buf[..n], 1, "BrtSSTItem")?, &mut 0)?.into_owned());
         }
         Ok(())
     }
@@ -300,18 +327,26 @@ impl<RS: Read + Seek> Xlsb<RS> {
             match iter.read_type()? {
                 0x0099 => {
                     let _ = iter.fill_buffer(&mut buf)?;
-                    self.is_1904 = &buf[0] & 0x1 != 0;
+                    // hedgehog: bounds-checked (an empty first record panicked)
+                    self.is_1904 = byte(&buf, 0, "BrtWbProp")? & 0x1 != 0;
                 } // BrtWbProp
                 0x009C => {
                     // BrtBundleSh
                     let len = iter.fill_buffer(&mut buf)?;
-                    let rel_len = read_u32(&buf[8..len]);
+                    // hedgehog: every slice is bounds-checked and an unknown relationship id is
+                    // an error (a short record, a relId length past the record or a relId
+                    // missing from workbook.bin.rels panicked)
+                    let rel_len = read_u32(slice(&buf, 8, len, "BrtBundleSh")?);
                     if rel_len != 0xFFFF_FFFF {
                         let rel_len = rel_len as usize * 2;
-                        let relid = &buf[12..12 + rel_len];
+                        let relid = slice(&buf, 12, 12usize.saturating_add(rel_len), "BrtBundleSh.strRelID")?;
                         // converts utf16le to utf8 for HashMap search
                         let relid = UTF_16LE.decode(relid).0;
-                        let path = format!("xl/{}", relationships[&*relid]);
+                        let target = relationships.get(&*relid).ok_or_else(|| XlsbError::Unrecognized {
+                            typ: "BrtBundleSh:strRelID",
+                            val: relid.to_string(),
+                        })?;
+                        let path = format!("xl/{target}");
                         // ST_SheetState
                         let visible = match read_u32(&buf) {
                             0 => SheetVisible::Visible,
@@ -335,7 +370,7 @@ impl<RS: Read + Seek> Xlsb<RS> {
                                 })
                             }
                         };
-                        let name = wide_str(&buf[12 + rel_len..len], &mut 0)?;
+                        let name = wide_str(slice(&buf, 12 + rel_len, len, "BrtBundleSh.strName")?, &mut 0)?;
                         self.metadata.sheets.push(Sheet {
                             name: name.to_string(),
                             typ,
@@ -361,34 +396,39 @@ impl<RS: Read + Seek> Xlsb<RS> {
             match typ {
                 0x016A => {
                     // BrtExternSheet
-                    let _len = iter.fill_buffer(&mut buf)?;
-                    let cxti = read_u32(&buf[..4]) as usize;
-                    if cxti < 1_000_000 {
-                        self.extern_sheets.reserve(cxti);
-                    }
+                    let len = iter.fill_buffer(&mut buf)?;
+                    // hedgehog: read from the record, bounds-checked (a short record or a short
+                    // last XTI panicked). The untrusted count `cxti` no longer reserves memory up
+                    // front (up to 24 MB for a vector the `collect` below replaces); the entries
+                    // read are the ones the record holds.
+                    let rec = &buf[..len];
+                    let cxti = read_u32(slice(rec, 0, 4, "BrtExternSheet")?) as usize;
                     let sheets = &self.sheets;
-                    let extern_sheets = buf[4..]
+                    let extern_sheets = rec[4..]
                         .chunks(12)
+                        .take(cxti)
                         .map(|xti| {
-                            match read_i32(&xti[4..8]) {
+                            Ok(match read_i32(slice(xti, 4, 8, "BrtExternSheet.XTI")?) {
                                 -2 => "#ThisWorkbook",
                                 -1 => "#InvalidWorkSheet",
                                 p if p >= 0 && (p as usize) < sheets.len() => &sheets[p as usize].0,
                                 _ => "#Unknown",
                             }
-                            .to_string()
+                            .to_string())
                         })
-                        .take(cxti)
-                        .collect();
+                        .collect::<Result<_, XlsbError>>()?;
                     self.extern_sheets = extern_sheets;
                 }
                 0x0027 => {
                     // BrtName
                     let len = iter.fill_buffer(&mut buf)?;
                     let mut str_len = 0;
-                    let name = wide_str(&buf[9..len], &mut str_len)?.into_owned();
-                    let rgce_len = read_u32(&buf[9 + str_len..]) as usize;
-                    let rgce = &buf[13 + str_len..13 + str_len + rgce_len];
+                    // hedgehog: read from the record, bounds-checked (a short record or an rgce
+                    // length past the record panicked)
+                    let rec = &buf[..len];
+                    let name = wide_str(slice(rec, 9, len, "BrtName")?, &mut str_len)?.into_owned();
+                    let rgce_len = read_u32(&rec[9 + str_len..]) as usize;
+                    let rgce = slice(rec, 13 + str_len, (13 + str_len).saturating_add(rgce_len), "BrtName.rgce")?;
                     let formula = parse_formula(rgce, &self.extern_sheets, &defined_names)?;
                     defined_names.push((name, formula));
                 }
@@ -562,7 +602,8 @@ impl<RS: Read + Seek> Reader<RS> for Xlsb<RS> {
     /// MS-XLSB 2.1.7.62
     fn worksheet_formula(&mut self, name: &str) -> Result<Range<String>, XlsbError> {
         let mut cells_reader = self.worksheet_cells_reader(name)?;
-        let mut cells = Vec::with_capacity(cells_reader.dimensions().len().min(1_000_000) as _);
+        // hedgehog: the dimension is untrusted; reserve at most what worksheet_range_ref does
+        let mut cells = Vec::with_capacity(cells_reader.dimensions().len().min(100_000) as _);
         while let Some(cell) = cells_reader.next_formula()? {
             if !cell.val.is_empty() {
                 cells.push(cell);
@@ -712,11 +753,21 @@ where
             b = self.read_u8()?;
             len += ((b & 0x7F) as usize) << (7 * i);
         }
+        // hedgehog: the length (up to 256 MB) is untrusted; the buffer grows by the bytes the part
+        // really holds instead of being zero-filled to the declared length first. The buffer
+        // ends as before: the record in `buf[..len]`, older bytes after it kept.
         if buf.len() < len {
-            buf.resize(len, 0);
+            buf.clear();
+            let got = (&mut self.r).take(len as u64).read_to_end(buf)?;
+            if got < len {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "failed to fill whole buffer",
+                ));
+            }
+        } else {
+            self.r.read_exact(&mut buf[..len])?;
         }
-
-        self.r.read_exact(&mut buf[..len])?;
         Ok(len)
     }
 
@@ -745,15 +796,49 @@ where
 
 fn wide_str<'a>(buf: &'a [u8], str_len: &mut usize) -> Result<Cow<'a, str>, XlsbError> {
     let len = read_u32(buf) as usize;
-    if buf.len() < 4 + len * 2 {
+    // hedgehog: no overflow where usize is 32 bits
+    let ws_len = len.saturating_mul(2).saturating_add(4);
+    if buf.len() < ws_len {
         return Err(XlsbError::WideStr {
-            ws_len: 4 + len * 2,
+            ws_len,
             buf_len: buf.len(),
         });
     }
-    *str_len = 4 + len * 2;
+    *str_len = ws_len;
     let s = &buf[4..*str_len];
     Ok(UTF_16LE.decode(s).0)
+}
+
+/// hedgehog: `buf[start..end]`, or `Err(Len)` where slicing panicked.
+pub(crate) fn slice<'a>(
+    buf: &'a [u8],
+    start: usize,
+    end: usize,
+    typ: &'static str,
+) -> Result<&'a [u8], XlsbError> {
+    buf.get(start..end).ok_or(XlsbError::Len {
+        expected: start.max(end),
+        found: buf.len().min(end),
+        typ,
+    })
+}
+
+/// hedgehog: `buf[start..]`, or `Err(Len)` where slicing panicked.
+pub(crate) fn tail<'a>(buf: &'a [u8], start: usize, typ: &'static str) -> Result<&'a [u8], XlsbError> {
+    buf.get(start..).ok_or(XlsbError::Len {
+        expected: start,
+        found: buf.len(),
+        typ,
+    })
+}
+
+/// hedgehog: `buf[i]`, or `Err(Len)` where indexing panicked.
+pub(crate) fn byte(buf: &[u8], i: usize, typ: &'static str) -> Result<u8, XlsbError> {
+    buf.get(i).copied().ok_or(XlsbError::Len {
+        expected: i + 1,
+        found: buf.len(),
+        typ,
+    })
 }
 
 /// Formula parsing
@@ -763,65 +848,121 @@ fn wide_str<'a>(buf: &'a [u8], str_len: &mut usize) -> Result<Cow<'a, str>, Xlsb
 ///
 /// See Ptg [2.5.97.16]
 fn parse_formula(
+    rgce: &[u8],
+    sheets: &[String],
+    names: &[(String, String)],
+) -> Result<String, XlsbError> {
+    parse_formula_at(rgce, sheets, names, 0)
+}
+
+/// hedgehog: nesting of PtgMemFunc sub-expressions (each one a recursive call). Excel nests
+/// functions at most 64 deep; a hostile rgce nested ~21,000 deep could overflow the stack.
+const MAX_FORMULA_DEPTH: usize = 32;
+
+/// hedgehog: the longest formula text (bytes) and operand stack built. Excel's limit is 8,192
+/// characters; without one, a few rgce bytes per reference to a long sheet name gave gigabytes
+/// of text, and parentheses (each an insert at the front) took quadratic time.
+const MAX_FORMULA_LEN: usize = 64 << 10;
+
+/// hedgehog: `Err(Len)` unless `rgce` holds at least `n` more bytes (each token's fields were
+/// read without a check; a short or hostile rgce panicked).
+fn need(rgce: &[u8], n: usize, typ: &'static str) -> Result<(), XlsbError> {
+    if rgce.len() < n {
+        return Err(XlsbError::Len {
+            expected: n,
+            found: rgce.len(),
+            typ,
+        });
+    }
+    Ok(())
+}
+
+/// hedgehog: the sheet of an XTI index; one past the BrtExternSheet entries (none read, or a
+/// hostile index) is `#REF`, as in the xls reader, where indexing panicked.
+fn xti_sheet(sheets: &[String], ixti: u16) -> &str {
+    sheets.get(ixti as usize).map_or("#REF", |s| s)
+}
+
+fn parse_formula_at(
     mut rgce: &[u8],
     sheets: &[String],
     names: &[(String, String)],
+    depth: usize,
 ) -> Result<String, XlsbError> {
     if rgce.is_empty() {
         return Ok(String::new());
     }
+    if depth > MAX_FORMULA_DEPTH {
+        return Err(XlsbError::Unrecognized {
+            typ: "formula",
+            val: format!("nested more than {MAX_FORMULA_DEPTH} deep"),
+        });
+    }
 
     let mut stack = Vec::new();
-    let mut formula = String::with_capacity(rgce.len());
+    let mut formula = String::with_capacity(rgce.len().min(MAX_FORMULA_LEN));
     while !rgce.is_empty() {
+        // hedgehog: see MAX_FORMULA_LEN
+        if formula.len() > MAX_FORMULA_LEN || stack.len() > MAX_FORMULA_LEN {
+            return Err(XlsbError::Unrecognized {
+                typ: "formula",
+                val: format!("longer than {MAX_FORMULA_LEN} bytes"),
+            });
+        }
         let ptg = rgce[0];
         rgce = &rgce[1..];
+        // hedgehog: every token checks its length first (`need`); row + 1 wraps as in a release
+        // build instead of overflowing (a panic with overflow checks)
         match ptg {
             0x3a | 0x5a | 0x7a => {
                 // PtgRef3d
+                need(rgce, 8, "PtgRef3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 stack.push(formula.len());
-                formula.push_str(&sheets[ixti as usize]);
+                formula.push_str(xti_sheet(sheets, ixti));
                 formula.push('!');
                 // TODO: check with relative columns
                 formula.push('$');
                 push_column(read_u16(&rgce[6..8]) as u32, &mut formula);
                 formula.push('$');
-                formula.push_str(&format!("{}", read_u32(&rgce[2..6]) + 1));
+                formula.push_str(&format!("{}", read_u32(&rgce[2..6]).wrapping_add(1)));
                 rgce = &rgce[8..];
             }
             0x3b | 0x5b | 0x7b => {
                 // PtgArea3d
+                need(rgce, 14, "PtgArea3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 stack.push(formula.len());
-                formula.push_str(&sheets[ixti as usize]);
+                formula.push_str(xti_sheet(sheets, ixti));
                 formula.push('!');
                 // TODO: check with relative columns
                 formula.push('$');
                 push_column(read_u16(&rgce[10..12]) as u32, &mut formula);
                 formula.push('$');
-                formula.push_str(&format!("{}", read_u32(&rgce[2..6]) + 1));
+                formula.push_str(&format!("{}", read_u32(&rgce[2..6]).wrapping_add(1)));
                 formula.push(':');
                 formula.push('$');
                 push_column(read_u16(&rgce[12..14]) as u32, &mut formula);
                 formula.push('$');
-                formula.push_str(&format!("{}", read_u32(&rgce[6..10]) + 1));
+                formula.push_str(&format!("{}", read_u32(&rgce[6..10]).wrapping_add(1)));
                 rgce = &rgce[14..];
             }
             0x3c | 0x5c | 0x7c => {
                 // PtfRefErr3d
+                need(rgce, 8, "PtgRefErr3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 stack.push(formula.len());
-                formula.push_str(&sheets[ixti as usize]);
+                formula.push_str(xti_sheet(sheets, ixti));
                 formula.push('!');
                 formula.push_str("#REF!");
                 rgce = &rgce[8..];
             }
             0x3d | 0x5d | 0x7d => {
                 // PtgAreaErr3d
+                need(rgce, 14, "PtgAreaErr3d")?;
                 let ixti = read_u16(&rgce[0..2]);
                 stack.push(formula.len());
-                formula.push_str(&sheets[ixti as usize]);
+                formula.push_str(xti_sheet(sheets, ixti));
                 formula.push('!');
                 formula.push_str("#REF!");
                 rgce = &rgce[14..];
@@ -829,6 +970,7 @@ fn parse_formula(
             0x01 => {
                 // PtgExp: array/shared formula, ignore
                 debug!("ignoring PtgExp array/shared formula");
+                need(rgce, 4, "PtgExp")?;
                 stack.push(formula.len());
                 rgce = &rgce[4..];
             }
@@ -878,30 +1020,47 @@ fn parse_formula(
                 stack.push(formula.len());
             }
             0x17 => {
+                need(rgce, 2, "PtgStr")?;
+                let cch = read_u16(&rgce[0..2]) as usize;
+                need(rgce, 2 + 2 * cch, "PtgStr")?;
                 stack.push(formula.len());
                 formula.push('\"');
-                let cch = read_u16(&rgce[0..2]) as usize;
                 formula.push_str(&UTF_16LE.decode(&rgce[2..2 + 2 * cch]).0);
                 formula.push('\"');
                 rgce = &rgce[2 + 2 * cch..];
             }
             0x18 => {
                 stack.push(formula.len());
+                need(rgce, 1, "PtgExtended")?;
                 let eptg = rgce[0];
                 rgce = &rgce[1..];
                 match eptg {
-                    0x19 => rgce = &rgce[12..],
-                    0x1D => rgce = &rgce[4..],
+                    0x19 => {
+                        need(rgce, 12, "PtgList")?;
+                        rgce = &rgce[12..]
+                    }
+                    0x1D => {
+                        need(rgce, 4, "PtgSxName")?;
+                        rgce = &rgce[4..]
+                    }
                     e => return Err(XlsbError::Etpg(e)),
                 }
             }
             0x19 => {
+                need(rgce, 1, "PtgAttr")?;
                 let eptg = rgce[0];
                 rgce = &rgce[1..];
                 match eptg {
-                    0x01 | 0x02 | 0x08 | 0x20 | 0x21 | 0x40 | 0x41 | 0x80 => rgce = &rgce[2..],
-                    0x04 => rgce = &rgce[10..],
+                    0x01 | 0x02 | 0x08 | 0x20 | 0x21 | 0x40 | 0x41 | 0x80 => {
+                        need(rgce, 2, "PtgAttr")?;
+                        rgce = &rgce[2..]
+                    }
+                    0x04 => {
+                        need(rgce, 10, "PtgAttrChoose")?;
+                        rgce = &rgce[10..]
+                    }
                     0x10 => {
+                        need(rgce, 2, "PtgAttrSum")?;
                         rgce = &rgce[2..];
                         let e = stack.last().ok_or(XlsbError::StackLen)?;
                         let e = formula.split_off(*e);
@@ -913,6 +1072,7 @@ fn parse_formula(
                 }
             }
             0x1C => {
+                need(rgce, 1, "PtgErr")?;
                 stack.push(formula.len());
                 let err = rgce[0];
                 rgce = &rgce[1..];
@@ -929,36 +1089,47 @@ fn parse_formula(
                 }
             }
             0x1D => {
+                need(rgce, 1, "PtgBool")?;
                 stack.push(formula.len());
                 formula.push_str(if rgce[0] == 0 { "FALSE" } else { "TRUE" });
                 rgce = &rgce[1..];
             }
             0x1E => {
+                need(rgce, 2, "PtgInt")?;
                 stack.push(formula.len());
                 formula.push_str(&format!("{}", read_u16(rgce)));
                 rgce = &rgce[2..];
             }
             0x1F => {
+                need(rgce, 8, "PtgNum")?;
                 stack.push(formula.len());
                 formula.push_str(&format!("{}", read_f64(rgce)));
                 rgce = &rgce[8..];
             }
             0x20 | 0x40 | 0x60 => {
                 // PtgArray: ignore
+                need(rgce, 14, "PtgArray")?;
                 stack.push(formula.len());
                 rgce = &rgce[14..];
             }
             0x21 | 0x22 | 0x41 | 0x42 | 0x61 | 0x62 => {
                 let (iftab, argc) = match ptg {
                     0x22 | 0x42 | 0x62 => {
+                        need(rgce, 3, "PtgFuncVar")?;
                         let iftab = read_u16(&rgce[1..]) as usize;
+                        // hedgehog: an unknown function index indexed past FTAB
+                        if iftab >= crate::utils::FTAB_LEN {
+                            return Err(XlsbError::IfTab(iftab));
+                        }
                         let argc = rgce[0] as usize;
                         rgce = &rgce[3..];
                         (iftab, argc)
                     }
                     _ => {
+                        need(rgce, 2, "PtgFunc")?;
                         let iftab = read_u16(rgce) as usize;
-                        if iftab > crate::utils::FTAB_LEN {
+                        // hedgehog: `>=`; iftab == FTAB_LEN indexed past FTAB_ARGC
+                        if iftab >= crate::utils::FTAB_LEN {
                             return Err(XlsbError::IfTab(iftab));
                         }
                         rgce = &rgce[2..];
@@ -982,7 +1153,9 @@ fn parse_formula(
                     formula.push_str(crate::utils::FTAB[iftab]);
                     formula.push('(');
                     for w in args.windows(2) {
-                        formula.push_str(&fargs[w[0]..w[1]]);
+                        // hedgehog: checked (offsets out of order or inside a character panicked)
+                        let arg = fargs.get(w[0]..w[1]).ok_or(XlsbError::StackLen)?;
+                        formula.push_str(arg);
                         formula.push(',');
                     }
                     formula.pop();
@@ -994,7 +1167,9 @@ fn parse_formula(
                 }
             }
             0x23 | 0x43 | 0x63 => {
-                let iname = read_u32(rgce) as usize - 1; // one-based
+                need(rgce, 4, "PtgName")?;
+                // hedgehog: wrapping; index 0 overflowed (no name, as in a release build)
+                let iname = (read_u32(rgce) as usize).wrapping_sub(1); // one-based
                 stack.push(formula.len());
                 if let Some(name) = names.get(iname) {
                     formula.push_str(&name.0);
@@ -1002,7 +1177,8 @@ fn parse_formula(
                 rgce = &rgce[4..];
             }
             0x24 | 0x44 | 0x64 => {
-                let row = read_u32(rgce) + 1;
+                need(rgce, 6, "PtgRef")?;
+                let row = read_u32(rgce).wrapping_add(1);
                 let col = [rgce[4], rgce[5] & 0x3F];
                 let col = read_u16(&col);
                 stack.push(formula.len());
@@ -1017,38 +1193,44 @@ fn parse_formula(
                 rgce = &rgce[6..];
             }
             0x25 | 0x45 | 0x65 => {
+                need(rgce, 12, "PtgArea")?;
                 stack.push(formula.len());
                 formula.push('$');
                 push_column(read_u16(&rgce[8..10]) as u32, &mut formula);
                 formula.push('$');
-                formula.push_str(&format!("{}", read_u32(&rgce[0..4]) + 1));
+                formula.push_str(&format!("{}", read_u32(&rgce[0..4]).wrapping_add(1)));
                 formula.push(':');
                 formula.push('$');
                 push_column(read_u16(&rgce[10..12]) as u32, &mut formula);
                 formula.push('$');
-                formula.push_str(&format!("{}", read_u32(&rgce[4..8]) + 1));
+                formula.push_str(&format!("{}", read_u32(&rgce[4..8]).wrapping_add(1)));
                 rgce = &rgce[12..];
             }
             0x2A | 0x4A | 0x6A => {
+                need(rgce, 6, "PtgRefErr")?;
                 stack.push(formula.len());
                 formula.push_str("#REF!");
                 rgce = &rgce[6..];
             }
             0x2B | 0x4B | 0x6B => {
+                need(rgce, 12, "PtgAreaErr")?;
                 stack.push(formula.len());
                 formula.push_str("#REF!");
                 rgce = &rgce[12..];
             }
             0x29 | 0x49 | 0x69 => {
+                need(rgce, 2, "PtgMemFunc")?;
                 let cce = read_u16(rgce) as usize;
                 rgce = &rgce[2..];
-                let f = parse_formula(&rgce[..cce], sheets, names)?;
+                need(rgce, cce, "PtgMemFunc")?;
+                let f = parse_formula_at(&rgce[..cce], sheets, names, depth + 1)?;
                 stack.push(formula.len());
                 formula.push_str(&f);
                 rgce = &rgce[cce..];
             }
             0x39 | 0x59 | 0x79 => {
                 // TODO: external workbook ... ignore this formula ...
+                need(rgce, 6, "PtgNameX")?;
                 stack.push(formula.len());
                 formula.push_str("EXTERNAL_WB_NAME");
                 rgce = &rgce[6..];
@@ -1068,7 +1250,11 @@ fn cell_format<'a>(formats: &'a [CellFormat], buf: &[u8]) -> Option<&'a CellForm
     // Parses a Cell (MS-XLSB 2.5.9) and determines if it references a Date format
 
     // iStyleRef is stored as a 24bit integer starting at the fifth byte
-    let style_ref = u32::from_le_bytes([buf[4], buf[5], buf[6], 0]);
+    // hedgehog: a record shorter than 7 bytes has no style (indexing panicked)
+    let &[a, b, c] = buf.get(4..7)? else {
+        return None;
+    };
+    let style_ref = u32::from_le_bytes([a, b, c, 0]);
 
     formats.get(style_ref as usize)
 }
