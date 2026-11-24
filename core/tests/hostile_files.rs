@@ -585,40 +585,73 @@ fn wide(s: &str) -> Vec<u8> {
     v
 }
 
-/// A minimal xlsb: one sheet "Data" with a text and a number in row 1, a number and a formula
-/// (`=7`, cached 5) in row 2.
-fn xlsb() -> Vec<u8> {
+/// A BrtBundleSh record: a visible sheet `name` whose part is the relationship `rid`.
+fn bundle_sh(rid: &str, name: &str) -> Vec<u8> {
+    let mut sh = [0u32.to_le_bytes(), 1u32.to_le_bytes()].concat();
+    sh.extend(wide(rid));
+    sh.extend(wide(name));
+    rec12(0x9C, &sh)
+}
+
+/// `xl/workbook.bin`: BrtBeginBook, then `sheets` (the BrtBundleSh records and anything before
+/// them), BrtEndBundleShs, `names` (the defined-name section: BrtExternSheet, BrtName) and
+/// BrtEndBook.
+fn xlsb_workbook(sheets: &[Vec<u8>], names: &[Vec<u8>]) -> Vec<u8> {
+    let mut v = rec12(0x83, &[]);
+    sheets.iter().for_each(|r| v.extend(r));
+    v.extend(rec12(0x90, &[]));
+    names.iter().for_each(|r| v.extend(r));
+    v.extend(rec12(0x84, &[]));
+    v
+}
+
+/// The workbook of [`xlsb`]: one sheet "Data" (relationship rId1).
+fn xlsb_workbook_one_sheet() -> Vec<u8> {
+    xlsb_workbook(&[rec12(0x8F, &[]), bundle_sh("rId1", "Data")], &[])
+}
+
+/// A worksheet part: BrtWsDim A1:B2, then `cells` (BrtRowHdr and cell records) as sheet data.
+fn xlsb_sheet(cells: &[Vec<u8>]) -> Vec<u8> {
+    let dims: Vec<u8> = [0u32, 1, 0, 1].iter().flat_map(|v| v.to_le_bytes()).collect();
+    xlsb_sheet_with_dims(&dims, cells)
+}
+
+fn xlsb_sheet_with_dims(dims: &[u8], cells: &[Vec<u8>]) -> Vec<u8> {
+    let mut v = [rec12(0x81, &[]), rec12(0x94, dims), rec12(0x91, &[])].concat();
+    cells.iter().for_each(|r| v.extend(r));
+    v.extend(rec12(0x92, &[]));
+    v.extend(rec12(0x82, &[]));
+    v
+}
+
+/// The fields of a cell record (MS-XLSB Cell): column, style 0, then `rest`.
+fn xcell(col: u32, rest: &[u8]) -> Vec<u8> {
+    [&col.to_le_bytes()[..], &[0, 0, 0, 0], rest].concat()
+}
+
+/// BrtRowHdr of row `r`.
+fn xrow(r: u32) -> Vec<u8> {
+    rec12(0x0000, &[&r.to_le_bytes()[..], &[0; 13]].concat())
+}
+
+/// BrtFmlaNum at `col`: cached 5, the token array `rgce`.
+fn fmla_num(col: u32, rgce: &[u8]) -> Vec<u8> {
+    let mut f = 5.0f64.to_le_bytes().to_vec();
+    f.extend([0, 0]); // grbitFlags
+    f.extend((rgce.len() as u32).to_le_bytes()); // cce
+    f.extend(rgce);
+    f.extend(0u32.to_le_bytes()); // cb
+    rec12(0x09, &xcell(col, &f))
+}
+
+/// An xlsb package: `workbook` as `xl/workbook.bin`, `sheet` as the part of relationship rId1,
+/// and `extra` parts (`xl/sharedStrings.bin`, `xl/styles.bin`).
+fn xlsb_package(workbook: Vec<u8>, sheet: Vec<u8>, extra: Vec<(String, Vec<u8>)>) -> Vec<u8> {
     const REL: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     const PKG: &str = "http://schemas.openxmlformats.org/package/2006/relationships";
-    let mut sh = [0u32.to_le_bytes(), 1u32.to_le_bytes()].concat();
-    sh.extend(wide("rId1"));
-    sh.extend(wide("Data"));
-    let workbook = [rec12(0x83, &[]), rec12(0x8F, &[]), rec12(0x9C, &sh), rec12(0x90, &[]), rec12(0x84, &[])].concat();
-    let cell = |col: u32, rest: &[u8]| [&col.to_le_bytes()[..], &[0, 0, 0, 0], rest].concat();
-    let row = |r: u32| rec12(0x0000, &[&r.to_le_bytes()[..], &[0; 13]].concat());
-    let dims: Vec<u8> = [0u32, 1, 0, 1].iter().flat_map(|v| v.to_le_bytes()).collect();
-    let mut fmla = 5.0f64.to_le_bytes().to_vec();
-    fmla.extend([0, 0]); // grbitFlags
-    fmla.extend(3u32.to_le_bytes()); // cce
-    fmla.extend([0x1E, 7, 0]); // PtgInt 7
-    fmla.extend(0u32.to_le_bytes()); // cb
-    let sheet = [
-        rec12(0x81, &[]),
-        rec12(0x94, &dims),
-        rec12(0x91, &[]),
-        row(0),
-        rec12(0x06, &cell(0, &wide("Region"))),
-        rec12(0x05, &cell(1, &2.5f64.to_le_bytes())),
-        row(1),
-        rec12(0x05, &cell(0, &10.0f64.to_le_bytes())),
-        rec12(0x09, &cell(1, &fmla)),
-        rec12(0x92, &[]),
-        rec12(0x82, &[]),
-    ]
-    .concat();
     let types = "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">\
                  <Override PartName=\"/xl/workbook.bin\" ContentType=\"application/vnd.ms-excel.sheet.binary.macroEnabled.main\"/></Types>";
-    zip_of(&[
+    let mut parts = vec![
         ("[Content_Types].xml".into(), types.as_bytes().to_vec()),
         (
             "_rels/.rels".into(),
@@ -630,7 +663,23 @@ fn xlsb() -> Vec<u8> {
             format!("<Relationships xmlns=\"{PKG}\"><Relationship Id=\"rId1\" Type=\"{REL}/worksheet\" Target=\"worksheets/sheet1.bin\"/></Relationships>").into_bytes(),
         ),
         ("xl/worksheets/sheet1.bin".into(), sheet),
-    ])
+    ];
+    parts.extend(extra);
+    zip_of(&parts)
+}
+
+/// A minimal xlsb: one sheet "Data" with a text and a number in row 1, a number and a formula
+/// (`=7`, cached 5) in row 2.
+fn xlsb() -> Vec<u8> {
+    let sheet = xlsb_sheet(&[
+        xrow(0),
+        rec12(0x06, &xcell(0, &wide("Region"))),
+        rec12(0x05, &xcell(1, &2.5f64.to_le_bytes())),
+        xrow(1),
+        rec12(0x05, &xcell(0, &10.0f64.to_le_bytes())),
+        fmla_num(1, &[0x1E, 7, 0]), // PtgInt 7
+    ]);
+    xlsb_package(xlsb_workbook_one_sheet(), sheet, Vec::new())
 }
 
 /// A one-sheet xls: text at A1, a number at B1.
@@ -859,4 +908,194 @@ fn small_byte_buffers_get_formats_like_small_files() {
     let _ = open_bytes("large.xlsx", &large, off);
     let on = ReadOptions { formats: true, ..Default::default() };
     assert!(!open_bytes_with(&large, None, on).unwrap().sheets[0].formats.is_empty());
+}
+
+// -- xlsb --------------------------------------------------------------------------------------
+// The inputs below rebuild the panics the fuzzer's `xlsb` target found in calamine's xlsb reader
+// (`vendor/calamine/src/xlsb`), minimized to the record that triggers each.
+
+/// Opens `b` as an xlsb file and expects an error (not a limit) that mentions `what`.
+fn xlsb_error(b: &[u8], what: &str) {
+    let e = open_default("bad.xlsb", b).unwrap_err();
+    assert!(!e.is_limit() && e.to_string().contains(what), "want {what:?}, got: {e}");
+}
+
+/// An xlsb whose sheet "Data" holds `cells`.
+fn xlsb_cells_of(cells: &[Vec<u8>]) -> Vec<u8> {
+    xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(cells), Vec::new())
+}
+
+/// A BrtName record (name "N") with the token array `rgce`.
+fn brt_name(rgce: &[u8]) -> Vec<u8> {
+    let mut d = vec![0u8; 9];
+    d.extend(wide("N"));
+    d.extend((rgce.len() as u32).to_le_bytes());
+    d.extend(rgce);
+    rec12(0x27, &d)
+}
+
+#[test]
+fn xlsb_short_workbook_records_are_errors() {
+    let one_sheet = |sheets: &[Vec<u8>], names: &[Vec<u8>]| xlsb_package(xlsb_workbook(sheets, names), xlsb_sheet(&[]), Vec::new());
+    let data = bundle_sh("rId1", "Data");
+    // An empty BrtWbProp (`buf[0]`) and a BrtBundleSh shorter than its 8 fixed bytes.
+    xlsb_error(&one_sheet(&[rec12(0x99, &[]), data.clone()], &[]), "BrtWbProp");
+    xlsb_error(&one_sheet(&[rec12(0x9C, &[0; 4])], &[]), "BrtBundleSh");
+    // A relationship id longer than the record, and one the workbook's relationships lack
+    // (`relationships[&relid]` panicked).
+    let mut long_id = vec![0u8; 8];
+    long_id.extend(0x7FFF_FFFFu32.to_le_bytes());
+    xlsb_error(&one_sheet(&[rec12(0x9C, &long_id)], &[]), "strRelID");
+    xlsb_error(&one_sheet(&[bundle_sh("rId9", "Data")], &[]), "rId9");
+    // BrtExternSheet: empty (no count), and a last XTI cut to 4 of its 12 bytes.
+    xlsb_error(&one_sheet(&[], &[rec12(0x16A, &[])]), "BrtExternSheet");
+    let mut xtis = 2u32.to_le_bytes().to_vec();
+    xtis.extend([0u8; 16]);
+    xlsb_error(&one_sheet(&[], &[rec12(0x16A, &xtis)]), "XTI");
+    // A BrtName shorter than its 9 fixed bytes, and one whose formula is longer than the record.
+    xlsb_error(&one_sheet(std::slice::from_ref(&data), &[rec12(0x27, &[0])]), "BrtName");
+    let mut name = vec![0u8; 9];
+    name.extend(wide("N"));
+    name.extend(4096u32.to_le_bytes());
+    xlsb_error(&one_sheet(std::slice::from_ref(&data), &[rec12(0x27, &name)]), "BrtName.rgce");
+    // A valid defined name still reads: the workbook opens.
+    assert!(open_default("name.xlsb", &one_sheet(&[data], &[brt_name(&[0x1E, 7, 0])])).is_ok());
+}
+
+#[test]
+fn xlsb_short_shared_string_and_style_records_are_errors() {
+    let with = |name: &str, part: Vec<u8>| xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(&[]), vec![(name.into(), part)]);
+    let sst_begin = |n: u32| rec12(0x9F, &[&n.to_le_bytes()[..], &n.to_le_bytes()].concat());
+    let sst_item = |s: &str| rec12(0x13, &[&[0u8][..], &wide(s)].concat());
+    // An empty BrtBeginSst (`buf[4..8]`).
+    xlsb_error(&with("xl/sharedStrings.bin", rec12(0x9F, &[])), "BrtBeginSst");
+    // An empty BrtSSTItem after a string: it was read from the bytes the buffer kept of the
+    // previous record, a copy of that string for two bytes of input.
+    let sst = [sst_begin(2), sst_item("Hello"), rec12(0x13, &[])].concat();
+    xlsb_error(&with("xl/sharedStrings.bin", sst), "BrtSSTItem");
+    // styles.bin: a count of one format / one XF in a one-byte record, then the record empty
+    // (`buf[2..]`, `buf[2..4]`).
+    xlsb_error(&with("xl/styles.bin", [rec12(0x267, &[1]), rec12(0x2C, &[])].concat()), "BrtFmt");
+    xlsb_error(&with("xl/styles.bin", [rec12(0x269, &[1]), rec12(0x2F, &[])].concat()), "BrtXF");
+    // A valid table: the shared string reads.
+    let sst = [sst_begin(1), sst_item("Hello")].concat();
+    let isst = rec12(0x07, &xcell(0, &0u32.to_le_bytes()));
+    let b = xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(&[xrow(0), isst]), vec![("xl/sharedStrings.bin".into(), sst)]);
+    let wb = open_default("sst.xlsb", &b).unwrap();
+    assert_eq!(wb.sheets[0].cells[0].value, Some(Value::Text("Hello".into())));
+}
+
+#[test]
+fn xlsb_short_cell_records_are_errors() {
+    // A BrtWsDim of 4 bytes (`buf[..16]`).
+    let b = xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet_with_dims(&[0; 4], &[]), Vec::new());
+    xlsb_error(&b, "BrtWsDim");
+    // A shared string index without a shared string table (`strings[isst]`).
+    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x07, &xcell(0, &5u32.to_le_bytes()))]), "shared strings");
+    // Formula token counts past the record: BrtFmlaString, BrtFmlaNum, BrtFmlaBool.
+    let past = 1000u32.to_le_bytes();
+    let fmla_str = [&wide("x")[..], &[0, 0], &past].concat();
+    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x08, &xcell(0, &fmla_str))]), "BrtFmlaString.rgce");
+    let fmla = [&5.0f64.to_le_bytes()[..], &[0, 0], &past].concat();
+    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &fmla))]), "BrtFmlaNum.rgce");
+    let fmla_bool = [&[1u8, 0, 0][..], &past].concat();
+    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x0A, &xcell(0, &fmla_bool))]), "BrtFmlaBool.rgce");
+    // A BrtFmlaNum of 16 bytes: no grbitFlags or cce (`buf[18..]`).
+    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &5.0f64.to_le_bytes()))]), "BrtFmlaNum");
+    // A short BrtCellRk, and an empty BrtCellSt after a longer string record: both were read
+    // from the bytes the buffer kept of earlier records.
+    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x02, &[0; 4])]), "BrtCellRk");
+    let st = rec12(0x06, &xcell(0, &wide("a long string kept in the buffer")));
+    xlsb_error(&xlsb_cells_of(&[xrow(0), st, rec12(0x06, &[])]), "BrtCellSt");
+    // A column past Excel's 16,384 (u32::MAX overflowed A1 addresses and the layout).
+    let far = rec12(0x05, &xcell(u32::MAX, &1.0f64.to_le_bytes()));
+    xlsb_error(&xlsb_cells_of(&[xrow(0), far]), "Cell.column");
+    // The last column still reads.
+    let last = rec12(0x05, &xcell(0x3FFF, &1.0f64.to_le_bytes()));
+    let wb = open_default("xfd.xlsb", &xlsb_cells_of(&[xrow(0), last])).unwrap();
+    assert_eq!(wb.sheets[0].cells[0].col, 0x3FFF);
+}
+
+#[test]
+fn xlsb_hostile_formula_tokens_are_errors_not_panics() {
+    // Each token cut short (`rgce[0]`, `rgce[0..2]`, `rgce[4]`, `rgce[..cce]`, ...), an unknown
+    // function index (FTAB[32767]) and the index one past FTAB_ARGC (485, the bound was `>`).
+    let cut: [&[u8]; 29] = [
+        &[0x3A], &[0x3B, 0, 0], &[0x3C], &[0x3D], &[0x01], &[0x17, 5, 0, b'a', 0], &[0x18], &[0x18, 0x19], &[0x18, 0x1D],
+        &[0x19], &[0x19, 0x01], &[0x19, 0x04], &[0x19, 0x10], &[0x1C], &[0x1D], &[0x1E, 1], &[0x1F, 0, 0], &[0x20],
+        &[0x21, 1], &[0x22, 1], &[0x1E, 1, 0, 0x22, 1, 0xFF, 0x7F], &[0x21, 0xE5, 0x01], &[0x23, 0], &[0x24, 0, 0, 0, 0],
+        &[0x25], &[0x2A], &[0x2B], &[0x29, 0x10, 0], &[0x39],
+    ];
+    for rgce in cut {
+        let b = xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)]);
+        let e = open_default("f.xlsb", &b).unwrap_err();
+        assert!(!e.is_limit(), "{rgce:?}: {e}");
+        // The same token array in a defined name.
+        let b = xlsb_package(xlsb_workbook(&[bundle_sh("rId1", "Data")], &[brt_name(rgce)]), xlsb_sheet(&[]), Vec::new());
+        assert!(open_default("n.xlsb", &b).is_err(), "{rgce:?}");
+    }
+    let formula = |rgce: &[u8]| {
+        let wb = open_default("f.xlsb", &xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)])).unwrap_or_else(|e| panic!("{rgce:?}: {e}"));
+        wb.sheets[0].cells[0].formula.clone()
+    };
+    // A 3D reference to an XTI the workbook does not list (`sheets[ixti]`) is `#REF`, as in xls.
+    assert_eq!(formula(&[0x3A, 7, 0, 0, 0, 0, 0, 0, 0]).as_deref(), Some("#REF!$A$1"));
+    assert_eq!(formula(&[0x3C, 7, 0, 0, 0, 0, 0, 0, 0]).as_deref(), Some("#REF!#REF!"));
+    // Name index 0 (one-based) and row u32::MAX overflowed; they wrap as in a release build.
+    assert_eq!(formula(&[0x23, 0, 0, 0, 0]), None, "no such name: an empty formula");
+    assert_eq!(formula(&[0x24, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0xC0]).as_deref(), Some("A0"));
+}
+
+/// PtgMemFunc nested `depth` deep around PtgInt 7.
+fn nested_mem_func(depth: usize) -> Vec<u8> {
+    let mut rgce = vec![0x1E, 7, 0];
+    for _ in 0..depth {
+        let mut outer = vec![0x29];
+        outer.extend((rgce.len() as u16).to_le_bytes());
+        outer.extend(rgce);
+        rgce = outer;
+    }
+    rgce
+}
+
+#[test]
+fn xlsb_formula_nesting_and_length_are_bounded() {
+    let open = |rgce: &[u8]| open_default("f.xlsb", &xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)]));
+    assert_eq!(open(&nested_mem_func(30)).unwrap().sheets[0].cells[0].formula.as_deref(), Some("7"));
+    // Nested ~20,000 deep, each level a recursive call: an error, not a stack overflow.
+    for depth in [40, 20_000] {
+        let e = open(&nested_mem_func(depth)).unwrap_err();
+        assert!(e.to_string().contains("nested"), "{depth}: {e}");
+    }
+    // 40,000 parentheses (each an insert at the front, quadratic) and 70,000 operands: past the
+    // 64 KiB bound on the text and the stack.
+    let mut parens = vec![0x1E, 7, 0];
+    parens.extend(std::iter::repeat_n(0x15, 40_000));
+    assert!(open(&parens).unwrap_err().to_string().contains("longer than"));
+    let operands = vec![0x16; 70_000];
+    assert!(open(&operands).unwrap_err().to_string().contains("longer than"));
+}
+
+#[test]
+fn xlsb_declared_record_length_is_not_allocated_up_front() {
+    // A record header declaring 256 MB (the largest 4-byte length) with 8 bytes after it: the
+    // buffer was zero-filled to the declared length before the read failed.
+    let mut sheet = xlsb_sheet(&[]);
+    let end = sheet.len() - 6; // before BrtEndSheetData, BrtEndSheet (3 bytes each)
+    sheet.splice(end..end, [0x05, 0xFF, 0xFF, 0xFF, 0x7F, 0, 0, 0, 0, 0, 0, 0, 0]);
+    let b = xlsb_package(xlsb_workbook_one_sheet(), sheet, Vec::new());
+    xlsb_error(&b, "failed to fill whole buffer");
+}
+
+#[test]
+fn xlsb_shared_string_limit_applies() {
+    let mut sst = rec12(0x9F, &[&300u32.to_le_bytes()[..], &300u32.to_le_bytes()].concat());
+    for i in 0..300 {
+        sst.extend(rec12(0x13, &[&[0u8][..], &wide(&format!("s{i}"))].concat()));
+    }
+    let b = xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(&[]), vec![("xl/sharedStrings.bin".into(), sst)]);
+    let opts = ReadOptions { limits: Limits { max_shared_strings: 100, ..Default::default() }, ..Default::default() };
+    let e = open_bytes("strings.xlsb", &b, opts).unwrap_err();
+    assert!(e.is_limit() && e.to_string().contains("shared strings"), "{e}");
+    assert!(open_default("strings.xlsb", &b).is_ok(), "under the default limit");
 }

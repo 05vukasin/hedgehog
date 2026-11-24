@@ -6,7 +6,8 @@
 //! declares every part's uncompressed size (and the zip reader refuses to inflate a part past it),
 //! an ODS `content.xml` is scanned for its expanded cell count (`number-columns-repeated` /
 //! `number-rows-repeated` let a few bytes ask for billions of cells), and a large
-//! `sharedStrings.xml` has its `<si>` entries counted. Cells and time are checked again while
+//! `sharedStrings.xml` has its `<si>` entries counted (a large xlsb `sharedStrings.bin` its
+//! BrtSSTItem records). Cells and time are checked again while
 //! reading.
 
 use std::io::{BufReader, Read, Seek};
@@ -26,7 +27,7 @@ pub struct Limits {
     /// Non-empty cells in the whole workbook (an ODS file also counts the empty cells its reader
     /// has to fill in between).
     pub max_cells: u64,
-    /// Entries of the shared string table (xlsx).
+    /// Entries of the shared string table (xlsx, xlsb).
     pub max_shared_strings: u64,
     /// Reading stops with an error after this instant (also checked by
     /// [`crate::normalize::try_normalize_workbook`]).
@@ -136,7 +137,9 @@ pub(super) fn check_zip(file: impl Read + Seek, limits: &Limits) -> Result<(), E
         }
         let name = f.name().unwrap_or_default().to_ascii_lowercase();
         if name.ends_with("sharedstrings.xml") {
-            shared_strings = Some((i, f.size()));
+            shared_strings = Some((i, f.size(), false));
+        } else if name.ends_with("sharedstrings.bin") {
+            shared_strings = Some((i, f.size(), true));
         } else if name == "content.xml" {
             ods = true;
         }
@@ -148,12 +151,13 @@ pub(super) fn check_zip(file: impl Read + Seek, limits: &Limits) -> Result<(), E
             mb(limits.max_decompressed_bytes)
         )));
     }
-    // A small table cannot exceed the limit (an entry takes at least 5 bytes: `<si/>`).
-    if let Some((i, size)) = shared_strings
-        && size / 5 > limits.max_shared_strings
+    // A small table cannot exceed the limit: an entry takes at least 5 bytes in xml (`<si/>`),
+    // 7 in xlsb (a record header of 2 bytes, flags and an empty string's length).
+    if let Some((i, size, bin)) = shared_strings
+        && size / if bin { 7 } else { 5 } > limits.max_shared_strings
     {
         let f = zip.by_index(i).map_err(|e| Error(e.to_string()))?;
-        let n = count_shared_strings(f, limits)?;
+        let n = if bin { count_xlsb_shared_strings(f, limits)? } else { count_shared_strings(f, limits)? };
         if n > limits.max_shared_strings {
             return Err(Error::limit(format!(
                 "the file has more than {} shared strings (limit {})",
@@ -217,6 +221,56 @@ fn count_shared_strings(r: impl Read, limits: &Limits) -> Result<u64, Error> {
         }
         n <= max
     })?;
+    Ok(n)
+}
+
+/// BrtSSTItem records (type 0x13) of an xlsb `sharedStrings.bin`, counted up to one past the
+/// limit. The records are walked by their headers (a type of 1 or 2 bytes, a size of 1 to 4
+/// bytes, as calamine reads them); a file cut short ends the count.
+fn count_xlsb_shared_strings(r: impl Read, limits: &Limits) -> Result<u64, Error> {
+    fn byte(r: &mut impl Read) -> Option<u8> {
+        let mut b = [0u8; 1];
+        r.read_exact(&mut b).ok().map(|_| b[0])
+    }
+    let mut r = BufReader::with_capacity(1 << 16, r);
+    let (mut n, mut records) = (0u64, 0u64);
+    while let Some(b) = byte(&mut r) {
+        let typ = if b & 0x80 != 0 {
+            let Some(b2) = byte(&mut r) else { break };
+            (b & 0x7F) as u16 | (((b2 & 0x7F) as u16) << 7)
+        } else {
+            b as u16
+        };
+        let mut len = 0u64;
+        let mut cut = false;
+        for i in 0..4 {
+            let Some(b) = byte(&mut r) else {
+                cut = true;
+                break;
+            };
+            len |= ((b & 0x7F) as u64) << (7 * i);
+            if b & 0x80 == 0 {
+                break;
+            }
+        }
+        if cut {
+            break;
+        }
+        if typ == 0x13 {
+            n += 1;
+            if n > limits.max_shared_strings {
+                break;
+            }
+        }
+        match std::io::copy(&mut (&mut r).take(len), &mut std::io::sink()) {
+            Ok(m) if m == len => (),
+            _ => break,
+        }
+        records += 1;
+        if records.is_multiple_of(1 << 16) {
+            limits.check_time()?;
+        }
+    }
     Ok(n)
 }
 

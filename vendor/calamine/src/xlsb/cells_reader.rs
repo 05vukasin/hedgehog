@@ -11,7 +11,7 @@ use crate::{
     Cell, CellErrorType, Dimensions, XlsbError,
 };
 
-use super::{cell_format, parse_formula, wide_str, RecordIter};
+use super::{byte, cell_format, parse_formula, slice, tail, wide_str, RecordIter};
 
 /// A cells reader for xlsb files
 pub struct XlsbCellsReader<'a, RS>
@@ -44,7 +44,7 @@ where
     ) -> Result<Self, XlsbError> {
         let mut buf = Vec::with_capacity(1024);
         // BrtWsDim
-        let _ = iter.next_skip_blocks(
+        let len = iter.next_skip_blocks(
             0x0094,
             &[
                 (0x0081, None), // BrtBeginSheet
@@ -52,7 +52,8 @@ where
             ],
             &mut buf,
         )?;
-        let dimensions = parse_dimensions(&buf[..16]);
+        // hedgehog: bounds-checked, in the record (a BrtWsDim shorter than 16 bytes panicked)
+        let dimensions = parse_dimensions(slice(&buf[..len], 0, 16, "BrtWsDim")?);
 
         // BrtBeginSheetData
         let _ = iter.next_skip_blocks(
@@ -86,39 +87,43 @@ where
 
     pub fn next_cell(&mut self) -> Result<Option<Cell<DataRef<'a>>>, XlsbError> {
         // loop until end of sheet
-        let value = loop {
+        let (value, col) = loop {
             self.typ = self.iter.read_type()?;
-            let _ = self.iter.fill_buffer(&mut self.buf)?;
+            let len = self.iter.fill_buffer(&mut self.buf)?;
+            // hedgehog: fields are read from the record (`rec`), each bounds-checked (`slice`,
+            // `tail`, `byte`). They were read from the whole buffer, which keeps the bytes of
+            // longer earlier records: a short record read stale bytes (an empty BrtCellSt
+            // copied an earlier string, a cheap way to fill memory) or, past them, panicked.
+            // A shared string index past the table panicked too.
+            let rec = &self.buf[..len];
             let value = match self.typ {
                 // 0x0001 => continue, // Data::Empty, // BrtCellBlank
                 0x0002 => {
                     // BrtCellRk MS-XLSB 2.5.122
-                    let d100 = (self.buf[8] & 1) != 0;
-                    let is_int = (self.buf[8] & 2) != 0;
-                    self.buf[8] &= 0xFC;
+                    let mut rk = [0u8; 4];
+                    rk.copy_from_slice(slice(rec, 8, 12, "BrtCellRk")?);
+                    let d100 = (rk[0] & 1) != 0;
+                    let is_int = (rk[0] & 2) != 0;
+                    rk[0] &= 0xFC;
 
                     if is_int {
-                        let v = (read_i32(&self.buf[8..12]) >> 2) as i64;
+                        let v = (read_i32(&rk) >> 2) as i64;
                         if d100 {
                             let v = (v as f64) / 100.0;
-                            format_excel_f64_ref(
-                                v,
-                                cell_format(self.formats, &self.buf),
-                                self.is_1904,
-                            )
+                            format_excel_f64_ref(v, cell_format(self.formats, rec), self.is_1904)
                         } else {
                             DataRef::Int(v)
                         }
                     } else {
                         let mut v = [0u8; 8];
-                        v[4..].copy_from_slice(&self.buf[8..12]);
+                        v[4..].copy_from_slice(&rk);
                         let v = read_f64(&v);
                         let v = if d100 { v / 100.0 } else { v };
-                        format_excel_f64_ref(v, cell_format(self.formats, &self.buf), self.is_1904)
+                        format_excel_f64_ref(v, cell_format(self.formats, rec), self.is_1904)
                     }
                 }
                 0x0003 => {
-                    let error = match self.buf[8] {
+                    let error = match byte(rec, 8, "BrtCellError")? {
                         0x00 => CellErrorType::Null,
                         0x07 => CellErrorType::Div0,
                         0x0F => CellErrorType::Value,
@@ -132,20 +137,28 @@ where
                     // BrtCellError
                     DataRef::Error(error)
                 }
-                0x0004 | 0x000A => DataRef::Bool(self.buf[8] != 0), // BrtCellBool or BrtFmlaBool
+                0x0004 | 0x000A => DataRef::Bool(byte(rec, 8, "BrtCellBool")? != 0), // BrtCellBool or BrtFmlaBool
                 0x0005 | 0x0009 => {
-                    let v = read_f64(&self.buf[8..16]);
-                    format_excel_f64_ref(v, cell_format(self.formats, &self.buf), self.is_1904)
+                    let v = read_f64(slice(rec, 8, 16, "BrtCellReal")?);
+                    format_excel_f64_ref(v, cell_format(self.formats, rec), self.is_1904)
                 } // BrtCellReal or BrtFmlaNum
-                0x0006 | 0x0008 => DataRef::String(wide_str(&self.buf[8..], &mut 0)?.into_owned()), // BrtCellSt or BrtFmlaString
+                0x0006 | 0x0008 => {
+                    DataRef::String(wide_str(tail(rec, 8, "BrtCellSt")?, &mut 0)?.into_owned())
+                } // BrtCellSt or BrtFmlaString
                 0x0007 => {
                     // BrtCellIsst
-                    let isst = read_usize(&self.buf[8..12]);
-                    DataRef::SharedString(&self.strings[isst])
+                    let isst = read_usize(slice(rec, 8, 12, "BrtCellIsst")?);
+                    let strings = self.strings;
+                    let s = strings.get(isst).ok_or(XlsbError::Len {
+                        expected: isst + 1,
+                        found: strings.len(),
+                        typ: "BrtCellIsst (shared strings)",
+                    })?;
+                    DataRef::SharedString(s)
                 }
                 0x0000 => {
                     // BrtRowHdr
-                    self.row = read_u32(&self.buf);
+                    self.row = read_u32(rec);
                     if self.row > 0x0010_0000 {
                         return Ok(None); // invalid row
                     }
@@ -154,44 +167,47 @@ where
                 0x0092 => return Ok(None), // BrtEndSheetData
                 _ => continue, // anything else, ignore and try next, without changing idx
             };
-            break value;
+            break (value, column(rec)?);
         };
-        let col = read_u32(&self.buf);
         Ok(Some(Cell::new((self.row, col), value)))
     }
 
     pub fn next_formula(&mut self) -> Result<Option<Cell<String>>, XlsbError> {
-        let value = loop {
+        let (value, col) = loop {
             self.typ = self.iter.read_type()?;
-            let _ = self.iter.fill_buffer(&mut self.buf)?;
-
+            let len = self.iter.fill_buffer(&mut self.buf)?;
+            // hedgehog: read from the record, as in `next_cell`. The string length `cch` and
+            // the token count `cce` come from the record; every slice they make is
+            // bounds-checked (past the record, they panicked).
+            let rec = &self.buf[..len];
             let value = match self.typ {
                 // 0x0001 => continue, // Data::Empty, // BrtCellBlank
                 0x0008 => {
                     // BrtFmlaString
-                    let cch = read_u32(&self.buf[8..]) as usize;
-                    let formula = &self.buf[14 + cch * 2..];
+                    let cch = read_u32(tail(rec, 8, "BrtFmlaString")?) as usize;
+                    let at = cch.saturating_mul(2).saturating_add(14);
+                    let formula = tail(rec, at, "BrtFmlaString")?;
                     let cce = read_u32(formula) as usize;
-                    let rgce = &formula[4..4 + cce];
+                    let rgce = slice(formula, 4, cce.saturating_add(4), "BrtFmlaString.rgce")?;
                     parse_formula(rgce, self.extern_sheets, self.metadata_names)?
                 }
                 0x0009 => {
                     // BrtFmlaNum
-                    let formula = &self.buf[18..];
+                    let formula = tail(rec, 18, "BrtFmlaNum")?;
                     let cce = read_u32(formula) as usize;
-                    let rgce = &formula[4..4 + cce];
+                    let rgce = slice(formula, 4, cce.saturating_add(4), "BrtFmlaNum.rgce")?;
                     parse_formula(rgce, self.extern_sheets, self.metadata_names)?
                 }
                 0x000A | 0x000B => {
                     // BrtFmlaBool | BrtFmlaError
-                    let formula = &self.buf[11..];
+                    let formula = tail(rec, 11, "BrtFmlaBool")?;
                     let cce = read_u32(formula) as usize;
-                    let rgce = &formula[4..4 + cce];
+                    let rgce = slice(formula, 4, cce.saturating_add(4), "BrtFmlaBool.rgce")?;
                     parse_formula(rgce, self.extern_sheets, self.metadata_names)?
                 }
                 0x0000 => {
                     // BrtRowHdr
-                    self.row = read_u32(&self.buf);
+                    self.row = read_u32(rec);
                     if self.row > 0x0010_0000 {
                         return Ok(None); // invalid row
                     }
@@ -200,11 +216,24 @@ where
                 0x0092 => return Ok(None), // BrtEndSheetData
                 _ => continue, // anything else, ignore and try next, without changing idx
             };
-            break value;
+            break (value, column(rec)?);
         };
-        let col = read_u32(&self.buf);
         Ok(Some(Cell::new((self.row, col), value)))
     }
+}
+
+/// hedgehog: a cell's column (MS-XLSB 2.5.9 Cell: `column` is at most 0x3FFF, Excel's 16,384
+/// columns). A larger one, up to u32::MAX, was passed on and overflowed hedgehog's A1 addresses
+/// and layout; it is an error.
+fn column(rec: &[u8]) -> Result<u32, XlsbError> {
+    let col = read_u32(rec);
+    if col > 0x3FFF {
+        return Err(XlsbError::Unrecognized {
+            typ: "Cell.column",
+            val: col.to_string(),
+        });
+    }
+    Ok(col)
 }
 
 fn parse_dimensions(buf: &[u8]) -> Dimensions {

@@ -26,6 +26,19 @@ All notable changes to hedgehog are listed here. The format follows
 - **A cell billions of rows down no longer exhausts memory in normalize**: a hostile xlsx with a
   cell at row ~2^31 made the cell index allocate 8 GB and abort the process. Such sheets use the
   hash index now; real sheets are unaffected.
+- **Hostile xlsb files are errors, not panics**: the new `xlsb` fuzz target found unchecked
+  reads all through calamine's xlsb reader (fixed in `vendor/calamine`, each change marked
+  `hedgehog:` and listed in `vendor/calamine/HEDGEHOG_VENDOR.md`, each crasher rebuilt from bytes
+  in `core/tests/hostile_files.rs`). Records shorter than their fields (BrtWsDim, BrtBundleSh,
+  BrtName, BrtBeginSst, BrtFmt, BrtXF, BrtExternSheet, cell and formula records), lengths and
+  offsets past the record, a relationship id or shared string index that does not exist, formula
+  tokens cut short, unknown function indexes and a cell column past XFD now give a one-line
+  error. A record's declared length (up to 256 MB) no longer allocates before the bytes are
+  there; a short record no longer re-reads an earlier record's bytes (an empty shared string
+  item copied the previous string); formulas are limited to 32 nested sub-expressions and 64 KiB
+  of text; `Limits::max_shared_strings` now applies to xlsb shared string tables. A 3D reference
+  to a sheet the workbook does not list reads as `#REF`, as in xls. Valid xlsb files read exactly
+  as before.
 
 ## [0.5.0] - 2026-10-26
 
