@@ -161,8 +161,9 @@ reach an output (sort, use a `BTreeMap`, or an `FxHashMap`, whose order is the s
 for the same inserts), and break ties of `max_by_key` / `min_by_key` over one explicitly.
 
 The `fuzz` profile keeps overflow checks and debug assertions on, so silent wraparounds show up.
-Bugs found in calamine are fixed in `vendor/calamine` (each change marked `hedgehog:`); every fix
-gets a regression test in `core/tests/hostile_files.rs`, built from bytes in the test.
+Bugs found in calamine are fixed in `vendor/calamine` (each change marked `hedgehog:`, listed by
+file in `vendor/calamine/HEDGEHOG_VENDOR.md`); every fix gets a regression test in
+`core/tests/hostile_files.rs`, built from bytes in the test.
 
 ## Test data
 
