@@ -4,6 +4,7 @@ import os as _os
 
 from ._native import Workbook
 from ._native import open as _open
+from ._native import open_bytes as _open_bytes
 from .citations import check_citations
 from .facts import facts, facts_json
 from .normalize import NormalizeResult, normalize
@@ -17,6 +18,14 @@ def open(path: "str | _os.PathLike[str]") -> Workbook:  # noqa: A001 - mirrors t
     return _open(_os.fspath(path))
 
 
+def open_bytes(data: "bytes | bytearray | memoryview", name: "str | None" = None) -> Workbook:
+    """Like `open`, for a workbook or CSV held in memory (an upload, an object from storage).
+
+    `name` is the file name or object key it came from, if known: its extension is used only when
+    the content does not tell the format, and its stem names a CSV sheet ("Sheet1" without it)."""
+    return _open_bytes(bytes(data), name)
+
+
 __all__ = [
     "NormalizeResult",
     "Session",
@@ -27,6 +36,7 @@ __all__ = [
     "facts_json",
     "normalize",
     "open",
+    "open_bytes",
     "summarize",
     "tool_specs",
 ]

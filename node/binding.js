@@ -784,5 +784,6 @@ module.exports.normalize = nativeBinding.normalize
 module.exports.normalizeSync = nativeBinding.normalizeSync
 module.exports.open = nativeBinding.open
 module.exports.openAsync = nativeBinding.openAsync
+module.exports.openBytes = nativeBinding.openBytes
 module.exports.toolSpecs = nativeBinding.toolSpecs
 module.exports.version = nativeBinding.version

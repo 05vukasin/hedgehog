@@ -123,6 +123,14 @@ export declare function open(path: PathLike): Workbook
 export declare function openAsync(path: PathLike): Promise<Workbook>
 
 /**
+ * Like `open`, for a workbook or CSV held in memory (an upload, an object from storage), on the
+ * calling thread. `name` is the file name or object key it came from, if known: its extension is
+ * used only when the content does not tell the format, its stem names a CSV sheet (`Sheet1`
+ * without it).
+ */
+export declare function openBytes(data: Uint8Array, name?: string): Workbook
+
+/**
  * Writes `<stem>.normalized.xlsx` + `<stem>.manifest.json` (+ one CSV per table with `csv`) into
  * `outDir` (created if missing), on the libuv thread pool. The source file is never modified.
  * Errors (missing or unreadable file, unknown locale) reject the Promise.

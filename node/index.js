@@ -28,6 +28,11 @@ exports.open = function open(path) {
   return native.open(toPath(path))
 }
 
+/** Reads a workbook or CSV held in memory (a Buffer or Uint8Array); `name` is a format hint. */
+exports.openBytes = function openBytes(data, name) {
+  return native.openBytes(data, name ?? null)
+}
+
 /** Reads a workbook on the libuv thread pool. */
 exports.openAsync = function openAsync(path) {
   try {
