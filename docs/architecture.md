@@ -69,6 +69,7 @@ Public entry points (re-exported in `core/src/lib.rs`):
 
 ```rust
 let wb = hh_core::open("sales.xlsx")?;                         // Workbook
+let wb = hh_core::open_bytes(&bytes, Some("sales.xlsx"))?;     // the same from memory (name: a hint)
 print!("{}", hh_core::describe(&wb));                          // one line per sheet
 let opts = hh_core::NormalizeOptions::default();             // rules + learned model
 let out = hh_core::normalize_file("sales.xlsx", "out/", &opts)?;   // writes files
