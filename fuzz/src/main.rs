@@ -4,7 +4,8 @@
 //! input from the corpus, mutate it (structure-aware for zip packages: the XML parts are mutated
 //! and the package re-zipped, so the mutations reach the XML parsers instead of failing the CRC),
 //! write it to `<out>/cur.<ext>`, open it with [`hh_core::reader`] and, when it is small, run the
-//! whole normalize pipeline plus the agent catalog and SQL load on it.
+//! whole normalize pipeline plus the agent catalog and SQL load on it. Every input is also opened
+//! from memory (`open_bytes_with`), which must give the same result as the file.
 //!
 //! - a panic is caught, the input saved to `<out>/crashes/` (one per panic location) and the loop
 //!   goes on;
@@ -20,7 +21,7 @@
 //!   hh_fuzz fuzz <target> --corpus DIR --out DIR [--seconds N] [--timeout S] [--rss-mb N] [--seed N]
 //!   hh_fuzz run <file>...            (one exec per file, prints the outcome; for reproducing)
 //!   hh_fuzz seeds <dir>              (writes generated seed workbooks)
-//! targets: csv, xlsx, xls, ods, normalize
+//! targets: csv, xlsx, xlsb, xls, ods, normalize
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::HashSet;
@@ -132,6 +133,7 @@ enum Target {
     Csv,
     Xlsx,
     Xls,
+    Xlsb,
     Ods,
     Normalize,
 }
@@ -142,6 +144,7 @@ impl Target {
             "csv" => Target::Csv,
             "xlsx" => Target::Xlsx,
             "xls" => Target::Xls,
+            "xlsb" => Target::Xlsb,
             "ods" => Target::Ods,
             "normalize" => Target::Normalize,
             _ => return None,
@@ -152,12 +155,13 @@ impl Target {
             Target::Csv => "csv",
             Target::Xlsx => "xlsx",
             Target::Xls => "xls",
+            Target::Xlsb => "xlsb",
             Target::Ods => "ods",
             Target::Normalize => "grid",
         }
     }
     fn zipped(self) -> bool {
-        matches!(self, Target::Xlsx | Target::Ods)
+        matches!(self, Target::Xlsx | Target::Xlsb | Target::Ods)
     }
 }
 
@@ -189,6 +193,16 @@ fn exec(target: Target, path: &Path, data: &[u8]) -> String {
                 _ => false,
             };
             assert!(same, "parallel read differs from the one-thread read");
+            // The in-memory open reads the same bytes exactly as the file, with the file name as
+            // the hint; without a name it must not panic either.
+            let text = |r: &Result<hh_core::Workbook, hh_core::Error>| match r {
+                Ok(wb) => format!("{:?}", wb.sheets),
+                Err(e) => format!("err {} {e}", e.is_limit()),
+            };
+            let name = path.file_name().and_then(|n| n.to_str());
+            let mem = hh_core::reader::open_bytes_with(data, name, opts);
+            assert!(text(&mem) == text(&one), "open_bytes_with differs from open_with");
+            let _ = hh_core::reader::open_bytes_with(data, None, opts);
             match one {
                 Ok(wb) => wb,
                 Err(e) => return format!("err:{}", squash(&e.to_string())),
@@ -595,7 +609,7 @@ fn load_corpus(dir: &Path, target: Target) -> Vec<Entry> {
 // -- commands ---------------------------------------------------------------------------------------
 
 fn fuzz(args: &[String]) -> Result<(), String> {
-    let target = args.first().and_then(|t| Target::parse(t)).ok_or("fuzz <csv|xlsx|xls|ods|normalize> ...")?;
+    let target = args.first().and_then(|t| Target::parse(t)).ok_or("fuzz <csv|xlsx|xlsb|xls|ods|normalize> ...")?;
     let mut corpus_dir = None;
     let mut out = PathBuf::from("fuzz-out");
     let mut seconds = 60u64;
