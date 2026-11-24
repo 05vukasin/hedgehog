@@ -188,6 +188,15 @@ Reads a workbook into memory: values, formulas (with their cached results) and m
 sheet. Raises `ValueError` if the file cannot be read. `path` must be a `str`; pass `str(p)` for a
 `pathlib.Path`.
 
+```
+open_bytes(data: bytes | bytearray | memoryview, name: str | None = None) -> Workbook
+```
+
+The same for a workbook or CSV held in memory (an upload, an object from storage), with the same
+result as `open` on a file with these bytes. `name` is the file name or object key it came from, if
+known: its extension counts only when the content does not tell the format, and its stem names a
+CSV sheet (`Sheet1` without a name).
+
 ## `Workbook`
 
 Returned by `open`. Read-only: nothing is ever written back to the file. Every method that takes a

@@ -2,6 +2,7 @@
 import {
   open,
   openAsync,
+  openBytes,
   normalize,
   normalizeSync,
   version,
@@ -18,6 +19,8 @@ import {
 async function main(): Promise<void> {
   const v: string = version()
   const wb: Workbook = open('book.xlsx')
+  const mem: Workbook = openBytes(new Uint8Array(0), 'book.xlsx')
+  void mem
   const wb2: Workbook = await openAsync(new URL('file:///tmp/book.xlsx'))
   const names: string[] = wb.sheetNames
   const cell: CellInfo = wb.getCell(names[0], 'B2')

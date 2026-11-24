@@ -6,6 +6,27 @@ All notable changes to hedgehog are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Open workbooks from memory**: `hh_core::open_bytes(bytes, name)` and
+  `hh_core::reader::open_bytes_with(bytes, name, opts)` read an xlsx / xlsm / xlsb / xls / ods
+  workbook or a CSV / TSV file held in memory (an upload, an object streamed from storage)
+  without writing it to disk; Python `hedgehog.open_bytes(data, name=None)`, Node
+  `openBytes(data, name?)`. The result is exactly what opening a file with these bytes gives:
+  the same format detection (zip entries, the OLE signature; `name`, the file name or object key
+  if known, counts only when the content does not tell), the same `Limits` (decompressed size,
+  cells, shared strings, deadline, ODS repeats, encrypted packages) and the same readers. A CSV
+  sheet is named after the name's stem, `Sheet1` without a name. Opening a file is unchanged:
+  it shares the code path and reads the file where it lies, as before.
+- **The fuzzer covers xlsb and the in-memory open**: a new `xlsb` target, and every input of
+  every target is also opened from memory and must read exactly like the file.
+
+### Fixed
+
+- **A cell billions of rows down no longer exhausts memory in normalize**: a hostile xlsx with a
+  cell at row ~2^31 made the cell index allocate 8 GB and abort the process. Such sheets use the
+  hash index now; real sheets are unaffected.
+
 ## [0.5.0] - 2026-10-26
 
 ### Added

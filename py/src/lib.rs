@@ -282,6 +282,17 @@ fn open(py: Python<'_>, path: &str) -> PyResult<Workbook> {
     py.detach(move || guarded("open", || hh_core::open(&path).map(Workbook).map_err(|e| PyValueError::new_err(e.to_string()))))
 }
 
+/// `hh_core::open_bytes`: a workbook from bytes in memory; `name` (file name or object key) is
+/// only a hint, used when the content does not tell the format.
+#[pyfunction]
+#[pyo3(signature = (data, name = None))]
+fn open_bytes(py: Python<'_>, data: &[u8], name: Option<&str>) -> PyResult<Workbook> {
+    let name = name.map(str::to_string);
+    py.detach(move || {
+        guarded("open_bytes", || hh_core::open_bytes(data, name.as_deref()).map(Workbook).map_err(|e| PyValueError::new_err(e.to_string())))
+    })
+}
+
 /// Writes `<stem>.normalized.xlsx` + `<stem>.manifest.json` (+ CSVs) into `out_dir`; see
 /// `hh_core::normalize`. Returns `{xlsx_path, manifest_path, csv_paths, manifest_json}`.
 #[pyfunction]
@@ -436,6 +447,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeSession>()?;
     m.add_function(wrap_pyfunction!(tool_specs_json, m)?)?;
     m.add_function(wrap_pyfunction!(open, m)?)?;
+    m.add_function(wrap_pyfunction!(open_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(normalize, m)?)?;
     Ok(())
 }

@@ -56,3 +56,18 @@ def test_facts_json(sales_xlsx):
     assert f["totals"]["items"][0]["cell"] == "Sales!C5"  # mismatches first
     notes = [s for s in f["sheets"] if s["name"] == "My Notes"][0]
     assert notes["values"]["rows"][2][1] == 1234.5
+
+
+def test_open_bytes_reads_like_open(sales_xlsx):
+    with open(sales_xlsx, "rb") as f:
+        data = f.read()
+    want = hedgehog.open(sales_xlsx)
+    for name in (None, "sales.xlsx", "upload.bin"):
+        wb = hedgehog.open_bytes(data, name)
+        assert wb.sheets() == want.sheets()
+        assert wb.get_cell("Sales", "B5") == want.get_cell("Sales", "B5")
+    assert hedgehog.open_bytes(bytearray(data)).sheets() == want.sheets()
+    csv = hedgehog.open_bytes(b"a,b\n1,2\n", "s3/key/report.csv")
+    assert [s["name"] for s in csv.sheets()] == ["report"]
+    with pytest.raises(ValueError):
+        hedgehog.open_bytes(b"PK\x03\x04 not a zip")

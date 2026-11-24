@@ -131,6 +131,13 @@ export declare function open(path: string): Workbook
 /** Like `open`, read off the main thread. */
 export declare function openAsync(path: string): Promise<Workbook>
 
+/**
+ * Reads a workbook or CSV held in memory on the calling thread. `name` (file name or object
+ * key) is only a hint: its extension is used when the content does not tell the format, its stem
+ * names a CSV sheet (`Sheet1` without it).
+ */
+export declare function openBytes(data: Uint8Array, name?: string | undefined | null): Workbook
+
 /** One file opened in a session (`HedgehogSession.openFiles()`). */
 export interface OpenFileInfo {
   /** The file's SQL prefix: `f1`, `f2`, … (`SELECT … FROM f2.T1`). */

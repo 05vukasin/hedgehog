@@ -149,10 +149,14 @@ tests, not in servers or UIs.
 ```ts
 open(path: PathLike): Workbook
 openAsync(path: PathLike): Promise<Workbook>
+openBytes(data: Uint8Array, name?: string): Workbook
 ```
 
 Read a workbook into memory, read-only. `open` reads on the calling thread; `openAsync` on the thread
-pool (worth it for large files). The `Workbook` methods are fast lookups and run synchronously.
+pool (worth it for large files). `openBytes` reads a workbook or CSV already in memory (a `Buffer`
+or `Uint8Array`, e.g. an upload) on the calling thread, exactly as `open` reads a file with these
+bytes; `name` (file name or object key) counts only when the content does not tell the format, and
+its stem names a CSV sheet (`Sheet1` without it). The `Workbook` methods are fast lookups and run synchronously.
 
 | Member | Returns |
 |---|---|

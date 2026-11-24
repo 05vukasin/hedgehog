@@ -240,10 +240,14 @@ impl<'a> Grid<'a> {
     }
 }
 
+/// Rows a sorted [`CellIndex`] may span (twice Excel's row count; 8 MB of row starts).
+const MAX_SORTED_SPAN: u32 = 2 << 20;
+
 /// Position → cell lookup. Readers list cells row by row, left to right, each position once: then
 /// a cell is found by its row's range of `sheet.cells` and its column in that range (4 bytes per
 /// cell plus 4 per row, instead of a hash table of ~32 bytes per cell). Cells in any other order
-/// (or with duplicate positions) use a hash table, where the last cell of a position wins.
+/// (or with duplicate positions), and cells spread over more than [`MAX_SORTED_SPAN`] rows, use a
+/// hash table, where the last cell of a position wins.
 enum CellIndex {
     /// `starts[r - first]..starts[r - first + 1]` are the cells of row `r`; `cols[i]` is the
     /// column of cell `i`.
@@ -254,8 +258,10 @@ enum CellIndex {
 impl CellIndex {
     fn new(cells: &[Cell]) -> CellIndex {
         let sorted = cells.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col));
-        if sorted && let (Some(a), Some(b)) = (cells.first(), cells.last()) {
-            // One entry per row of the span: at most a few MB even for a sheet's last row.
+        // One entry per row of the span: at most a few MB for any row a real sheet has (Excel
+        // stops at 1,048,576). A hostile file can place a cell at row 4,000,000,000: 16 GB.
+        let span_ok = |a: &Cell, b: &Cell| b.row - a.row <= MAX_SORTED_SPAN;
+        if sorted && let (Some(a), Some(b)) = (cells.first(), cells.last()) && span_ok(a, b) {
             let (first, last) = (a.row, b.row);
             let mut starts = Vec::with_capacity((last - first) as usize + 2);
             let mut i = 0usize;
@@ -469,6 +475,18 @@ mod tests {
         assert_eq!(g.merge_index_at(5, 5), None);
         assert!(g.is_filled(5, 5) && g.is_filled(7, 12) && !g.is_filled(7, 7));
         assert_eq!(g.used_range(), Some(Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }));
+    }
+
+    #[test]
+    fn far_apart_rows_take_the_hash_index() {
+        // A hostile file's cell at row 4e9: the row-start table would take 16 GB (the fuzzer hit
+        // an 8 GB allocation in normalize).
+        let cells = vec![cell(0, 0), cell(4_000_000_000, 1)];
+        let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+        let g = Grid::new(&sheet);
+        assert!(matches!(g.index, CellIndex::Hashed(_)));
+        assert_eq!(g.cell_index(4_000_000_000, 1), Some(1));
+        assert_eq!(g.cell_index(1, 0), None);
     }
 
     #[test]

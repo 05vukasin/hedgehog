@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { open, openAsync, normalize, normalizeSync, version, Workbook, HedgehogSession, toolSpecs } from '../index.js'
+import { open, openAsync, openBytes, normalize, normalizeSync, version, Workbook, HedgehogSession, toolSpecs } from '../index.js'
 
 const require = createRequire(import.meta.url)
 let dir
@@ -115,6 +115,16 @@ describe('open', () => {
     assert.equal(wb.getCell(null, 'C4').value, 450)
     assert.equal(open(pathToFileURL(join(dir, 'sales.csv'))).sheetNames[0], 'sales')
     await assert.rejects(openAsync(join(dir, 'missing.csv')), /missing\.csv: /)
+  })
+
+  test('openBytes reads like open', () => {
+    const data = readFileSync(join(dir, 'sales.csv'))
+    const wb = openBytes(data, 'uploads/sales.csv')
+    assert.ok(wb instanceof Workbook)
+    assert.deepEqual(wb.sheetNames, open(join(dir, 'sales.csv')).sheetNames)
+    assert.equal(wb.getCell(null, 'C4').value, 450)
+    assert.equal(openBytes(new Uint8Array(data)).sheetNames[0], 'Sheet1')
+    assert.throws(() => openBytes(Buffer.from('PK\x03\x04 not a zip')), Error)
   })
 })
 

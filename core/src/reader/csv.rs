@@ -62,7 +62,27 @@ pub(super) fn open(path: &Path, max_cells: u64) -> Result<Workbook, Error> {
         };
         read_cells(open, &head[bom..], tsv, max_cells)?
     };
-    Ok(Workbook { sheets: vec![Sheet { name, cells, merges: Vec::new(), formats: Vec::new() }] })
+    Ok(one_sheet(name, cells))
+}
+
+/// [`open`] on bytes in memory; `name` (a file name or object key) gives the sheet name and
+/// `.tsv`, as a path does. The same steps as for a file: the first [`HEAD`] bytes decide the
+/// encoding and the delimiter.
+pub(super) fn open_bytes(bytes: &[u8], name: Option<&Path>, max_cells: u64) -> Result<Workbook, Error> {
+    let stem = name.and_then(Path::file_stem).map(|s| s.to_string_lossy().into_owned());
+    let tsv = name.and_then(Path::extension).is_some_and(|e| e.eq_ignore_ascii_case("tsv"));
+    let head = &bytes[..bytes.len().min(HEAD)];
+    let cells = if utf16_bom(head).is_some() {
+        read_bytes(bytes, tsv, max_cells)?
+    } else {
+        let bom = if head.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
+        read_cells(|| Ok(Cursor::new(&bytes[bom..])), &head[bom..], tsv, max_cells)?
+    };
+    Ok(one_sheet(stem.unwrap_or_else(|| "Sheet1".into()), cells))
+}
+
+fn one_sheet(name: String, cells: Vec<Cell>) -> Workbook {
+    Workbook { sheets: vec![Sheet { name, cells, merges: Vec::new(), formats: Vec::new() }] }
 }
 
 /// [`open`] on bytes in memory, without the sheet around the cells.

@@ -424,6 +424,14 @@ pub fn open(path: String) -> Result<Workbook> {
     read(&path).map(|inner| Workbook { inner })
 }
 
+/// Reads a workbook or CSV held in memory on the calling thread. `name` (file name or object
+/// key) is only a hint: its extension is used when the content does not tell the format, its stem
+/// names a CSV sheet (`Sheet1` without it).
+#[napi]
+pub fn open_bytes(data: Uint8Array, name: Option<String>) -> Result<Workbook> {
+    guarded("openBytes", || hh_core::open_bytes(&data, name.as_deref()).map_err(|e| invalid(e.to_string()))).map(|inner| Workbook { inner })
+}
+
 pub struct OpenTask {
     path: String,
 }
