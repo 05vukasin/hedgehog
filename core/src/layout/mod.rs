@@ -59,9 +59,9 @@ fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLay
     };
     // The total rows and the blocks are independent reads of the grid: on a large sheet they
     // run side by side (B120).
-    let (labelled_totals, regions) = if registers && sheet.cells.len() >= PARALLEL_MIN_CELLS {
+    let (labelled_totals, regions) = if registers && sheet.cells.len() >= PARALLEL_MIN_CELLS && crate::threads::parallel() {
         std::thread::scope(|s| {
-            let h = s.spawn(totals);
+            let h = crate::threads::spawn(s, totals);
             let regions = blocks();
             (h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)), regions)
         })

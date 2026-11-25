@@ -72,7 +72,7 @@ pub(super) struct Streamed {
 pub(super) fn run(grid: &Grid, model: &RowModel) -> (SheetLayout, Option<Streamed>) {
     let trace = crate::normalize::trace_ms;
     let n = grid.sheet.cells.len();
-    let (lay, ctx, values, (totals, cands)) = if n < crate::eval::export::PARALLEL_MIN_CELLS {
+    let (lay, ctx, values, (totals, cands)) = if n < crate::eval::export::PARALLEL_MIN_CELLS || !crate::threads::parallel() {
         let t = std::time::Instant::now();
         let lay = crate::layout::analyze_for_model(grid);
         trace("M.layout", t.elapsed());
@@ -84,16 +84,16 @@ pub(super) fn run(grid: &Grid, model: &RowModel) -> (SheetLayout, Option<Streame
         (lay, ctx, values, totals)
     } else {
         std::thread::scope(|s| {
-            let lay = s.spawn(|| {
+            let lay = crate::threads::spawn(s, || {
                 let t = std::time::Instant::now();
                 let lay = crate::layout::analyze_for_model(grid);
                 (lay, t.elapsed())
             });
-            let values = s.spawn(|| {
+            let values = crate::threads::spawn(s, || {
                 let t = std::time::Instant::now();
                 (Values::new(grid, None), t.elapsed())
             });
-            let totals = s.spawn(|| {
+            let totals = crate::threads::spawn(s, || {
                 let t = std::time::Instant::now();
                 (Totals::new(grid), t.elapsed())
             });
@@ -115,7 +115,7 @@ pub(super) fn run(grid: &Grid, model: &RowModel) -> (SheetLayout, Option<Streame
     drop(cands);
     trace("M.layout_totals", t.elapsed());
     let t = std::time::Instant::now();
-    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(MAX_THREADS);
+    let threads = crate::threads::cap(std::thread::available_parallelism().map_or(1, |n| n.get()).min(MAX_THREADS));
     let out = stream(grid, model, &ctx, &values, &totals, &lt, threads, CHUNK_MIN_CELLS, false).map(|(s, _)| s);
     trace("M.stream", t.elapsed());
     drop(lt);
@@ -205,7 +205,7 @@ fn stream<'g>(
                 .zip(cursors)
                 .map(|(&span, cur)| {
                     let v = values.fork();
-                    s.spawn(move || walk(src, model, v, cur, rows, span, keep))
+                    crate::threads::spawn(s, move || walk(src, model, v, cur, rows, span, keep))
                 })
                 .collect();
             handles.into_iter().map(|h| join(h.join())).collect()
