@@ -49,8 +49,10 @@ pub struct Options {
     /// Stop after this instant: [`try_normalize_workbook`] (and [`normalize_file`], which also
     /// stops reading) returns an error; sheets not started by then are skipped.
     pub deadline: Option<std::time::Instant>,
-    /// Threads that analyze sheets in parallel. None: up to 4 (fewer on fewer CPUs). The output is
-    /// the same for every thread count.
+    /// Threads that analyze sheets in parallel, and the most threads any step inside one sheet
+    /// uses (totals beside the layout, the model's passes, column typing); `Some(1)` runs
+    /// everything on the calling thread. None: up to 4 (fewer on fewer CPUs). The output is the
+    /// same for every thread count.
     pub threads: Option<usize>,
 }
 
@@ -639,6 +641,11 @@ impl std::error::Error for Error {}
 /// [`Options::deadline`] set, sheets reached after it are left out; [`try_normalize_workbook`]
 /// reports that as an error.
 pub fn normalize_workbook(wb: &Workbook, opts: &Options) -> Normalized {
+    // Every inner fan-out keeps within `opts.threads` (crate::threads).
+    crate::threads::with(opts.threads, || normalize_workbook_inner(wb, opts))
+}
+
+fn normalize_workbook_inner(wb: &Workbook, opts: &Options) -> Normalized {
     let mut out = Normalized::default();
     match layouts(wb, opts) {
         Some(layouts) => {
@@ -750,14 +757,14 @@ pub(super) type SheetAnalysis = (crate::analysis::SheetLayout, Option<String>, O
 /// value is a warning for a sheet above the model limit. A total detection the layout runs stays
 /// in `grid`.
 fn sheet_layout(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::SheetLayout, Option<String>) {
-    if grid.sheet.cells.len() < PREFETCH_TOTALS_MIN_CELLS {
+    if grid.sheet.cells.len() < PREFETCH_TOTALS_MIN_CELLS || !crate::threads::parallel() {
         return sheet_layout_inner(grid, opts);
     }
     // The extraction needs the sheet's total detection (cached on the grid); on a large sheet it
     // is computed on another thread while the layout runs (B133). Whoever comes first computes
     // it, the other waits for the same result.
     std::thread::scope(|s| {
-        let h = s.spawn(|| {
+        let h = crate::threads::spawn(s, || {
             let t = std::time::Instant::now();
             crate::totals::detection(grid);
             trace_ms("totals_prefetch", t.elapsed());
@@ -823,7 +830,7 @@ fn layouts(wb: &Workbook, opts: &Options) -> Option<Vec<SheetAnalysis>> {
     let done: Vec<Vec<(usize, SheetAnalysis)>> = std::thread::scope(|s| {
         let workers: Vec<_> = (0..threads)
             .map(|_| {
-                s.spawn(|| {
+                crate::threads::spawn(s, || {
                     let mut mine = Vec::new();
                     loop {
                         let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

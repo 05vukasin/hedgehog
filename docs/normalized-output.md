@@ -43,7 +43,7 @@ Options (CLI flag / Python keyword):
 | `--keep-totals` / `keep_totals=True` | off | Total and subtotal rows stay in the table sheets, marked in a `_row_type` column. By default they are removed from the data and listed only on `Totals`. |
 | `--csv` / `csv=True` | off | Also write one UTF-8 CSV per table. |
 | `--locale TAG` / `locale="TAG"` | inferred | Fixes the decimal separator and day/month order for every column. See [locales.md](locales.md). |
-| `--threads N` (CLI, `NormalizeOptions::threads` in Rust) | up to 4 | Threads that analyze sheets in parallel. The output does not depend on it. |
+| `--threads N` (CLI, `NormalizeOptions::threads` in Rust) | up to 4 | Threads that analyze sheets in parallel, and the most threads any step inside one sheet uses (`1`: everything on the calling thread). The output does not depend on it. |
 
 From Rust: `hh_core::normalize_file(path, out_dir, &hh_core::NormalizeOptions { keep_totals, csv, locale })`.
 `hh_core::normalize_workbook(&wb, &opts)` gives the same result in memory without writing files.

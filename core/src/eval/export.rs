@@ -68,7 +68,7 @@ pub(crate) const PARALLEL_MIN_CELLS: usize = 20_000;
 /// not read them need not pay their memory).
 pub fn layout_and_features(grid: &Grid, styles: bool) -> (crate::analysis::SheetLayout, Features) {
     let n = grid.sheet.cells.len();
-    if n < PARALLEL_MIN_CELLS {
+    if n < PARALLEL_MIN_CELLS || !crate::threads::parallel() {
         let lay = crate::layout::analyze_for_model(grid);
         let mut f = Features::new(n);
         crate::context::compute(grid, &mut f);
@@ -78,13 +78,13 @@ pub fn layout_and_features(grid: &Grid, styles: bool) -> (crate::analysis::Sheet
         return (lay, f);
     }
     let (lay, mut f, values, (totals, cands)) = std::thread::scope(|s| {
-        let lay = s.spawn(|| crate::layout::analyze_for_model(grid));
-        let values = s.spawn(|| {
+        let lay = crate::threads::spawn(s, || crate::layout::analyze_for_model(grid));
+        let values = crate::threads::spawn(s, || {
             let mut f = Features::new(n);
             crate::values::features::compute(grid, &mut f);
             f
         });
-        let totals = s.spawn(|| {
+        let totals = crate::threads::spawn(s, || {
             let mut f = Features::new(n);
             let c = crate::totals::features::compute_returning(grid, &mut f);
             (f, c)

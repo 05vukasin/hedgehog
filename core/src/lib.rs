@@ -15,6 +15,10 @@ pub mod normalize;
 pub mod totals;
 pub mod values;
 
+mod threads;
+#[doc(hidden)]
+pub use threads::spawned as inner_threads_spawned;
+
 pub use analysis::{DetectedTable, Role, SheetLayout};
 pub use features::Features;
 pub use grid::Grid;

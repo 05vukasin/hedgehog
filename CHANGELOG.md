@@ -21,6 +21,14 @@ All notable changes to hedgehog are listed here. The format follows
 - **The fuzzer covers xlsb and the in-memory open**: a new `xlsb` target, and every input of
   every target is also opened from memory and must read exactly like the file.
 
+### Changed
+
+- **`NormalizeOptions::threads` bounds every thread of a normalization**: it bounded only the
+  sheet-level fan-out; inside a large sheet the totals prefetch, the layout's total rows, the
+  model's first passes and stream and the column typing still started up to 4 threads each.
+  They now keep within it, and `Some(1)` runs everything on the calling thread (hosts that run
+  one file per core, such as doewood). The output is unchanged for every thread count.
+
 ### Fixed
 
 - **A cell billions of rows down no longer exhausts memory in normalize**: a hostile xlsx with a

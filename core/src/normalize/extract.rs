@@ -3433,7 +3433,7 @@ const TYPING_THREADS: usize = 4;
 /// `f(0), f(1), …, f(n - 1)` in this order; on up to [`TYPING_THREADS`] threads when `parallel`
 /// (each index is taken by one thread; the results are put back in index order).
 fn in_parallel<R: Send>(n: usize, parallel: bool, f: impl Fn(usize) -> R + Sync) -> Vec<R> {
-    let threads = if parallel { std::thread::available_parallelism().map_or(1, |x| x.get()).min(TYPING_THREADS).min(n) } else { 1 };
+    let threads = if parallel { crate::threads::cap(std::thread::available_parallelism().map_or(1, |x| x.get()).min(TYPING_THREADS).min(n)) } else { 1 };
     if threads <= 1 {
         return (0..n).map(f).collect();
     }
@@ -3441,7 +3441,7 @@ fn in_parallel<R: Send>(n: usize, parallel: bool, f: impl Fn(usize) -> R + Sync)
     let done: Vec<Vec<(usize, R)>> = std::thread::scope(|s| {
         let workers: Vec<_> = (0..threads)
             .map(|_| {
-                s.spawn(|| {
+                crate::threads::spawn(s, || {
                     let mut mine = Vec::new();
                     loop {
                         let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
