@@ -241,7 +241,7 @@ fn repeated_value_headers_over_one_label_column_stay_one_table() {
             let row = 4 + i as u32;
             ws.write_string(row, 0, *r).unwrap();
             for c in 1..9u16 {
-                if (i + c as usize) % 3 == 0 {
+                if (i + c as usize).is_multiple_of(3) {
                     ws.write_number(row, c, (30 + i * 5 + c as usize) as f64)
                         .unwrap();
                 } else {

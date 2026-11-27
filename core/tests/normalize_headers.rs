@@ -66,7 +66,7 @@ fn merged_region_parents_over_a_blank_row() {
             .enumerate()
         {
             let c = 1 + 2 * k as u16;
-            ws.merge_range(1, c, 1, c + 1, *region, &Format::new())
+            ws.merge_range(1, c, 1, c + 1, region, &Format::new())
                 .unwrap();
             ws.write_number(3, c, 2005.0).unwrap();
             ws.write_number(3, c + 1, 2009.0).unwrap();
@@ -601,7 +601,7 @@ fn parent_label_rows_over_a_text_only_table() {
             for c in 1..=18u16 {
                 let v = match c % 3 {
                     1 => {
-                        if (i + c as u32) % 4 == 0 {
+                        if (i + c as u32).is_multiple_of(4) {
                             "-"
                         } else {
                             "FULL"

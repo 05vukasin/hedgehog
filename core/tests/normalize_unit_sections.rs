@@ -211,9 +211,9 @@ fn section_after_indented_rows_replaces_the_one_above() {
         {
             ws.write_string_with_format(6 + k as u32, 0, *l, &ind(1))
                 .unwrap();
-            ws.write_string(6 + k as u32, 1, &format!("0.{}", 438 + k))
+            ws.write_string(6 + k as u32, 1, format!("0.{}", 438 + k))
                 .unwrap();
-            ws.write_string(6 + k as u32, 2, &format!("0.{}", 413 + k))
+            ws.write_string(6 + k as u32, 2, format!("0.{}", 413 + k))
                 .unwrap();
         }
         ws.write_string_with_format(
@@ -238,9 +238,9 @@ fn section_after_indented_rows_replaces_the_one_above() {
         {
             ws.write_string_with_format(11 + k as u32, 0, *l, &ind(2))
                 .unwrap();
-            ws.write_string(11 + k as u32, 1, &format!("{}.1", 58 - 20 * k))
+            ws.write_string(11 + k as u32, 1, format!("{}.1", 58 - 20 * k))
                 .unwrap();
-            ws.write_string(11 + k as u32, 2, &format!("{}.5", 68 - 20 * k))
+            ws.write_string(11 + k as u32, 2, format!("{}.5", 68 - 20 * k))
                 .unwrap();
         }
     });
@@ -299,7 +299,7 @@ fn total_row_right_under_a_section_belongs_to_it() {
                     ws.write_string(
                         r,
                         1 + c,
-                        &format!(
+                        format!(
                             "{:.1}",
                             5.8 - 2.1 * s as f64 + 0.3 * k as f64 - 0.7 * c as f64
                         ),
@@ -392,7 +392,7 @@ fn first_section_over_a_merge_down_is_no_repeated_header() {
                             ws.write_string(
                                 r,
                                 1 + c,
-                                &format!(
+                                format!(
                                     "{:.1}",
                                     -11.8 - 3.0 * s as f64 - 1.1 * k as f64 + 0.4 * c as f64
                                 ),
@@ -449,7 +449,7 @@ fn total_worded_section_without_numbers_is_a_section() {
             r += 1;
             for (k, l) in rows.iter().enumerate() {
                 ws.write_string(r, 0, *l).unwrap();
-                ws.write_string(r, 1, &format!("0.{}", 401 + 37 * k + r as usize))
+                ws.write_string(r, 1, format!("0.{}", 401 + 37 * k + r as usize))
                     .unwrap();
                 r += 1;
             }
