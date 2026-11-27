@@ -18,11 +18,20 @@ All notable changes to hedgehog are listed here. The format follows
   cells, shared strings, deadline, ODS repeats, encrypted packages) and the same readers. A CSV
   sheet is named after the name's stem, `Sheet1` without a name. Opening a file is unchanged:
   it shares the code path and reads the file where it lies, as before.
+- **`ReadOptions::threads`**: the most threads a large sheet, shared string table or ODS
+  `content.xml` is read on (`None`, the default: up to 4, as before; `Some(1)`: the calling
+  thread only). `normalize_file` reads with `NormalizeOptions::threads`. The workbook is the
+  same for every thread count. Struct literals of `ReadOptions` without `..Default::default()`
+  need the new field.
 - **The fuzzer covers xlsb and the in-memory open**: a new `xlsb` target, and every input of
   every target is also opened from memory and must read exactly like the file.
 
 ### Changed
 
+- **The reader trims the heap only after a parallel read**: `malloc_trim` (glibc) ran after
+  every open; it now runs only when worker threads read a part, since it walks and locks every
+  allocator arena of the process (other workers' included). About 1.5 ms less per small open
+  in a process with a 1 GB heap.
 - **`NormalizeOptions::threads` bounds every thread of a normalization**: it bounded only the
   sheet-level fan-out; inside a large sheet the totals prefetch, the layout's total rows, the
   model's first passes and stream and the column typing still started up to 4 threads each.

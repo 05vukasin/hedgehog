@@ -161,8 +161,10 @@ checked against the previous code path (design and measurements: the P7 research
   `vendor/calamine/src/ods.rs`, `core/src/reader.rs`). A sheet part of 2 MB or more (uncompressed),
   a shared string table of 2 MB or more and the tables of an ODS `content.xml` of 2 MB or more are
   read on up to `min(4, CPUs)` threads (CPU affinity respected: pinned to one CPU, everything reads
-  as before). The calling thread inflates the part and cuts it into chunks of ~512 kB that end
-  right after a `</row>`, `</si>` or `</table:table-row>`; workers read each chunk with
+  as before), and at most `ReadOptions::threads` (`Some(1)`: one thread, no workers; a host that
+  runs one file per core passes its per-file budget; `normalize_file` passes
+  `NormalizeOptions::threads`). The calling thread inflates the part and cuts it into chunks of
+  ~512 kB that end right after a `</row>`, `</si>` or `</table:table-row>`; workers read each chunk with
   calamine's own code (the same XML reader settings, `next_cell_formula_record`,
   `read_string_with_bufs`, `read_row`), and the calling thread takes the results in chunk order
   (at most `2 × threads` chunks ahead). What a chunk cannot know from its own bytes is settled in
@@ -176,15 +178,17 @@ checked against the previous code path (design and measurements: the P7 research
   value error, a part that ends early, xlsx records out of row order. Cells are converted on the
   workers and copied into the sheet as each chunk's turn comes, so the chunks' memory is reused
   and the sheet is not held twice; `malloc_trim` after each parallel sheet and after the
-  workbook parse. Without formats the merge scan (`merges.rs`) runs on its own view of the zip
-  beside the cell read (its dimension is compared afterwards). ODS sheets are moved out of
+  workbook parse, only when worker threads ran there (`calamine::parallel_reads_started`): the
+  trim walks and locks every allocator arena of the process, and a one-thread read has nothing
+  in other arenas to give back. Without formats the merge scan (`merges.rs`) runs on its own
+  view of the zip beside the cell read (its dimension is compared afterwards). ODS sheets are moved out of
   calamine instead of copied, and their cells merged from the two row-ordered ranges instead of
   a sorted map; CSV copies runs of plain bytes at once and parses numbers without a string copy
   (a unit test compares it with the byte-at-a-time parser). `core/tests/reader_parallel_corpus.rs`
   compares one-thread and parallel reads (with 1–4 kB chunks, so every sheet is cut many times)
   cell by cell, with merges, formats and errors, over a file list.
 - **Where the time goes.** `HEDGEHOG_TRACE=1` prints each stage with the process peak memory,
-  and indented sub-steps: `read.limits / workbook / sheets / csv`,
+  and indented sub-steps: `read.limits / workbook / trim / sheets / csv`,
   `layout.totals / blocks / regions / cp_signatures / cp_search / loose`,
   `tot.*` (the total detection), `totals_prefetch`, `M.layout / context / values / totals /
   layout_totals / stream` (model path) and `build_tables.typing`; in the agent path also `hash`,

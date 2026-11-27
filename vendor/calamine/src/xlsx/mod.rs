@@ -37,7 +37,10 @@ use crate::{
 pub use cells_reader::{
     XlsxCellFormula, XlsxCellFormulaMetadataRecord, XlsxCellReader, XlsxFormulaMetadata,
 };
-pub use parallel::{parallel_read_stats, parallel_read_threads, set_parallel_read_for_tests}; // hedgehog
+pub use parallel::{
+    parallel_read_stats, parallel_read_threads, parallel_reads_started, set_parallel_read_for_tests,
+    with_parallel_read_threads,
+}; // hedgehog
 
 pub(crate) type XlReader<'a, RS> = XmlReader<BufReader<ZipFile<'a, RS>>>;
 
