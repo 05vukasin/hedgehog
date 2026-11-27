@@ -23,6 +23,14 @@ All notable changes to hedgehog are listed here. The format follows
   thread only). `normalize_file` reads with `NormalizeOptions::threads`. The workbook is the
   same for every thread count. Struct literals of `ReadOptions` without `..Default::default()`
   need the new field.
+- **`NormalizeOptions::shapes_only`** (#9): `normalize_workbook` leaves every column's
+  `values` empty and keeps every other field of `Normalized` as without it. Each sheet's values
+  are dropped once its tables (and their derived columns) are done, so a multi-sheet workbook
+  never holds the values of all tables at once: peak RSS on a generated 12-sheet, 3M-cell
+  workbook 398 MB → 295 MB, 4 sheets / 1M cells 160 MB → 141 MB; a single sheet is unchanged
+  (its own analysis sets the peak). `normalize_file` ignores it. The default output is
+  unchanged. Struct literals of `NormalizeOptions` without `..Default::default()` need the new
+  field.
 - **The fuzzer covers xlsb and the in-memory open**: a new `xlsb` target, and every input of
   every target is also opened from memory and must read exactly like the file.
 
