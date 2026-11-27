@@ -31,6 +31,10 @@ All notable changes to hedgehog are listed here. The format follows
 
 ### Fixed
 
+- **One bad formula no longer fails an xlsb workbook** (#4): a formula record whose token
+  array is cut short, unsupported or past the nesting and length bounds is now a cell without a
+  formula. The cell keeps its cached value and the rest of the sheet and workbook read, as for
+  xlsx. A broken defined name is still an error.
 - **A cell billions of rows down no longer exhausts memory in normalize**: a hostile xlsx with a
   cell at row ~2^31 made the cell index allocate 8 GB and abort the process. Such sheets use the
   hash index now; real sheets are unaffected.

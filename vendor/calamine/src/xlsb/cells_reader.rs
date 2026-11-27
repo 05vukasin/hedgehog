@@ -180,30 +180,39 @@ where
             // the token count `cce` come from the record; every slice they make is
             // bounds-checked (past the record, they panicked).
             let rec = &self.buf[..len];
+            let (extern_sheets, metadata_names) = (self.extern_sheets, self.metadata_names);
+            let formula = |rgce: Result<&[u8], XlsbError>| {
+                rgce.and_then(|rgce| parse_formula(rgce, extern_sheets, metadata_names))
+            };
             let value = match self.typ {
                 // 0x0001 => continue, // Data::Empty, // BrtCellBlank
+                // hedgehog: a formula that cannot be read (a token array cut short or past the
+                // record, an unsupported token, nesting or length past the bounds) is an empty
+                // formula, which callers skip: the cell keeps its cached value and the rest of the
+                // sheet still reads. It failed the whole workbook (issue #4). The record itself
+                // is whole (its length came from the header), so the next one is in place.
                 0x0008 => {
                     // BrtFmlaString
-                    let cch = read_u32(tail(rec, 8, "BrtFmlaString")?) as usize;
-                    let at = cch.saturating_mul(2).saturating_add(14);
-                    let formula = tail(rec, at, "BrtFmlaString")?;
-                    let cce = read_u32(formula) as usize;
-                    let rgce = slice(formula, 4, cce.saturating_add(4), "BrtFmlaString.rgce")?;
-                    parse_formula(rgce, self.extern_sheets, self.metadata_names)?
+                    formula(tail(rec, 8, "BrtFmlaString").and_then(|cch| {
+                        let cch = read_u32(cch) as usize;
+                        let at = cch.saturating_mul(2).saturating_add(14);
+                        rgce(tail(rec, at, "BrtFmlaString")?, "BrtFmlaString.rgce")
+                    }))
+                    .unwrap_or_default()
                 }
                 0x0009 => {
                     // BrtFmlaNum
-                    let formula = tail(rec, 18, "BrtFmlaNum")?;
-                    let cce = read_u32(formula) as usize;
-                    let rgce = slice(formula, 4, cce.saturating_add(4), "BrtFmlaNum.rgce")?;
-                    parse_formula(rgce, self.extern_sheets, self.metadata_names)?
+                    formula(
+                        tail(rec, 18, "BrtFmlaNum").and_then(|f| rgce(f, "BrtFmlaNum.rgce")),
+                    )
+                    .unwrap_or_default()
                 }
                 0x000A | 0x000B => {
                     // BrtFmlaBool | BrtFmlaError
-                    let formula = tail(rec, 11, "BrtFmlaBool")?;
-                    let cce = read_u32(formula) as usize;
-                    let rgce = slice(formula, 4, cce.saturating_add(4), "BrtFmlaBool.rgce")?;
-                    parse_formula(rgce, self.extern_sheets, self.metadata_names)?
+                    formula(
+                        tail(rec, 11, "BrtFmlaBool").and_then(|f| rgce(f, "BrtFmlaBool.rgce")),
+                    )
+                    .unwrap_or_default()
                 }
                 0x0000 => {
                     // BrtRowHdr
@@ -220,6 +229,13 @@ where
         };
         Ok(Some(Cell::new((self.row, col), value)))
     }
+}
+
+/// hedgehog: the token array of a formula's `CellParsedFormula` (`cce`, then `cce` bytes),
+/// bounds-checked.
+fn rgce<'b>(formula: &'b [u8], typ: &'static str) -> Result<&'b [u8], XlsbError> {
+    let cce = read_u32(formula) as usize;
+    slice(formula, 4, cce.saturating_add(4), typ)
 }
 
 /// hedgehog: a cell's column (MS-XLSB 2.5.9 Cell: `column` is at most 0x3FFF, Excel's 16,384

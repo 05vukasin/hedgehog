@@ -1261,6 +1261,17 @@ fn xlsb_error(b: &[u8], what: &str) {
     );
 }
 
+/// Opens the one-cell sheet `cells` and expects its formula dropped (issue #4: a formula that
+/// cannot be read is no formula) and its cached `value` kept.
+fn xlsb_formula_dropped(cells: &[Vec<u8>], value: &Value) {
+    let wb = open_default("f.xlsb", &xlsb_cells_of(cells)).unwrap();
+    let cell = &wb.sheets[0].cells[0];
+    assert_eq!(
+        (cell.value.as_ref(), cell.formula.as_deref()),
+        (Some(value), None)
+    );
+}
+
 /// An xlsb whose sheet "Data" holds `cells`.
 fn xlsb_cells_of(cells: &[Vec<u8>]) -> Vec<u8> {
     xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(cells), Vec::new())
@@ -1379,27 +1390,28 @@ fn xlsb_short_cell_records_are_errors() {
         &xlsb_cells_of(&[xrow(0), rec12(0x07, &xcell(0, &5u32.to_le_bytes()))]),
         "shared strings",
     );
-    // Formula token counts past the record: BrtFmlaString, BrtFmlaNum, BrtFmlaBool.
+    // Formula token counts past the record: BrtFmlaString, BrtFmlaNum, BrtFmlaBool. Only the
+    // formula is lost; the cached value stays (issue #4).
     let past = 1000u32.to_le_bytes();
     let fmla_str = [&wide("x")[..], &[0, 0], &past].concat();
-    xlsb_error(
-        &xlsb_cells_of(&[xrow(0), rec12(0x08, &xcell(0, &fmla_str))]),
-        "BrtFmlaString.rgce",
+    xlsb_formula_dropped(
+        &[xrow(0), rec12(0x08, &xcell(0, &fmla_str))],
+        &Value::Text("x".into()),
     );
     let fmla = [&5.0f64.to_le_bytes()[..], &[0, 0], &past].concat();
-    xlsb_error(
-        &xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &fmla))]),
-        "BrtFmlaNum.rgce",
+    xlsb_formula_dropped(
+        &[xrow(0), rec12(0x09, &xcell(0, &fmla))],
+        &Value::Number(5.0),
     );
     let fmla_bool = [&[1u8, 0, 0][..], &past].concat();
-    xlsb_error(
-        &xlsb_cells_of(&[xrow(0), rec12(0x0A, &xcell(0, &fmla_bool))]),
-        "BrtFmlaBool.rgce",
+    xlsb_formula_dropped(
+        &[xrow(0), rec12(0x0A, &xcell(0, &fmla_bool))],
+        &Value::Bool(true),
     );
     // A BrtFmlaNum of 16 bytes: no grbitFlags or cce (`buf[18..]`).
-    xlsb_error(
-        &xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &5.0f64.to_le_bytes()))]),
-        "BrtFmlaNum",
+    xlsb_formula_dropped(
+        &[xrow(0), rec12(0x09, &xcell(0, &5.0f64.to_le_bytes()))],
+        &Value::Number(5.0),
     );
     // A short BrtCellRk, and an empty BrtCellSt after a longer string record: both were read
     // from the bytes the buffer kept of earlier records.
@@ -1422,9 +1434,11 @@ fn xlsb_short_cell_records_are_errors() {
 }
 
 #[test]
-fn xlsb_hostile_formula_tokens_are_errors_not_panics() {
+fn xlsb_hostile_formula_tokens_are_dropped_not_panics() {
     // Each token cut short (`rgce[0]`, `rgce[0..2]`, `rgce[4]`, `rgce[..cce]`, ...), an unknown
     // function index (FTAB[32767]) and the index one past FTAB_ARGC (485, the bound was `>`).
+    // In a cell, the formula is dropped and the cached value kept (issue #4); in a defined name,
+    // the workbook is an error.
     let cut: [&[u8]; 29] = [
         &[0x3A],
         &[0x3B, 0, 0],
@@ -1457,9 +1471,7 @@ fn xlsb_hostile_formula_tokens_are_errors_not_panics() {
         &[0x39],
     ];
     for rgce in cut {
-        let b = xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)]);
-        let e = open_default("f.xlsb", &b).unwrap_err();
-        assert!(!e.is_limit(), "{rgce:?}: {e}");
+        xlsb_formula_dropped(&[xrow(0), fmla_num(0, rgce)], &Value::Number(5.0));
         // The same token array in a defined name.
         let b = xlsb_package(
             xlsb_workbook(&[bundle_sh("rId1", "Data")], &[brt_name(rgce)]),
@@ -1515,27 +1527,66 @@ fn xlsb_formula_nesting_and_length_are_bounded() {
             .as_deref(),
         Some("7")
     );
-    // Nested ~20,000 deep, each level a recursive call: an error, not a stack overflow.
+    // Nested ~20,000 deep, each level a recursive call: no formula, not a stack overflow.
     for depth in [40, 20_000] {
-        let e = open(&nested_mem_func(depth)).unwrap_err();
-        assert!(e.to_string().contains("nested"), "{depth}: {e}");
+        xlsb_formula_dropped(
+            &[xrow(0), fmla_num(0, &nested_mem_func(depth))],
+            &Value::Number(5.0),
+        );
     }
     // 40,000 parentheses (each an insert at the front, quadratic) and 70,000 operands: past the
-    // 64 KiB bound on the text and the stack.
+    // 64 KiB bound on the text and the stack, so no formula.
     let mut parens = vec![0x1E, 7, 0];
     parens.extend(std::iter::repeat_n(0x15, 40_000));
-    assert!(
-        open(&parens)
-            .unwrap_err()
-            .to_string()
-            .contains("longer than")
+    xlsb_formula_dropped(&[xrow(0), fmla_num(0, &parens)], &Value::Number(5.0));
+    xlsb_formula_dropped(
+        &[xrow(0), fmla_num(0, &vec![0x16; 70_000])],
+        &Value::Number(5.0),
     );
-    let operands = vec![0x16; 70_000];
-    assert!(
-        open(&operands)
-            .unwrap_err()
-            .to_string()
-            .contains("longer than")
+    // The defined-name path keeps its errors: the bounds are still enforced there.
+    let e = open_default(
+        "n.xlsb",
+        &xlsb_package(
+            xlsb_workbook(
+                &[bundle_sh("rId1", "Data")],
+                &[brt_name(&nested_mem_func(40))],
+            ),
+            xlsb_sheet(&[]),
+            Vec::new(),
+        ),
+    )
+    .unwrap_err();
+    assert!(e.to_string().contains("nested"), "{e}");
+}
+
+#[test]
+fn xlsb_one_bad_formula_keeps_the_rest_of_the_sheet() {
+    // Issue #4: a sheet of four cells, the second a formula with an unsupported token (Ptg
+    // 0x3F) and a cached 5. Only that formula is lost: the values, the formulas before and after
+    // it and the cells after it all read, as for xlsx.
+    let real = |col: u32, v: f64| rec12(0x05, &xcell(col, &v.to_le_bytes()));
+    let cells = [
+        xrow(0),
+        real(0, 1.0),
+        fmla_num(1, &[0x3F]),
+        fmla_num(2, &[0x1E, 7, 0]),
+        xrow(1),
+        real(0, 2.0),
+    ];
+    let wb = open_default("bad-formula.xlsb", &xlsb_cells_of(&cells)).unwrap();
+    let got: Vec<_> = wb.sheets[0]
+        .cells
+        .iter()
+        .map(|c| (c.row, c.col, c.value.clone(), c.formula.as_deref()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (0, 0, Some(Value::Number(1.0)), None),
+            (0, 1, Some(Value::Number(5.0)), None),
+            (0, 2, Some(Value::Number(5.0)), Some("7")),
+            (1, 0, Some(Value::Number(2.0)), None),
+        ]
     );
 }
 
