@@ -34,7 +34,7 @@ On a machine with little memory, limit parallel compile jobs with `CARGO_BUILD_J
 
 ```sh
 cargo test --workspace --exclude hh_py      # Rust unit and integration tests
-cargo clippy --workspace -- -D warnings     # lints, warnings are errors (as in CI)
+cargo clippy --workspace --all-targets -- -D warnings  # lints, warnings are errors (as in CI)
 (cd py && ../.venv/bin/python -m pytest -q tests)   # Python tests (needs the extension built)
 ```
 
@@ -216,7 +216,7 @@ benchmark does not drop. Metrics and current scores: [evaluation.md](evaluation.
 1. the tier 0 feature snapshots, `cargo test -p hh_agent --test snapshots` (the parts of
    `make quick` that need the private test data run only locally)
 2. `cargo test --workspace --exclude hh_py`
-3. `cargo clippy --workspace -- -D warnings`
+3. `cargo clippy --workspace --all-targets -- -D warnings`
 4. build a wheel with `maturin build --profile dev`, install it, run `pytest`
 
 It is tuned for the GitHub Actions free tier:

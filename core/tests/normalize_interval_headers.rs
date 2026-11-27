@@ -219,7 +219,7 @@ fn two_missing_interval_bands_keep_cohort_ownership_and_body_section() {
     ];
     for (group, cohort) in cohorts.iter().enumerate() {
         let c = 1 + 4 * group as u16;
-        ws.merge_range(2, c, 2, c + 3, *cohort, &Format::new())
+        ws.merge_range(2, c, 2, c + 3, cohort, &Format::new())
             .unwrap();
         ws.merge_range(3, c, 4, c, "000'", &Format::new()).unwrap();
         ws.merge_range(3, c + 1, 4, c + 1, "%", &Format::new())

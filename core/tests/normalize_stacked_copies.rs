@@ -73,7 +73,7 @@ fn stacked_ranked_lists_keep_metric_rank_and_each_state_value_pair() {
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     for (top, metric, measure, high, hv, low, lv) in &blocks {
-        ws.merge_range(*top, 0, *top, 3, *metric, &Format::new())
+        ws.merge_range(*top, 0, *top, 3, metric, &Format::new())
             .unwrap();
         for (col, rank, states, values) in [(0u16, "Highest", high, hv), (2, "Least", low, lv)] {
             ws.write_string(top + 1, col, rank).unwrap();

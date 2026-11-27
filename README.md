@@ -352,7 +352,7 @@ Issues and pull requests are welcome. Please:
 
 - when a file is read wrongly, include a small (anonymized) workbook or the code that builds one;
   never commit real spreadsheets;
-- run `cargo test --workspace --exclude hh_py`, `cargo clippy --workspace -- -D warnings` and the
+- run `cargo test --workspace --exclude hh_py`, `cargo clippy --workspace --all-targets -- -D warnings` and the
   Python tests before opening a pull request;
 - for changes to detection, parsing or totals, include `hedgehog eval` scores before and after.
 
