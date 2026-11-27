@@ -141,8 +141,10 @@ optional = true
 version = "0.2"
 optional = true
 
+# hedgehog: zip 8.3 -> 9.0.5, the same major as the workspace and calamine, so zip is
+# compiled once (hedgehog issue #3).
 [dependencies.zip]
-version = "8.3"
+version = "9.0.5"
 features = ["deflate"]
 default-features = false
 

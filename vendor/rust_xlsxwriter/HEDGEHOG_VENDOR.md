@@ -33,3 +33,8 @@ SOURCE_SHA256.txt records the PRISTINE upstream files. The patched worksheet.rs
 intentionally differs; review its isolated runtime commit against the pristine
 vendor commit. Remove the experiment/vendor if exact outputs or measured useful
 end-to-end improvement are not demonstrated.
+
+The active Cargo.toml requires zip 9.0.5 instead of upstream's 8.3 (marked
+`hedgehog:`), the same major as the workspace and calamine, so zip is compiled
+only once. The zip 9 write API that rust_xlsxwriter uses is unchanged.
+Cargo.toml.orig stays pristine.
