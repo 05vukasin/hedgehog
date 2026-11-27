@@ -5,18 +5,25 @@
 
 use std::path::PathBuf;
 
-use hh_core::normalize::{normalize_workbook, Normalized, Options, Out, Table};
+use hh_core::normalize::{Normalized, Options, Out, Table, normalize_workbook};
 use hh_core::open;
 use rust_xlsxwriter::{Format, Workbook};
 
 fn normalize(name: &str, build: impl FnOnce(&mut rust_xlsxwriter::Worksheet)) -> Normalized {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_obold_{name}_{}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_obold_{name}_{}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     build(wb.add_worksheet());
     wb.save(&path).unwrap();
     let book = open(&path).unwrap();
     let _ = std::fs::remove_file(&path);
-    normalize_workbook(&book, &Options { keep_totals: true, ..Options::default() })
+    normalize_workbook(
+        &book,
+        &Options {
+            keep_totals: true,
+            ..Options::default()
+        },
+    )
 }
 
 fn text(v: &Out) -> String {
@@ -29,9 +36,17 @@ fn text(v: &Out) -> String {
 /// (label, parent) of every row.
 fn parents(t: &Table) -> Vec<(String, String)> {
     let label = &t.columns[0];
-    let parent = t.columns.iter().find(|c| c.name == format!("{}_parent", label.name));
+    let parent = t
+        .columns
+        .iter()
+        .find(|c| c.name == format!("{}_parent", label.name));
     (0..t.rows())
-        .map(|i| (text(&label.values[i]), parent.map(|p| text(&p.values[i])).unwrap_or_default()))
+        .map(|i| {
+            (
+                text(&label.values[i]),
+                parent.map(|p| text(&p.values[i])).unwrap_or_default(),
+            )
+        })
         .collect()
 }
 
@@ -41,8 +56,14 @@ fn bold_sections_head_plain_rows_at_their_indent() {
         let bold = Format::new().set_bold();
         let ind = |k: u8| Format::new().set_indent(k);
         let bold_ind = |k: u8| Format::new().set_bold().set_indent(k);
-        ws.write_string(0, 0, "Table 7: Initial entry of youth into correctional services").unwrap();
-        ws.write_string(2, 0, "Type of correctional supervision").unwrap();
+        ws.write_string(
+            0,
+            0,
+            "Table 7: Initial entry of youth into correctional services",
+        )
+        .unwrap();
+        ws.write_string(2, 0, "Type of correctional supervision")
+            .unwrap();
         ws.write_string(2, 1, "Number").unwrap();
         ws.write_string(2, 2, "Percent").unwrap();
         let rows: [(&str, Format, f64); 11] = [
@@ -66,7 +87,12 @@ fn bold_sections_head_plain_rows_at_their_indent() {
         }
     });
     let p = parents(&n.tables[0]);
-    let of = |l: &str| p.iter().find(|(x, _)| x == l).map(|(_, y)| y.clone()).unwrap_or_else(|| panic!("{l} not in {p:?}"));
+    let of = |l: &str| {
+        p.iter()
+            .find(|(x, _)| x == l)
+            .map(|(_, y)| y.clone())
+            .unwrap_or_else(|| panic!("{l} not in {p:?}"))
+    };
     assert_eq!(of("Pre-trial detention"), "Custody", "{p:?}");
     assert_eq!(of("Probation"), "Community supervision", "{p:?}");
     assert_eq!(of("Other community"), "Community supervision", "{p:?}");
@@ -92,12 +118,17 @@ fn a_bold_row_over_deeper_rows_only_heads_no_plain_row_at_its_indent() {
             ("Remand", Format::new(), 9.0),
         ];
         for (i, (label, f, v)) in rows.iter().enumerate() {
-            ws.write_string_with_format(3 + i as u32, 0, *label, f).unwrap();
+            ws.write_string_with_format(3 + i as u32, 0, *label, f)
+                .unwrap();
             ws.write_number(3 + i as u32, 1, *v).unwrap();
         }
     });
     let p = parents(&n.tables[0]);
-    assert!(p.iter().any(|(x, y)| x == "Pre-trial detention" && y == "Custody"), "{p:?}");
+    assert!(
+        p.iter()
+            .any(|(x, y)| x == "Pre-trial detention" && y == "Custody"),
+        "{p:?}"
+    );
     assert!(p.iter().any(|(x, y)| x == "Other" && y.is_empty()), "{p:?}");
 }
 
@@ -121,7 +152,8 @@ fn bold_labels_one_after_the_other_head_nothing() {
         ];
         for (i, (code, b)) in rows.iter().enumerate() {
             let f = if *b { bold.clone() } else { Format::new() };
-            ws.write_string_with_format(1 + i as u32, 0, *code, &f).unwrap();
+            ws.write_string_with_format(1 + i as u32, 0, *code, &f)
+                .unwrap();
             ws.write_number(1 + i as u32, 1, 10.0 + i as f64).unwrap();
         }
     });

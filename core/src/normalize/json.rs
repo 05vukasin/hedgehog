@@ -134,7 +134,11 @@ fn indent(n: usize, out: &mut String) {
 
 /// Short scalar arrays are printed on one line to keep the manifest readable.
 fn inline(v: &[Json]) -> bool {
-    v.len() <= 8 && v.iter().all(|x| matches!(x, Json::Null | Json::Bool(_) | Json::Int(_) | Json::Num(_)) || matches!(x, Json::Str(s) if s.len() <= 40))
+    v.len() <= 8
+        && v.iter().all(|x| {
+            matches!(x, Json::Null | Json::Bool(_) | Json::Int(_) | Json::Num(_))
+                || matches!(x, Json::Str(s) if s.len() <= 40)
+        })
 }
 
 fn write(v: &Json, level: usize, out: &mut String) {
@@ -195,8 +199,16 @@ mod tests {
 
     #[test]
     fn prints_ordered_and_escaped() {
-        let j = Json::obj().with("b", 1u32).with("a", "x\"y\n").with("n", Json::Null).with("f", 0.5).with("l", vec![1u32, 2]);
-        assert_eq!(j.pretty(), "{\n  \"b\": 1,\n  \"a\": \"x\\\"y\\n\",\n  \"n\": null,\n  \"f\": 0.5,\n  \"l\": [1, 2]\n}\n");
+        let j = Json::obj()
+            .with("b", 1u32)
+            .with("a", "x\"y\n")
+            .with("n", Json::Null)
+            .with("f", 0.5)
+            .with("l", vec![1u32, 2]);
+        assert_eq!(
+            j.pretty(),
+            "{\n  \"b\": 1,\n  \"a\": \"x\\\"y\\n\",\n  \"n\": null,\n  \"f\": 0.5,\n  \"l\": [1, 2]\n}\n"
+        );
         let mut s = String::new();
         num(f64::NAN, &mut s);
         num(3.0, &mut s);

@@ -71,7 +71,9 @@ fn title_row(sheet: &Sheet, r: &Row, rect: Rect, below: &[Row], direct: bool) ->
             }
             if n.n_measure() > 0 {
                 if (k > 0 || direct)
-                    && n.entries.iter().any(|x| x.left <= e.right && x.right >= e.left && x.kind == Kind::Num)
+                    && n.entries
+                        .iter()
+                        .any(|x| x.left <= e.right && x.right >= e.left && x.kind == Kind::Num)
                 {
                     return false;
                 }
@@ -81,7 +83,9 @@ fn title_row(sheet: &Sheet, r: &Row, rect: Rect, below: &[Row], direct: bool) ->
             // (`Region of birth: | ...`).
             let mut cells = n.filled();
             let section = k < 2
-                && cells.next().is_some_and(|x| x.kind == Kind::Text && x.left == rect.left && x.right < e.left)
+                && cells.next().is_some_and(|x| {
+                    x.kind == Kind::Text && x.left == rect.left && x.right < e.left
+                })
                 && cells.all(|x| x.kind == Kind::Missing);
             if !section {
                 break;
@@ -110,7 +114,9 @@ pub(crate) fn is_note_row(sheet: &Sheet, r: &Row) -> bool {
 /// audited."): one text cell ending with a full stop, of at least [`NOTE_SENTENCE_WORDS`] words
 /// and [`NOTE_SENTENCE_LEN`] characters. Only for the rows that end a block (B38).
 fn is_trailing_sentence(sheet: &Sheet, r: &Row) -> bool {
-    let Some(e) = single_text(r) else { return false };
+    let Some(e) = single_text(r) else {
+        return false;
+    };
     let t = text(sheet, e).trim();
     !is_total_label(t)
         && t.ends_with('.')
@@ -135,12 +141,18 @@ pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
         .filter(|&(k, e)| {
             let t = text(sheet, e).trim();
             let colon = t.char_indices().take(40).find(|&(i, c)| {
-                c == ':' && t[..i].chars().last().is_some_and(char::is_alphabetic)
-                    && t[i + 1..].chars().next().is_none_or(|c| !c.is_ascii_digit())
+                c == ':'
+                    && t[..i].chars().last().is_some_and(char::is_alphabetic)
+                    && t[i + 1..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| !c.is_ascii_digit())
             });
             match colon {
                 Some((i, _)) if t[i + 1..].trim().is_empty() => {
-                    filled.get(k + 1).is_some_and(|x| x.left <= e.right + 2 && !text(sheet, x).trim_end().ends_with(':'))
+                    filled.get(k + 1).is_some_and(|x| {
+                        x.left <= e.right + 2 && !text(sheet, x).trim_end().ends_with(':')
+                    })
                 }
                 Some(_) => true,
                 None => false,
@@ -156,7 +168,8 @@ pub(crate) fn is_key_value_row(sheet: &Sheet, r: &Row) -> bool {
 
 /// A text cell that is a `Key:` label (ends with a colon, ASCII or full-width).
 fn has_key_label(sheet: &Sheet, r: &Row) -> bool {
-    r.filled().any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with([':', '：']))
+    r.filled()
+        .any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with([':', '：']))
 }
 
 /// Header row relative to the rows below it: more of its cells break the column's body type
@@ -168,7 +181,10 @@ pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
     let window = &below[..below.len().min(HEADER_VOTE_WINDOW)];
     // Rows whose entries do not overlap (each ends left of the next one's start, the usual case):
     // the entries overlapping a column range are one run, found by binary search (B128).
-    let disjoint: Vec<bool> = window.iter().map(|w| w.entries.windows(2).all(|p| p[0].right < p[1].left)).collect();
+    let disjoint: Vec<bool> = window
+        .iter()
+        .map(|w| w.entries.windows(2).all(|p| p[0].right < p[1].left))
+        .collect();
     let (mut head, mut data) = (0u32, 0u32);
     for e in r.filled() {
         let t = e.ty();
@@ -184,7 +200,10 @@ pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
             } else {
                 &w.entries[..]
             };
-            for x in run.iter().filter(|x| x.left <= e.right && x.right >= e.left) {
+            for x in run
+                .iter()
+                .filter(|x| x.left <= e.right && x.right >= e.left)
+            {
                 let xt = x.ty();
                 if xt == Ty::None {
                     continue;
@@ -211,11 +230,17 @@ pub(crate) fn is_header_row(r: &Row, below: &[Row]) -> bool {
 pub(crate) fn is_headerish(r: &Row) -> bool {
     let n = r.n();
     let years = r.n_num() - r.n_measure();
-    n > 0 && (r.n_text() >= 1 || years >= 2) && r.n_measure() as f32 <= HEADER_MAX_NUM_FRAC * n as f32
+    n > 0
+        && (r.n_text() >= 1 || years >= 2)
+        && r.n_measure() as f32 <= HEADER_MAX_NUM_FRAC * n as f32
 }
 
 fn has_total_label(sheet: &Sheet, r: &Row) -> bool {
-    r.entries.iter().filter(|e| e.kind == Kind::Text).take(3).any(|e| is_total_label(text(sheet, e)))
+    r.entries
+        .iter()
+        .filter(|e| e.kind == Kind::Text)
+        .take(3)
+        .any(|e| is_total_label(text(sheet, e)))
 }
 
 /// [`has_total_label`] for the row's role: in a register, a long text right of other text (a
@@ -267,7 +292,11 @@ fn is_form(sheet: &Sheet, region: &Region) -> bool {
     let colon = region
         .rows
         .iter()
-        .filter(|r| r.filled().next().is_some_and(|e| text(sheet, e).trim_end().ends_with(':')))
+        .filter(|r| {
+            r.filled()
+                .next()
+                .is_some_and(|e| text(sheet, e).trim_end().ends_with(':'))
+        })
         .count();
     colon as f32 >= FORM_COLON_FRAC * region.rows.len() as f32
 }
@@ -307,7 +336,10 @@ pub(crate) fn signature_is(sheet: &Sheet, r: &Row, sig: &Signature) -> bool {
                 Some(Value::Text(s)) => {
                     let t = s.trim();
                     if t.is_ascii() {
-                        t.len() == key.len() && t.bytes().zip(key.bytes()).all(|(a, b)| a.to_ascii_lowercase() == b)
+                        t.len() == key.len()
+                            && t.bytes()
+                                .zip(key.bytes())
+                                .all(|(a, b)| a.to_ascii_lowercase() == b)
                     } else {
                         t.to_lowercase() == *key
                     }
@@ -319,7 +351,10 @@ pub(crate) fn signature_is(sheet: &Sheet, r: &Row, sig: &Signature) -> bool {
 }
 
 fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
-    let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
+    let fill: u32 = r
+        .filled()
+        .map(|e| e.right.min(rect.right) - e.left + 1)
+        .sum();
     let width = rect.right - rect.left + 1;
     r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
 }
@@ -328,7 +363,9 @@ fn is_wide_text_row(r: &Row, rect: Rect) -> bool {
 /// Q3-2002 | …`, under the title "Last Week's Peak Power Prices"): the top row of the header, not
 /// a second title (B55).
 fn is_label_over_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect: Rect) -> bool {
-    let Some(e) = single_text(&rows[k]) else { return false };
+    let Some(e) = single_text(&rows[k]) else {
+        return false;
+    };
     let t = text(sheet, e).trim();
     let next = match rows.get(k + 1) {
         Some(n) if k + 2 < end && n.row == rows[k].row + 1 => n,
@@ -346,12 +383,22 @@ fn is_label_over_header(sheet: &Sheet, rows: &[Row], k: usize, end: usize, rect:
         && !t.contains(':')
         && next.n() >= 3
         && next.n_measure() == 0
-        && next.filled().next().is_some_and(|x| x.left == rect.left && x.kind == Kind::Text)
+        && next
+            .filled()
+            .next()
+            .is_some_and(|x| x.left == rect.left && x.kind == Kind::Text)
         && is_header_row(next, &rows[k + 2..end])
 }
 
 /// Number of leading rows (from `start`) that form the header.
-fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rect, numbers: bool) -> usize {
+fn header_depth(
+    sheet: &Sheet,
+    rows: &[Row],
+    start: usize,
+    end: usize,
+    rect: Rect,
+    numbers: bool,
+) -> usize {
     let mut d = 0;
     // A parent row the type votes did not take does not count against the header-row limit.
     let mut extra = 0;
@@ -361,9 +408,10 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
             // Rows above key/value metadata are titles or metadata too, not a header ("Profit
             // Sharing Summary" over "Operation Day: | 12 May 2001"); but a row of form labels
             // (`ATTORNEY:` over `DATE: | … | DEAL MAKER: | …`, B57) keeps its header place.
-            let form_labels = rows[start..start + d]
-                .iter()
-                .any(|x| x.filled().any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with(':')));
+            let form_labels = rows[start..start + d].iter().any(|x| {
+                x.filled()
+                    .any(|e| e.kind == Kind::Text && text(sheet, e).trim_end().ends_with(':'))
+            });
             if !form_labels {
                 d = 0;
             }
@@ -417,7 +465,10 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
         // RealHiTBench labor-table50).
         let width = rect.right - rect.left + 1;
         let wide_text = |r: &Row| {
-            let fill: u32 = r.filled().map(|e| e.right.min(rect.right) - e.left + 1).sum();
+            let fill: u32 = r
+                .filled()
+                .map(|e| e.right.min(rect.right) - e.left + 1)
+                .sum();
             r.n() >= 2 && r.n_text() == r.n() && fill as f32 >= TEXT_HEADER_MIN_FILL * width as f32
         };
         let parent = |k: usize| {
@@ -445,8 +496,10 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
     if d == 0 {
         // Prior: nearly every table has a header. A wide all-text first row counts, and so does
         // a label over period numbers (`Year | 1 | 2 | …`).
-        let vals: Option<Vec<&Value>> =
-            rows[start].filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
+        let vals: Option<Vec<&Value>> = rows[start]
+            .filled()
+            .map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref()))
+            .collect();
         // Several labels before the numbers only when no header row follows: over a header of
         // dates (`TIME BUCKET | REGION | 1 | 2 | …` over two rows of dates, DECO peter_keavey) the
         // numbers row is not the header.
@@ -492,12 +545,17 @@ fn header_depth(sheet: &Sheet, rows: &[Row], start: usize, end: usize, rect: Rec
 
 /// A unit row under a header: at least two cells, all unit labels ([`super::cells::is_unit_text`]).
 pub(crate) fn is_unit_row(sheet: &Sheet, r: &Row) -> bool {
-    r.n() >= 2 && r.filled().all(|e| e.kind == Kind::Text && super::cells::is_unit_text(text(sheet, e)))
+    r.n() >= 2
+        && r.filled()
+            .all(|e| e.kind == Kind::Text && super::cells::is_unit_text(text(sheet, e)))
 }
 
 /// A column-numbering row ([`super::column_numbering`]).
 pub(crate) fn is_column_number_row(sheet: &Sheet, r: &Row) -> bool {
-    let vals: Option<Vec<&Value>> = r.filled().map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref())).collect();
+    let vals: Option<Vec<&Value>> = r
+        .filled()
+        .map(|e| e.cell.and_then(|i| sheet.cells[i].value.as_ref()))
+        .collect();
     vals.is_some_and(|v| super::column_numbering(v.into_iter()))
 }
 
@@ -518,7 +576,11 @@ fn starts_new_table(
     if numeric_cols.is_empty() || r.n() < 2 || !is_header_row(r, &rows[k + 1..end]) {
         return false;
     }
-    if !rows[k + 1..end].iter().take(MAX_HEADER_ROWS).any(|x| x.n_measure() > 0) {
+    if !rows[k + 1..end]
+        .iter()
+        .take(MAX_HEADER_ROWS)
+        .any(|x| x.n_measure() > 0)
+    {
         return false;
     }
     if !header_sig.is_empty() && signature_is(sheet, r, header_sig) {
@@ -532,7 +594,10 @@ fn starts_new_table(
         .filter(|e| (e.kind == Kind::Text || e.label_num) && numeric_cols.contains(&e.left))
         .filter(|e| !(e.kind == Kind::Text && seen.contains(&(e.left, seen_key(text(sheet, e))))))
         // nor is a value annotation (`F` too unreliable, `x` suppressed, `<5`)
-        .filter(|e| !(e.kind == Kind::Text && crate::values::missing::numeric_annotation(text(sheet, e)).is_some()))
+        .filter(|e| {
+            !(e.kind == Kind::Text
+                && crate::values::missing::numeric_annotation(text(sheet, e)).is_some())
+        })
         .count();
     hits >= SPLIT_MIN_HITS && hits as f32 >= SPLIT_MIN_HIT_FRAC * numeric_cols.len() as f32
 }
@@ -555,7 +620,10 @@ fn trim_tail(sheet: &Sheet, rows: &[Row], seg: &mut Seg) -> Range<usize> {
     }
     // Reference width: the header's last row and the first body rows.
     let first = rows[body..seg.end].iter().take(3).map(|r| r.n());
-    let reference = first.chain((seg.header > 0).then(|| rows[body - 1].n())).max().unwrap_or(0);
+    let reference = first
+        .chain((seg.header > 0).then(|| rows[body - 1].n()))
+        .max()
+        .unwrap_or(0);
     let limit = TAIL_MAX_FILL_FRAC * reference as f32;
     let mut cols: HashSet<u32> = HashSet::new();
     let mut k = seg.end;
@@ -610,10 +678,26 @@ fn is_short_label(t: &str) -> bool {
 /// row that follows a blank row and starts with a short text label in the group labels' column,
 /// where short labels are otherwise rare (not a column of item names). Its label cell becomes a
 /// group header; the rest of the row stays data.
-fn mark_inline_group_labels(sheet: &Sheet, rows: &[Row], body: Range<usize>, data_rows: &[usize], out: &mut Out) {
-    let label_col = |k: usize| rows[k].filled().next().filter(|e| e.kind == Kind::Text).map(|e| e.left);
+fn mark_inline_group_labels(
+    sheet: &Sheet,
+    rows: &[Row],
+    body: Range<usize>,
+    data_rows: &[usize],
+    out: &mut Out,
+) {
+    let label_col = |k: usize| {
+        rows[k]
+            .filled()
+            .next()
+            .filter(|e| e.kind == Kind::Text)
+            .map(|e| e.left)
+    };
     let group_rows = body.clone().filter(|&k| {
-        rows[k].filled().next().and_then(|e| e.cell).is_some_and(|i| out.roles[i] == Role::GroupHeader)
+        rows[k]
+            .filled()
+            .next()
+            .and_then(|e| e.cell)
+            .is_some_and(|i| out.roles[i] == Role::GroupHeader)
             && single_text(&rows[k]).is_some()
     });
     let mut cols: Vec<u32> = group_rows.filter_map(label_col).collect();
@@ -621,7 +705,10 @@ fn mark_inline_group_labels(sheet: &Sheet, rows: &[Row], body: Range<usize>, dat
     cols.dedup();
     let [col] = cols[..] else { return };
     let short = |k: usize| {
-        rows[k].filled().next().filter(|e| e.left == col && e.kind == Kind::Text && is_short_label(text(sheet, e)))
+        rows[k]
+            .filled()
+            .next()
+            .filter(|e| e.left == col && e.kind == Kind::Text && is_short_label(text(sheet, e)))
     };
     let n_short = data_rows.iter().filter(|&&k| short(k).is_some()).count();
     if n_short as f32 > INLINE_GROUP_MAX_LABEL_FRAC * data_rows.len() as f32 {
@@ -684,7 +771,9 @@ fn segment(
                 // Past key/value rows, only a row that reads as a header by its types (not by
                 // the wide-text prior) starts the table: a form's next `Key: | value` row is not
                 // a header (B57).
-                let past_kv = rows[start..start + o].iter().any(|r| is_key_value_row(sheet, r));
+                let past_kv = rows[start..start + o]
+                    .iter()
+                    .any(|r| is_key_value_row(sheet, r));
                 let real = !past_kv
                     || (!is_key_value_row(sheet, &rows[start + o])
                         && is_header_row(&rows[start + o], &rows[start + o + 1..e]));
@@ -697,19 +786,29 @@ fn segment(
             }
         }
         let body = start + h;
-        let sig = if h > 0 { signature(sheet, &rows[body - 1]) } else { Vec::new() };
+        let sig = if h > 0 {
+            signature(sheet, &rows[body - 1])
+        } else {
+            Vec::new()
+        };
         let mut numeric_cols: HashSet<u32> = HashSet::new();
         let mut num_counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
         let mut split = None;
         // Short texts of the body rows with numbers so far, by column ([`starts_new_table`]).
         let mut seen: HashSet<(u32, String)> = HashSet::new();
         for k in body..e {
-            if k > body && k + 1 < e && starts_new_table(sheet, rows, k, e, &numeric_cols, &sig, &seen) {
+            if k > body
+                && k + 1 < e
+                && starts_new_table(sheet, rows, k, e, &numeric_cols, &sig, &seen)
+            {
                 split = Some(k);
                 break;
             }
             // Only from rows with numbers: a header the body repeats (page headers) is no value.
-            for en in rows[k].filled().filter(|en| en.kind == Kind::Text && rows[k].n_measure() > 0) {
+            for en in rows[k]
+                .filled()
+                .filter(|en| en.kind == Kind::Text && rows[k].n_measure() > 0)
+            {
                 let t = text(sheet, en);
                 if t.trim().chars().count() <= SEEN_MAX_CHARS {
                     seen.insert((en.left, seen_key(t)));
@@ -722,10 +821,21 @@ fn segment(
                 }
             }
             numeric_cols.clear();
-            numeric_cols.extend(num_counts.iter().filter(|&(_, &n)| n * 2 >= seen).map(|(&c, _)| c));
+            numeric_cols.extend(
+                num_counts
+                    .iter()
+                    .filter(|&(_, &n)| n * 2 >= seen)
+                    .map(|(&c, _)| c),
+            );
         }
         let Some(sp) = split else {
-            segs.push(Seg { titles, split: cut, start, header: h, end: e });
+            segs.push(Seg {
+                titles,
+                split: cut,
+                start,
+                header: h,
+                end: e,
+            });
             break;
         };
         // Title rows just above the next header belong to the next table.
@@ -737,7 +847,13 @@ fn segment(
         {
             seg_end -= 1;
         }
-        segs.push(Seg { titles, split: cut, start, header: h, end: seg_end });
+        segs.push(Seg {
+            titles,
+            split: cut,
+            start,
+            header: h,
+            end: seg_end,
+        });
         titles = seg_end..sp;
         start = sp;
     }
@@ -758,7 +874,12 @@ fn set_upto(out: &mut Out, r: &Row, role: Role, max_col: u32) {
 }
 
 fn bounds(rows: &[Row]) -> Rect {
-    let mut rect = Rect { top: u32::MAX, left: u32::MAX, bottom: 0, right: 0 };
+    let mut rect = Rect {
+        top: u32::MAX,
+        left: u32::MAX,
+        bottom: 0,
+        right: 0,
+    };
     for r in rows {
         rect.top = rect.top.min(r.row);
         rect.bottom = rect.bottom.max(r.bottom());
@@ -811,15 +932,21 @@ fn qualifies(rows: &[Row], seg: &Seg) -> Option<Rect> {
         return None;
     }
     // Without a header, a narrow or short block is a key/value list or stray numbers, not a table.
-    if seg.header == 0 && ((width < HEADERLESS_MIN_COLS && !seg.split) || (seg.end - seg.start) < HEADERLESS_MIN_ROWS) {
+    if seg.header == 0
+        && ((width < HEADERLESS_MIN_COLS && !seg.split)
+            || (seg.end - seg.start) < HEADERLESS_MIN_ROWS)
+    {
         return None;
     }
     if seg.header > 0 && seg.end - body_start < MIN_BODY_ROWS {
         return None;
     }
     // Blank spacer columns (between row labels and numbers) don't count against the density.
-    let mut spans: Vec<(u32, u32)> =
-        trows.iter().flat_map(|r| r.filled()).map(|e| (e.left, e.right.min(rect.right))).collect();
+    let mut spans: Vec<(u32, u32)> = trows
+        .iter()
+        .flat_map(|r| r.filled())
+        .map(|e| (e.left, e.right.min(rect.right)))
+        .collect();
     spans.sort_unstable();
     let (mut used, mut end) = (0u64, None::<u32>);
     for (l, r) in spans {
@@ -833,7 +960,10 @@ fn qualifies(rows: &[Row], seg: &Seg) -> Option<Rect> {
     let filled: f64 = trows
         .iter()
         .flat_map(|r| r.filled())
-        .map(|e| (e.right.min(rect.right) - e.left + 1) as f64 * (e.bottom.min(rect.bottom) - e.row + 1) as f64)
+        .map(|e| {
+            (e.right.min(rect.right) - e.left + 1) as f64
+                * (e.bottom.min(rect.bottom) - e.row + 1) as f64
+        })
         .sum();
     if filled / area < MIN_TABLE_DENSITY as f64 && !sparse_register(rows, seg, body_start) {
         return None;
@@ -843,17 +973,30 @@ fn qualifies(rows: &[Row], seg: &Seg) -> Option<Rect> {
 
 /// Emits a table for `seg` if it qualifies; returns false otherwise (caller makes it loose).
 fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
-    let Some(mut rect) = qualifies(rows, seg) else { return false };
+    let Some(mut rect) = qualifies(rows, seg) else {
+        return false;
+    };
     let trows = &rows[seg.start..seg.end];
     let body_start = seg.start + seg.header;
 
-
     for r in &rows[seg.titles.clone()] {
-        set(out, r, if is_note_row(sheet, r) { Role::Note } else { Role::Title });
+        set(
+            out,
+            r,
+            if is_note_row(sheet, r) {
+                Role::Note
+            } else {
+                Role::Title
+            },
+        );
     }
     // Unlabelled helper columns at the right edge (no header cell above them) are not the table's.
     if RIGHT_TRIM_UNHEADED && seg.header > 0 {
-        let covered = rows[seg.start..body_start].iter().map(|r| r.right()).max().unwrap_or(rect.right);
+        let covered = rows[seg.start..body_start]
+            .iter()
+            .map(|r| r.right())
+            .max()
+            .unwrap_or(rect.right);
         rect.right = rect.right.min(covered.max(rect.left + 1));
     }
     // A comment column right of the table ("check!", "per KL 3/4" on a row or two): no header
@@ -861,11 +1004,22 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     let mut comments: Vec<usize> = Vec::new();
     if seg.header > 0 && rect.right > rect.left + 1 {
         let c = rect.right;
-        let headed = rows[seg.start..body_start].iter().any(|r| r.filled().any(|e| e.left <= c && e.right >= c));
+        let headed = rows[seg.start..body_start]
+            .iter()
+            .any(|r| r.filled().any(|e| e.left <= c && e.right >= c));
         let body = &rows[body_start..seg.end];
-        let at_c: Vec<&Entry> = body.iter().flat_map(|r| r.filled().filter(|e| e.left == c && e.right == c)).collect();
-        let others = body.iter().flat_map(|r| r.filled()).any(|e| e.left < c && e.right >= c);
-        let left_fill = body.iter().filter(|r| r.filled().any(|e| e.left == c - 1)).count();
+        let at_c: Vec<&Entry> = body
+            .iter()
+            .flat_map(|r| r.filled().filter(|e| e.left == c && e.right == c))
+            .collect();
+        let others = body
+            .iter()
+            .flat_map(|r| r.filled())
+            .any(|e| e.left < c && e.right >= c);
+        let left_fill = body
+            .iter()
+            .filter(|r| r.filled().any(|e| e.left == c - 1))
+            .count();
         if !headed
             && !others
             && !at_c.is_empty()
@@ -898,29 +1052,42 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
         }
         header_rows = last - rows[seg.start].row + 1;
     }
-    let sig = if seg.header > 0 { signature(sheet, &rows[body_start - 1]) } else { Vec::new() };
+    let sig = if seg.header > 0 {
+        signature(sheet, &rows[body_start - 1])
+    } else {
+        Vec::new()
+    };
     let has_measures = rows[body_start..seg.end].iter().any(|r| r.n_measure() > 0);
 
     // Column type purity over data rows, for confidence. Ordered by column: the mean below is a
     // float sum, and a hash map's iteration order (random per run) changed its last bits (B68).
-    let mut col_counts: std::collections::BTreeMap<u32, (u32, u32)> = std::collections::BTreeMap::new();
+    let mut col_counts: std::collections::BTreeMap<u32, (u32, u32)> =
+        std::collections::BTreeMap::new();
     // Formula totals on most rows are a running/computed column, not total rows.
     let body_len = seg.end - body_start;
-    let formula_totals =
-        rows[body_start..seg.end].iter().filter(|r| !has_total_label(sheet, r) && is_total_row(sheet, r)).count();
-    let formula_totals_ok = (formula_totals as f32) <= TOTAL_MAX_ROW_FRAC * body_len as f32 || body_len < 4;
+    let formula_totals = rows[body_start..seg.end]
+        .iter()
+        .filter(|r| !has_total_label(sheet, r) && is_total_row(sheet, r))
+        .count();
+    let formula_totals_ok =
+        (formula_totals as f32) <= TOTAL_MAX_ROW_FRAC * body_len as f32 || body_len < 4;
     let mut body_cells = 0usize;
     let mut data_rows: Vec<usize> = Vec::new();
     for k in body_start..seg.end {
         let r = &rows[k];
         let last_body = k + 1 == seg.end;
-        let total_label =
-            if out.registers { has_own_total_label(sheet, r, &out.labelled_totals) } else { has_total_label(sheet, r) };
+        let total_label = if out.registers {
+            has_own_total_label(sheet, r, &out.labelled_totals)
+        } else {
+            has_total_label(sheet, r)
+        };
         let role = if !sig.is_empty() && r.n() >= 2 && signature_is(sheet, r, &sig) {
             Role::Header
         } else if total_label || (formula_totals_ok && has_vertical_aggregates(r)) {
             Role::Total
-        } else if is_note_row(sheet, r) && (last_body || is_note_label(text(sheet, single_text(r).unwrap()))) {
+        } else if is_note_row(sheet, r)
+            && (last_body || is_note_label(text(sheet, single_text(r).unwrap())))
+        {
             Role::Note
         } else if has_measures && is_group_header(sheet, rows, k, seg.end, rect) {
             Role::GroupHeader
@@ -956,16 +1123,28 @@ fn emit_table(sheet: &Sheet, rows: &[Row], seg: &Seg, out: &mut Out) -> bool {
     if KEY_COLUMN_GROUPS {
         mark_key_column(rows, &data_rows, rect, out);
     }
-    let purities: Vec<f32> =
-        col_counts.values().filter(|(t, n)| t + n >= 2).map(|&(t, n)| t.max(n) as f32 / (t + n) as f32).collect();
-    let purity = if purities.is_empty() { 0.5 } else { purities.iter().sum::<f32>() / purities.len() as f32 };
+    let purities: Vec<f32> = col_counts
+        .values()
+        .filter(|(t, n)| t + n >= 2)
+        .map(|&(t, n)| t.max(n) as f32 / (t + n) as f32)
+        .collect();
+    let purity = if purities.is_empty() {
+        0.5
+    } else {
+        purities.iter().sum::<f32>() / purities.len() as f32
+    };
     let confidence = (CONF_BASE
         + if header_rows > 0 { CONF_HEADER } else { 0.0 }
         + CONF_TYPE * purity
         + CONF_SIZE * (body_cells as f32 / CONF_SIZE_CELLS).min(1.0))
     .clamp(0.0, 1.0);
     let header_top = rows[seg.start].row;
-    out.tables.push(DetectedTable { rect, header_top, header_rows, confidence });
+    out.tables.push(DetectedTable {
+        rect,
+        header_top,
+        header_rows,
+        confidence,
+    });
     true
 }
 
@@ -991,14 +1170,24 @@ fn split_adjacent_tables(region: &Region) -> Option<Vec<Region>> {
     }
     let body = &rows[2..];
     let share = |c: u32, text: bool| {
-        let hit = |e: &Entry| e.left == c && if text { e.kind == Kind::Text } else { e.kind == Kind::Num && !e.label_num };
+        let hit = |e: &Entry| {
+            e.left == c
+                && if text {
+                    e.kind == Kind::Text
+                } else {
+                    e.kind == Kind::Num && !e.label_num
+                }
+        };
         body.iter().filter(|r| r.filled().any(hit)).count() as f32 / body.len() as f32
     };
     let mut cuts = vec![region.rect.left];
     for e in &titles[1..] {
         let c = e.left;
         let headed = h.filled().any(|x| x.left == c) && h.filled().any(|x| x.right + 1 == c);
-        if !headed || share(c, true) < ADJACENT_SPLIT_SHARE || share(c - 1, false) < ADJACENT_SPLIT_SHARE {
+        if !headed
+            || share(c, true) < ADJACENT_SPLIT_SHARE
+            || share(c - 1, false) < ADJACENT_SPLIT_SHARE
+        {
             return None;
         }
         cuts.push(c);
@@ -1008,15 +1197,31 @@ fn split_adjacent_tables(region: &Region) -> Option<Vec<Region>> {
         let hi = cuts.get(k + 1).map_or(region.rect.right, |&c| c - 1);
         let piece: Vec<Row> = rows
             .iter()
-            .map(|r| Row { row: r.row, entries: r.entries.iter().filter(|e| e.left >= lo && e.left <= hi).cloned().collect() })
+            .map(|r| Row {
+                row: r.row,
+                entries: r
+                    .entries
+                    .iter()
+                    .filter(|e| e.left >= lo && e.left <= hi)
+                    .cloned()
+                    .collect(),
+            })
             .filter(|r| !r.entries.is_empty())
             .collect();
-        out.push(Region { rect: bounds(&piece), rows: piece });
+        out.push(Region {
+            rect: bounds(&piece),
+            rows: piece,
+        });
     }
     Some(out)
 }
 
-pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, shared_ranked_header: bool) {
+pub(crate) fn analyze_region(
+    sheet: &Sheet,
+    region: Region,
+    out: &mut Out,
+    shared_ranked_header: bool,
+) {
     if let Some(parts) = split_adjacent_tables(&region) {
         for p in parts {
             analyze_region(sheet, p, out, false);
@@ -1037,22 +1242,68 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, share
     // A shared caption projected from an actual wider merge owns each copy's
     // rank and complete leaf header. Ordinary title stripping would discard
     // these two parent rows, especially in a two-column copy.
-    let projected = shared_ranked_header && rows.len() >= 5 && rows[0].n() == 1 && rows[0].n_text() == 1
-        && sheet.merges.iter().any(|m| m.top == rows[0].row && m.bottom == m.top
-            && m.left <= region.rect.left && m.right >= region.rect.right
-            && (m.left < region.rect.left || m.right > region.rect.right)
-            && single_text(&rows[0]).is_some_and(|e| e.left == region.rect.left && e.right == region.rect.right && e.bottom == m.bottom
-                && e.cell.is_some_and(|i| sheet.cells[i].row == m.top && sheet.cells[i].col == m.left)))
-        && rows[1].row == rows[0].row + 1 && rows[2].row == rows[1].row + 1
-        && single_text(&rows[1]).is_some_and(|e| e.left == region.rect.left && e.right == e.left && e.bottom == e.row)
-        && rows[2].n_text() == region.width() as usize && rows[2].n() == rows[2].n_text()
-        && rows[2].filled().enumerate().all(|(k, e)| e.left == region.rect.left + k as u32 && e.right == e.left && e.bottom == e.row)
-        && rows[2].filled().map(|e| text(sheet, e)).collect::<std::collections::HashSet<_>>().len() >= 2
-        && rows[3..].iter().enumerate().all(|(i, row)| row.row == rows[2].row + i as u32 + 1
-            && row.n() == region.width() as usize
-            && row.filled().enumerate().all(|(k, e)| e.left == region.rect.left + k as u32 && e.right == e.left && e.bottom == e.row
-                && if k == 0 { e.kind == Kind::Text } else { e.kind == Kind::Num && !e.label_num }));
-    if projected && emit_table(sheet, rows, &Seg { titles: 0..0, split: true, start: 0, header: 3, end: rows.len() }, out) {
+    let projected = shared_ranked_header
+        && rows.len() >= 5
+        && rows[0].n() == 1
+        && rows[0].n_text() == 1
+        && sheet.merges.iter().any(|m| {
+            m.top == rows[0].row
+                && m.bottom == m.top
+                && m.left <= region.rect.left
+                && m.right >= region.rect.right
+                && (m.left < region.rect.left || m.right > region.rect.right)
+                && single_text(&rows[0]).is_some_and(|e| {
+                    e.left == region.rect.left
+                        && e.right == region.rect.right
+                        && e.bottom == m.bottom
+                        && e.cell.is_some_and(|i| {
+                            sheet.cells[i].row == m.top && sheet.cells[i].col == m.left
+                        })
+                })
+        })
+        && rows[1].row == rows[0].row + 1
+        && rows[2].row == rows[1].row + 1
+        && single_text(&rows[1])
+            .is_some_and(|e| e.left == region.rect.left && e.right == e.left && e.bottom == e.row)
+        && rows[2].n_text() == region.width() as usize
+        && rows[2].n() == rows[2].n_text()
+        && rows[2].filled().enumerate().all(|(k, e)| {
+            e.left == region.rect.left + k as u32 && e.right == e.left && e.bottom == e.row
+        })
+        && rows[2]
+            .filled()
+            .map(|e| text(sheet, e))
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            >= 2
+        && rows[3..].iter().enumerate().all(|(i, row)| {
+            row.row == rows[2].row + i as u32 + 1
+                && row.n() == region.width() as usize
+                && row.filled().enumerate().all(|(k, e)| {
+                    e.left == region.rect.left + k as u32
+                        && e.right == e.left
+                        && e.bottom == e.row
+                        && if k == 0 {
+                            e.kind == Kind::Text
+                        } else {
+                            e.kind == Kind::Num && !e.label_num
+                        }
+                })
+        });
+    if projected
+        && emit_table(
+            sheet,
+            rows,
+            &Seg {
+                titles: 0..0,
+                split: true,
+                start: 0,
+                header: 3,
+                end: rows.len(),
+            },
+            out,
+        )
+    {
         return;
     }
     // The rows' titles, body end and table segments; `direct`: a lone label directly over a
@@ -1068,7 +1319,9 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, share
             s += 1;
         }
         let mut e = rows.len();
-        while e > s + 1 && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1])) {
+        while e > s + 1
+            && (is_note_row(sheet, &rows[e - 1]) || is_trailing_sentence(sheet, &rows[e - 1]))
+        {
             e -= 1;
         }
         // A block of single text lines below a blank row at the end of the region (the footnotes,
@@ -1085,19 +1338,36 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, share
             && rows[k].row > rows[k - 1].bottom() + 1
             && rows[k - 1].n_measure() >= 2
             && lines.iter().all(|r| r.left() == region.rect.left)
-            && lines.iter().any(|r| single_text(r).is_some_and(|x| text(sheet, x).trim().chars().count() >= NOTE_BLOCK_LONG))
+            && lines.iter().any(|r| {
+                single_text(r)
+                    .is_some_and(|x| text(sheet, x).trim().chars().count() >= NOTE_BLOCK_LONG)
+            })
         {
             e = k;
         }
         let numbers = out.column_numbers;
         let h0 = header_depth(sheet, rows, s, e, region.rect, numbers);
-        let hsig = if h0 > 0 { signature(sheet, &rows[s + h0 - 1]) } else { Vec::new() };
+        let hsig = if h0 > 0 {
+            signature(sheet, &rows[s + h0 - 1])
+        } else {
+            Vec::new()
+        };
         let cuts = super::changepoint::boundaries(sheet, rows, s + h0, e, &hsig);
         let mut segs = Vec::new();
         let mut ps = s;
         for pe in cuts.iter().copied().chain(std::iter::once(e)) {
             if ps == s {
-                segs.extend(segment(sheet, rows, 0..s, s, pe, region.rect, false, numbers, sparse_pre));
+                segs.extend(segment(
+                    sheet,
+                    rows,
+                    0..s,
+                    s,
+                    pe,
+                    region.rect,
+                    false,
+                    numbers,
+                    sparse_pre,
+                ));
             } else {
                 // Title rows at the top of a piece belong to its table.
                 let mut q = ps;
@@ -1108,7 +1378,17 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, share
                 {
                     q += 1;
                 }
-                segs.extend(segment(sheet, rows, ps..q, q, pe, region.rect, true, numbers, sparse_pre));
+                segs.extend(segment(
+                    sheet,
+                    rows,
+                    ps..q,
+                    q,
+                    pe,
+                    region.rect,
+                    true,
+                    numbers,
+                    sparse_pre,
+                ));
             }
             ps = pe;
         }
@@ -1154,7 +1434,11 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, share
                         if a.kind == Kind::Text && a.left == region.rect.left && b.kind == Kind::Num && !b.label_num)
                 })
                 .count();
-            if sg.header == 0 && region.width() == 2 && pairs >= HEADERLESS_MIN_ROWS && pairs * 5 >= body.len() * 4 {
+            if sg.header == 0
+                && region.width() == 2
+                && pairs >= HEADERLESS_MIN_ROWS
+                && pairs * 5 >= body.len() * 4
+            {
                 sg.split = true;
             }
         }
@@ -1165,7 +1449,10 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, share
     let mut loose_rows: Vec<Row> = Vec::new();
     let mut any = false;
     for seg in &segs {
-        let mut seg = Seg { titles: seg.titles.clone(), ..*seg };
+        let mut seg = Seg {
+            titles: seg.titles.clone(),
+            ..*seg
+        };
         // Trimmed tail rows keep the default role (Other).
         let _tail = trim_tail(sheet, rows, &mut seg);
         let seg = &seg;
@@ -1184,7 +1471,10 @@ pub(crate) fn analyze_region(sheet: &Sheet, region: Region, out: &mut Out, share
     }
     if !loose_rows.is_empty() {
         loose_rows.sort_by_key(|r| r.row);
-        out.loose.push(Region { rect: bounds(&loose_rows), rows: loose_rows });
+        out.loose.push(Region {
+            rect: bounds(&loose_rows),
+            rows: loose_rows,
+        });
     }
 }
 
@@ -1205,7 +1495,10 @@ fn label_column_header(sheet: &Sheet, rows: &[Row], seg: &mut Seg) {
     let body = &rows[seg.start..seg.end];
     let left = body.iter().map(|r| r.left()).min().unwrap_or(0);
     // The column under it holds the rows' text labels, and the rows have numbers beside them.
-    let labels = body.iter().filter(|r| r.filled().any(|x| x.left == left && x.kind == Kind::Text)).count();
+    let labels = body
+        .iter()
+        .filter(|r| r.filled().any(|x| x.left == left && x.kind == Kind::Text))
+        .count();
     let numbers = body.iter().filter(|r| r.n_measure() > 0).count();
     if labels * 5 < body.len() * 4 || numbers * 2 < body.len() {
         return;
@@ -1225,14 +1518,20 @@ fn label_column_header(sheet: &Sheet, rows: &[Row], seg: &mut Seg) {
         ok.then_some(t)
     };
     let indented = |t: &str| t.starts_with(|c: char| !c.is_alphanumeric());
-    let first = body[0].filled().find(|x| x.left == left).map(|x| text(sheet, x)).unwrap_or("");
+    let first = body[0]
+        .filled()
+        .find(|x| x.left == left)
+        .map(|x| text(sheet, x))
+        .unwrap_or("");
     let mut k = seg.start - 1;
     let Some(t) = label(k) else { return };
     // A label like the rows' own (`From Anadarko Pool` over `From Bondad Station`, an empty data
     // row) is one of them, not their header.
     let word = |s: &str| s.split_whitespace().next().unwrap_or("").to_lowercase();
     let sibling = body.iter().take(10).any(|r| {
-        r.filled().find(|x| x.left == left).is_some_and(|x| word(text(sheet, x)) == word(t))
+        r.filled()
+            .find(|x| x.left == left)
+            .is_some_and(|x| word(text(sheet, x)) == word(t))
     });
     if sibling {
         return;
@@ -1243,7 +1542,10 @@ fn label_column_header(sheet: &Sheet, rows: &[Row], seg: &mut Seg) {
     // A label over indented labels is their group (`Australia` over `· New South Wales`); the
     // header is the label right above it.
     if indented(first) && !indented(t) {
-        if k == seg.titles.start || rows[k - 1].row + 1 != rows[k].row || label(k - 1).is_none_or(indented) {
+        if k == seg.titles.start
+            || rows[k - 1].row + 1 != rows[k].row
+            || label(k - 1).is_none_or(indented)
+        {
             return;
         }
         k -= 1;
@@ -1262,12 +1564,22 @@ fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out)
     if data_rows.len() < KEY_MIN_ROWS {
         return;
     }
-    let mut cols: Vec<u32> = data_rows.iter().flat_map(|&k| rows[k].filled().map(|e| e.left)).collect();
+    let mut cols: Vec<u32> = data_rows
+        .iter()
+        .flat_map(|&k| rows[k].filled().map(|e| e.left))
+        .collect();
     cols.sort_unstable();
     cols.dedup();
     // A dense label column (text on nearly every data row): the item names a key column groups.
     let dense_text = |c: u32| {
-        let n = data_rows.iter().filter(|&&k| rows[k].filled().any(|e| e.left == c && e.kind == Kind::Text)).count();
+        let n = data_rows
+            .iter()
+            .filter(|&&k| {
+                rows[k]
+                    .filled()
+                    .any(|e| e.left == c && e.kind == Kind::Text)
+            })
+            .count();
         n as f32 >= KEY_DENSE_FRAC * data_rows.len() as f32
     };
     for (pos, &col) in cols.iter().take(KEY_MAX_COLS).enumerate() {
@@ -1290,7 +1602,11 @@ fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out)
             }
             // Starts a run: other cells on its row, and the next data row leaves the key blank.
             let others = rows[k].filled().any(|x| x.left != col);
-            if others && data_rows.get(j + 1).is_some_and(|&n| key(n).is_none() && rows[n].n() > 0) {
+            if others
+                && data_rows
+                    .get(j + 1)
+                    .is_some_and(|&n| key(n).is_none() && rows[n].n() > 0)
+            {
                 starts += 1;
             }
         }
@@ -1309,7 +1625,11 @@ fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out)
         }
         let n = data_rows.len();
         // Past the first column, blocks of a few rows at least (not a sparse column).
-        let max_fill = if pos == 0 { KEY_MAX_FILL } else { KEY_MAX_FILL_INNER };
+        let max_fill = if pos == 0 {
+            KEY_MAX_FILL
+        } else {
+            KEY_MAX_FILL_INNER
+        };
         if filled < 2
             || filled as f32 > max_fill * n as f32
             || (labels as f32) < KEY_MIN_LABEL_FRAC * filled as f32
@@ -1330,44 +1650,118 @@ fn mark_key_column(rows: &[Row], data_rows: &[usize], rect: Rect, out: &mut Out)
 
 #[cfg(test)]
 mod projected_copy_tests {
+    use super::super::cells::Agg;
     use super::*;
     use crate::model::{Cell, Value};
-    use super::super::cells::Agg;
 
     #[test]
     fn projected_copy_parents_require_actual_shared_merge_and_complete_records() {
         for case in 0..10 {
             let mut sheet = Sheet::default();
             let anchor = if case == 1 || case == 6 { 2 } else { 0 };
-            sheet.merges.push(Rect { top: 0, bottom: 0, left: if case == 6 { 0 } else { anchor }, right: 3 });
+            sheet.merges.push(Rect {
+                top: 0,
+                bottom: 0,
+                left: if case == 6 { 0 } else { anchor },
+                right: 3,
+            });
             let mut rows = Vec::new();
             for row in 0..8u32 {
-                if case == 2 && row == 1 { continue; }
+                if case == 2 && row == 1 {
+                    continue;
+                }
                 let values = match row {
                     0 => vec![(anchor, Value::Text("Recovered".into()))],
                     1 => vec![(2, Value::Text("Highest".into()))],
                     2 if case == 3 => vec![(2, Value::Text("State".into()))],
-                    2 => vec![(2, Value::Text("State".into())), (3, Value::Text("Recovered %".into()))],
-                    4 if case == 4 => vec![(2, Value::Text("State 4".into())), (3, Value::Text("Pending".into()))],
+                    2 => vec![
+                        (2, Value::Text("State".into())),
+                        (3, Value::Text("Recovered %".into())),
+                    ],
+                    4 if case == 4 => vec![
+                        (2, Value::Text("State 4".into())),
+                        (3, Value::Text("Pending".into())),
+                    ],
                     4 if case == 5 => vec![(2, Value::Text("Merged record".into()))],
-                    _ => vec![(2, Value::Text(format!("State {row}"))), (3, Value::Number(90.0 + row as f64))],
+                    _ => vec![
+                        (2, Value::Text(format!("State {row}"))),
+                        (3, Value::Number(90.0 + row as f64)),
+                    ],
                 };
                 let mut entries = Vec::new();
                 for (col, value) in values {
-                    let col = if (case == 7 && row == 2 && col == 3) || (case == 8 && row == 4 && col == 3) { 2 } else { col };
-                    let kind = if matches!(value, Value::Number(_)) { Kind::Num } else { Kind::Text };
+                    let col = if (case == 7 && row == 2 && col == 3)
+                        || (case == 8 && row == 4 && col == 3)
+                    {
+                        2
+                    } else {
+                        col
+                    };
+                    let kind = if matches!(value, Value::Number(_)) {
+                        Kind::Num
+                    } else {
+                        Kind::Text
+                    };
                     let i = sheet.cells.len();
-                    sheet.cells.push(Cell { row, col, value: Some(value), formula: None });
-                    let (left, right) = if row == 0 || (case == 5 && row == 4) { (2, 3) } else { (col, col) };
-                    entries.push(Entry { row, left, right, bottom: row, kind, label_num: false, date: false, agg: Agg::None, rule: false, cell: Some(i) });
+                    sheet.cells.push(Cell {
+                        row,
+                        col,
+                        value: Some(value),
+                        formula: None,
+                    });
+                    let (left, right) = if row == 0 || (case == 5 && row == 4) {
+                        (2, 3)
+                    } else {
+                        (col, col)
+                    };
+                    entries.push(Entry {
+                        row,
+                        left,
+                        right,
+                        bottom: row,
+                        kind,
+                        label_num: false,
+                        date: false,
+                        agg: Agg::None,
+                        rule: false,
+                        cell: Some(i),
+                    });
                 }
                 rows.push(Row { row, entries });
             }
-            if case == 5 { sheet.merges.push(Rect { top: 4, bottom: 4, left: 2, right: 3 }); }
-            let region = Region { rect: Rect { top: 0, bottom: 7, left: 2, right: 3 }, rows };
-            let mut out = Out { roles: vec![Role::Other; sheet.cells.len()], tables: Vec::new(), loose: Vec::new(), column_numbers: true, registers: false, labelled_totals: Vec::new() };
+            if case == 5 {
+                sheet.merges.push(Rect {
+                    top: 4,
+                    bottom: 4,
+                    left: 2,
+                    right: 3,
+                });
+            }
+            let region = Region {
+                rect: Rect {
+                    top: 0,
+                    bottom: 7,
+                    left: 2,
+                    right: 3,
+                },
+                rows,
+            };
+            let mut out = Out {
+                roles: vec![Role::Other; sheet.cells.len()],
+                tables: Vec::new(),
+                loose: Vec::new(),
+                column_numbers: true,
+                registers: false,
+                labelled_totals: Vec::new(),
+            };
             analyze_region(&sheet, region, &mut out, case != 9);
-            assert_eq!(out.tables.iter().any(|t| t.header_top == 0 && t.header_rows == 3), case == 0, "case {case}");
+            assert_eq!(
+                out.tables
+                    .iter()
+                    .any(|t| t.header_top == 0 && t.header_rows == 3),
+                case == 0,
+                "case {case}"
+            );
         }
     }
 }

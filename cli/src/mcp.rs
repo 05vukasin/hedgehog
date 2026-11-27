@@ -13,11 +13,11 @@ use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use hh_agent::{Options, Session, TOOL_NAMES};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Newest protocol version first; an older version a client asks for is answered with itself.
 const PROTOCOLS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
@@ -42,14 +42,24 @@ pub fn run(args: &[&str]) -> Result<(), String> {
             "--root" => root = Some(PathBuf::from(val()?)),
             "--allow" => allow.push(PathBuf::from(val()?)),
             "--query-timeout-ms" => {
-                opts.query_timeout = Duration::from_millis(val()?.parse().map_err(|_| "--query-timeout-ms needs a number")?)
+                opts.query_timeout = Duration::from_millis(
+                    val()?
+                        .parse()
+                        .map_err(|_| "--query-timeout-ms needs a number")?,
+                )
             }
             "--max-file-mb" => {
-                opts.max_file_bytes = val()?.parse::<u64>().map_err(|_| "--max-file-mb needs a number")? << 20
+                opts.max_file_bytes = val()?
+                    .parse::<u64>()
+                    .map_err(|_| "--max-file-mb needs a number")?
+                    << 20
             }
-            "--max-cells" => opts.max_cells = val()?.parse().map_err(|_| "--max-cells needs a number")?,
+            "--max-cells" => {
+                opts.max_cells = val()?.parse().map_err(|_| "--max-cells needs a number")?
+            }
             "--max-seconds" => {
-                opts.max_seconds = Duration::from_secs(val()?.parse().map_err(|_| "--max-seconds needs a number")?)
+                opts.max_seconds =
+                    Duration::from_secs(val()?.parse().map_err(|_| "--max-seconds needs a number")?)
             }
             _ => return Err(format!("unknown argument `{a}`")),
         }
@@ -59,9 +69,14 @@ pub fn run(args: &[&str]) -> Result<(), String> {
         None => std::env::current_dir().map_err(|e| e.to_string())?,
     };
     let session = Session::with_options(&root, &allow, opts).map_err(|e| e.0)?;
-    log(&format!("serving tools over stdio; root {}", session.bounds().root().display()));
+    log(&format!(
+        "serving tools over stdio; root {}",
+        session.bounds().root().display()
+    ));
     if cfg!(panic = "abort") {
-        log("warning: built with panic = \"abort\": a crash in one tool call ends the server (build with the release profile, which unwinds)");
+        log(
+            "warning: built with panic = \"abort\": a crash in one tool call ends the server (build with the release profile, which unwinds)",
+        );
     }
     let stdin = std::io::stdin();
     serve(session, stdin.lock(), std::io::stdout()).map_err(|e| e.to_string())
@@ -94,20 +109,30 @@ fn id_key(msg: &Value) -> Option<String> {
 }
 
 /// Reads messages from `input` until EOF and writes responses to `out`.
-pub fn serve(session: Session, mut input: impl BufRead, out: impl Write + Send + 'static) -> std::io::Result<()> {
+pub fn serve(
+    session: Session,
+    mut input: impl BufRead,
+    out: impl Write + Send + 'static,
+) -> std::io::Result<()> {
     let out = Arc::new(Mutex::new(out));
     let calls = Arc::new(Mutex::new(Calls::default()));
     let cancel = session.cancel_flag();
     let (tx, rx) = mpsc::channel::<Job>();
     let worker = {
         let (out, calls, cancel) = (out.clone(), calls.clone(), cancel.clone());
-        std::thread::Builder::new().name("hedgehog-mcp".into()).spawn(move || work(session, rx, &out, &calls, &cancel))?
+        std::thread::Builder::new()
+            .name("hedgehog-mcp".into())
+            .spawn(move || work(session, rx, &out, &calls, &cancel))?
     };
-    let send = |v: &Value| -> std::io::Result<()> { write(&mut *out.lock().unwrap_or_else(|e| e.into_inner()), v) };
+    let send = |v: &Value| -> std::io::Result<()> {
+        write(&mut *out.lock().unwrap_or_else(|e| e.into_inner()), v)
+    };
     let mut buf = Vec::new();
     let res = loop {
         buf.clear();
-        let n = match std::io::Read::take(input.by_ref(), MAX_LINE as u64 + 1).read_until(b'\n', &mut buf) {
+        let n = match std::io::Read::take(input.by_ref(), MAX_LINE as u64 + 1)
+            .read_until(b'\n', &mut buf)
+        {
             Ok(n) => n,
             Err(e) => break Err(e),
         };
@@ -146,7 +171,11 @@ pub fn serve(session: Session, mut input: impl BufRead, out: impl Write + Send +
                 // Answered at once, also while a call runs.
                 let method = msg.get("method").and_then(Value::as_str);
                 if let (Some("ping" | "tools/list"), Some(id)) = (method, msg.get("id")) {
-                    let r = if method == Some("ping") { json!({}) } else { json!({"tools": hh_agent::tool_specs()}) };
+                    let r = if method == Some("ping") {
+                        json!({})
+                    } else {
+                        json!({"tools": hh_agent::tool_specs()})
+                    };
                     send(&ok(id.clone(), r))?;
                     continue;
                 }
@@ -156,7 +185,11 @@ pub fn serve(session: Session, mut input: impl BufRead, out: impl Write + Send +
         if let Job::One(m) = &job
             && let Some(k) = id_key(m)
         {
-            calls.lock().unwrap_or_else(|e| e.into_inner()).queued.insert(k);
+            calls
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .queued
+                .insert(k);
         }
         if tx.send(job).is_err() {
             break Ok(());
@@ -169,10 +202,14 @@ pub fn serve(session: Session, mut input: impl BufRead, out: impl Write + Send +
 
 /// Handles `notifications/cancelled` (true when `msg` is one).
 fn note_cancel(msg: &Value, calls: &Mutex<Calls>, cancel: &AtomicBool) -> bool {
-    if msg.get("method").and_then(Value::as_str) != Some("notifications/cancelled") || msg.get("id").is_some() {
+    if msg.get("method").and_then(Value::as_str) != Some("notifications/cancelled")
+        || msg.get("id").is_some()
+    {
         return false;
     }
-    let Some(id) = msg.pointer("/params/requestId") else { return true };
+    let Some(id) = msg.pointer("/params/requestId") else {
+        return true;
+    };
     let k = id.to_string();
     let mut c = calls.lock().unwrap_or_else(|e| e.into_inner());
     if c.running.as_ref() == Some(&k) {
@@ -186,14 +223,23 @@ fn note_cancel(msg: &Value, calls: &Mutex<Calls>, cancel: &AtomicBool) -> bool {
 }
 
 /// The worker: runs requests in order and writes their responses.
-fn work(mut session: Session, rx: mpsc::Receiver<Job>, out: &Mutex<impl Write>, calls: &Mutex<Calls>, cancel: &AtomicBool) {
+fn work(
+    mut session: Session,
+    rx: mpsc::Receiver<Job>,
+    out: &Mutex<impl Write>,
+    calls: &Mutex<Calls>,
+    cancel: &AtomicBool,
+) {
     let send = |v: &Value| {
         let _ = write(&mut *out.lock().unwrap_or_else(|e| e.into_inner()), v);
     };
     for job in rx {
         match job {
             Job::Batch(batch) => {
-                let replies: Vec<Value> = batch.into_iter().filter_map(|m| handle(&mut session, m)).collect();
+                let replies: Vec<Value> = batch
+                    .into_iter()
+                    .filter_map(|m| handle(&mut session, m))
+                    .collect();
                 if !replies.is_empty() {
                     send(&Value::Array(replies));
                 }
@@ -243,7 +289,11 @@ fn ok(id: Value, result: Value) -> Value {
 /// One message; `None` for notifications and responses.
 fn handle(session: &mut Session, msg: Value) -> Option<Value> {
     let Value::Object(obj) = &msg else {
-        return Some(error(Value::Null, -32600, "invalid request: expected a JSON object"));
+        return Some(error(
+            Value::Null,
+            -32600,
+            "invalid request: expected a JSON object",
+        ));
     };
     let id = obj.get("id").cloned();
     let Some(method) = obj.get("method").and_then(Value::as_str) else {
@@ -266,12 +316,19 @@ fn handle(session: &mut Session, msg: Value) -> Option<Value> {
         "tools/list" => ok(id, json!({"tools": hh_agent::tool_specs()})),
         "tools/call" => {
             let Some(name) = params.get("name").and_then(Value::as_str) else {
-                return Some(error(id, -32602, "invalid params: tools/call needs a tool name"));
+                return Some(error(
+                    id,
+                    -32602,
+                    "invalid params: tools/call needs a tool name",
+                ));
             };
             if !TOOL_NAMES.contains(&name) {
                 return Some(error(id, -32602, &format!("unknown tool: {name}")));
             }
-            let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+            let args = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             let t0 = Instant::now();
             let res = call_isolated(session, name, &args);
             let ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -282,10 +339,19 @@ fn handle(session: &mut Session, msg: Value) -> Option<Value> {
             log(&format!(
                 "{name} {:.0} ms{}{}",
                 ms,
-                peak_memory().map(|p| format!(", RSS {p}")).unwrap_or_default(),
-                if is_error { format!(" error: {text}") } else { String::new() }
+                peak_memory()
+                    .map(|p| format!(", RSS {p}"))
+                    .unwrap_or_default(),
+                if is_error {
+                    format!(" error: {text}")
+                } else {
+                    String::new()
+                }
             ));
-            ok(id, json!({"content": [{"type": "text", "text": text}], "isError": is_error}))
+            ok(
+                id,
+                json!({"content": [{"type": "text", "text": text}], "isError": is_error}),
+            )
         }
         other => error(id, -32601, &format!("method not found: {other}")),
     })
@@ -294,7 +360,11 @@ fn handle(session: &mut Session, msg: Value) -> Option<Value> {
 /// One tool call; a panic in it (a bug hit by a malformed file) becomes this call's one-line
 /// error instead of ending the server. Needs a build with `panic = "unwind"` (the release
 /// profile); see [`run`] for the warning otherwise.
-fn call_isolated(session: &mut Session, name: &str, args: &Value) -> Result<String, hh_agent::ToolError> {
+fn call_isolated(
+    session: &mut Session,
+    name: &str,
+    args: &Value,
+) -> Result<String, hh_agent::ToolError> {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.call(name, args))) {
         Ok(r) => r,
         Err(p) => {
@@ -315,23 +385,43 @@ fn call_isolated(session: &mut Session, name: &str, args: &Value) -> Result<Stri
 fn peak_memory() -> Option<String> {
     let s = std::fs::read_to_string("/proc/self/status").ok()?;
     let mb = |key: &str| -> Option<u64> {
-        let kb: u64 = s.lines().find_map(|l| l.strip_prefix(key))?.trim().trim_end_matches("kB").trim().parse().ok()?;
+        let kb: u64 = s
+            .lines()
+            .find_map(|l| l.strip_prefix(key))?
+            .trim()
+            .trim_end_matches("kB")
+            .trim()
+            .parse()
+            .ok()?;
         Some(kb / 1024)
     };
     Some(format!("{} MB (peak {} MB)", mb("VmRSS:")?, mb("VmHWM:")?))
 }
 
 fn initialize(session: &mut Session, params: &Value) -> Value {
-    let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOLS[0]);
-    let version = if PROTOCOLS.contains(&asked) { asked } else { PROTOCOLS[0] };
-    if let Some(list) = params.pointer("/_meta/hedgehog/allow").and_then(Value::as_array) {
+    let asked = params
+        .get("protocolVersion")
+        .and_then(Value::as_str)
+        .unwrap_or(PROTOCOLS[0]);
+    let version = if PROTOCOLS.contains(&asked) {
+        asked
+    } else {
+        PROTOCOLS[0]
+    };
+    if let Some(list) = params
+        .pointer("/_meta/hedgehog/allow")
+        .and_then(Value::as_array)
+    {
         for p in list.iter().filter_map(Value::as_str) {
             if let Err(e) = session.allow(p) {
                 log(&format!("allow {p}: {e}"));
             }
         }
     }
-    let client = params.pointer("/clientInfo/name").and_then(Value::as_str).unwrap_or("?");
+    let client = params
+        .pointer("/clientInfo/name")
+        .and_then(Value::as_str)
+        .unwrap_or("?");
     log(&format!("initialize from {client}, protocol {version}"));
     json!({
         "protocolVersion": version,

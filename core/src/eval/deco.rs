@@ -22,9 +22,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+use super::EvalError;
 use super::csv::CsvReader;
 use super::gt::{Corpus, GtCell, GtFile, GtSheet, LabelCount, Unmatched};
-use super::EvalError;
 use crate::analysis::Role;
 use crate::model::Rect;
 
@@ -79,9 +79,18 @@ impl Columns {
 
     fn rect(&self, rec: &[String]) -> Option<Rect> {
         let n = |i: usize| rec.get(i)?.trim().parse::<u32>().ok();
-        let (top, left, bottom, right) =
-            (n(self.first_row)?, n(self.first_col)?, n(self.last_row)?, n(self.last_col)?);
-        (top <= bottom && left <= right).then_some(Rect { top, left, bottom, right })
+        let (top, left, bottom, right) = (
+            n(self.first_row)?,
+            n(self.first_col)?,
+            n(self.last_row)?,
+            n(self.last_col)?,
+        );
+        (top <= bottom && left <= right).then_some(Rect {
+            top,
+            left,
+            bottom,
+            right,
+        })
     }
 }
 
@@ -93,7 +102,10 @@ fn read_csv(
     mut f: impl FnMut(&Columns, &[String], &mut GtSheet),
 ) -> Result<(), EvalError> {
     let io = |e: std::io::Error| EvalError(format!("{}: {e}", path.display()));
-    let mut r = CsvReader::new(BufReader::with_capacity(1 << 20, File::open(path).map_err(io)?));
+    let mut r = CsvReader::new(BufReader::with_capacity(
+        1 << 20,
+        File::open(path).map_err(io)?,
+    ));
     let mut rec = Vec::new();
     if !r.next_record(&mut rec).map_err(io)? {
         return Err(EvalError(format!("{}: empty file", path.display())));
@@ -111,7 +123,11 @@ fn read_csv(
             .entry(rec[cols.sheet].clone())
             .or_insert_with(|| GtSheet {
                 name: rec[cols.sheet].clone(),
-                index: rec[cols.sheet_index].trim().parse::<usize>().ok().and_then(|i| i.checked_sub(1)),
+                index: rec[cols.sheet_index]
+                    .trim()
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|i| i.checked_sub(1)),
                 ..GtSheet::default()
             });
         f(&cols, &rec, sheet);
@@ -129,30 +145,50 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
     let mut bad_rows = 0u64;
     let mut bad_rects = 0u64;
 
-    read_csv(&ann.join("rangeAnnotations.csv"), &mut sheets, &mut bad_rows, |cols, rec, sheet| {
-        if rec[cols.label] == "Table" {
+    read_csv(
+        &ann.join("rangeAnnotations.csv"),
+        &mut sheets,
+        &mut bad_rows,
+        |cols, rec, sheet| {
+            if rec[cols.label] == "Table" {
+                match cols.rect(rec) {
+                    Some(r) => sheet.tables.push(r),
+                    None => bad_rects += 1,
+                }
+            }
+        },
+    )?;
+    read_csv(
+        &ann.join("cellAnnotations.csv"),
+        &mut sheets,
+        &mut bad_rows,
+        |cols, rec, sheet| {
+            let label = &rec[cols.label];
+            let role = map_label(label);
+            match labels.get_mut(label.as_str()) {
+                Some(l) => l.count += 1,
+                None => {
+                    labels.insert(label.clone(), LabelCount { role, count: 1 });
+                }
+            }
             match cols.rect(rec) {
-                Some(r) => sheet.tables.push(r),
+                Some(r) => sheet.cells.push(GtCell {
+                    row: r.top,
+                    col: r.left,
+                    role: role.unwrap_or(Role::Other),
+                }),
                 None => bad_rects += 1,
             }
-        }
-    })?;
-    read_csv(&ann.join("cellAnnotations.csv"), &mut sheets, &mut bad_rows, |cols, rec, sheet| {
-        let label = &rec[cols.label];
-        let role = map_label(label);
-        match labels.get_mut(label.as_str()) {
-            Some(l) => l.count += 1,
-            None => {
-                labels.insert(label.clone(), LabelCount { role, count: 1 });
-            }
-        }
-        match cols.rect(rec) {
-            Some(r) => sheet.cells.push(GtCell { row: r.top, col: r.left, role: role.unwrap_or(Role::Other) }),
-            None => bad_rects += 1,
-        }
-    })?;
+        },
+    )?;
 
-    let mut corpus = Corpus { name: "deco".into(), has_tables: true, has_roles: true, labels, ..Corpus::default() };
+    let mut corpus = Corpus {
+        name: "deco".into(),
+        has_tables: true,
+        has_roles: true,
+        labels,
+        ..Corpus::default()
+    };
     let mut duplicates = 0u64;
     let mut conflicts = 0u64;
     let mut fallback = 0usize;
@@ -185,7 +221,11 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
         let enron = base.join("enron").join(&id);
         let completed = base.join("deco").join("completed").join(&id);
         let (path, fallback_paths) = if enron.is_file() {
-            let alt = if completed.is_file() { vec![completed] } else { vec![] };
+            let alt = if completed.is_file() {
+                vec![completed]
+            } else {
+                vec![]
+            };
             (enron, alt)
         } else if completed.is_file() {
             fallback += 1;
@@ -197,23 +237,36 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
             });
             continue;
         };
-        corpus.files.push(GtFile { id, path, fallback_paths, sheets: file_sheets });
+        corpus.files.push(GtFile {
+            id,
+            path,
+            fallback_paths,
+            sheets: file_sheets,
+        });
     }
 
     if bad_rows > 0 {
-        corpus.notes.push(format!("{bad_rows} annotation rows with wrong field count skipped"));
+        corpus.notes.push(format!(
+            "{bad_rows} annotation rows with wrong field count skipped"
+        ));
     }
     if bad_rects > 0 {
-        corpus.notes.push(format!("{bad_rects} annotation rows with unparsable coordinates skipped"));
+        corpus.notes.push(format!(
+            "{bad_rects} annotation rows with unparsable coordinates skipped"
+        ));
     }
     if duplicates > 0 {
         corpus.notes.push(format!("{duplicates} duplicate cell labels dropped ({conflicts} with a different label; first kept)"));
     }
     if tool_sheets > 0 {
-        corpus.notes.push(format!("{tool_sheets} annotated `{ANNOTATION_SHEET}` sheet(s) (DECO bookkeeping) ignored"));
+        corpus.notes.push(format!(
+            "{tool_sheets} annotated `{ANNOTATION_SHEET}` sheet(s) (DECO bookkeeping) ignored"
+        ));
     }
     if fallback > 0 {
-        corpus.notes.push(format!("{fallback} files read from deco/completed/ (not found in enron/)"));
+        corpus.notes.push(format!(
+            "{fallback} files read from deco/completed/ (not found in enron/)"
+        ));
     }
     Ok(corpus)
 }

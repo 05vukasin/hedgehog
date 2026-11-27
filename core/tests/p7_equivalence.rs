@@ -19,7 +19,11 @@ fn streamed_dense_and_split_rows_match_materialized_features() {
     let mut cells = Vec::new();
     for row in [0, 1, 2, 4, 5, 6, 9] {
         // Short gaps stay in one segment; wide gaps split the row into separate segments.
-        let cols: &[u32] = if row == 4 { &[0, 1, 2, 20, 21, 22] } else { &[0, 1, 2, 3, 4, 5] };
+        let cols: &[u32] = if row == 4 {
+            &[0, 1, 2, 20, 21, 22]
+        } else {
+            &[0, 1, 2, 3, 4, 5]
+        };
         for (k, &col) in cols.iter().enumerate() {
             let value = match (row, k) {
                 (0, _) => Some(Value::Text(format!("Header {k}"))),
@@ -30,37 +34,64 @@ fn streamed_dense_and_split_rows_match_materialized_features() {
                 (_, 4) => None,
                 _ => Some(Value::Number(row as f64 / 7.0)),
             };
-            cells.push(Cell { row, col, value, formula: (k == 4).then(|| "SUM(B2:C2)".into()) });
+            cells.push(Cell {
+                row,
+                col,
+                value,
+                formula: (k == 4).then(|| "SUM(B2:C2)".into()),
+            });
         }
     }
     let sheet = Sheet {
-        name: "segments".into(), cells,
-        merges: vec![Rect { top: 11, left: 0, bottom: 11, right: 5 }],
+        name: "segments".into(),
+        cells,
+        merges: vec![Rect {
+            top: 11,
+            left: 0,
+            bottom: 11,
+            right: 5,
+        }],
         formats: vec![],
     };
     let model = hh_core::learned::embedded().expect("embedded model");
     let segments = hh_core::learned::equivalence(&Grid::new(&sheet), model, &[1, 2, 4]).unwrap();
     assert!(segments > 7, "wide row must produce multiple segments");
-    let empty = Sheet { name: "empty".into(), cells: vec![], merges: sheet.merges, formats: vec![] };
-    assert_eq!(hh_core::learned::equivalence(&Grid::new(&empty), model, &[1, 4]).unwrap(), 0);
+    let empty = Sheet {
+        name: "empty".into(),
+        cells: vec![],
+        merges: sheet.merges,
+        formats: vec![],
+    };
+    assert_eq!(
+        hh_core::learned::equivalence(&Grid::new(&empty), model, &[1, 4]).unwrap(),
+        0
+    );
 }
 
 #[test]
 #[ignore]
 fn streamed_model_input_matches_the_materialized_one() {
     let env = |k: &str| std::env::var(k).ok();
-    let list = env("HH_P7_FILES")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benches").join("enron50.txt"));
+    let list = env("HH_P7_FILES").map(PathBuf::from).unwrap_or_else(|| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("benches")
+            .join("enron50.txt")
+    });
     let files = bench::resolve_inputs(&list).unwrap();
     let model = hh_core::learned::embedded().expect("embedded model");
-    let limit = env("HH_P7_MAX_CELLS").and_then(|v| v.parse().ok()).unwrap_or(hh_core::normalize::DEFAULT_MODEL_MAX_CELLS);
+    let limit = env("HH_P7_MAX_CELLS")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(hh_core::normalize::DEFAULT_MODEL_MAX_CELLS);
     let skip: usize = env("HH_P7_SKIP").and_then(|v| v.parse().ok()).unwrap_or(0);
     let root = data_root();
     let (mut sheets, mut segments, mut skipped, mut unreadable) = (0usize, 0usize, 0usize, 0usize);
     let mut bad = Vec::new();
     for (i, path) in files.iter().enumerate().skip(skip) {
-        let name = path.strip_prefix(&root).unwrap_or(path).display().to_string();
+        let name = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .display()
+            .to_string();
         let Ok(wb) = hh_core::open(path) else {
             unreadable += 1;
             eprintln!("[{i}] {name}: unreadable");
@@ -94,5 +125,10 @@ fn streamed_model_input_matches_the_materialized_one() {
         files.len() - skip.min(files.len()),
         bad.len()
     );
-    assert!(bad.is_empty(), "{} differences:\n{}", bad.len(), bad.join("\n"));
+    assert!(
+        bad.is_empty(),
+        "{} differences:\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
 }

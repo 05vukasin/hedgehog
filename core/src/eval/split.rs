@@ -25,7 +25,11 @@ pub fn fnv1a(s: &str) -> u64 {
 
 /// `Dev` or `Test` for a file id.
 pub fn split_of(id: &str) -> Split {
-    if fnv1a(id) % 100 < DEV_PERCENT { Split::Dev } else { Split::Test }
+    if fnv1a(id) % 100 < DEV_PERCENT {
+        Split::Dev
+    } else {
+        Split::Test
+    }
 }
 
 impl Split {

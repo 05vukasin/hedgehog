@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use hh_core::normalize::{normalize_file, Options};
+use hh_core::normalize::{Options, normalize_file};
 use hh_core::values::Locale;
-use hh_core::{open, Sheet, Value, Workbook};
+use hh_core::{Sheet, Value, Workbook, open};
 use rust_xlsxwriter::{Format, Formula, Workbook as XWorkbook};
 
 fn tmp_dir(name: &str) -> PathBuf {
@@ -24,8 +24,10 @@ fn build_messy(path: &Path) {
     ws.set_name("Sales").unwrap();
     let date = Format::new().set_num_format("yyyy-mm-dd");
     ws.write_string(0, 0, "Sales report 2024").unwrap();
-    ws.merge_range(2, 0, 3, 0, "Product", &Format::new()).unwrap();
-    ws.merge_range(2, 1, 2, 2, "Revenue", &Format::new()).unwrap();
+    ws.merge_range(2, 0, 3, 0, "Product", &Format::new())
+        .unwrap();
+    ws.merge_range(2, 1, 2, 2, "Revenue", &Format::new())
+        .unwrap();
     ws.write_string(3, 1, "Q1").unwrap();
     ws.write_string(3, 2, "Q2").unwrap();
     ws.merge_range(2, 3, 3, 3, "Date", &Format::new()).unwrap();
@@ -61,7 +63,8 @@ fn build_messy(path: &Path) {
     ws.write_string(12, 0, "Grand total").unwrap();
     ws.write_number(12, 1, 1550.5).unwrap();
     ws.write_number(12, 2, 1999.0).unwrap(); // wrong on purpose (should be 1330)
-    ws.write_string(14, 0, "Source: internal ERP export, amounts in USD").unwrap();
+    ws.write_string(14, 0, "Source: internal ERP export, amounts in USD")
+        .unwrap();
 
     // Two stacked tables, European numbers, a Serbian Cyrillic header, text dates.
     let ws = wb.add_worksheet();
@@ -87,7 +90,8 @@ fn build_messy(path: &Path) {
     for i in 0..4u32 {
         ws.write_string(11 + i, 0, format!("00{}", i + 1)).unwrap();
         ws.write_number(11 + i, 1, (i * 10) as f64).unwrap();
-        ws.write_string(11 + i, 2, if i % 2 == 0 { "yes" } else { "no" }).unwrap();
+        ws.write_string(11 + i, 2, if i % 2 == 0 { "yes" } else { "no" })
+            .unwrap();
         ws.write_string(11 + i, 3, format!("X{i}")).unwrap();
     }
     ws.write_string(20, 6, "stray").unwrap();
@@ -95,7 +99,10 @@ fn build_messy(path: &Path) {
 }
 
 fn sheet<'a>(wb: &'a Workbook, name: &str) -> &'a Sheet {
-    wb.sheets.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("no sheet {name}: {:?}", names(wb)))
+    wb.sheets
+        .iter()
+        .find(|s| s.name == name)
+        .unwrap_or_else(|| panic!("no sheet {name}: {:?}", names(wb)))
 }
 
 fn names(wb: &Workbook) -> Vec<String> {
@@ -103,7 +110,10 @@ fn names(wb: &Workbook) -> Vec<String> {
 }
 
 fn get(s: &Sheet, row: u32, col: u32) -> Option<&Value> {
-    s.cells.iter().find(|c| c.row == row && c.col == col).and_then(|c| c.value.as_ref())
+    s.cells
+        .iter()
+        .find(|c| c.row == row && c.col == col)
+        .and_then(|c| c.value.as_ref())
 }
 
 fn row_vals(s: &Sheet, row: u32) -> Vec<Option<Value>> {
@@ -134,64 +144,178 @@ fn messy_workbook_round_trip() {
     build_messy(&src);
     let before = std::fs::read(&src).unwrap();
     let out = normalize_file(&src, dir.join("out"), &Options::default()).unwrap();
-    assert_eq!(std::fs::read(&src).unwrap(), before, "source must not change");
+    assert_eq!(
+        std::fs::read(&src).unwrap(),
+        before,
+        "source must not change"
+    );
     assert_eq!(out.xlsx_path, dir.join("out/messy.normalized.xlsx"));
     assert_eq!(out.manifest_path, dir.join("out/messy.manifest.json"));
     assert!(out.csv_paths.is_empty());
     let wb = open(&out.xlsx_path).unwrap();
-    assert_eq!(names(&wb), ["README", "T1_sales_report_2024", "T2_prodaja", "T3_prodaja", "Totals", "Notes"]);
+    assert_eq!(
+        names(&wb),
+        [
+            "README",
+            "T1_sales_report_2024",
+            "T2_prodaja",
+            "T3_prodaja",
+            "Totals",
+            "Notes"
+        ]
+    );
 
     // T1: title above, 2-row merged header, groups → leading column, totals removed.
     let t1 = sheet(&wb, "T1_sales_report_2024");
     assert_eq!(
         row_vals(t1, 0),
-        [text("Region"), text("Product"), text("Revenue / Q1"), text("Revenue / Q2"), text("Date"), text("Share"), text("_src_row")]
+        [
+            text("Region"),
+            text("Product"),
+            text("Revenue / Q1"),
+            text("Revenue / Q2"),
+            text("Date"),
+            text("Share"),
+            text("_src_row")
+        ]
     );
-    assert_eq!(row_count(t1), 5, "4 data rows, subtotals and grand total removed");
+    assert_eq!(
+        row_count(t1),
+        5,
+        "4 data rows, subtotals and grand total removed"
+    );
     assert_eq!(
         row_vals(t1, 1),
-        [text("North"), text("Apple"), num(1200.5), num(1000.0), date(2024, 3, 15), num(0.12), num(6.0)]
+        [
+            text("North"),
+            text("Apple"),
+            num(1200.5),
+            num(1000.0),
+            date(2024, 3, 15),
+            num(0.12),
+            num(6.0)
+        ]
     );
     assert_eq!(
         row_vals(t1, 2),
-        [text("North"), text("Pear"), num(300.0), num(200.0), date(2024, 3, 20), None, num(7.0)]
+        [
+            text("North"),
+            text("Pear"),
+            num(300.0),
+            num(200.0),
+            date(2024, 3, 20),
+            None,
+            num(7.0)
+        ]
     );
     assert_eq!(
         row_vals(t1, 4),
-        [text("South"), text("Kiwi"), None, num(70.0), date(2024, 4, 2), num(0.075), num(11.0)]
+        [
+            text("South"),
+            text("Kiwi"),
+            None,
+            num(70.0),
+            date(2024, 4, 2),
+            num(0.075),
+            num(11.0)
+        ]
     );
 
     // T2: European numbers as text, Serbian dates, Cyrillic header, #N/A → empty.
     let t2 = sheet(&wb, "T2_prodaja");
-    assert_eq!(row_vals(t2, 0), [text("Град"), text("Износ"), text("Датум"), text("_src_row")]);
-    assert_eq!(row_vals(t2, 1), [text("Београд"), num(1234.56), date(2024, 12, 31), num(2.0)]);
-    assert_eq!(row_vals(t2, 3), [text("Нови Сад"), num(987.1), date(2025, 2, 1), num(4.0)]);
-    assert_eq!(row_vals(t2, 4), [text("Крагујевац"), None, date(2025, 2, 3), num(5.0)]);
+    assert_eq!(
+        row_vals(t2, 0),
+        [text("Град"), text("Износ"), text("Датум"), text("_src_row")]
+    );
+    assert_eq!(
+        row_vals(t2, 1),
+        [text("Београд"), num(1234.56), date(2024, 12, 31), num(2.0)]
+    );
+    assert_eq!(
+        row_vals(t2, 3),
+        [text("Нови Сад"), num(987.1), date(2025, 2, 1), num(4.0)]
+    );
+    assert_eq!(
+        row_vals(t2, 4),
+        [text("Крагујевац"), None, date(2025, 2, 3), num(5.0)]
+    );
 
     // T3: leading-zero codes stay text, yes/no → bool, duplicate header renamed.
     let t3 = sheet(&wb, "T3_prodaja");
-    assert_eq!(row_vals(t3, 0), [text("Code"), text("Qty"), text("Active"), text("Code (2)"), text("_src_row")]);
-    assert_eq!(row_vals(t3, 2), [text("002"), num(10.0), Some(Value::Bool(false)), text("X1"), num(13.0)]);
+    assert_eq!(
+        row_vals(t3, 0),
+        [
+            text("Code"),
+            text("Qty"),
+            text("Active"),
+            text("Code (2)"),
+            text("_src_row")
+        ]
+    );
+    assert_eq!(
+        row_vals(t3, 2),
+        [
+            text("002"),
+            num(10.0),
+            Some(Value::Bool(false)),
+            text("X1"),
+            num(13.0)
+        ]
+    );
 
     // Totals: subtotals + grand total, the wrong grand total flagged.
     let tot = sheet(&wb, "Totals");
     assert_eq!(get(tot, 0, 2), text("cell").as_ref());
     let rows: Vec<Vec<Option<Value>>> = (1..row_count(tot)).map(|r| row_vals(tot, r)).collect();
     assert_eq!(rows.len(), 6);
-    let c13 = rows.iter().find(|r| r[2] == text("C13")).expect("grand total C13 listed");
+    let c13 = rows
+        .iter()
+        .find(|r| r[2] == text("C13"))
+        .expect("grand total C13 listed");
     assert_eq!(c13[3], text("Grand total"));
     assert_eq!(c13[8], num(1999.0));
     assert_eq!(c13[10], text("mismatch"));
-    assert!(rows.iter().all(|r| r[0] == text("T1") && r[14] == Some(Value::Bool(false))));
+    assert!(
+        rows.iter()
+            .all(|r| r[0] == text("T1") && r[14] == Some(Value::Bool(false)))
+    );
     let c12 = rows.iter().find(|r| r[2] == text("C12")).unwrap();
-    assert_eq!((c12[5].clone(), c12[10].clone()), (text("subtotal"), text("ok")));
+    assert_eq!(
+        (c12[5].clone(), c12[10].clone()),
+        (text("subtotal"), text("ok"))
+    );
 
     // Notes: title, footnote and a stray cell, nothing dropped.
     let notes = sheet(&wb, "Notes");
-    assert_eq!(row_vals(notes, 1), [text("Sales"), text("A1"), text("title"), text("T1"), text("Sales report 2024"), None]);
-    assert_eq!(row_vals(notes, 2)[1..4], [text("A15"), text("note"), text("T1")]);
-    assert_eq!(row_vals(notes, 3)[..5], [text("Prodaja"), text("G21"), text("other"), None, text("stray")]);
-    assert_eq!(out.cells.total, out.cells.in_tables + out.cells.in_totals + out.cells.in_notes);
+    assert_eq!(
+        row_vals(notes, 1),
+        [
+            text("Sales"),
+            text("A1"),
+            text("title"),
+            text("T1"),
+            text("Sales report 2024"),
+            None
+        ]
+    );
+    assert_eq!(
+        row_vals(notes, 2)[1..4],
+        [text("A15"), text("note"), text("T1")]
+    );
+    assert_eq!(
+        row_vals(notes, 3)[..5],
+        [
+            text("Prodaja"),
+            text("G21"),
+            text("other"),
+            None,
+            text("stray")
+        ]
+    );
+    assert_eq!(
+        out.cells.total,
+        out.cells.in_tables + out.cells.in_totals + out.cells.in_notes
+    );
     assert_eq!(out.cells.in_notes, 3);
 
     // Manifest.
@@ -225,7 +349,10 @@ fn messy_workbook_round_trip() {
 
     // Deterministic: a second run gives the same manifest bytes.
     let again = normalize_file(&src, dir.join("out2"), &Options::default()).unwrap();
-    assert_eq!(again.manifest_json.replace("out2", "out"), out.manifest_json);
+    assert_eq!(
+        again.manifest_json.replace("out2", "out"),
+        out.manifest_json
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -234,7 +361,12 @@ fn keep_totals_csv_and_locale() {
     let dir = tmp_dir("keep");
     let src = dir.join("messy.xlsx");
     build_messy(&src);
-    let opts = Options { keep_totals: true, csv: true, locale: Some(Locale::parse("de-DE").unwrap()), ..Options::default() };
+    let opts = Options {
+        keep_totals: true,
+        csv: true,
+        locale: Some(Locale::parse("de-DE").unwrap()),
+        ..Options::default()
+    };
     let out = normalize_file(&src, &dir, &opts).unwrap();
     let wb = open(&out.xlsx_path).unwrap();
     let t1 = sheet(&wb, "T1_sales_report_2024");
@@ -243,7 +375,15 @@ fn keep_totals_csv_and_locale() {
     let types: Vec<Option<Value>> = (1..8).map(|r| row_vals(t1, r)[7].clone()).collect();
     assert_eq!(
         types,
-        [text("data"), text("data"), text("subtotal"), text("data"), text("data"), text("subtotal"), text("total")]
+        [
+            text("data"),
+            text("data"),
+            text("subtotal"),
+            text("data"),
+            text("data"),
+            text("subtotal"),
+            text("total")
+        ]
     );
     assert_eq!(row_vals(t1, 7)[6], num(13.0), "_src_row of the grand total");
     // A subtotal belongs to its group, the grand total to none.
@@ -251,7 +391,15 @@ fn keep_totals_csv_and_locale() {
     let groups: Vec<Option<Value>> = (1..8).map(|r| row_vals(t1, r)[0].clone()).collect();
     assert_eq!(
         groups,
-        [text("North"), text("North"), text("North"), text("South"), text("South"), text("South"), None]
+        [
+            text("North"),
+            text("North"),
+            text("North"),
+            text("South"),
+            text("South"),
+            text("South"),
+            None
+        ]
     );
     // Unambiguous US text numbers are still read correctly; the locale only settles ambiguous ones.
     assert_eq!(get(t1, 1, 2), num(1200.5).as_ref());
@@ -264,8 +412,14 @@ fn keep_totals_csv_and_locale() {
 
     assert_eq!(out.csv_paths.len(), 3);
     let csv = std::fs::read_to_string(dir.join("messy.T2_prodaja.csv")).unwrap();
-    assert_eq!(csv.lines().next().unwrap(), "Град,Износ,Датум,_src_row,_row_type");
-    assert_eq!(csv.lines().nth(1).unwrap(), "Београд,1234.56,2024-12-31,2,data");
+    assert_eq!(
+        csv.lines().next().unwrap(),
+        "Град,Износ,Датум,_src_row,_row_type"
+    );
+    assert_eq!(
+        csv.lines().nth(1).unwrap(),
+        "Београд,1234.56,2024-12-31,2,data"
+    );
     assert_eq!(csv.lines().nth(4).unwrap(), "Крагујевац,,2025-02-03,5,data");
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -292,7 +446,8 @@ fn forward_filled_header_formulas_and_blank_rows() {
         }
     }
     ws.write_string(9, 0, "Total").unwrap();
-    ws.write_formula(9, 1, Formula::new("=SUM(B3:B9)").set_result("156")).unwrap();
+    ws.write_formula(9, 1, Formula::new("=SUM(B3:B9)").set_result("156"))
+        .unwrap();
     wb.save(&src).unwrap();
 
     let out = normalize_file(&src, &dir, &Options::default()).unwrap();
@@ -300,10 +455,27 @@ fn forward_filled_header_formulas_and_blank_rows() {
     let t = &book.sheets[1];
     assert_eq!(
         row_vals(t, 0),
-        [text("Item"), text("2023 / Plan"), text("2023 / Actual"), text("2024 / Plan"), text("2024 / Actual"), text("_src_row")]
+        [
+            text("Item"),
+            text("2023 / Plan"),
+            text("2023 / Actual"),
+            text("2024 / Plan"),
+            text("2024 / Actual"),
+            text("_src_row")
+        ]
     );
     assert_eq!(row_count(t), 7);
-    assert_eq!(row_vals(t, 4), [text("Item 3"), num(31.0), num(32.0), num(33.0), num(34.0), num(7.0)]);
+    assert_eq!(
+        row_vals(t, 4),
+        [
+            text("Item 3"),
+            num(31.0),
+            num(32.0),
+            num(33.0),
+            num(34.0),
+            num(7.0)
+        ]
+    );
     let m = &out.manifest_json;
     assert!(m.contains("\"header_cells_forward_filled\": 2"), "{m}");
     assert!(m.contains("\"blank_rows_removed\": 1"), "{m}");
@@ -346,7 +518,14 @@ fn key_value_cells_outside_tables() {
     ws.write_string(0, 1, "Cash Journal").unwrap();
     ws.write_string(1, 1, "Contact:").unwrap();
     ws.write_string(1, 2, "cash@example.com").unwrap();
-    for (k, (label, v)) in [("Total Income", 9666.0), ("Total Expenditure", 7266.0), ("Total Remaining", 2400.0)].iter().enumerate() {
+    for (k, (label, v)) in [
+        ("Total Income", 9666.0),
+        ("Total Expenditure", 7266.0),
+        ("Total Remaining", 2400.0),
+    ]
+    .iter()
+    .enumerate()
+    {
         ws.write_string(1, 5 + 3 * k as u16, *label).unwrap();
         ws.write_number(1, 6 + 3 * k as u16, *v).unwrap();
     }
@@ -362,7 +541,10 @@ fn key_value_cells_outside_tables() {
     let out = normalize_file(&src, &dir, &Options::default()).unwrap();
     let book = open(&out.xlsx_path).unwrap();
     let names = names(&book);
-    let kv = names.iter().position(|n| n.ends_with("_key_value_cells")).unwrap_or_else(|| panic!("{names:?}"));
+    let kv = names
+        .iter()
+        .position(|n| n.ends_with("_key_value_cells"))
+        .unwrap_or_else(|| panic!("{names:?}"));
     assert!(names[kv].starts_with("T2_"), "{names:?}");
     let t = &book.sheets[kv];
     assert_eq!(get(t, 0, 0), text("key").as_ref());
@@ -371,7 +553,10 @@ fn key_value_cells_outside_tables() {
     assert_eq!(get(t, 3, 2), text("M2").as_ref());
     assert!(get(t, 4, 0).is_none(), "three pairs only");
     let m = &out.manifest_json;
-    assert!(m.contains("cash@example.com"), "the e-mail stays a note: {m}");
+    assert!(
+        m.contains("cash@example.com"),
+        "the e-mail stays a note: {m}"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -384,16 +569,21 @@ fn lone_opening_parenthesis_is_a_negative() {
     let src = dir.join("p.xlsx");
     let mut wb = XWorkbook::new();
     let ws = wb.add_worksheet();
-    ws.write_string(0, 0, "Net liabilities per capita, dollars").unwrap();
+    ws.write_string(0, 0, "Net liabilities per capita, dollars")
+        .unwrap();
     ws.write_string(1, 0, "Province").unwrap();
     ws.write_string(1, 1, "2007").unwrap();
     ws.write_string(1, 2, "Note").unwrap();
-    let vals = ["13,505", "9,593", "11,070", "8,347", "(11,134", "2,330", "(14,652", "(10,630", "(6,208", "6,888"];
+    let vals = [
+        "13,505", "9,593", "11,070", "8,347", "(11,134", "2,330", "(14,652", "(10,630", "(6,208",
+        "6,888",
+    ];
     for (i, v) in vals.iter().enumerate() {
         let r = 2 + i as u32;
         ws.write_string(r, 0, format!("Province {i}")).unwrap();
         ws.write_string(r, 1, *v).unwrap();
-        ws.write_string(r, 2, if i == 3 { "(see note" } else { "ok" }).unwrap();
+        ws.write_string(r, 2, if i == 3 { "(see note" } else { "ok" })
+            .unwrap();
     }
     wb.save(&src).unwrap();
     let out = normalize_file(&src, &dir, &Options::default()).unwrap();
@@ -434,7 +624,10 @@ fn unparsed_values_are_kept_and_reported() {
     assert_eq!(get(t, 1, 1), num(100.5).as_ref());
     assert_eq!(get(t, 5, 1), text("approx. five").as_ref());
     let m = &out.manifest_json;
-    assert!(m.contains("1 value(s) are not numbers and were kept as text: B7"), "{m}");
+    assert!(
+        m.contains("1 value(s) are not numbers and were kept as text: B7"),
+        "{m}"
+    );
     assert!(m.contains("\"unparsed_kept_as_text\": 1"), "{m}");
     // The title is not part of the table range (the model path trims it); it names the table.
     assert!(m.contains("\"range\": \"A2:C14\""), "{m}");
@@ -478,15 +671,32 @@ fn group_label_on_the_first_data_row_opens_a_group() {
     ws.write_string(14, 0, "Oct").unwrap();
     item(ws, 15, "Gas", 130.0);
     wb.save(&src).unwrap();
-    let opts = Options { rules_only: true, ..Options::default() };
+    let opts = Options {
+        rules_only: true,
+        ..Options::default()
+    };
     let out = normalize_file(&src, &dir, &opts).unwrap();
     let book = open(&out.xlsx_path).unwrap();
     let t = &book.sheets[1];
-    assert_eq!(row_vals(t, 0), [text("group"), text("Item"), text("Amount"), text("Fee"), text("_src_row")]);
+    assert_eq!(
+        row_vals(t, 0),
+        [
+            text("group"),
+            text("Item"),
+            text("Amount"),
+            text("Fee"),
+            text("_src_row")
+        ]
+    );
     let groups: Vec<Option<Value>> = (1..row_count(t)).map(|r| get(t, r, 0).cloned()).collect();
-    let expect = ["Jul", "Jul", "Jul", "Aug", "Aug", "Aug", "Sep", "Sep", "Sep", "Oct"];
+    let expect = [
+        "Jul", "Jul", "Jul", "Aug", "Aug", "Aug", "Sep", "Sep", "Sep", "Oct",
+    ];
     assert_eq!(groups, expect.iter().map(|g| text(g)).collect::<Vec<_>>());
-    assert_eq!(row_vals(t, 7), [text("Sep"), text("Gas"), num(120.0), num(12.0), num(11.0)]);
+    assert_eq!(
+        row_vals(t, 7),
+        [text("Sep"), text("Gas"), num(120.0), num(12.0), num(11.0)]
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -500,7 +710,10 @@ fn register_rows_with_total_in_their_description_stay_in_the_table() {
     let mut wb = XWorkbook::new();
     let ws = wb.add_worksheet();
     ws.set_name("Contracts").unwrap();
-    for (j, h) in ["id", "type", "description", "supplier", "price"].iter().enumerate() {
+    for (j, h) in ["id", "type", "description", "supplier", "price"]
+        .iter()
+        .enumerate()
+    {
         ws.write_string(0, j as u16, *h).unwrap();
     }
     let n = 300u32;
@@ -516,22 +729,50 @@ fn register_rows_with_total_in_their_description_stay_in_the_table() {
             _ => format!("Fornecedor {r} Lda"),
         };
         ws.write_number(r, 0, 7_000_000.0 + r as f64).unwrap();
-        ws.write_string(r, 1, if r % 2 == 0 { "Aquisição de serviços" } else { "Aquisição de bens móveis" }).unwrap();
+        ws.write_string(
+            r,
+            1,
+            if r % 2 == 0 {
+                "Aquisição de serviços"
+            } else {
+                "Aquisição de bens móveis"
+            },
+        )
+        .unwrap();
         ws.write_string(r, 2, &desc).unwrap();
         ws.write_string(r, 3, &supplier).unwrap();
         ws.write_number(r, 4, price(r)).unwrap();
     }
     ws.write_string(n + 1, 0, "Total").unwrap();
-    ws.write_number(n + 1, 4, (1..=n).map(price).sum::<f64>()).unwrap();
+    ws.write_number(n + 1, 4, (1..=n).map(price).sum::<f64>())
+        .unwrap();
     wb.save(&src).unwrap();
     let book = open(&src).unwrap();
     for rules_only in [true, false] {
-        let norm = hh_core::normalize::normalize_workbook(&book, &Options { rules_only, ..Options::default() });
+        let norm = hh_core::normalize::normalize_workbook(
+            &book,
+            &Options {
+                rules_only,
+                ..Options::default()
+            },
+        );
         let t = &norm.tables[0];
         assert_eq!(t.src_rows.len(), n as usize, "rules_only={rules_only}");
-        assert_eq!(t.transforms.get(hh_core::normalize::T::TotalRowsRemoved), 1, "rules_only={rules_only}");
-        let rows: Vec<u32> = hh_core::normalize::table_totals(t, &norm.totals).rows.iter().map(|r| r.row).collect();
-        assert_eq!(rows, vec![n + 2], "rules_only={rules_only}: 1-based row of the real total");
+        assert_eq!(
+            t.transforms.get(hh_core::normalize::T::TotalRowsRemoved),
+            1,
+            "rules_only={rules_only}"
+        );
+        let rows: Vec<u32> = hh_core::normalize::table_totals(t, &norm.totals)
+            .rows
+            .iter()
+            .map(|r| r.row)
+            .collect();
+        assert_eq!(
+            rows,
+            vec![n + 2],
+            "rules_only={rules_only}: 1-based row of the real total"
+        );
     }
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -544,23 +785,47 @@ fn register_trade_names_with_total_or_aggregate_words_stay_data() {
     let mut wb = XWorkbook::new();
     let ws = wb.add_worksheet();
     ws.set_name("Licenses").unwrap();
-    for (j, h) in ["id", "license_id", "legal_name", "dba_name", "address", "ward"].iter().enumerate() {
+    for (j, h) in [
+        "id",
+        "license_id",
+        "legal_name",
+        "dba_name",
+        "address",
+        "ward",
+    ]
+    .iter()
+    .enumerate()
+    {
         ws.write_string(0, j as u16, *h).unwrap();
     }
     let n = 300u32;
     for r in 1..=n {
         let (legal, dba) = match r {
-            40 | 41 | 120 => (format!("GROWTH WIRELESS {r} LLC"), "TOTAL WIRELESS".to_string()),
-            200 => ("MAXIMUM MARKETING SERVICES INC".to_string(), "Maximum Marketing".to_string()),
-            201 => ("AAA MAXIMUM TOWING AND RECOVERY INC.".to_string(), "AAA MAXIMUM TOWING".to_string()),
-            250 => ("MORE THAN AVERAGE LLC".to_string(), "Above Average Candle Studio".to_string()),
+            40 | 41 | 120 => (
+                format!("GROWTH WIRELESS {r} LLC"),
+                "TOTAL WIRELESS".to_string(),
+            ),
+            200 => (
+                "MAXIMUM MARKETING SERVICES INC".to_string(),
+                "Maximum Marketing".to_string(),
+            ),
+            201 => (
+                "AAA MAXIMUM TOWING AND RECOVERY INC.".to_string(),
+                "AAA MAXIMUM TOWING".to_string(),
+            ),
+            250 => (
+                "MORE THAN AVERAGE LLC".to_string(),
+                "Above Average Candle Studio".to_string(),
+            ),
             _ => (format!("Business {r} LLC"), format!("Shop {r}")),
         };
-        ws.write_string(r, 0, format!("{}-20260416", 2_800_000 + r * 7)).unwrap();
+        ws.write_string(r, 0, format!("{}-20260416", 2_800_000 + r * 7))
+            .unwrap();
         ws.write_number(r, 1, (3_000_000 + r * 13) as f64).unwrap();
         ws.write_string(r, 2, &legal).unwrap();
         ws.write_string(r, 3, &dba).unwrap();
-        ws.write_string(r, 4, format!("{} N MAIN ST", 100 + r)).unwrap();
+        ws.write_string(r, 4, format!("{} N MAIN ST", 100 + r))
+            .unwrap();
         ws.write_number(r, 5, (r % 50 + 1) as f64).unwrap();
     }
     let dir = tmp_dir("register_trade_names");
@@ -568,10 +833,24 @@ fn register_trade_names_with_total_or_aggregate_words_stay_data() {
     wb.save(&src).unwrap();
     let book = open(&src).unwrap();
     for rules_only in [true, false] {
-        let norm = hh_core::normalize::normalize_workbook(&book, &Options { rules_only, ..Options::default() });
+        let norm = hh_core::normalize::normalize_workbook(
+            &book,
+            &Options {
+                rules_only,
+                ..Options::default()
+            },
+        );
         assert_eq!(norm.tables.len(), 1, "rules_only={rules_only}");
-        assert_eq!(norm.tables[0].src_rows.len(), n as usize, "rules_only={rules_only}");
-        assert_eq!((norm.cells.in_totals, norm.cells.in_notes), (0, 0), "rules_only={rules_only}");
+        assert_eq!(
+            norm.tables[0].src_rows.len(),
+            n as usize,
+            "rules_only={rules_only}"
+        );
+        assert_eq!(
+            (norm.cells.in_totals, norm.cells.in_notes),
+            (0, 0),
+            "rules_only={rules_only}"
+        );
     }
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -590,16 +869,32 @@ fn total_rows_take_the_keys_of_their_block() {
     ws.write_number(0, 1, 2024.0).unwrap();
     ws.write_number(0, 2, 2025.0).unwrap();
     ws.write_string(1, 0, "Anzahl").unwrap();
-    for (i, (l, a, b)) in [("Allein", 100.0, 110.0), ("Verheiratet", 50.0, 40.0), ("Witwe", 25.0, 30.0)].iter().enumerate() {
+    for (i, (l, a, b)) in [
+        ("Allein", 100.0, 110.0),
+        ("Verheiratet", 50.0, 40.0),
+        ("Witwe", 25.0, 30.0),
+    ]
+    .iter()
+    .enumerate()
+    {
         ws.write_string(2 + i as u32, 0, *l).unwrap();
         ws.write_number(2 + i as u32, 1, *a).unwrap();
         ws.write_number(2 + i as u32, 2, *b).unwrap();
     }
     ws.write_string(5, 0, "Gesamt").unwrap();
-    ws.write_formula(5, 1, Formula::new("=SUM(B1:B5)").set_result("2199")).unwrap();
-    ws.write_formula(5, 2, Formula::new("=SUM(C1:C5)").set_result("2205")).unwrap();
+    ws.write_formula(5, 1, Formula::new("=SUM(B1:B5)").set_result("2199"))
+        .unwrap();
+    ws.write_formula(5, 2, Formula::new("=SUM(C1:C5)").set_result("2205"))
+        .unwrap();
     ws.write_string(6, 0, "Euro").unwrap();
-    for (i, (l, a, b)) in [("Allein", 300.5, 310.5), ("Verheiratet", 400.5, 410.5), ("Witwe", 200.5, 210.5)].iter().enumerate() {
+    for (i, (l, a, b)) in [
+        ("Allein", 300.5, 310.5),
+        ("Verheiratet", 400.5, 410.5),
+        ("Witwe", 200.5, 210.5),
+    ]
+    .iter()
+    .enumerate()
+    {
         ws.write_string(7 + i as u32, 0, *l).unwrap();
         ws.write_number(7 + i as u32, 1, *a).unwrap();
         ws.write_number(7 + i as u32, 2, *b).unwrap();
@@ -618,22 +913,41 @@ fn total_rows_take_the_keys_of_their_block() {
             r += 1;
         }
         ws.write_string(r, 1, "Total").unwrap();
-        ws.write_formula(r, 2, Formula::new(format!("=SUM(C{}:C{})", r - 2, r)).set_result(format!("{}", sign * 33.0))).unwrap();
+        ws.write_formula(
+            r,
+            2,
+            Formula::new(format!("=SUM(C{}:C{})", r - 2, r)).set_result(format!("{}", sign * 33.0)),
+        )
+        .unwrap();
         r += 1;
     }
     wb.save(&src).unwrap();
-    let opts = Options { keep_totals: true, rules_only: true, ..Options::default() };
+    let opts = Options {
+        keep_totals: true,
+        rules_only: true,
+        ..Options::default()
+    };
     let out = normalize_file(&src, &dir, &opts).unwrap();
     let book = open(&out.xlsx_path).unwrap();
     let names = names(&book);
     let pension = sheet(&book, names.iter().find(|n| n.starts_with("T1")).unwrap());
-    let rows: Vec<Vec<Option<Value>>> = (0..row_count(pension)).map(|r| row_vals(pension, r)).collect();
-    let gesamt = rows.iter().find(|r| r.contains(&text("Gesamt"))).unwrap_or_else(|| panic!("{rows:?}"));
-    assert_eq!(gesamt[0], text("Anzahl"), "the total row keeps its group: {rows:?}");
+    let rows: Vec<Vec<Option<Value>>> = (0..row_count(pension))
+        .map(|r| row_vals(pension, r))
+        .collect();
+    let gesamt = rows
+        .iter()
+        .find(|r| r.contains(&text("Gesamt")))
+        .unwrap_or_else(|| panic!("{rows:?}"));
+    assert_eq!(
+        gesamt[0],
+        text("Anzahl"),
+        "the total row keeps its group: {rows:?}"
+    );
     assert_eq!(gesamt.last().unwrap(), &text("total"), "{rows:?}");
     let flows = sheet(&book, names.iter().find(|n| n.starts_with("T2")).unwrap());
     let rows: Vec<Vec<Option<Value>>> = (0..row_count(flows)).map(|r| row_vals(flows, r)).collect();
-    let totals: Vec<&Vec<Option<Value>>> = rows.iter().filter(|r| r.contains(&text("Total"))).collect();
+    let totals: Vec<&Vec<Option<Value>>> =
+        rows.iter().filter(|r| r.contains(&text("Total"))).collect();
     assert_eq!(totals.len(), 2, "{rows:?}");
     assert_eq!(totals[0][0], text("Receipts"), "{rows:?}");
     assert_eq!(totals[1][0], text("Deliveries"), "{rows:?}");

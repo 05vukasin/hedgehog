@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use hh_core::eval::deco::{load, map_label};
-use hh_core::eval::run::{evaluate, RunOptions};
+use hh_core::eval::run::{RunOptions, evaluate};
 use hh_core::eval::split::Split;
 use hh_core::eval::{baseline, metrics::role_index};
 use hh_core::{Grid, Rect, Role};
@@ -49,19 +49,26 @@ fn write_fixture(root: &Path) {
     ws.write_number(4, 2, 4.0).unwrap();
     ws.write_string(5, 0, "Total").unwrap();
     ws.write_number(5, 2, 6.0).unwrap();
-    wb.save(root.join("irregular/enron/u__1__fix.xlsx")).unwrap();
+    wb.save(root.join("irregular/enron/u__1__fix.xlsx"))
+        .unwrap();
 
     let ranges = "FileName,SheetName,SheetIndex,AnnotationName,AnnotationLabel,AnnotationParent,AnnotationAddress,FirstColumn,FirstRow,LastColumn,LastRow\n\
 \"u__1__fix.xlsx\",\"Data, sheet\",1,\"T\",Table,\"Data, sheet\",$A$3:$C$6,0,2,2,5\n\
 \"u__1__fix.xlsx\",\"Data, sheet\",1,\"M\",MetaTitle,\"Data, sheet\",$A$1,0,0,0,0\n\
 \"u__2__gone.xlsx\",\"Sheet1\",1,\"T\",Table,\"Sheet1\",$A$1:$B$2,0,0,1,1\n";
-    std::fs::write(root.join("irregular/deco/annotations/rangeAnnotations.csv"), ranges).unwrap();
+    std::fs::write(
+        root.join("irregular/deco/annotations/rangeAnnotations.csv"),
+        ranges,
+    )
+    .unwrap();
 
     let mut cells = String::from(
         "FileName,SheetName,SheetIndex,TableName,AnnotationLabel,AnnotationAddress,FirstColumn,FirstRow,LastColumn,LastRow\n",
     );
     let mut add = |label: &str, row: u32, col: u32| {
-        cells.push_str(&format!("\"u__1__fix.xlsx\",\"Data, sheet\",1,\"T\",{label},X,{col},{row},{col},{row}\n"));
+        cells.push_str(&format!(
+            "\"u__1__fix.xlsx\",\"Data, sheet\",1,\"T\",{label},X,{col},{row},{col},{row}\n"
+        ));
     };
     add("MetaTitle", 0, 0);
     for c in 0..3 {
@@ -75,7 +82,11 @@ fn write_fixture(root: &Path) {
     add("Derived", 5, 0);
     add("Derived", 5, 2);
     add("Mystery", 9, 9); // unmapped, and no such cell in the sheet → missing
-    std::fs::write(root.join("irregular/deco/annotations/cellAnnotations.csv"), cells).unwrap();
+    std::fs::write(
+        root.join("irregular/deco/annotations/cellAnnotations.csv"),
+        cells,
+    )
+    .unwrap();
 }
 
 #[test]
@@ -91,10 +102,22 @@ fn deco_loader_and_baseline_run() {
     let s = &corpus.files[0].sheets[0];
     assert_eq!(s.name, "Data, sheet");
     assert_eq!(s.index, Some(0));
-    assert_eq!(s.tables, vec![Rect { top: 2, left: 0, bottom: 5, right: 2 }]);
+    assert_eq!(
+        s.tables,
+        vec![Rect {
+            top: 2,
+            left: 0,
+            bottom: 5,
+            right: 2
+        }]
+    );
     assert_eq!(s.cells.len(), 13);
 
-    let opts = RunOptions { split: Split::All, limit: None, progress: false };
+    let opts = RunOptions {
+        split: Split::All,
+        limit: None,
+        progress: false,
+    };
     let rep = evaluate(&corpus, &baseline::analyze, "baseline", &opts);
     assert_eq!(rep.files_evaluated, 1);
     assert!(rep.files_failed.is_empty());
@@ -109,9 +132,15 @@ fn deco_loader_and_baseline_run() {
     assert_eq!(rep.tables[2].tp, 1);
     // Roles: header 3/3, data 6/6, title→other, derived (2) → data.
     let c = &rep.confusion;
-    assert_eq!(c.counts[role_index(Role::Header)][role_index(Role::Header)], 3);
+    assert_eq!(
+        c.counts[role_index(Role::Header)][role_index(Role::Header)],
+        3
+    );
     assert_eq!(c.counts[role_index(Role::Data)][role_index(Role::Data)], 6);
-    assert_eq!(c.counts[role_index(Role::Title)][role_index(Role::Other)], 1);
+    assert_eq!(
+        c.counts[role_index(Role::Title)][role_index(Role::Other)],
+        1
+    );
     assert_eq!(c.counts[role_index(Role::Total)][role_index(Role::Data)], 2);
     assert_eq!(c.total(), 12);
 
@@ -122,8 +151,11 @@ fn deco_loader_and_baseline_run() {
 
     // Corrupt original + DECO copy present → opened via fallback.
     std::fs::create_dir_all(root.join("irregular/deco/completed")).unwrap();
-    std::fs::copy(root.join("irregular/enron/u__1__fix.xlsx"), root.join("irregular/deco/completed/u__1__fix.xlsx"))
-        .unwrap();
+    std::fs::copy(
+        root.join("irregular/enron/u__1__fix.xlsx"),
+        root.join("irregular/deco/completed/u__1__fix.xlsx"),
+    )
+    .unwrap();
     std::fs::write(root.join("irregular/enron/u__1__fix.xlsx"), b"not a zip").unwrap();
     let corpus = load(&root).unwrap();
     let rep = evaluate(&corpus, &baseline::analyze, "baseline", &opts);
@@ -131,7 +163,11 @@ fn deco_loader_and_baseline_run() {
     assert_eq!(rep.sheets.len(), 1);
 
     // No usable copy → counted as failed to open, not a crash.
-    std::fs::write(root.join("irregular/deco/completed/u__1__fix.xlsx"), b"not a zip").unwrap();
+    std::fs::write(
+        root.join("irregular/deco/completed/u__1__fix.xlsx"),
+        b"not a zip",
+    )
+    .unwrap();
     let rep = evaluate(&corpus, &baseline::analyze, "baseline", &opts);
     assert_eq!(rep.files_failed.len(), 1);
     assert_eq!(rep.sheets.len(), 0);
@@ -142,16 +178,51 @@ fn deco_loader_and_baseline_run() {
 #[test]
 fn baseline_components() {
     use hh_core::{Cell, Sheet, Value};
-    let cell = |row, col| Cell { row, col, value: Some(Value::Number(1.0)), formula: None };
+    let cell = |row, col| Cell {
+        row,
+        col,
+        value: Some(Value::Number(1.0)),
+        formula: None,
+    };
     // Diagonal neighbours join (8-connectivity); an isolated cell is Other; a merged area bridges.
     let sheet = Sheet {
         name: "s".into(),
         cells: vec![cell(0, 0), cell(1, 1), cell(5, 5), cell(10, 0), cell(10, 4)],
-        merges: vec![Rect { top: 10, left: 1, bottom: 10, right: 3 }],
+        merges: vec![Rect {
+            top: 10,
+            left: 1,
+            bottom: 10,
+            right: 3,
+        }],
         formats: vec![],
     };
     let layout = baseline::analyze(&Grid::new(&sheet));
     let rects: Vec<Rect> = layout.tables.iter().map(|t| t.rect).collect();
-    assert_eq!(rects, vec![Rect { top: 0, left: 0, bottom: 1, right: 1 }, Rect { top: 10, left: 0, bottom: 10, right: 4 }]);
-    assert_eq!(layout.roles, vec![Role::Header, Role::Data, Role::Other, Role::Header, Role::Header]);
+    assert_eq!(
+        rects,
+        vec![
+            Rect {
+                top: 0,
+                left: 0,
+                bottom: 1,
+                right: 1
+            },
+            Rect {
+                top: 10,
+                left: 0,
+                bottom: 10,
+                right: 4
+            }
+        ]
+    );
+    assert_eq!(
+        layout.roles,
+        vec![
+            Role::Header,
+            Role::Data,
+            Role::Other,
+            Role::Header,
+            Role::Header
+        ]
+    );
 }

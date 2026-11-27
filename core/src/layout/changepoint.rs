@@ -15,12 +15,14 @@
 use std::collections::HashMap;
 
 use crate::model::{Sheet, Value};
-use crate::values::{parse_date, parse_number, parse_time, NumberHint};
+use crate::values::{NumberHint, parse_date, parse_number, parse_time};
 
 use super::blocks::{Entry, Row};
 use super::cells::Kind;
 use super::params::*;
-use super::tables::{is_header_row, is_headerish, is_title_row_simple, is_total_row, signature_is, Signature};
+use super::tables::{
+    Signature, is_header_row, is_headerish, is_title_row_simple, is_total_row, signature_is,
+};
 
 const K: usize = 6;
 const EMPTY: u8 = 0;
@@ -70,11 +72,18 @@ fn class_of(sheet: &Sheet, e: &Entry) -> u8 {
             // "Jan 5, 2001"); addresses and descriptions skip the parsers.
             if t.len() <= 32 {
                 let (digits, alnum) = t.chars().fold((0usize, 0usize), |(d, a), ch| {
-                    (d + ch.is_ascii_digit() as usize, a + ch.is_alphanumeric() as usize)
+                    (
+                        d + ch.is_ascii_digit() as usize,
+                        a + ch.is_alphanumeric() as usize,
+                    )
                 });
                 if digits > 0 && digits * 2 >= alnum {
                     if let Some(p) = parse_number(t, NumberHint::default()) {
-                        return if p.normalized().fract() == 0.0 { INT } else { DEC };
+                        return if p.normalized().fract() == 0.0 {
+                            INT
+                        } else {
+                            DEC
+                        };
                     }
                     if parse_date(t, None).is_some() || parse_time(t).is_some() {
                         return DATE;
@@ -111,7 +120,11 @@ fn signatures(sheet: &Sheet, rows: &[Row], n: usize) -> Option<Sigs> {
     // thousand columns wide; wider ones fall back to a map).
     let lo = rows.iter().map(|r| r.left()).min().unwrap_or(0);
     let hi = rows.iter().map(|r| r.right()).max().unwrap_or(0);
-    let mut flat: Vec<u16> = if hi - lo < 4096 { vec![u16::MAX; (hi - lo + 1) as usize] } else { Vec::new() };
+    let mut flat: Vec<u16> = if hi - lo < 4096 {
+        vec![u16::MAX; (hi - lo + 1) as usize]
+    } else {
+        Vec::new()
+    };
     let mut idx: HashMap<u32, u16> = HashMap::new();
     let mut ncols = 0usize;
     let mut col_of = Vec::new();
@@ -163,7 +176,12 @@ fn signatures(sheet: &Sheet, rows: &[Row], n: usize) -> Option<Sigs> {
         }
         out.push(v);
     }
-    Some(Sigs { rows: out, data, ncols, col_of })
+    Some(Sigs {
+        rows: out,
+        data,
+        ncols,
+        col_of,
+    })
 }
 
 thread_local! {
@@ -177,7 +195,13 @@ pub(crate) fn time_spent() -> (std::time::Duration, std::time::Duration) {
 }
 
 /// Row indices (into `rows`) in `a+1..b` where a new table starts.
-pub(crate) fn boundaries(sheet: &Sheet, rows: &[Row], a: usize, b: usize, header: &Signature) -> Vec<usize> {
+pub(crate) fn boundaries(
+    sheet: &Sheet,
+    rows: &[Row],
+    a: usize,
+    b: usize,
+    header: &Signature,
+) -> Vec<usize> {
     let n = b.saturating_sub(a);
     if n < 2 * CP_MIN_ROWS {
         return Vec::new();
@@ -199,7 +223,14 @@ pub(crate) fn boundaries(sheet: &Sheet, rows: &[Row], a: usize, b: usize, header
     cuts
 }
 
-fn search(sheet: &Sheet, rows: &[Row], sigs: &Sigs, a: usize, b: usize, header: &Signature) -> Vec<usize> {
+fn search(
+    sheet: &Sheet,
+    rows: &[Row],
+    sigs: &Sigs,
+    a: usize,
+    b: usize,
+    header: &Signature,
+) -> Vec<usize> {
     let mut cuts = Vec::new();
     let mut stack = vec![(a, b)];
     while let Some((lo, hi)) = stack.pop() {
@@ -215,7 +246,6 @@ fn search(sheet: &Sheet, rows: &[Row], sigs: &Sigs, a: usize, b: usize, header: 
     cuts.sort_unstable();
     cuts
 }
-
 
 #[allow(clippy::too_many_arguments)]
 fn best_cut(
@@ -307,10 +337,21 @@ fn best_cut(
             continue;
         }
         let m = da.min(db) as f32;
-        let shrink = if m >= CP_SHRINK_ROWS { 1.0 } else { m / (m + CP_SHRINK) };
+        let shrink = if m >= CP_SHRINK_ROWS {
+            1.0
+        } else {
+            m / (m + CP_SHRINK)
+        };
         let dist = num / den * shrink;
-        let shared = if sden > 0.0 { snum / sden * shrink } else { dist };
-        ranges.push((t, ra.0 != u32::MAX && rb.0 != u32::MAX && (ra.0 != rb.0 || ra.1 != rb.1)));
+        let shared = if sden > 0.0 {
+            snum / sden * shrink
+        } else {
+            dist
+        };
+        ranges.push((
+            t,
+            ra.0 != u32::MAX && rb.0 != u32::MAX && (ra.0 != rb.0 || ra.1 != rb.1),
+        ));
         cands.push((t, dist, shared));
     }
     // The cut goes where the profiles differ most; a header row or blank gap just next to it
@@ -335,8 +376,11 @@ fn best_cut(
         if repeated && !gap {
             continue;
         }
-        let head = (r.n() >= 2 && !same_types(r, &rows[t - 1]) && is_header_row(r, &rows[t + 1..hi]))
-            || (is_title_row_simple(sheet, r) && t + 1 < hi && is_header_row(&rows[t + 1], &rows[t + 2..hi]));
+        let head =
+            (r.n() >= 2 && !same_types(r, &rows[t - 1]) && is_header_row(r, &rows[t + 1..hi]))
+                || (is_title_row_simple(sheet, r)
+                    && t + 1 < hi
+                    && is_header_row(&rows[t + 1], &rows[t + 2..hi]));
         let total_above = is_total_row(sheet, &rows[t - 1]);
         let range_change = ranges.iter().find(|x| x.0 == t).is_some_and(|x| x.1);
         let weak_cue = gap || total_above || range_change;
@@ -362,7 +406,8 @@ fn best_cut(
 /// (a data row like the one above, not a header).
 fn same_types(r: &Row, prev: &Row) -> bool {
     r.n() == prev.n()
-        && r.filled().all(|e| prev.filled().any(|p| p.left == e.left && p.ty() == e.ty()))
+        && r.filled()
+            .all(|e| prev.filled().any(|p| p.left == e.left && p.ty() == e.ty()))
 }
 
 /// Blank rows between `rows[t - 1]` and `rows[t]`.

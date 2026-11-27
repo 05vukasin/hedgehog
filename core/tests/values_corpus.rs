@@ -9,12 +9,12 @@
 //! Corpus files are untrusted: they are only read through the workbook reader.
 
 use std::collections::HashMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use hh_core::values::{self, missing_token, parse_date, parse_number};
-use hh_core::{open, Cell, Features, Grid, Sheet, Value};
+use hh_core::{Cell, Features, Grid, Sheet, Value, open};
 
 fn data_dir() -> PathBuf {
     std::env::var_os("HEDGEHOG_DATA")
@@ -24,15 +24,24 @@ fn data_dir() -> PathBuf {
 }
 
 fn env_num(name: &str, default: usize) -> usize {
-    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn spreadsheet_files(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(dir) else { return out };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return out;
+    };
     for e in rd.flatten() {
         let p = e.path();
-        let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+        let ext = p
+            .extension()
+            .and_then(|x| x.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
         if matches!(ext.as_str(), "xlsx" | "xlsm" | "xls" | "xlsb" | "ods") {
             out.push(p);
         }
@@ -129,14 +138,20 @@ fn run_sheet(path: &Path, sheet: &Sheet, st: &mut Stats) {
         st.millis_compute += t0.elapsed().as_millis();
         let Ok((hints, f)) = res else {
             st.panics += 1;
-            eprintln!("PANIC in values::compute: {} / {}", path.display(), sheet.name);
+            eprintln!(
+                "PANIC in values::compute: {} / {}",
+                path.display(),
+                sheet.name
+            );
             return;
         };
         let num = f.get("v_numeric_text").unwrap();
         let time = f.get("v_time_text").unwrap();
         let date = f.get("v_date_text").unwrap();
         for (i, c) in sheet.cells.iter().enumerate() {
-            let Some(Value::Text(s)) = &c.value else { continue };
+            let Some(Value::Text(s)) = &c.value else {
+                continue;
+            };
             st.text_cells += 1;
             let h = hints.get(&c.col).copied().unwrap_or_default();
             if num[i] == 1.0 {
@@ -144,9 +159,13 @@ fn run_sheet(path: &Path, sheet: &Sheet, st: &mut Stats) {
                 if let Some(p) = parse_number(s, h.number_hint()) {
                     st.with_currency += p.currency.is_some() as usize;
                     if let Some(cur) = p.currency {
-                        let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+                        let file = path
+                            .file_name()
+                            .map(|f| f.to_string_lossy().into_owned())
+                            .unwrap_or_default();
                         let cell = format!("{}!{}", sheet.name, hh_core::a1(c.row, c.col));
-                        st.currency_cells.push((file, cell, s.clone(), p.normalized(), cur));
+                        st.currency_cells
+                            .push((file, cell, s.clone(), p.normalized(), cur));
                     }
                     st.with_unit += p.unit.is_some() as usize;
                     st.percent += p.percent as usize;
@@ -168,7 +187,10 @@ fn run_sheet(path: &Path, sheet: &Sheet, st: &mut Stats) {
             }
             if number_looking(s) && parse_date(s, h.date_order).is_none() {
                 st.unparsed_number_looking += 1;
-                let e = st.unparsed.entry(shape(s.trim())).or_insert((0, s.trim().chars().take(40).collect()));
+                let e = st
+                    .unparsed
+                    .entry(shape(s.trim()))
+                    .or_insert((0, s.trim().chars().take(40).collect()));
                 e.0 += 1;
             }
         }
@@ -183,16 +205,27 @@ fn csv_sheet(path: &Path, max_rows: usize) -> Option<Sheet> {
     let file = std::fs::File::open(path).ok()?;
     let mut lines = BufReader::new(file).lines();
     let header = lines.next()?.ok()?;
-    let delim = [';', '\t', ','].into_iter().max_by_key(|d| header.matches(*d).count())?;
+    let delim = [';', '\t', ',']
+        .into_iter()
+        .max_by_key(|d| header.matches(*d).count())?;
     let mut cells = Vec::new();
-    for (row, line) in std::iter::once(Ok(header)).chain(lines).take(max_rows).enumerate() {
+    for (row, line) in std::iter::once(Ok(header))
+        .chain(lines)
+        .take(max_rows)
+        .enumerate()
+    {
         let Ok(line) = line else { break };
         let mut field = String::new();
         let mut col = 0u32;
         let mut quoted = false;
         let mut push = |field: &mut String, col: &mut u32| {
             if !field.trim().is_empty() {
-                cells.push(Cell { row: row as u32, col: *col, value: Some(Value::Text(std::mem::take(field))), formula: None });
+                cells.push(Cell {
+                    row: row as u32,
+                    col: *col,
+                    value: Some(Value::Text(std::mem::take(field))),
+                    formula: None,
+                });
             }
             field.clear();
             *col += 1;
@@ -211,12 +244,22 @@ fn csv_sheet(path: &Path, max_rows: usize) -> Option<Sheet> {
         }
         push(&mut field, &mut col);
     }
-    Some(Sheet { name: path.file_name()?.to_string_lossy().into_owned(), cells, merges: Vec::new(), formats: Vec::new() })
+    Some(Sheet {
+        name: path.file_name()?.to_string_lossy().into_owned(),
+        cells,
+        merges: Vec::new(),
+        formats: Vec::new(),
+    })
 }
 
 fn csv_files(dir: &Path) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("csv"))).collect())
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("csv")))
+                .collect()
+        })
         .unwrap_or_default();
     out.sort();
     out
@@ -231,11 +274,23 @@ fn run_csv(path: &Path, st: &mut Stats, max_rows: usize) {
 }
 
 fn report(name: &str, st: &Stats) {
-    let pct = |a: usize| if st.text_cells == 0 { 0.0 } else { 100.0 * a as f64 / st.text_cells as f64 };
+    let pct = |a: usize| {
+        if st.text_cells == 0 {
+            0.0
+        } else {
+            100.0 * a as f64 / st.text_cells as f64
+        }
+    };
     println!("== {name}");
     println!(
         "files {} (read errors {}, skipped >max size {}), sheets {}, cells {}, compute {} ms, panics {}",
-        st.files, st.read_errors, st.skipped_large, st.sheets, st.cells, st.millis_compute, st.panics
+        st.files,
+        st.read_errors,
+        st.skipped_large,
+        st.sheets,
+        st.cells,
+        st.millis_compute,
+        st.panics
     );
     println!(
         "text cells {}: numeric_text {} ({:.2}%), date_text {} ({:.2}%), time_text {} ({:.2}%), missing tokens {} ({:.2}%), unparsed number-looking {} ({:.2}%)",
@@ -256,7 +311,7 @@ fn report(name: &str, st: &Stats) {
         st.with_currency, st.with_unit, st.percent, st.ambiguous_numbers
     );
     let mut top: Vec<_> = st.unparsed.iter().collect();
-    top.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then(a.0.cmp(b.0)));
+    top.sort_by(|a, b| b.1.0.cmp(&a.1.0).then(a.0.cmp(b.0)));
     println!("  top unparsed number-looking shapes (shape, count, example):");
     for (shape, (n, ex)) in top.into_iter().take(25) {
         println!("    {shape:<20} {n:>7}  {ex:?}");
@@ -274,15 +329,30 @@ fn corpus_values() {
     let step = (enron.len() / sample.max(1)).max(1);
     let mut st = Stats::default();
     // Deterministic sample: every `step`-th file of the sorted listing, offset by 7.
-    for p in enron.iter().skip(7.min(enron.len())).step_by(step).take(sample) {
+    for p in enron
+        .iter()
+        .skip(7.min(enron.len()))
+        .step_by(step)
+        .take(sample)
+    {
         run_file(p, &mut st, max_bytes);
     }
-    report(&format!("enron sample ({} of {})", sample.min(enron.len()), enron.len()), &st);
+    report(
+        &format!(
+            "enron sample ({} of {})",
+            sample.min(enron.len()),
+            enron.len()
+        ),
+        &st,
+    );
     // HH_AUDIT_OUT=<file>: dump the currency cells of the Enron sample as TSV for review.
     if let Some(out) = std::env::var_os("HH_AUDIT_OUT") {
         let mut tsv = String::from("file\tcell\traw\tvalue\tcurrency\n");
         for (f, c, raw, v, cur) in &st.currency_cells {
-            tsv.push_str(&format!("{f}\t{c}\t{}\t{v}\t{cur}\n", raw.replace(['\t', '\n'], " ")));
+            tsv.push_str(&format!(
+                "{f}\t{c}\t{}\t{v}\t{cur}\n",
+                raw.replace(['\t', '\n'], " ")
+            ));
         }
         std::fs::write(out, tsv).expect("write audit file");
     }
@@ -310,12 +380,23 @@ fn corpus_values() {
     total_panics += uk.panics;
 
     let mut intl = Stats::default();
-    for dir in ["owid", "datasets_org", "fivethirtyeight", "plotly_datasets", "vega_datasets"] {
+    for dir in [
+        "owid",
+        "datasets_org",
+        "fivethirtyeight",
+        "plotly_datasets",
+        "vega_datasets",
+    ] {
         for p in csv_files(&data.join("clean").join(dir)) {
             run_csv(&p, &mut intl, max_rows);
         }
     }
-    report(&format!("international CSV (clean/owid, datasets_org, fivethirtyeight, plotly, vega; ≤{max_rows} rows each)"), &intl);
+    report(
+        &format!(
+            "international CSV (clean/owid, datasets_org, fivethirtyeight, plotly, vega; ≤{max_rows} rows each)"
+        ),
+        &intl,
+    );
     total_panics += intl.panics;
 
     let mut srcsv = Stats::default();

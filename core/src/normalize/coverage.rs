@@ -165,8 +165,10 @@ fn year_part(s: &str) -> Option<i32> {
     };
     // An index named after its base year ("VPI 2000", "HICP 2015", "Index 2010") is not a
     // period (B46).
-    const INDEX: [&str; 14] =
-        ["vpi", "hvpi", "cpi", "hicp", "rpi", "ppi", "khpi", "index", "indeks", "indice", "basis", "base", "idx", "lhki"];
+    const INDEX: [&str; 14] = [
+        "vpi", "hvpi", "cpi", "hicp", "rpi", "ppi", "khpi", "index", "indeks", "indice", "basis",
+        "base", "idx", "lhki",
+    ];
     let short = |t: &str| {
         t.chars().count() <= 6
             && t.chars().all(|c| c.is_alphabetic() || c == '.')
@@ -210,7 +212,10 @@ fn short_year(t: &str) -> Option<i32> {
         return None;
     }
     let y = match t.len() {
-        2 => t.parse::<i32>().ok().map(|v| if v < 30 { 2000 + v } else { 1900 + v })?,
+        2 => t
+            .parse::<i32>()
+            .ok()
+            .map(|v| if v < 30 { 2000 + v } else { 1900 + v })?,
         4 => t.parse::<i32>().ok()?,
         _ => return None,
     };
@@ -218,11 +223,21 @@ fn short_year(t: &str) -> Option<i32> {
 }
 
 fn month_period(y: i32, m: u8) -> Period {
-    Period { y, m, d: 1, gran: Gran::Month }
+    Period {
+        y,
+        m,
+        d: 1,
+        gran: Gran::Month,
+    }
 }
 
 fn year_period(y: i32) -> Period {
-    Period { y, m: 1, d: 1, gran: Gran::Year }
+    Period {
+        y,
+        m: 1,
+        d: 1,
+        gran: Gran::Year,
+    }
 }
 
 /// A rolling range of months, `Mar-May 1971`, `Nov–Jan 2026`, `Dec - Feb 26`: the year is the
@@ -231,7 +246,10 @@ fn month_range(s: &str) -> Option<(Period, Period)> {
     let (head, year) = s.trim().rsplit_once(char::is_whitespace)?;
     let y = short_year(year)?;
     let (a, b) = head.split_once(['-', '–', '—'])?;
-    let (m1, m2) = (crate::values::date::month_number(a.trim())?, crate::values::date::month_number(b.trim())?);
+    let (m1, m2) = (
+        crate::values::date::month_number(a.trim())?,
+        crate::values::date::month_number(b.trim())?,
+    );
     let y1 = if m1 > m2 { y - 1 } else { y };
     Some((month_period(y1, m1), month_period(y, m2)))
 }
@@ -259,7 +277,11 @@ fn label_period(s: &str) -> Option<(Period, Period)> {
 /// The sortable form of a label's period: `2022`, `2022-Q1`, `2022-01`, `2024-W05`, `2022-01-15`,
 /// or `2025-11/2026-01` for a range.
 pub(super) fn span_label(span: &(Period, Period)) -> String {
-    if span.0 == span.1 { span.0.label() } else { format!("{}/{}", span.0.label(), span.1.label()) }
+    if span.0 == span.1 {
+        span.0.label()
+    } else {
+        format!("{}/{}", span.0.label(), span.1.label())
+    }
 }
 
 /// The period of each value of a text label column (`None` for empty cells), when at least 90%
@@ -315,7 +337,12 @@ pub(super) fn column_label_periods(values: &[Out]) -> Option<Vec<Option<(Period,
         return None;
     }
     // Days all on the 1st among months (or alone, two or more): months.
-    let days: Vec<&Period> = out.iter().flatten().flat_map(|(a, b)| [a, b]).filter(|p| p.gran == Gran::Day).collect();
+    let days: Vec<&Period> = out
+        .iter()
+        .flatten()
+        .flat_map(|(a, b)| [a, b])
+        .filter(|p| p.gran == Gran::Day)
+        .collect();
     let months = out.iter().flatten().any(|(a, _)| a.gran == Gran::Month);
     if !days.is_empty() && days.iter().all(|p| p.d == 1) && (months || days.len() >= 2) {
         for (a, b) in out.iter_mut().flatten() {
@@ -365,11 +392,40 @@ fn date_column(values: &[Out]) -> Option<Vec<Period>> {
 /// name also says period, week, month, quarter, year or day (`period_start`, `Week start`).
 pub(super) fn attribute_date_name(name: &str) -> bool {
     let lower = name.to_lowercase();
-    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
-    const PERIOD: &[&str] = &["period", "week", "weekly", "month", "monthly", "quarter", "year", "fiscal", "day", "reporting"];
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    const PERIOD: &[&str] = &[
+        "period",
+        "week",
+        "weekly",
+        "month",
+        "monthly",
+        "quarter",
+        "year",
+        "fiscal",
+        "day",
+        "reporting",
+    ];
     const ATTRIBUTE: &[&str] = &[
-        "start", "started", "startdate", "hire", "hired", "hiredate", "birth", "born", "dob", "birthdate", "birthday",
-        "expiry", "expiration", "expires", "valid", "anniversary", "seniority",
+        "start",
+        "started",
+        "startdate",
+        "hire",
+        "hired",
+        "hiredate",
+        "birth",
+        "born",
+        "dob",
+        "birthdate",
+        "birthday",
+        "expiry",
+        "expiration",
+        "expires",
+        "valid",
+        "anniversary",
+        "seniority",
     ];
     !words.iter().any(|w| PERIOD.contains(w)) && words.iter().any(|w| ATTRIBUTE.contains(w))
 }
@@ -435,7 +491,13 @@ fn column_periods(name: &str, role: ColRole, dtype: Dtype, values: &[Out]) -> Op
             // Period labels: at least 90% of the distinct values name a period (B70: also `Ø 22`
             // annual rows and `Mar-May 1971` ranges).
             let spans = column_label_periods(values)?;
-            Some(spans.into_iter().flatten().flat_map(|(a, b)| [a, b]).collect())
+            Some(
+                spans
+                    .into_iter()
+                    .flatten()
+                    .flat_map(|(a, b)| [a, b])
+                    .collect(),
+            )
         }
         _ => None,
     }
@@ -528,7 +590,12 @@ pub(super) fn table(t: &Table) -> Option<Coverage> {
         .columns
         .windows(2)
         .filter(|w| w[1].derived_kind() == Some("period"))
-        .filter_map(|w| columns.iter().position(|n| *n == w[0].name).map(|k| (k + 1, w[1].name.clone())))
+        .filter_map(|w| {
+            columns
+                .iter()
+                .position(|n| *n == w[0].name)
+                .map(|k| (k + 1, w[1].name.clone()))
+        })
         .collect();
     for (k, name) in derived.into_iter().rev() {
         columns.insert(k, name);
@@ -662,10 +729,25 @@ mod tests {
 
     #[test]
     fn attribute_dates() {
-        for n in ["agency_start_date", "Hire Date", "DOB", "valid_from", "Date of birth", "expiration_date", "StartDate"] {
+        for n in [
+            "agency_start_date",
+            "Hire Date",
+            "DOB",
+            "valid_from",
+            "Date of birth",
+            "expiration_date",
+            "StartDate",
+        ] {
             assert!(attribute_date_name(n), "{n}");
         }
-        for n in ["Date", "period_start", "Week start", "fiscal_year", "payment_date", "Startup costs date"] {
+        for n in [
+            "Date",
+            "period_start",
+            "Week start",
+            "fiscal_year",
+            "payment_date",
+            "Startup costs date",
+        ] {
             assert!(!attribute_date_name(n), "{n}");
         }
     }

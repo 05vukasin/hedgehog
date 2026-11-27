@@ -5,7 +5,9 @@
 use std::path::{Path, PathBuf};
 
 fn files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -18,8 +20,16 @@ fn files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn main() {
     let here = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into()));
-    let base = here.join("..").canonicalize().unwrap_or_else(|_| here.join(".."));
-    let inputs = [base.join("agent/src"), base.join("core/src"), base.join("core/models"), base.join("Cargo.lock")];
+    let base = here
+        .join("..")
+        .canonicalize()
+        .unwrap_or_else(|_| here.join(".."));
+    let inputs = [
+        base.join("agent/src"),
+        base.join("core/src"),
+        base.join("core/models"),
+        base.join("Cargo.lock"),
+    ];
     let mut all = Vec::new();
     for i in &inputs {
         println!("cargo:rerun-if-changed={}", i.display());
@@ -41,7 +51,12 @@ fn main() {
         }
     };
     for p in &all {
-        let rel = p.strip_prefix(&base).or_else(|_| p.strip_prefix(&here)).unwrap_or(p).to_string_lossy().replace('\\', "/");
+        let rel = p
+            .strip_prefix(&base)
+            .or_else(|_| p.strip_prefix(&here))
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/");
         feed(rel.as_bytes());
         feed(&[0]);
         if let Ok(b) = std::fs::read(p) {

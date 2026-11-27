@@ -4,7 +4,8 @@ use std::io::Write as _;
 use std::path::Path;
 
 use rust_xlsxwriter::{
-    DocProperties, ExcelDateTime, Format, Table as XTable, TableColumn, Workbook, Worksheet, XlsxError,
+    DocProperties, ExcelDateTime, Format, Table as XTable, TableColumn, Workbook, Worksheet,
+    XlsxError,
 };
 
 use super::manifest::{Source, load_hints};
@@ -62,20 +63,26 @@ fn write_grid(
         }
     }
     for (c, w) in widths.iter().enumerate() {
-        ws.set_column_width(c as u16, w.clamp(8.0, 62.0)).map_err(xerr)?;
+        ws.set_column_width(c as u16, w.clamp(8.0, 62.0))
+            .map_err(xerr)?;
     }
     ws.set_freeze_panes(1, 0).map_err(xerr)?;
     if nrows == 0 || headers.is_empty() {
         let bold = Format::new().set_bold();
         for (c, h) in headers.iter().enumerate() {
-            ws.write_string_with_format(0, c as u16, h, &bold).map_err(xerr)?;
+            ws.write_string_with_format(0, c as u16, h, &bold)
+                .map_err(xerr)?;
         }
         return Ok(());
     }
     // The table writes the header row; data rows follow in order.
-    let cols: Vec<TableColumn> = headers.iter().map(|h| TableColumn::new().set_header(h)).collect();
+    let cols: Vec<TableColumn> = headers
+        .iter()
+        .map(|h| TableColumn::new().set_header(h))
+        .collect();
     let table = XTable::new().set_name(name).set_columns(&cols);
-    ws.add_table(0, 0, nrows as u32, (headers.len() - 1) as u16, &table).map_err(xerr)?;
+    ws.add_table(0, 0, nrows as u32, (headers.len() - 1) as u16, &table)
+        .map_err(xerr)?;
     let mut buf = Vec::with_capacity(headers.len());
     for r in 0..nrows {
         let row = match sample.get(r) {
@@ -116,12 +123,23 @@ fn table_sheet(wb: &mut Workbook, t: &Table) -> Result<(), Error> {
     let ncols = t.columns.len().min(MAX_COLS);
     let cols = &t.columns[..ncols];
     let headers: Vec<String> = cols.iter().map(|c| c.name.clone()).collect();
-    let formats: Vec<Option<Format>> =
-        cols.iter().map(|c| c.dtype.num_format().map(|f| Format::new().set_num_format(f))).collect();
+    let formats: Vec<Option<Format>> = cols
+        .iter()
+        .map(|c| {
+            c.dtype
+                .num_format()
+                .map(|f| Format::new().set_num_format(f))
+        })
+        .collect();
     // Column-major storage, written row by row.
-    write_grid(ws, &t.sheet, &headers, &formats, t.rows().min(MAX_ROWS), |i, row| {
-        row.extend(cols.iter().map(|c| c.values[i].clone()))
-    })
+    write_grid(
+        ws,
+        &t.sheet,
+        &headers,
+        &formats,
+        t.rows().min(MAX_ROWS),
+        |i, row| row.extend(cols.iter().map(|c| c.values[i].clone())),
+    )
 }
 
 fn text(s: impl Into<String>) -> Out {
@@ -147,7 +165,10 @@ fn ensure_open_files(sheets: u64) -> Result<(), Error> {
     let needed = sheets + 64;
     #[cfg(unix)]
     {
-        let mut lim = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        let mut lim = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
         // SAFETY: getrlimit / setrlimit only read / write the struct passed.
         if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut lim) } != 0 {
             return Ok(());
@@ -156,7 +177,11 @@ fn ensure_open_files(sheets: u64) -> Result<(), Error> {
         if cur >= needed || lim.rlim_cur == libc::RLIM_INFINITY {
             return Ok(());
         }
-        let max = if lim.rlim_max == libc::RLIM_INFINITY { u64::MAX } else { lim.rlim_max as u64 };
+        let max = if lim.rlim_max == libc::RLIM_INFINITY {
+            u64::MAX
+        } else {
+            lim.rlim_max as u64
+        };
         let want = needed.saturating_mul(2).min(max);
         if want > cur {
             lim.rlim_cur = want as libc::rlim_t;
@@ -224,10 +249,17 @@ pub(super) fn xlsx(
         ];
         let mut rows: Vec<Vec<String>> = Vec::new();
         rows.push(
-            ["Sheet", "Source sheet", "Source range", "Rows", "Columns", "Title"]
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            [
+                "Sheet",
+                "Source sheet",
+                "Source range",
+                "Rows",
+                "Columns",
+                "Title",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         );
         for t in &norm.tables {
             rows.push(vec![
@@ -251,7 +283,8 @@ pub(super) fn xlsx(
         for (k, row) in rows.iter().enumerate() {
             for (c, v) in row.iter().enumerate() {
                 if k == 0 {
-                    ws.write_string_with_format(r, c as u16, v, &bold).map_err(xerr)?;
+                    ws.write_string_with_format(r, c as u16, v, &bold)
+                        .map_err(xerr)?;
                 } else {
                     ws.write_string(r, c as u16, v).map_err(xerr)?;
                 }
@@ -259,14 +292,17 @@ pub(super) fn xlsx(
             r += 1;
         }
         if norm.tables.is_empty() {
-            ws.write_string(r, 0, "(no tables detected; see Notes)").map_err(xerr)?;
+            ws.write_string(r, 0, "(no tables detected; see Notes)")
+                .map_err(xerr)?;
             r += 1;
         }
         r += 1;
-        ws.write_string_with_format(r, 0, "How to load (Python)", &bold).map_err(xerr)?;
+        ws.write_string_with_format(r, 0, "How to load (Python)", &bold)
+            .map_err(xerr)?;
         r += 1;
-        for l in
-            load_hints(norm, xlsx_name, manifest_name).iter().flat_map(|(_, code)| code.lines().map(str::to_string))
+        for l in load_hints(norm, xlsx_name, manifest_name)
+            .iter()
+            .flat_map(|(_, code)| code.lines().map(str::to_string))
         {
             ws.write_string(r, 0, &l).map_err(xerr)?;
             r += 1;
@@ -307,47 +343,66 @@ pub(super) fn xlsx(
         .map(|s| s.to_string())
         .collect();
         let totals = &norm.totals;
-        write_grid(ws, "Totals", &headers, &[], totals.len().min(MAX_ROWS), |i, row| {
-            let x = &totals[i];
-            row.extend([
-                table_id(x.table),
-                text(&x.sheet),
-                text(x.cell_a1()),
-                opt_text(x.label.clone()),
-                x.label_cell.map_or(Out::Null, |(r, c)| text(a1(r, c))),
-                text(x.level),
-                text(x.direction),
-                text(x.origin),
-                opt_num(x.value),
-                opt_num(x.recomputed),
-                text(x.status),
-                text(&x.reason),
-                opt_text(Some(x.sources.join(", "))),
-                opt_text(x.formula.clone()),
-                Out::Bool(x.kept_in_data),
-                Out::Num(x.count as f64),
-            ])
-        })?;
+        write_grid(
+            ws,
+            "Totals",
+            &headers,
+            &[],
+            totals.len().min(MAX_ROWS),
+            |i, row| {
+                let x = &totals[i];
+                row.extend([
+                    table_id(x.table),
+                    text(&x.sheet),
+                    text(x.cell_a1()),
+                    opt_text(x.label.clone()),
+                    x.label_cell.map_or(Out::Null, |(r, c)| text(a1(r, c))),
+                    text(x.level),
+                    text(x.direction),
+                    text(x.origin),
+                    opt_num(x.value),
+                    opt_num(x.recomputed),
+                    text(x.status),
+                    text(&x.reason),
+                    opt_text(Some(x.sources.join(", "))),
+                    opt_text(x.formula.clone()),
+                    Out::Bool(x.kept_in_data),
+                    Out::Num(x.count as f64),
+                ])
+            },
+        )?;
     }
 
     // Notes.
     {
         let ws = wb.add_worksheet_with_low_memory();
         ws.set_name("Notes").map_err(xerr)?;
-        let headers: Vec<String> =
-            ["sheet", "cell", "kind", "table", "text", "formula"].iter().map(|s| s.to_string()).collect();
+        let headers: Vec<String> = ["sheet", "cell", "kind", "table", "text", "formula"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let notes = &norm.notes;
-        write_grid(ws, "Notes", &headers, &[], notes.len().min(MAX_ROWS), |i, row| {
-            let x = &notes[i];
-            row.extend([
-                text(&x.sheet),
-                text(a1(x.row, x.col)),
-                text(x.kind),
-                table_id(x.table),
-                opt_text(Some(super::typing::fit(x.text.clone(), &mut Default::default()))),
-                opt_text(x.formula.clone()),
-            ])
-        })?;
+        write_grid(
+            ws,
+            "Notes",
+            &headers,
+            &[],
+            notes.len().min(MAX_ROWS),
+            |i, row| {
+                let x = &notes[i];
+                row.extend([
+                    text(&x.sheet),
+                    text(a1(x.row, x.col)),
+                    text(x.kind),
+                    table_id(x.table),
+                    opt_text(Some(super::typing::fit(
+                        x.text.clone(),
+                        &mut Default::default(),
+                    ))),
+                    opt_text(x.formula.clone()),
+                ])
+            },
+        )?;
     }
 
     wb.save(path).map_err(xerr)

@@ -45,8 +45,11 @@ pub fn label(grid: &Grid) -> Labeling {
     let mut uf = UnionFind::new(n + merges.len());
 
     // Node of a merged area: the last merge listed with the same top-left corner.
-    let merge_index: HashMap<(u32, u32), usize> =
-        merges.iter().enumerate().map(|(i, r)| ((r.top, r.left), i)).collect();
+    let merge_index: HashMap<(u32, u32), usize> = merges
+        .iter()
+        .enumerate()
+        .map(|(i, r)| ((r.top, r.left), i))
+        .collect();
     let merge_node = |r: u32, c: u32| -> Option<usize> {
         let rect = grid.merge_at(r, c)?;
         merge_index.get(&(rect.top, rect.left)).map(|&i| n + i)
@@ -116,14 +119,27 @@ pub fn label(grid: &Grid) -> Labeling {
         let root = uf.find(i);
         let id = *root_comp.entry(root).or_insert_with(|| {
             comps.push(Component {
-                rect: Rect { top: cell.row, left: cell.col, bottom: cell.row, right: cell.col },
+                rect: Rect {
+                    top: cell.row,
+                    left: cell.col,
+                    bottom: cell.row,
+                    right: cell.col,
+                },
                 cells: Vec::new(),
                 merges: Vec::new(),
             });
             (comps.len() - 1) as u32
         });
         let comp = &mut comps[id as usize];
-        grow(&mut comp.rect, Rect { top: cell.row, left: cell.col, bottom: cell.row, right: cell.col });
+        grow(
+            &mut comp.rect,
+            Rect {
+                top: cell.row,
+                left: cell.col,
+                bottom: cell.row,
+                right: cell.col,
+            },
+        );
         comp.cells.push(i);
         cell_component.push(id);
     }
@@ -147,11 +163,22 @@ pub fn label(grid: &Grid) -> Labeling {
     }
     let mut slots: Vec<Option<Component>> = comps.into_iter().map(Some).collect();
     let components = order.iter().map(|&i| slots[i].take().unwrap()).collect();
-    Labeling { components, cell_component }
+    Labeling {
+        components,
+        cell_component,
+    }
 }
 
-pub(crate) const NEIGHBOURS: [(i64, i64); 8] =
-    [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)];
+pub(crate) const NEIGHBOURS: [(i64, i64); 8] = [
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+];
 
 /// (row + dr, col + dc) if it stays on the sheet's non-negative quadrant.
 pub(crate) fn offset(r: u32, c: u32, dr: i64, dc: i64) -> Option<(u32, u32)> {
@@ -174,7 +201,10 @@ struct UnionFind {
 
 impl UnionFind {
     fn new(n: usize) -> Self {
-        UnionFind { parent: (0..n).collect(), size: vec![1; n] }
+        UnionFind {
+            parent: (0..n).collect(),
+            size: vec![1; n],
+        }
     }
 
     fn find(&mut self, mut x: usize) -> usize {

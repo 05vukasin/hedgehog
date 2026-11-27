@@ -70,13 +70,18 @@ fn is_period(seg: &str) -> bool {
         return false;
     }
     let digits = s.chars().any(|c| c.is_ascii_digit());
-    (digits && s.chars().all(|c| c.is_ascii_digit() || "-./: ".contains(c))) || crate::views::period_of(s).is_some_and(|(p, _)| p.len() >= 4 && s.len() <= p.len() + 12)
+    (digits && s.chars().all(|c| c.is_ascii_digit() || "-./: ".contains(c)))
+        || crate::views::period_of(s).is_some_and(|(p, _)| p.len() >= 4 && s.len() <= p.len() + 12)
 }
 
 /// A column name without its date / period segments.
 fn stripped(name: &str) -> String {
     let segs: Vec<&str> = name.split(" / ").filter(|s| !is_period(s)).collect();
-    if segs.is_empty() { name.to_string() } else { segs.join(" / ") }
+    if segs.is_empty() {
+        name.to_string()
+    } else {
+        segs.join(" / ")
+    }
 }
 
 /// The longest run of trailing ` / ` segments all names share.
@@ -86,7 +91,10 @@ fn common_suffix(names: &[String]) -> Option<String> {
     loop {
         let seg = split[0].len().checked_sub(k + 1).map(|i| split[0][i]);
         let Some(seg) = seg else { break };
-        if split.iter().all(|s| s.len() > k && s[s.len() - k - 1] == seg) {
+        if split
+            .iter()
+            .all(|s| s.len() > k && s[s.len() - k - 1] == seg)
+        {
             k += 1;
         } else {
             break;
@@ -97,14 +105,21 @@ fn common_suffix(names: &[String]) -> Option<String> {
 
 /// The words of each string that the strings do not share at the start or end.
 pub(crate) fn differing_parts(texts: &[String]) -> Vec<String> {
-    let words: Vec<Vec<&str>> = texts.iter().map(|t| t.split_whitespace().collect()).collect();
+    let words: Vec<Vec<&str>> = texts
+        .iter()
+        .map(|t| t.split_whitespace().collect())
+        .collect();
     let min = words.iter().map(Vec::len).min().unwrap_or(0);
     let mut pre = 0;
     while pre < min && words.iter().all(|w| w[pre] == words[0][pre]) {
         pre += 1;
     }
     let mut suf = 0;
-    while suf < min - pre && words.iter().all(|w| w[w.len() - 1 - suf] == words[0][words[0].len() - 1 - suf]) {
+    while suf < min - pre
+        && words
+            .iter()
+            .all(|w| w[w.len() - 1 - suf] == words[0][words[0].len() - 1 - suf])
+    {
         suf += 1;
     }
     words
@@ -116,8 +131,16 @@ pub(crate) fn differing_parts(texts: &[String]) -> Vec<String> {
                 .iter()
                 .position(|x| !(x.chars().count() <= 3 && x.chars().all(char::is_lowercase)))
                 .unwrap_or(mid.len());
-            let rest = if start < mid.len() { &mid[start..] } else { mid };
-            rest.join(" ").trim_matches(|c: char| c == '–' || c == '-' || c == ',' || c == ':' || c.is_whitespace()).to_string()
+            let rest = if start < mid.len() {
+                &mid[start..]
+            } else {
+                mid
+            };
+            rest.join(" ")
+                .trim_matches(|c: char| {
+                    c == '–' || c == '-' || c == ',' || c == ':' || c.is_whitespace()
+                })
+                .to_string()
         })
         .collect()
 }
@@ -148,7 +171,11 @@ pub fn families(norm: &Normalized) -> Vec<Family> {
             if g.0 != shape || g.1.len() >= MAX_MEMBERS {
                 return false;
             }
-            let same = g.2.iter().zip(&own).filter(|(a, b)| a.eq_ignore_ascii_case(b)).count();
+            let same =
+                g.2.iter()
+                    .zip(&own)
+                    .filter(|(a, b)| a.eq_ignore_ascii_case(b))
+                    .count();
             if cols.len() < MIN_SHAPE_COLS {
                 same == cols.len()
             } else {
@@ -169,7 +196,10 @@ pub fn families(norm: &Normalized) -> Vec<Family> {
 
 fn family(norm: &Normalized, members: Vec<usize>, k: usize) -> Family {
     let tables: Vec<&Table> = members.iter().map(|&m| &norm.tables[m]).collect();
-    let member_cols: Vec<Vec<usize>> = tables.iter().map(|t| data_cols(t).map(|(i, _)| i).collect()).collect();
+    let member_cols: Vec<Vec<usize>> = tables
+        .iter()
+        .map(|t| data_cols(t).map(|(i, _)| i).collect())
+        .collect();
     let member_names: Vec<Vec<String>> = tables
         .iter()
         .zip(&member_cols)
@@ -192,7 +222,13 @@ fn family(norm: &Normalized, members: Vec<usize>, k: usize) -> Family {
             // The words in front of the shared part, per member (the first column that differs).
             let v: Vec<String> = at
                 .iter()
-                .map(|n| n.strip_suffix(name.as_str()).unwrap_or(n).trim_end_matches([' ', '/']).trim().to_string())
+                .map(|n| {
+                    n.strip_suffix(name.as_str())
+                        .unwrap_or(n)
+                        .trim_end_matches([' ', '/'])
+                        .trim()
+                        .to_string()
+                })
                 .collect();
             if v.iter().any(|x| !x.is_empty()) {
                 variants = Some(v);
@@ -211,9 +247,20 @@ fn family(norm: &Normalized, members: Vec<usize>, k: usize) -> Family {
         }
         seen.push(c.to_lowercase());
     }
-    let titles: Vec<Option<&str>> = tables.iter().map(|t| t.title.as_ref().map(|x| x.0.trim()).filter(|s| !s.is_empty())).collect();
+    let titles: Vec<Option<&str>> = tables
+        .iter()
+        .map(|t| {
+            t.title
+                .as_ref()
+                .map(|x| x.0.trim())
+                .filter(|s| !s.is_empty())
+        })
+        .collect();
     let parts = if titles.iter().all(Option::is_some) && titles.iter().any(|t| *t != titles[0]) {
-        let texts: Vec<String> = titles.iter().map(|t| t.unwrap_or_default().to_string()).collect();
+        let texts: Vec<String> = titles
+            .iter()
+            .map(|t| t.unwrap_or_default().to_string())
+            .collect();
         Some(differing_parts(&texts))
     } else {
         None
@@ -225,7 +272,15 @@ fn family(norm: &Normalized, members: Vec<usize>, k: usize) -> Family {
         }
         name
     });
-    Family { name: format!("U{k}"), members, columns, member_cols, parts, variants, extra }
+    Family {
+        name: format!("U{k}"),
+        members,
+        columns,
+        member_cols,
+        parts,
+        variants,
+        extra,
+    }
 }
 
 fn sql_text(s: &str) -> String {
@@ -240,21 +295,43 @@ pub fn create_sql(norm: &Normalized, f: &Family) -> [String; 2] {
         let names = sql_names(t);
         let mut cols = vec![
             format!("{} AS {}", sql_text(&t.id()), quote_ident(&f.extra[0])),
-            format!("{} AS {}", sql_text(&t.source_sheet), quote_ident(&f.extra[1])),
-            format!("{} AS {}", t.title.as_ref().map_or("NULL".to_string(), |x| sql_text(&x.0)), quote_ident(&f.extra[2])),
+            format!(
+                "{} AS {}",
+                sql_text(&t.source_sheet),
+                quote_ident(&f.extra[1])
+            ),
+            format!(
+                "{} AS {}",
+                t.title
+                    .as_ref()
+                    .map_or("NULL".to_string(), |x| sql_text(&x.0)),
+                quote_ident(&f.extra[2])
+            ),
         ];
         if let Some(p) = &f.parts {
-            cols.push(format!("{} AS {}", sql_text(&p[j]), quote_ident(&f.extra[3])));
+            cols.push(format!(
+                "{} AS {}",
+                sql_text(&p[j]),
+                quote_ident(&f.extra[3])
+            ));
         }
         if let Some(v) = &f.variants {
-            cols.push(format!("{} AS {}", sql_text(&v[j]), quote_ident(&f.extra[4])));
+            cols.push(format!(
+                "{} AS {}",
+                sql_text(&v[j]),
+                quote_ident(&f.extra[4])
+            ));
         }
         for (&i, u) in f.member_cols[j].iter().zip(&f.columns) {
             cols.push(format!("{} AS {}", quote_ident(&names[i]), quote_ident(u)));
         }
         cols.push("\"_src_row\"".into());
         cols.push("\"_row_type\"".into());
-        selects.push(format!("SELECT {} FROM {}", cols.join(", "), quote_ident(&format!("{}_all", t.id()))));
+        selects.push(format!(
+            "SELECT {} FROM {}",
+            cols.join(", "),
+            quote_ident(&format!("{}_all", t.id()))
+        ));
     }
     let all = format!("{}_all", f.name);
     let mut outer: Vec<String> = f.extra[..3].iter().map(|n| quote_ident(n)).collect();
@@ -267,8 +344,17 @@ pub fn create_sql(norm: &Normalized, f: &Family) -> [String; 2] {
     outer.extend(f.columns.iter().map(|c| quote_ident(c)));
     outer.push("\"_src_row\"".into());
     [
-        format!("CREATE VIEW {} AS {}", quote_ident(&all), selects.join(" UNION ALL ")),
-        format!("CREATE VIEW {} AS SELECT {} FROM {} WHERE \"_row_type\" = 'data'", quote_ident(&f.name), outer.join(", "), quote_ident(&all)),
+        format!(
+            "CREATE VIEW {} AS {}",
+            quote_ident(&all),
+            selects.join(" UNION ALL ")
+        ),
+        format!(
+            "CREATE VIEW {} AS SELECT {} FROM {} WHERE \"_row_type\" = 'data'",
+            quote_ident(&f.name),
+            outer.join(", "),
+            quote_ident(&all)
+        ),
     ]
 }
 
@@ -306,8 +392,17 @@ pub fn catalog_lines(norm: &Normalized, brief: bool) -> Vec<String> {
         let items: Vec<String> = fams[1..]
             .iter()
             .map(|f| {
-                let ns: Vec<String> = f.members.iter().take(3).map(|&m| norm.tables[m].id()).collect();
-                let more = if f.members.len() > 3 { format!(", … ({} tables)", f.members.len()) } else { String::new() };
+                let ns: Vec<String> = f
+                    .members
+                    .iter()
+                    .take(3)
+                    .map(|&m| norm.tables[m].id())
+                    .collect();
+                let more = if f.members.len() > 3 {
+                    format!(", … ({} tables)", f.members.len())
+                } else {
+                    String::new()
+                };
                 format!("{} = {}{more}", f.name, ns.join(", "))
             })
             .collect();
@@ -364,9 +459,19 @@ mod tests {
 
     #[test]
     fn names_and_parts() {
-        assert_eq!(stripped("2001-05-09 / Day-Ahead Transactions / Qty"), "Day-Ahead Transactions / Qty");
+        assert_eq!(
+            stripped("2001-05-09 / Day-Ahead Transactions / Qty"),
+            "Day-Ahead Transactions / Qty"
+        );
         assert_eq!(stripped("Ankünfte / Absolut"), "Ankünfte / Absolut");
-        assert_eq!(common_suffix(&["Day-Ahead / Hour".into(), "Real-Time Transactions / Hour".into()]).as_deref(), Some("Hour"));
+        assert_eq!(
+            common_suffix(&[
+                "Day-Ahead / Hour".into(),
+                "Real-Time Transactions / Hour".into()
+            ])
+            .as_deref(),
+            Some("Hour")
+        );
         let parts = differing_parts(&[
             "Ankünfte in Österreich – nach Herkunftsland Juli 2026".into(),
             "Ankünfte im Burgenland – nach Herkunftsland Juli 2026".into(),

@@ -10,7 +10,7 @@
 //! (distinct values, text length, integers). Pure functions; a few cheap passes over a sample of
 //! the rows (at most [`SAMPLE`] per column).
 
-use hh_core::normalize::{table_time_coverage, ColRole, Column, Dtype, Normalized, Out, Table};
+use hh_core::normalize::{ColRole, Column, Dtype, Normalized, Out, Table, table_time_coverage};
 
 use crate::catalog::{data_cols, data_rows, is_date, is_numeric};
 use crate::text::{ident, short};
@@ -49,7 +49,11 @@ pub struct ColType {
 
 impl ColType {
     fn new(sem: Sem) -> Self {
-        ColType { sem, currency: None, weak: false }
+        ColType {
+            sem,
+            currency: None,
+            weak: false,
+        }
     }
 
     /// Averages, rates and indexes: adding them up gives nonsense.
@@ -76,7 +80,11 @@ impl ColType {
 
     /// The tag after the storage type in a column item: `amount`, `avg — don't sum`.
     pub fn tag(&self) -> String {
-        if self.no_sum() { format!("{} — don't sum", self.short()) } else { self.short().to_string() }
+        if self.no_sum() {
+            format!("{} — don't sum", self.short())
+        } else {
+            self.short().to_string()
+        }
     }
 }
 
@@ -118,16 +126,43 @@ fn words(name: &str) -> Vec<String> {
 }
 
 fn any_word(ws: &[String], exact: &[&str], stems: &[&str]) -> bool {
-    ws.iter().any(|w| exact.contains(&w.as_str()) || stems.iter().any(|s| w.starts_with(s)))
+    ws.iter()
+        .any(|w| exact.contains(&w.as_str()) || stems.iter().any(|s| w.starts_with(s)))
 }
 
 /// Averages, medians, per-head figures.
 fn avg_words(ws: &[String], low: &str) -> bool {
     const EXACT: &[&str] = &[
-        "average", "averages", "avg", "mean", "median", "ø", "ø-", "moyenne", "moyen", "moyens", "media", "medie",
-        "promedio", "medio", "médio", "média", "gemiddeld", "gemiddelde", "prosek", "mittel", "mittelwert",
+        "average",
+        "averages",
+        "avg",
+        "mean",
+        "median",
+        "ø",
+        "ø-",
+        "moyenne",
+        "moyen",
+        "moyens",
+        "media",
+        "medie",
+        "promedio",
+        "medio",
+        "médio",
+        "média",
+        "gemiddeld",
+        "gemiddelde",
+        "prosek",
+        "mittel",
+        "mittelwert",
     ];
-    const STEMS: &[&str] = &["durchschnitt", "prosečn", "prosecn", "просеч", "gemiddeld", "mittelwert"];
+    const STEMS: &[&str] = &[
+        "durchschnitt",
+        "prosečn",
+        "prosecn",
+        "просеч",
+        "gemiddeld",
+        "mittelwert",
+    ];
     any_word(ws, EXACT, STEMS)
         || low.contains("durchschnitt")
         || low.contains("per capita")
@@ -141,56 +176,243 @@ fn avg_words(ws: &[String], low: &str) -> bool {
 
 /// Index numbers (`Fahrleistungsindex`, `Indexwert`, `2015=100`).
 fn index_words(ws: &[String], low: &str) -> bool {
-    const EXACT: &[&str] = &["index", "indices", "indexes", "indizes", "indice", "índice", "indeks", "indexwert", "messzahl", "indexzahl"];
-    any_word(ws, EXACT, &["messzahl"]) || low.contains("index") || low.contains("=100") || low.contains("= 100")
+    const EXACT: &[&str] = &[
+        "index",
+        "indices",
+        "indexes",
+        "indizes",
+        "indice",
+        "índice",
+        "indeks",
+        "indexwert",
+        "messzahl",
+        "indexzahl",
+    ];
+    any_word(ws, EXACT, &["messzahl"])
+        || low.contains("index")
+        || low.contains("=100")
+        || low.contains("= 100")
 }
 
 /// Percentages, shares, ratios, rates, changes in percent.
 fn rate_words(ws: &[String]) -> bool {
     const EXACT: &[&str] = &[
-        "%", "percent", "percentage", "pct", "prozent", "prozentual", "anteil", "anteile", "share", "rate", "rates",
-        "ratio", "quote", "quota", "quotient", "pourcentage", "taux", "part", "tasa", "porcentaje", "proporción",
-        "proporcion", "taxa", "percentagem", "porcentagem", "tasso", "percentuale", "quota", "procent", "percentage",
-        "aandeel", "procenat", "stopa", "udeo", "udio", "učešće", "ucesce", "proc",
+        "%",
+        "percent",
+        "percentage",
+        "pct",
+        "prozent",
+        "prozentual",
+        "anteil",
+        "anteile",
+        "share",
+        "rate",
+        "rates",
+        "ratio",
+        "quote",
+        "quota",
+        "quotient",
+        "pourcentage",
+        "taux",
+        "part",
+        "tasa",
+        "porcentaje",
+        "proporción",
+        "proporcion",
+        "taxa",
+        "percentagem",
+        "porcentagem",
+        "tasso",
+        "percentuale",
+        "quota",
+        "procent",
+        "percentage",
+        "aandeel",
+        "procenat",
+        "stopa",
+        "udeo",
+        "udio",
+        "učešće",
+        "ucesce",
+        "proc",
     ];
-    const STEMS: &[&str] = &["prozent", "percent", "procent", "porcent", "percentual", "quote", "anteil"];
+    const STEMS: &[&str] = &[
+        "prozent",
+        "percent",
+        "procent",
+        "porcent",
+        "percentual",
+        "quote",
+        "anteil",
+    ];
     any_word(ws, EXACT, STEMS)
 }
 
 /// Counts of things or people.
 fn count_words(ws: &[String], low: &str) -> bool {
     const EXACT: &[&str] = &[
-        "count", "counts", "qty", "quantity", "quantities", "pieces", "persons", "people", "cases",
-        "employees", "households", "visitors", "anzahl", "zahl", "menge", "stück", "stk", "personen", "fälle", "faelle",
-        "fall", "einwohner", "bevölkerung", "beschäftigte", "haushalte", "besucher", "bezieher", "quantité",
-        "effectif", "effectifs", "habitants", "personnes", "cantidad", "personas", "habitantes", "casos",
-        "quantidade", "pessoas", "quantità", "quantita", "persone", "abitanti", "aantal", "personen",
-        "inwoners", "broj", "količina", "kolicina", "osoba", "lica", "stanovnika", "stanovnici", "population",
-        "pop", "n",
+        "count",
+        "counts",
+        "qty",
+        "quantity",
+        "quantities",
+        "pieces",
+        "persons",
+        "people",
+        "cases",
+        "employees",
+        "households",
+        "visitors",
+        "anzahl",
+        "zahl",
+        "menge",
+        "stück",
+        "stk",
+        "personen",
+        "fälle",
+        "faelle",
+        "fall",
+        "einwohner",
+        "bevölkerung",
+        "beschäftigte",
+        "haushalte",
+        "besucher",
+        "bezieher",
+        "quantité",
+        "effectif",
+        "effectifs",
+        "habitants",
+        "personnes",
+        "cantidad",
+        "personas",
+        "habitantes",
+        "casos",
+        "quantidade",
+        "pessoas",
+        "quantità",
+        "quantita",
+        "persone",
+        "abitanti",
+        "aantal",
+        "personen",
+        "inwoners",
+        "broj",
+        "količina",
+        "kolicina",
+        "osoba",
+        "lica",
+        "stanovnika",
+        "stanovnici",
+        "population",
+        "pop",
+        "n",
     ];
-    const STEMS: &[&str] = &["anzahl", "bezieher", "einwohner", "beschäftigt", "teilnehmer", "fälle"];
-    any_word(ws, EXACT, STEMS) || low.contains("number of") || low.contains("nombre de") || low.contains("número de")
+    const STEMS: &[&str] = &[
+        "anzahl",
+        "bezieher",
+        "einwohner",
+        "beschäftigt",
+        "teilnehmer",
+        "fälle",
+    ];
+    any_word(ws, EXACT, STEMS)
+        || low.contains("number of")
+        || low.contains("nombre de")
+        || low.contains("número de")
 }
 
 /// Identifiers and codes.
 fn id_words(ws: &[String]) -> bool {
     const EXACT: &[&str] = &[
-        "id", "ids", "nr", "no", "nº", "n°", "num", "code", "codes", "codigo", "código", "cod", "key", "ref", "uuid",
-        "plz", "zip", "cpv", "nuts", "isin", "nif", "nipc", "vat", "pib", "jmbg", "mb", "sku", "ean", "iban", "kennung",
-        "kennziffer", "schlüssel", "nummer", "numéro", "identifiant", "identificador", "identificação", "šifra", "sifra",
-        "oznaka", "postcode", "postleitzahl", "kod", "kode", "codice", "number", "numero", "número",
+        "id",
+        "ids",
+        "nr",
+        "no",
+        "nº",
+        "n°",
+        "num",
+        "code",
+        "codes",
+        "codigo",
+        "código",
+        "cod",
+        "key",
+        "ref",
+        "uuid",
+        "plz",
+        "zip",
+        "cpv",
+        "nuts",
+        "isin",
+        "nif",
+        "nipc",
+        "vat",
+        "pib",
+        "jmbg",
+        "mb",
+        "sku",
+        "ean",
+        "iban",
+        "kennung",
+        "kennziffer",
+        "schlüssel",
+        "nummer",
+        "numéro",
+        "identifiant",
+        "identificador",
+        "identificação",
+        "šifra",
+        "sifra",
+        "oznaka",
+        "postcode",
+        "postleitzahl",
+        "kod",
+        "kode",
+        "codice",
+        "number",
+        "numero",
+        "número",
     ];
     const STEMS: &[&str] = &["schlüssel", "schluessel", "kennziffer", "identif", "nummer"];
-    ws.first().is_some_and(|w| w.starts_with("id") && w.len() > 3 && !w.starts_with("ide") && !w.starts_with("ida"))
-        || any_word(ws, EXACT, STEMS)
+    ws.first().is_some_and(|w| {
+        w.starts_with("id") && w.len() > 3 && !w.starts_with("ide") && !w.starts_with("ida")
+    }) || any_word(ws, EXACT, STEMS)
 }
 
 /// Year / month / week / day / quarter as a column of numbers.
 fn calendar_words(ws: &[String]) -> bool {
     const EXACT: &[&str] = &[
-        "year", "jahr", "ano", "año", "anno", "année", "annee", "jaar", "godina", "month", "monat", "mes", "mês", "mois",
-        "mese", "maand", "mesec", "week", "woche", "kalenderwoche", "semana", "semaine", "settimana", "quarter",
-        "quartal", "trimestre", "kwartaal", "kvartal", "fy", "berichtsjahr", "jahrgang",
+        "year",
+        "jahr",
+        "ano",
+        "año",
+        "anno",
+        "année",
+        "annee",
+        "jaar",
+        "godina",
+        "month",
+        "monat",
+        "mes",
+        "mês",
+        "mois",
+        "mese",
+        "maand",
+        "mesec",
+        "week",
+        "woche",
+        "kalenderwoche",
+        "semana",
+        "semaine",
+        "settimana",
+        "quarter",
+        "quartal",
+        "trimestre",
+        "kwartaal",
+        "kvartal",
+        "fy",
+        "berichtsjahr",
+        "jahrgang",
     ];
     any_word(ws, EXACT, &["kalenderwoche", "berichtsjahr"])
 }
@@ -198,9 +420,33 @@ fn calendar_words(ws: &[String]) -> bool {
 /// Names of things (a label per row).
 fn name_words(ws: &[String]) -> bool {
     const EXACT: &[&str] = &[
-        "name", "names", "title", "label", "bezeichnung", "benennung", "titel", "nom", "libellé", "libelle", "intitulé",
-        "nombre", "descripción", "nome", "denominação", "designação", "denominazione", "naam", "omschrijving", "naziv",
-        "ime", "firma", "company", "unternehmen", "empresa", "entidade", "entidad",
+        "name",
+        "names",
+        "title",
+        "label",
+        "bezeichnung",
+        "benennung",
+        "titel",
+        "nom",
+        "libellé",
+        "libelle",
+        "intitulé",
+        "nombre",
+        "descripción",
+        "nome",
+        "denominação",
+        "designação",
+        "denominazione",
+        "naam",
+        "omschrijving",
+        "naziv",
+        "ime",
+        "firma",
+        "company",
+        "unternehmen",
+        "empresa",
+        "entidade",
+        "entidad",
     ];
     any_word(ws, EXACT, &["bezeichn"])
 }
@@ -221,7 +467,11 @@ pub fn header_currency(text: &str) -> Option<&'static str> {
         .filter(|w| !w.is_empty())
         .find_map(|w| {
             let m = hh_core::values::currency_match(w)?;
-            (!m.wordlike && !m.ambiguous && (w.chars().count() >= 3 || !w.is_ascii()) && !w.contains('.')).then_some(m.code)
+            (!m.wordlike
+                && !m.ambiguous
+                && (w.chars().count() >= 3 || !w.is_ascii())
+                && !w.contains('.'))
+            .then_some(m.code)
         })
 }
 
@@ -244,17 +494,76 @@ pub fn measure_of_label(label: &str) -> Option<ColType> {
     } else {
         return None;
     };
-    Some(ColType { sem, currency, weak: false })
+    Some(ColType {
+        sem,
+        currency,
+        weak: false,
+    })
 }
 
 fn money_words(ws: &[String], low: &str) -> bool {
     const STEMS: &[&str] = &[
-        "preco", "preço", "price", "precio", "prezzo", "prix", "valor", "value", "amount", "betrag", "kosten", "costo",
-        "custo", "cost", "revenue", "umsatz", "erlös", "erloes", "sales", "salary", "gehalt", "lohn", "budget", "payment",
-        "zahlung", "iznos", "cijena", "cena", "montant", "importe", "ausgaben", "einnahmen", "expense", "income", "profit",
-        "gewinn", "spend", "turnover", "bedrag", "prijs", "kosten", "omzet", "importo", "ricavi", "spesa", "receita",
-        "despesa", "ingresos", "gastos", "chiffre d'affaires", "dépenses", "recettes", "prihod", "rashod", "trošk",
-        "plata", "zarada", "vermögen", "schulden", "debt", "assets",
+        "preco",
+        "preço",
+        "price",
+        "precio",
+        "prezzo",
+        "prix",
+        "valor",
+        "value",
+        "amount",
+        "betrag",
+        "kosten",
+        "costo",
+        "custo",
+        "cost",
+        "revenue",
+        "umsatz",
+        "erlös",
+        "erloes",
+        "sales",
+        "salary",
+        "gehalt",
+        "lohn",
+        "budget",
+        "payment",
+        "zahlung",
+        "iznos",
+        "cijena",
+        "cena",
+        "montant",
+        "importe",
+        "ausgaben",
+        "einnahmen",
+        "expense",
+        "income",
+        "profit",
+        "gewinn",
+        "spend",
+        "turnover",
+        "bedrag",
+        "prijs",
+        "kosten",
+        "omzet",
+        "importo",
+        "ricavi",
+        "spesa",
+        "receita",
+        "despesa",
+        "ingresos",
+        "gastos",
+        "chiffre d'affaires",
+        "dépenses",
+        "recettes",
+        "prihod",
+        "rashod",
+        "trošk",
+        "plata",
+        "zarada",
+        "vermögen",
+        "schulden",
+        "debt",
+        "assets",
     ];
     let _ = ws;
     STEMS.iter().any(|s| low.contains(s))
@@ -264,11 +573,45 @@ fn money_words(ws: &[String], low: &str) -> bool {
 /// (`PDV 20%`, `Osnovica 10%`, `Porez 10%`, `VAT 19%`, `MwSt 7%`): lowercase words or stems.
 fn amount_at_rate_words(ws: &[String], low: &str) -> bool {
     const EXACT: &[&str] = &[
-        "pdv", "porez", "osnovica", "doprinos", "doprinosi", "neto", "bruto", "ukupno", "ukupan", "ukupna", "tax", "taxes",
-        "vat", "gst", "base", "net", "gross", "total", "amount", "mwst", "ust", "steuer", "tva", "iva", "impuesto",
-        "imposto", "imposta", "btw", "ddv", "dph", "netto", "brutto", "basis", "summe", "betrag",
+        "pdv",
+        "porez",
+        "osnovica",
+        "doprinos",
+        "doprinosi",
+        "neto",
+        "bruto",
+        "ukupno",
+        "ukupan",
+        "ukupna",
+        "tax",
+        "taxes",
+        "vat",
+        "gst",
+        "base",
+        "net",
+        "gross",
+        "total",
+        "amount",
+        "mwst",
+        "ust",
+        "steuer",
+        "tva",
+        "iva",
+        "impuesto",
+        "imposto",
+        "imposta",
+        "btw",
+        "ddv",
+        "dph",
+        "netto",
+        "brutto",
+        "basis",
+        "summe",
+        "betrag",
     ];
-    const STEMS: &[&str] = &["osnovic", "doprinos", "trošk", "trošak", "troskov", "trosak", "steuer", "abgabe", "beitr"];
+    const STEMS: &[&str] = &[
+        "osnovic", "doprinos", "trošk", "trošak", "troskov", "trosak", "steuer", "abgabe", "beitr",
+    ];
     any_word(ws, EXACT, STEMS) || money_words(ws, low)
 }
 
@@ -282,14 +625,25 @@ fn percent_sign_only(ws: &[String]) -> bool {
 /// a `%` right after a number and no rate word (`Stopa`, `Anteil`, `Rate`). Such a header names
 /// the rate the column's amounts are computed at.
 fn stated_rate_only(ws: &[String]) -> bool {
-    ws.windows(2).any(|w| w[1] == "%" && w[0].chars().all(|c| c.is_ascii_digit())) && percent_sign_only(ws)
+    ws.windows(2)
+        .any(|w| w[1] == "%" && w[0].chars().all(|c| c.is_ascii_digit()))
+        && percent_sign_only(ws)
 }
 
 /// The column's values are not rates: some is beyond ±100 (no percentage, no fraction), or, for a
 /// header that states the rate and names an amount, they vary (a rate column at one stated rate
 /// holds that rate).
 fn amounts_not_rates(c: &Column, rows: &[usize], stated_amount: bool) -> bool {
-    let nums: Vec<f64> = rows.iter().filter_map(|&r| if let Some(Out::Num(x)) = c.values.get(r) { Some(*x) } else { None }).collect();
+    let nums: Vec<f64> = rows
+        .iter()
+        .filter_map(|&r| {
+            if let Some(Out::Num(x)) = c.values.get(r) {
+                Some(*x)
+            } else {
+                None
+            }
+        })
+        .collect();
     if nums.is_empty() {
         return false;
     }
@@ -308,7 +662,9 @@ fn sample(rows: &[usize]) -> Vec<usize> {
         return rows.to_vec();
     }
     let step = rows.len() as f64 / SAMPLE as f64;
-    (0..SAMPLE).map(|k| rows[(k as f64 * step) as usize]).collect()
+    (0..SAMPLE)
+        .map(|k| rows[(k as f64 * step) as usize])
+        .collect()
 }
 
 struct TextStats {
@@ -327,12 +683,25 @@ fn text_stats(c: &Column, rows: &[usize]) -> TextStats {
             len += s.chars().count();
             seen.insert(s.as_str());
             let s = s.trim();
-            if !s.is_empty() && s.len() <= 24 && !s.contains(' ') && s.chars().any(|ch| ch.is_ascii_digit()) {
+            if !s.is_empty()
+                && s.len() <= 24
+                && !s.contains(' ')
+                && s.chars().any(|ch| ch.is_ascii_digit())
+            {
                 code_like += 1;
             }
         }
     }
-    TextStats { filled, distinct: seen.len(), avg_len: if filled > 0 { len as f64 / filled as f64 } else { 0.0 }, code_like }
+    TextStats {
+        filled,
+        distinct: seen.len(),
+        avg_len: if filled > 0 {
+            len as f64 / filled as f64
+        } else {
+            0.0
+        },
+        code_like,
+    }
 }
 
 /// Integers in 1900..=2100 only (years), or None when the column has a non-integer.
@@ -379,13 +748,19 @@ pub fn summed_cols(norm: &Normalized, t: &Table) -> Vec<u32> {
 /// Types of a table's columns (indexed like `t.columns`; None for `_src_row` / `_row_type`).
 /// `mixed`: the label column by which the table's rows mix measures, if any; `summed`: source
 /// columns the file adds up itself ([`summed_cols`]).
-pub fn classify(t: &Table, names: &[String], mixed: Option<usize>, summed: &[u32]) -> Vec<Option<ColType>> {
+pub fn classify(
+    t: &Table,
+    names: &[String],
+    mixed: Option<usize>,
+    summed: &[u32],
+) -> Vec<Option<ColType>> {
     let rows = sample(&data_rows(t));
     let title = t.title.as_ref().map(|(s, _)| s.as_str()).unwrap_or("");
     // A title that states the rates ("porez 10%; PIO 14%") says what the amounts are computed at,
     // not that the columns are rates.
-    let title_measure =
-        measure_of_label(title).filter(|m| m.sem != Sem::Count && !(m.sem == Sem::Rate && stated_rate_only(&words(title))));
+    let title_measure = measure_of_label(title).filter(|m| {
+        m.sem != Sem::Count && !(m.sem == Sem::Rate && stated_rate_only(&words(title)))
+    });
     let period_cols: Vec<String> = table_time_coverage(t)
         .filter(|c| c.source == "column")
         .map(|c| c.columns)
@@ -393,8 +768,18 @@ pub fn classify(t: &Table, names: &[String], mixed: Option<usize>, summed: &[u32
     let mut out: Vec<Option<ColType>> = vec![None; t.columns.len()];
     for (i, c) in data_cols(t) {
         let name = &names[i];
-        let mut ty = classify_col(c, name, &rows, mixed.is_some() && mixed != Some(i), title_measure.as_ref(), &period_cols);
-        if ty.no_sum() && c.source_col.is_some_and(|s| summed.binary_search(&s).is_ok()) {
+        let mut ty = classify_col(
+            c,
+            name,
+            &rows,
+            mixed.is_some() && mixed != Some(i),
+            title_measure.as_ref(),
+            &period_cols,
+        );
+        if ty.no_sum()
+            && c.source_col
+                .is_some_and(|s| summed.binary_search(&s).is_ok())
+        {
             ty.sem = Sem::Amount;
         }
         out[i] = Some(ty);
@@ -431,7 +816,9 @@ fn classify_col(
                 return ColType::new(Sem::Period);
             }
             let unique = st.distinct * 10 >= st.filled * 9;
-            if id_words(&ws) && !name_words(&ws) || (unique && st.filled >= 20 && st.code_like * 10 >= st.filled * 9) {
+            if id_words(&ws) && !name_words(&ws)
+                || (unique && st.filled >= 20 && st.code_like * 10 >= st.filled * 9)
+            {
                 return ColType::new(Sem::Id);
             }
             if st.distinct <= DIM_VALUES || (st.distinct * 20 <= st.filled && st.distinct <= 200) {
@@ -459,7 +846,10 @@ fn classify_col(
             if mixed {
                 return ColType::new(Sem::Mixed);
             }
-            let currency = c.currency.clone().or_else(|| header_currency(name).map(String::from));
+            let currency = c
+                .currency
+                .clone()
+                .or_else(|| header_currency(name).map(String::from));
             if c.dtype == Dtype::Percent || c.unit.as_deref() == Some("%") {
                 return ColType::new(Sem::Rate);
             }
@@ -474,7 +864,8 @@ fn classify_col(
                     let amount_word = amount_at_rate_words(&ws, &low);
                     let amounts = if percent_sign_only(&ws) {
                         let stated = stated_rate_only(&ws);
-                        (stated || amount_word || currency.is_some()) && amounts_not_rates(c, rows, stated && amount_word)
+                        (stated || amount_word || currency.is_some())
+                            && amounts_not_rates(c, rows, stated && amount_word)
                     } else {
                         // A rate word (`Stopa PDV`, `Exchange rate EUR`): only an amount word over
                         // values that are no rates.
@@ -491,19 +882,35 @@ fn classify_col(
             }
 
             if currency.is_some() || c.dtype == Dtype::Currency {
-                return ColType { sem: Sem::Amount, currency, weak: false };
+                return ColType {
+                    sem: Sem::Amount,
+                    currency,
+                    weak: false,
+                };
             }
             // A bare period header ("2025"): the table title says what; an index / average / rate
             // title also for headers without measure words ("unbereinigt" in an index table).
             if let Some(m) = title.filter(|m| periodic || m.no_sum()) {
-                return ColType { sem: m.sem, currency: m.currency.clone(), weak: false };
+                return ColType {
+                    sem: m.sem,
+                    currency: m.currency.clone(),
+                    weak: false,
+                };
             }
             let (filled, distinct) = distinct_nums(c, rows);
-            if c.dtype == Dtype::Integer && filled >= 20 && distinct == filled && sequential(c, rows) {
+            if c.dtype == Dtype::Integer
+                && filled >= 20
+                && distinct == filled
+                && sequential(c, rows)
+            {
                 return ColType::new(Sem::Id);
             }
             // No words to go by: a quantity that adds up.
-            ColType { sem: Sem::Amount, currency: None, weak: true }
+            ColType {
+                sem: Sem::Amount,
+                currency: None,
+                weak: true,
+            }
         }
     }
 }
@@ -520,9 +927,19 @@ fn all_years_or_small(c: &Column, rows: &[usize]) -> bool {
 fn sequential(c: &Column, rows: &[usize]) -> bool {
     let vals: Vec<f64> = rows
         .iter()
-        .filter_map(|&r| if let Some(Out::Num(x)) = c.values.get(r) { Some(*x) } else { None })
+        .filter_map(|&r| {
+            if let Some(Out::Num(x)) = c.values.get(r) {
+                Some(*x)
+            } else {
+                None
+            }
+        })
         .collect();
-    vals.windows(2).filter(|w| (w[1] - w[0]).abs() == 1.0).count() * 10 >= vals.len().saturating_sub(1) * 9
+    vals.windows(2)
+        .filter(|w| (w[1] - w[0]).abs() == 1.0)
+        .count()
+        * 10
+        >= vals.len().saturating_sub(1) * 9
 }
 
 /// A header naming two years (`2020/ 2025`, `2024 vs. 2023`, `Veränderung 2023-2024`).
@@ -539,7 +956,9 @@ fn two_periods(name: &str) -> bool {
 /// add up; the table's `do not sum:` line says how) — `EUR`, `id`, `% rate`. Plain amounts, counts,
 /// names, dimensions and periods get no tag (`kind` is the storage word with unit / currency).
 pub fn kind_with(kind: &str, c: &Column, ty: Option<&ColType>) -> String {
-    let Some(ty) = ty.filter(|ty| !ty.weak) else { return kind.to_string() };
+    let Some(ty) = ty.filter(|ty| !ty.weak) else {
+        return kind.to_string();
+    };
     let mut s = kind.to_string();
     let mut push = |w: &str| {
         if !s.is_empty() {
@@ -547,7 +966,11 @@ pub fn kind_with(kind: &str, c: &Column, ty: Option<&ColType>) -> String {
         }
         s.push_str(w);
     };
-    if let Some(cur) = ty.currency.as_ref().filter(|_| c.currency.is_none() && c.unit.is_none()) {
+    if let Some(cur) = ty
+        .currency
+        .as_ref()
+        .filter(|_| c.currency.is_none() && c.unit.is_none())
+    {
         push(cur);
     }
     if ty.sem == Sem::Id || (ty.no_sum() && is_numeric(c.dtype)) {
@@ -558,10 +981,18 @@ pub fn kind_with(kind: &str, c: &Column, ty: Option<&ColType>) -> String {
 
 /// `do not sum:` line of a table: its average / rate / index columns, and for a table whose rows
 /// mix measures, the labels whose rows are averages / rates / indexes. None when there are none.
-pub fn no_sum_line(t: &Table, names: &[String], types: &[Option<ColType>], mixed: Option<usize>) -> Option<String> {
+pub fn no_sum_line(
+    t: &Table,
+    names: &[String],
+    types: &[Option<ColType>],
+    mixed: Option<usize>,
+) -> Option<String> {
     let mut items: Vec<String> = Vec::new();
     for (i, ty) in types.iter().enumerate() {
-        if let Some(ty) = ty.as_ref().filter(|ty| ty.no_sum() && is_numeric(t.columns[i].dtype)) {
+        if let Some(ty) = ty
+            .as_ref()
+            .filter(|ty| ty.no_sum() && is_numeric(t.columns[i].dtype))
+        {
             items.push(format!("{} ({})", ident(&short(&names[i], 40)), ty.short()));
         }
     }
@@ -580,8 +1011,17 @@ pub fn no_sum_line(t: &Table, names: &[String], types: &[Option<ColType>], mixed
         }
         for l in labels {
             if let Some(ty) = measure_of_label(l).filter(ColType::no_sum) {
-                let cur = ty.currency.as_ref().map(|c| format!(" {c}")).unwrap_or_default();
-                items.push(format!("rows {} = '{}' ({}{cur})", ident(&names[m]), short(l, 40), ty.short()));
+                let cur = ty
+                    .currency
+                    .as_ref()
+                    .map(|c| format!(" {c}"))
+                    .unwrap_or_default();
+                items.push(format!(
+                    "rows {} = '{}' ({}{cur})",
+                    ident(&names[m]),
+                    short(l, 40),
+                    ty.short()
+                ));
             }
         }
     }
@@ -594,7 +1034,11 @@ pub fn no_sum_line(t: &Table, names: &[String], types: &[Option<ColType>], mixed
     if more > 0 {
         s.push_str(&format!(" +{more} more"));
     }
-    s.push_str(if cols > 0 { " — use AVG, a weighted mean or the file's total" } else { " — use AVG or the file's figure" });
+    s.push_str(if cols > 0 {
+        " — use AVG, a weighted mean or the file's total"
+    } else {
+        " — use AVG or the file's figure"
+    });
     Some(s)
 }
 
@@ -609,11 +1053,23 @@ mod tests {
     #[test]
     fn label_measures() {
         assert_eq!(sem("Durchschnittshöhe in Euro"), Some(Sem::Average));
-        assert_eq!(measure_of_label("Durchschnittshöhe in Euro").unwrap().currency.as_deref(), Some("EUR"));
+        assert_eq!(
+            measure_of_label("Durchschnittshöhe in Euro")
+                .unwrap()
+                .currency
+                .as_deref(),
+            Some("EUR")
+        );
         assert_eq!(sem("Anzahl Bezieher:innen"), Some(Sem::Count));
         assert_eq!(sem("Richtsätze in Euro"), Some(Sem::Amount));
-        assert_eq!(sem("Veränderung KSB gegenüber Vortag in Prozent"), Some(Sem::Rate));
-        assert_eq!(sem("gleitender 7-Tage-Durchschnitt KSB"), Some(Sem::Average));
+        assert_eq!(
+            sem("Veränderung KSB gegenüber Vortag in Prozent"),
+            Some(Sem::Rate)
+        );
+        assert_eq!(
+            sem("gleitender 7-Tage-Durchschnitt KSB"),
+            Some(Sem::Average)
+        );
         assert_eq!(sem("Lkw-Maut-Fahrleistungsindex"), Some(Sem::Index));
         assert_eq!(sem("Indexwert"), Some(Sem::Index));
         assert_eq!(sem("precoContratual"), Some(Sem::Amount));

@@ -25,6 +25,8 @@ jobs:
         with:
           # only master writes the cache; PRs reuse it without adding entries
           save-if: ${{ github.ref == 'refs/heads/master' }}
+      - name: Format
+        run: cargo fmt --all -- --check
       # Tier 0 feature snapshots first (agent/tests/snapshots/): fast feedback, readable diffs.
       # The golden and noise parts of `make quick` need the private test data and stay local.
       - name: Feature snapshots (tier 0)

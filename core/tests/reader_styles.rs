@@ -9,7 +9,11 @@ fn xlsx_formats_reach_cells_and_features() {
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     let title = Format::new().set_bold().set_font_size(16);
-    let header = Format::new().set_bold().set_background_color("C6E0B4").set_border_bottom(FormatBorder::Thin).set_align(FormatAlign::Center);
+    let header = Format::new()
+        .set_bold()
+        .set_background_color("C6E0B4")
+        .set_border_bottom(FormatBorder::Thin)
+        .set_align(FormatAlign::Center);
     let money = Format::new().set_num_format("#,##0.00");
     let pct = Format::new().set_num_format("0.0%");
     let label = Format::new().set_indent(2);
@@ -19,7 +23,8 @@ fn xlsx_formats_reach_cells_and_features() {
     ws.write_with_format(2, 2, "Share", &header).unwrap();
     for r in 3..8u32 {
         ws.write_with_format(r, 0, format!("R{r}"), &label).unwrap();
-        ws.write_with_format(r, 1, 1000.0 * r as f64, &money).unwrap();
+        ws.write_with_format(r, 1, 1000.0 * r as f64, &money)
+            .unwrap();
         ws.write_with_format(r, 2, 0.1 * r as f64, &pct).unwrap();
     }
     ws.write(8, 0, "plain").unwrap();
@@ -31,12 +36,23 @@ fn xlsx_formats_reach_cells_and_features() {
     let plain = hh_core::reader::open(&path).unwrap();
     // A small file is read with its formats (row-label indents), whatever the options say.
     assert_eq!(plain.sheets[0].formats.len(), plain.sheets[0].cells.len());
-    let book = hh_core::reader::open_with(&path, hh_core::reader::ReadOptions { formats: true, ..Default::default() }).unwrap();
+    let book = hh_core::reader::open_with(
+        &path,
+        hh_core::reader::ReadOptions {
+            formats: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     std::fs::remove_file(&path).ok();
     let sheet = &book.sheets[0];
     assert_eq!(sheet.formats.len(), sheet.cells.len());
     let at = |row: u32, col: u32| {
-        let i = sheet.cells.iter().position(|c| (c.row, c.col) == (row, col)).unwrap();
+        let i = sheet
+            .cells
+            .iter()
+            .position(|c| (c.row, c.col) == (row, col))
+            .unwrap();
         sheet.formats[i].unpack().unwrap()
     };
     let t = at(0, 0);

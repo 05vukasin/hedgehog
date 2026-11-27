@@ -13,7 +13,9 @@ use std::io::Read;
 use calamine::Dimensions;
 use memchr::memmem;
 
-use super::merges::{cell_ref, declared_dimension, decode, local, parse_merge_cells, read_full, tags};
+use super::merges::{
+    cell_ref, declared_dimension, decode, local, parse_merge_cells, read_full, tags,
+};
 use crate::model::{Align, Cell, Format, FormatSpec, NumFmt, Rect};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -68,7 +70,8 @@ fn colored(t: &super::merges::Tag<'_>) -> bool {
 
 /// A cell fill colour that is no fill to the eye: white.
 fn white(t: &super::merges::Tag<'_>) -> bool {
-    t.attr(b"rgb").is_some_and(|rgb| rgb.len() >= 6 && rgb[rgb.len() - 6..].eq_ignore_ascii_case(b"FFFFFF"))
+    t.attr(b"rgb")
+        .is_some_and(|rgb| rgb.len() >= 6 && rgb[rgb.len() - 6..].eq_ignore_ascii_case(b"FFFFFF"))
         || t.attr(b"theme") == Some(b"0")
 }
 
@@ -89,7 +92,8 @@ pub(super) fn parse_styles(xml: &[u8]) -> Option<Vec<Format>> {
         if section.is_empty() {
             if !t.closing && !t.self_closing {
                 section = match name {
-                    b"numFmts" | b"fonts" | b"fills" | b"borders" | b"cellXfs" | b"cellStyleXfs" | b"dxfs" => name,
+                    b"numFmts" | b"fonts" | b"fills" | b"borders" | b"cellXfs"
+                    | b"cellStyleXfs" | b"dxfs" => name,
                     _ => b"",
                 };
                 saw_xfs |= name == b"cellXfs";
@@ -113,7 +117,10 @@ pub(super) fn parse_styles(xml: &[u8]) -> Option<Vec<Format>> {
                 }
             }
             b"fonts" => match name {
-                b"font" => fonts.push(Font { size: 22, ..Font::default() }),
+                b"font" => fonts.push(Font {
+                    size: 22,
+                    ..Font::default()
+                }),
                 _ => {
                     let Some(f) = fonts.last_mut() else { continue };
                     match name {
@@ -122,7 +129,10 @@ pub(super) fn parse_styles(xml: &[u8]) -> Option<Vec<Format>> {
                         b"u" => f.underline = t.attr(b"val") != Some(b"none"),
                         b"color" => f.color = colored(&t),
                         b"sz" => {
-                            if let Some(v) = t.attr(b"val").and_then(|v| std::str::from_utf8(v).ok()?.parse::<f32>().ok()) {
+                            if let Some(v) = t
+                                .attr(b"val")
+                                .and_then(|v| std::str::from_utf8(v).ok()?.parse::<f32>().ok())
+                            {
                                 f.size = (v * 2.0).round().clamp(1.0, 511.0) as u16;
                             }
                         }
@@ -189,7 +199,9 @@ pub(super) fn parse_styles(xml: &[u8]) -> Option<Vec<Format>> {
                         Some(_) => Align::Other,
                     };
                     x.indent = t.attr(b"indent").and_then(num).unwrap_or(0).min(15) as u8;
-                    x.wrap = t.attr(b"wrapText").is_some_and(|v| v == b"1" || v == b"true");
+                    x.wrap = t
+                        .attr(b"wrapText")
+                        .is_some_and(|v| v == b"1" || v == b"true");
                 }
                 _ => {}
             },
@@ -203,7 +215,10 @@ pub(super) fn parse_styles(xml: &[u8]) -> Option<Vec<Format>> {
     Some(
         xfs.iter()
             .map(|x| {
-                let font = fonts.get(x.font as usize).copied().unwrap_or(Font { size: default_size, ..Font::default() });
+                let font = fonts.get(x.font as usize).copied().unwrap_or(Font {
+                    size: default_size,
+                    ..Font::default()
+                });
                 let border = borders.get(x.border as usize).copied().unwrap_or_default();
                 Format::pack(&FormatSpec {
                     bold: font.bold,
@@ -218,7 +233,10 @@ pub(super) fn parse_styles(xml: &[u8]) -> Option<Vec<Format>> {
                     wrap: x.wrap,
                     align: x.align,
                     indent: x.indent,
-                    num_fmt: num_fmts.get(&x.num_fmt).copied().unwrap_or_else(|| builtin_numfmt(x.num_fmt)),
+                    num_fmt: num_fmts
+                        .get(&x.num_fmt)
+                        .copied()
+                        .unwrap_or_else(|| builtin_numfmt(x.num_fmt)),
                     size_half_pt: font.size,
                 })
             })
@@ -281,7 +299,12 @@ pub(crate) fn numfmt_kind(code: &str) -> NumFmt {
                 if let Some(sym) = inner.strip_prefix('$') {
                     // `[$€-407]` names a currency; `[$-409]` only a locale.
                     currency |= !sym.is_empty() && !sym.starts_with('-');
-                } else if !inner.is_empty() && inner.to_ascii_lowercase().trim_start_matches(['h', 'm', 's']).is_empty() {
+                } else if !inner.is_empty()
+                    && inner
+                        .to_ascii_lowercase()
+                        .trim_start_matches(['h', 'm', 's'])
+                        .is_empty()
+                {
                     time = true; // [h], [mm], [ss]
                 }
             }
@@ -303,7 +326,10 @@ pub(crate) fn numfmt_kind(code: &str) -> NumFmt {
         return NumFmt::Text;
     }
     let p_wo_general = p.replace("general", "");
-    if time || (!digits && p_wo_general.contains(['y', 'd', 'h', 's', 'm'])) || p_wo_general.contains(['y', 'd', 'h']) {
+    if time
+        || (!digits && p_wo_general.contains(['y', 'd', 'h', 's', 'm']))
+        || p_wo_general.contains(['y', 'd', 'h'])
+    {
         return NumFmt::Date;
     }
     if p.contains('%') {
@@ -313,7 +339,11 @@ pub(crate) fn numfmt_kind(code: &str) -> NumFmt {
         return NumFmt::Currency;
     }
     if !digits {
-        return if p_wo_general.trim().is_empty() { NumFmt::General } else { NumFmt::Other };
+        return if p_wo_general.trim().is_empty() {
+            NumFmt::General
+        } else {
+            NumFmt::Other
+        };
     }
     if p.contains('e') || p.contains('/') {
         return NumFmt::Other;
@@ -328,7 +358,10 @@ pub(crate) fn numfmt_kind(code: &str) -> NumFmt {
 }
 
 fn is_currency(c: char) -> bool {
-    matches!(c, '$' | '€' | '£' | '¥' | '₹' | '₽' | '₩' | '₺' | '₪' | '₫' | '₱' | '¢' | '₴' | '₦')
+    matches!(
+        c,
+        '$' | '€' | '£' | '¥' | '₹' | '₽' | '₩' | '₺' | '₪' | '₫' | '₱' | '¢' | '₴' | '₦'
+    )
 }
 
 /// One streaming pass over a sheet part: the merged areas (`merges.rs` semantics) and, when `xfs`
@@ -357,7 +390,11 @@ pub(super) fn scan_sheet_declared(
 ) -> Option<(Dimensions, Vec<Rect>, Option<Vec<Format>>)> {
     const CHUNK: usize = 256 * 1024;
     const TAIL: usize = 128;
-    let default = xfs.map(|x| x.first().copied().unwrap_or(Format::pack(&FormatSpec::default())));
+    let default = xfs.map(|x| {
+        x.first()
+            .copied()
+            .unwrap_or(Format::pack(&FormatSpec::default()))
+    });
     let mut formats: Option<Vec<Format>> = default.map(|d| vec![d; cells.len()]);
     let mut buf: Vec<u8> = Vec::with_capacity(CHUNK + TAIL);
     let mut chunk = vec![0u8; CHUNK];
@@ -375,7 +412,9 @@ pub(super) fn scan_sheet_declared(
                 Some(d) if dims.is_none_or(|x| d.unwrap_or_default() == x) => {
                     declared = d.unwrap_or_default();
                     let mut pat = b"<".to_vec();
-                    if let Some(root) = tags(&buf).find(|t| !t.closing && local(t.name) == b"worksheet") {
+                    if let Some(root) =
+                        tags(&buf).find(|t| !t.closing && local(t.name) == b"worksheet")
+                    {
                         pat.extend_from_slice(&root.name[..root.name.len() - b"worksheet".len()]);
                     }
                     pat.push(b'c');
@@ -430,10 +469,15 @@ pub(super) fn scan_sheet_declared(
                     formats = None; // positions without `r` would be guesses
                     break;
                 };
-                let fmt = xfs.and_then(|x| x.get(s as usize).copied()).or(default).unwrap_or_default();
+                let fmt = xfs
+                    .and_then(|x| x.get(s as usize).copied())
+                    .or(default)
+                    .unwrap_or_default();
                 let idx = if cells.get(cursor).is_some_and(|c| key(c) == pos) {
                     Some(cursor)
-                } else if cells.get(cursor).is_none_or(|c| pos < key(c)) && (cursor == 0 || key(&cells[cursor - 1]) < pos) {
+                } else if cells.get(cursor).is_none_or(|c| pos < key(c))
+                    && (cursor == 0 || key(&cells[cursor - 1]) < pos)
+                {
                     None // a styled empty cell between two cells
                 } else {
                     cells.binary_search_by_key(&pos, key).ok()
@@ -458,7 +502,11 @@ pub(super) fn scan_sheet_declared(
         }
         // Keep the unprocessed part, at least the last TAIL bytes (a `mergeCells` match across
         // the chunk boundary needs its `<`); a cell tag seen twice gets the same format twice.
-        let keep_from = if formats.is_some() { i.min(buf.len().saturating_sub(TAIL)) } else { buf.len().saturating_sub(TAIL) };
+        let keep_from = if formats.is_some() {
+            i.min(buf.len().saturating_sub(TAIL))
+        } else {
+            buf.len().saturating_sub(TAIL)
+        };
         buf.drain(..keep_from);
     }
 }
@@ -474,7 +522,9 @@ fn merge_tag_start(buf: &[u8], j: usize) -> Option<usize> {
     let prefix = &buf[lt + 1..j];
     let ok = prefix.is_empty()
         || (prefix.last() == Some(&b':')
-            && prefix[..prefix.len() - 1].iter().all(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'));
+            && prefix[..prefix.len() - 1]
+                .iter()
+                .all(|&b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-' || b == b'.'));
     ok.then_some(lt)
 }
 
@@ -490,7 +540,10 @@ mod tests {
             ("0", Integer),
             ("0.000", Decimal),
             ("#,##0", Thousands),
-            ("_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)", Thousands),
+            (
+                "_(* #,##0.00_);_(* \\(#,##0.00\\);_(* \"-\"??_);_(@_)",
+                Thousands,
+            ),
             ("\"$\"#,##0_);[Red]\\(\"$\"#,##0\\)", Currency),
             ("[$€-407] #,##0.00", Currency),
             ("#,##0.00 [$€-1]", Currency),
@@ -533,11 +586,24 @@ mod tests {
         let x = parse_styles(xml).unwrap();
         assert_eq!(x.len(), 3);
         let d = x[0].unpack().unwrap();
-        assert!(!d.bold && !d.fill && !d.color && d.size_half_pt == 22 && d.num_fmt == NumFmt::General);
+        assert!(
+            !d.bold && !d.fill && !d.color && d.size_half_pt == 22 && d.num_fmt == NumFmt::General
+        );
         let h = x[1].unpack().unwrap();
-        assert!(h.bold && !h.italic && h.underline && h.color && h.fill && h.border_left && h.border_bottom);
+        assert!(
+            h.bold
+                && !h.italic
+                && h.underline
+                && h.color
+                && h.fill
+                && h.border_left
+                && h.border_bottom
+        );
         assert!(!h.border_top && !h.border_right && h.wrap);
-        assert_eq!((h.align, h.indent, h.size_half_pt, h.num_fmt), (Align::Center, 2, 28, NumFmt::Percent));
+        assert_eq!(
+            (h.align, h.indent, h.size_half_pt, h.num_fmt),
+            (Align::Center, 2, 28, NumFmt::Percent)
+        );
         let w = x[2].unpack().unwrap();
         assert!(!w.fill);
         assert_eq!(w.num_fmt, NumFmt::Thousands);
@@ -546,33 +612,76 @@ mod tests {
 
     #[test]
     fn sheet_scan_finds_formats_and_merges() {
-        let cell = |row, col| Cell { row, col, value: Some(crate::model::Value::Number(1.0)), formula: None };
+        let cell = |row, col| Cell {
+            row,
+            col,
+            value: Some(crate::model::Value::Number(1.0)),
+            formula: None,
+        };
         let cells = vec![cell(0, 0), cell(1, 0), cell(1, 2)];
         let xml = br#"<worksheet><dimension ref="A1:C2"/><sheetData><row r="1"><c r="A1" s="1" t="s"><v>0</v></c>
             <c r="B1" s="1"/></row><row r="2"><c r="A2"><v>1</v></c><c r="C2" s="2"><v>2</v></c></row></sheetData>
             <mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells></worksheet>"#;
-        let xfs = [Format::pack(&FormatSpec::default()), Format::pack(&FormatSpec { bold: true, ..FormatSpec::default() }),
-            Format::pack(&FormatSpec { fill: true, ..FormatSpec::default() })];
-        let dims = Dimensions { start: (0, 0), end: (1, 2) };
+        let xfs = [
+            Format::pack(&FormatSpec::default()),
+            Format::pack(&FormatSpec {
+                bold: true,
+                ..FormatSpec::default()
+            }),
+            Format::pack(&FormatSpec {
+                fill: true,
+                ..FormatSpec::default()
+            }),
+        ];
+        let dims = Dimensions {
+            start: (0, 0),
+            end: (1, 2),
+        };
         let (m, f) = scan_sheet(&mut &xml[..], dims, Some(&xfs), &cells).unwrap();
-        assert_eq!(m, vec![Rect { top: 0, left: 0, bottom: 0, right: 1 }]);
+        assert_eq!(
+            m,
+            vec![Rect {
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 1
+            }]
+        );
         assert_eq!(f.unwrap(), vec![xfs[1], xfs[0], xfs[2]]);
         // No styles: merges only. Wrong dimension: not this part.
-        assert_eq!(scan_sheet(&mut &xml[..], dims, None, &cells).unwrap().1, None);
-        assert!(scan_sheet(&mut &xml[..], Dimensions { start: (0, 0), end: (5, 5) }, Some(&xfs), &cells).is_none());
+        assert_eq!(
+            scan_sheet(&mut &xml[..], dims, None, &cells).unwrap().1,
+            None
+        );
+        assert!(
+            scan_sheet(
+                &mut &xml[..],
+                Dimensions {
+                    start: (0, 0),
+                    end: (5, 5)
+                },
+                Some(&xfs),
+                &cells
+            )
+            .is_none()
+        );
         // A cell without `r`: formats unknown, merges still found.
         let no_r = br#"<worksheet><dimension ref="A1:C2"/><sheetData><row r="1"><c s="1"><v>0</v></c></row></sheetData></worksheet>"#;
         let (m, f) = scan_sheet(&mut &no_r[..], dims, Some(&xfs), &cells).unwrap();
         assert!(m.is_empty() && f.is_none());
         // Namespace prefix, chunk-crossing tags: a long sheet.
-        let mut big = String::from(r#"<x:worksheet xmlns:x="ns"><x:dimension ref="A1:B5000"/><x:sheetData>"#);
+        let mut big =
+            String::from(r#"<x:worksheet xmlns:x="ns"><x:dimension ref="A1:B5000"/><x:sheetData>"#);
         let mut many = Vec::new();
         for r in 0..5000u32 {
             big.push_str(&format!(r#"<x:row r="{}"><x:c r="A{}" s="{}"><x:v>1</x:v></x:c><x:c r="B{}" s="0"/></x:row>"#, r + 1, r + 1, r % 3, r + 1));
             many.push(cell(r, 0));
         }
         big.push_str(r#"</x:sheetData><x:mergeCells count="1"><x:mergeCell ref="A1:B1"/></x:mergeCells></x:worksheet>"#);
-        let dims = Dimensions { start: (0, 0), end: (4999, 1) };
+        let dims = Dimensions {
+            start: (0, 0),
+            end: (4999, 1),
+        };
         let (m, f) = scan_sheet(&mut big.as_bytes(), dims, Some(&xfs), &many).unwrap();
         assert_eq!(m.len(), 1);
         let f = f.unwrap();

@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use hh_core::normalize::{normalize_workbook, ColRole, Normalized, Options, Out, Table};
+use hh_core::normalize::{ColRole, Normalized, Options, Out, Table, normalize_workbook};
 use hh_core::open;
 use rust_xlsxwriter::{Format, Formula, Workbook, Worksheet};
 
@@ -27,31 +27,40 @@ fn flow(g: u32, p: usize, d: u32) -> f64 {
 fn grid(ws: &mut Worksheet, g: u32, top: u32, left: u16, days: u32, date: &Format) {
     for d in 0..days {
         let col = left + d as u16;
-        ws.write_number_with_format(top, col, 37257.0 + 31.0 * g as f64 + d as f64, date).unwrap();
+        ws.write_number_with_format(top, col, 37257.0 + 31.0 * g as f64 + d as f64, date)
+            .unwrap();
         let mut row = top + 1;
         for block in 0..2 {
             let first = row;
             for k in 0..PIPES.len() {
-                ws.write_number(row, col, flow(g, block * PIPES.len() + k, d)).unwrap();
+                ws.write_number(row, col, flow(g, block * PIPES.len() + k, d))
+                    .unwrap();
                 row += 1;
             }
-            let sum: f64 = (0..PIPES.len()).map(|k| flow(g, block * PIPES.len() + k, d)).sum();
+            let sum: f64 = (0..PIPES.len())
+                .map(|k| flow(g, block * PIPES.len() + k, d))
+                .sum();
             let letter = rust_xlsxwriter::utility::column_number_to_name(col);
             let f = format!("=SUM({letter}{}:{letter}{})", first + 1, row);
-            ws.write_formula(row, col, Formula::new(f).set_result(sum.to_string())).unwrap();
+            ws.write_formula(row, col, Formula::new(f).set_result(sum.to_string()))
+                .unwrap();
             row += 1;
         }
     }
 }
 
 fn fixture() -> Normalized {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_row_labels_{}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_row_labels_{}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     ws.set_name("Flows").unwrap();
     let date = Format::new().set_num_format("yyyy-mm-dd");
     // Summary A1:D11: flow (once per block), pipeline, capacity, average; a total after each block.
-    for (c, h) in ["Flow", "Pipeline", "Capacity", "Average"].iter().enumerate() {
+    for (c, h) in ["Flow", "Pipeline", "Capacity", "Average"]
+        .iter()
+        .enumerate()
+    {
         ws.write_string(0, c as u16, *h).unwrap();
     }
     let mut row = 1;
@@ -60,12 +69,20 @@ fn fixture() -> Normalized {
         for (k, p) in PIPES.iter().enumerate() {
             ws.write_string(row, 1, *p).unwrap();
             ws.write_number(row, 2, 50000.0 * (k + 1) as f64).unwrap();
-            ws.write_number(row, 3, flow(0, block * PIPES.len() + k, 0)).unwrap();
+            ws.write_number(row, 3, flow(0, block * PIPES.len() + k, 0))
+                .unwrap();
             row += 1;
         }
         ws.write_string(row, 1, "Total").unwrap();
         ws.write_number(row, 2, 500000.0).unwrap();
-        ws.write_number(row, 3, (0..PIPES.len()).map(|k| flow(0, block * PIPES.len() + k, 0)).sum::<f64>()).unwrap();
+        ws.write_number(
+            row,
+            3,
+            (0..PIPES.len())
+                .map(|k| flow(0, block * PIPES.len() + k, 0))
+                .sum::<f64>(),
+        )
+        .unwrap();
         row += 1;
     }
     // Beside it (G..K, same rows) and below it (C.., three blank rows apart): daily grids.
@@ -74,15 +91,23 @@ fn fixture() -> Normalized {
     grid(ws, 2, 28, 2, 5, &date);
     // A grid with fewer rows (no deliveries block) keeps its plain numbers.
     for d in 0..5u16 {
-        ws.write_number_with_format(42, 2 + d, 37400.0 + d as f64, &date).unwrap();
+        ws.write_number_with_format(42, 2 + d, 37400.0 + d as f64, &date)
+            .unwrap();
         for k in 0..6u32 {
-            ws.write_number(43 + k, 2 + d, (100 * k + d as u32 + 1) as f64).unwrap();
+            ws.write_number(43 + k, 2 + d, (100 * k + d as u32 + 1) as f64)
+                .unwrap();
         }
     }
     wb.save(&path).unwrap();
     let book = open(&path).unwrap();
     std::fs::remove_file(&path).ok();
-    normalize_workbook(&book, &Options { rules_only: true, ..Options::default() })
+    normalize_workbook(
+        &book,
+        &Options {
+            rules_only: true,
+            ..Options::default()
+        },
+    )
 }
 
 fn names(t: &Table) -> Vec<&str> {
@@ -90,7 +115,11 @@ fn names(t: &Table) -> Vec<&str> {
 }
 
 fn text(t: &Table, col: &str) -> Vec<Option<String>> {
-    let c = t.columns.iter().find(|c| c.name == col).unwrap_or_else(|| panic!("no {col} in {:?}", names(t)));
+    let c = t
+        .columns
+        .iter()
+        .find(|c| c.name == col)
+        .unwrap_or_else(|| panic!("no {col} in {:?}", names(t)));
     c.values
         .iter()
         .map(|v| match v {
@@ -108,9 +137,16 @@ fn grids_beside_and_below_get_the_summary_row_labels() {
     assert_eq!(n.tables.len(), 5, "{ranges:?}");
     let summary = &n.tables[0];
     assert_eq!(&names(summary)[..2], ["Flow", "Pipeline"]);
-    let pipes: Vec<Option<String>> = PIPES.iter().chain(&PIPES).map(|p| Some(p.to_string())).collect();
-    let flows: Vec<Option<String>> =
-        ["Receipts"; 4].iter().chain(&["Deliveries"; 4]).map(|f| Some(f.to_string())).collect();
+    let pipes: Vec<Option<String>> = PIPES
+        .iter()
+        .chain(&PIPES)
+        .map(|p| Some(p.to_string()))
+        .collect();
+    let flows: Vec<Option<String>> = ["Receipts"; 4]
+        .iter()
+        .chain(&["Deliveries"; 4])
+        .map(|f| Some(f.to_string()))
+        .collect();
     assert_eq!(text(summary, "Pipeline"), pipes);
     assert_eq!(text(summary, "Flow"), flows);
     // The side-by-side grid, then the two monthly grids below: every data row is there (the zeros
@@ -123,17 +159,33 @@ fn grids_beside_and_below_get_the_summary_row_labels() {
         assert_eq!(text(t, "Flow"), flows, "T{}", t.n);
         let copied = t.columns.iter().take(2).all(|c| c.source_col.is_none());
         assert!(copied, "T{}: copied columns have no source column", t.n);
-        assert!(t.warnings.iter().any(|w| w.contains("copied from T1")), "T{}: {:?}", t.n, t.warnings);
+        assert!(
+            t.warnings.iter().any(|w| w.contains("copied from T1")),
+            "T{}: {:?}",
+            t.n,
+            t.warnings
+        );
         // The values line up: NGPL deliveries on the second day.
         let day2 = &t.columns[3];
         assert_eq!(day2.values[7], Out::Num(flow(g, 7, 1)), "T{}", t.n);
     }
     // Other row layout: no labels.
     let other = &n.tables[4];
-    assert!(other.columns.iter().all(|c| c.source_col.is_some() || c.role != ColRole::Data), "{:?}", names(other));
+    assert!(
+        other
+            .columns
+            .iter()
+            .all(|c| c.source_col.is_some() || c.role != ColRole::Data),
+        "{:?}",
+        names(other)
+    );
     assert!(other.warnings.iter().all(|w| !w.contains("copied from")));
     // No data row ended up in Notes as a "repeated header".
-    assert!(n.notes.iter().all(|x| x.kind != "repeated_header"), "{:?}", n.notes);
+    assert!(
+        n.notes.iter().all(|x| x.kind != "repeated_header"),
+        "{:?}",
+        n.notes
+    );
 }
 
 /// HiTab (NSF, StatCan): an outline of row labels by indentation, parents with their own values
@@ -142,11 +194,13 @@ fn grids_beside_and_below_get_the_summary_row_labels() {
 /// a group header (no values) starts afresh and stays in the group column.
 #[test]
 fn indented_row_labels_get_their_parent() {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_outline_{}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_outline_{}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     let ind = |n: u8| Format::new().set_indent(n);
-    ws.write_string(0, 0, "Table 8. Federal R&D obligations, by institution").unwrap();
+    ws.write_string(0, 0, "Table 8. Federal R&D obligations, by institution")
+        .unwrap();
     for (c, h) in ["Institution", "2016", "2017"].iter().enumerate() {
         ws.write_string(2, c as u16, *h).unwrap();
     }
@@ -163,7 +217,8 @@ fn indented_row_labels_get_their_parent() {
     ];
     for (k, (label, level, values)) in rows.iter().enumerate() {
         let r = 3 + k as u32;
-        ws.write_string_with_format(r, 0, *label, &ind(*level)).unwrap();
+        ws.write_string_with_format(r, 0, *label, &ind(*level))
+            .unwrap();
         if *values {
             ws.write_number(r, 1, 100.0 + k as f64).unwrap();
             ws.write_number(r, 2, 200.0 + k as f64).unwrap();
@@ -175,7 +230,10 @@ fn indented_row_labels_get_their_parent() {
     let n = normalize_workbook(&book, &Options::default());
     let t = &n.tables[0];
     let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
-    let at = names.iter().position(|&c| c == "Institution_parent").unwrap_or_else(|| panic!("{names:?}"));
+    let at = names
+        .iter()
+        .position(|&c| c == "Institution_parent")
+        .unwrap_or_else(|| panic!("{names:?}"));
     assert_eq!(names[at - 1], "Institution");
     assert_eq!(t.columns[at].derived_kind(), Some("parent"));
     let text = |c: usize, r: usize| match &t.columns[c].values[r] {
@@ -183,14 +241,31 @@ fn indented_row_labels_get_their_parent() {
         Out::Null => String::new(),
         v => format!("{v:?}"),
     };
-    let row = |label: &str| (0..t.rows()).find(|&r| text(at - 1, r) == label).unwrap_or_else(|| panic!("{label}"));
+    let row = |label: &str| {
+        (0..t.rows())
+            .find(|&r| text(at - 1, r) == label)
+            .unwrap_or_else(|| panic!("{label}"))
+    };
     assert_eq!(text(at, row("All institutions")), "");
-    assert_eq!(text(at, row("Top 10 nonprofit institutions")), "All institutions");
-    assert_eq!(text(at, row("Mayo Clinic")), "Top 10 nonprofit institutions");
-    assert_eq!(text(at, row("All other nonprofit institutions")), "All institutions");
+    assert_eq!(
+        text(at, row("Top 10 nonprofit institutions")),
+        "All institutions"
+    );
+    assert_eq!(
+        text(at, row("Mayo Clinic")),
+        "Top 10 nonprofit institutions"
+    );
+    assert_eq!(
+        text(at, row("All other nonprofit institutions")),
+        "All institutions"
+    );
     // Under the group header `By region` the rows have no parent row; the group column has it.
     assert_eq!(text(at, row("South")), "");
-    let g = t.columns.iter().position(|c| c.role == ColRole::Group).expect("group column");
+    let g = t
+        .columns
+        .iter()
+        .position(|c| c.role == ColRole::Group)
+        .expect("group column");
     assert_eq!(text(g, row("South")), "By region");
 }
 
@@ -212,7 +287,12 @@ fn flat_row_labels_get_no_parent_column() {
     let book = open(&path).unwrap();
     std::fs::remove_file(&path).ok();
     let n = normalize_workbook(&book, &Options::default());
-    assert!(n.tables[0].columns.iter().all(|c| !c.name.ends_with("_parent")));
+    assert!(
+        n.tables[0]
+            .columns
+            .iter()
+            .all(|c| !c.name.ends_with("_parent"))
+    );
 }
 
 /// HiTab statcan/1004: the first section label sits in the header's last row, beside the unit row
@@ -221,17 +301,28 @@ fn flat_row_labels_get_no_parent_column() {
 /// column's name.
 #[test]
 fn first_section_label_in_the_header_row() {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_section_hdr_{}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_section_hdr_{}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
-    ws.write_string(0, 0, "Table 2.2: Percentage with a diploma, by region or country of ancestry").unwrap();
-    ws.write_string(2, 0, "Region or country of ancestry").unwrap();
+    ws.write_string(
+        0,
+        0,
+        "Table 2.2: Percentage with a diploma, by region or country of ancestry",
+    )
+    .unwrap();
+    ws.write_string(2, 0, "Region or country of ancestry")
+        .unwrap();
     ws.write_string(2, 1, "Women").unwrap();
     ws.write_string(2, 2, "Men").unwrap();
     ws.write_string(3, 0, "Region of ancestry").unwrap();
-    ws.merge_range(3, 1, 3, 2, "percent", &Format::new()).unwrap();
+    ws.merge_range(3, 1, 3, 2, "percent", &Format::new())
+        .unwrap();
     let mut r = 4;
-    for (sec, items) in [(None, ["Caribbean", "Africa", "Other regions"]), (Some("Country of ancestry"), ["Jamaica", "Haiti", "Nigeria"])] {
+    for (sec, items) in [
+        (None, ["Caribbean", "Africa", "Other regions"]),
+        (Some("Country of ancestry"), ["Jamaica", "Haiti", "Nigeria"]),
+    ] {
         if let Some(s) = sec {
             ws.write_string(r, 0, s).unwrap();
             r += 1;
@@ -249,15 +340,29 @@ fn first_section_label_in_the_header_row() {
     let n = normalize_workbook(&book, &Options::default());
     let t = &n.tables[0];
     let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
-    assert!(names.contains(&"Region or country of ancestry"), "{names:?}");
+    assert!(
+        names.contains(&"Region or country of ancestry"),
+        "{names:?}"
+    );
     assert!(names.contains(&"Women / percent"), "{names:?}");
-    let g = t.columns.iter().position(|c| c.role == ColRole::Group).expect("group column");
-    let l = names.iter().position(|&c| c == "Region or country of ancestry").unwrap();
+    let g = t
+        .columns
+        .iter()
+        .position(|c| c.role == ColRole::Group)
+        .expect("group column");
+    let l = names
+        .iter()
+        .position(|&c| c == "Region or country of ancestry")
+        .unwrap();
     let text = |c: usize, r: usize| match &t.columns[c].values[r] {
         Out::Text(s) => s.clone(),
         _ => String::new(),
     };
-    let row = |label: &str| (0..t.rows()).find(|&r| text(l, r) == label).unwrap_or_else(|| panic!("{label}"));
+    let row = |label: &str| {
+        (0..t.rows())
+            .find(|&r| text(l, r) == label)
+            .unwrap_or_else(|| panic!("{label}"))
+    };
     assert_eq!(text(g, row("Africa")), "Region of ancestry");
     assert_eq!(text(g, row("Haiti")), "Country of ancestry");
 }

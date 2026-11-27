@@ -35,7 +35,10 @@ const MAX_KEYS: usize = 4;
 
 /// A column name compared across files: letters and digits, lower case.
 fn key_name(s: &str) -> String {
-    s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 fn ids(norm: &Normalized) -> String {
@@ -53,7 +56,11 @@ fn values(t: &Table, col: usize) -> (HashSet<String>, usize) {
     let mut set = HashSet::new();
     let mut n = 0;
     for r in data_rows(t).into_iter().take(MAX_ROWS) {
-        let v = c.values.get(r).map(|v| out_text(v, c.dtype)).unwrap_or_default();
+        let v = c
+            .values
+            .get(r)
+            .map(|v| out_text(v, c.dtype))
+            .unwrap_or_default();
         let v = v.trim();
         if !v.is_empty() {
             n += 1;
@@ -83,7 +90,13 @@ fn join_keys(files: &[FileInfo]) -> Vec<Key> {
     for (f, info) in files.iter().enumerate() {
         for (k, t) in info.norm.tables.iter().enumerate().take(MAX_TABLES) {
             let names = sql_names(t);
-            cols.insert((f, k), data_cols(t).map(|(i, _)| (key_name(&names[i]), i, names[i].clone())).filter(|x| !x.0.is_empty()).collect());
+            cols.insert(
+                (f, k),
+                data_cols(t)
+                    .map(|(i, _)| (key_name(&names[i]), i, names[i].clone()))
+                    .filter(|x| !x.0.is_empty())
+                    .collect(),
+            );
         }
     }
     // (file, table, column) → its values and filled rows
@@ -96,7 +109,9 @@ fn join_keys(files: &[FileInfo]) -> Vec<Key> {
                 for (kb, tb) in files[fb].norm.tables.iter().enumerate().take(MAX_TABLES) {
                     for (na, ia, sa) in &cols[&(fa, ka)] {
                         for (_, ib, sb) in cols[&(fb, kb)].iter().filter(|x| &x.0 == na) {
-                            if is_numeric(ta.columns[*ia].dtype) != is_numeric(tb.columns[*ib].dtype) {
+                            if is_numeric(ta.columns[*ia].dtype)
+                                != is_numeric(tb.columns[*ib].dtype)
+                            {
                                 continue;
                             }
                             for (f, k, t, i) in [(fa, ka, ta, *ia), (fb, kb, tb, *ib)] {
@@ -108,13 +123,25 @@ fn join_keys(files: &[FileInfo]) -> Vec<Key> {
                             let smaller = va.len().min(vb.len());
                             let ua = !va.is_empty() && va.len() as f64 >= 0.95 * *ra as f64;
                             let ub = !vb.is_empty() && vb.len() as f64 >= 0.95 * *rb as f64;
-                            if shared == 0 || (shared as f64) < 0.5 * smaller as f64 || !(ua || ub) {
+                            if shared == 0 || (shared as f64) < 0.5 * smaller as f64 || !(ua || ub)
+                            {
                                 continue;
                             }
                             let left = (format!("{}.{}", files[fa].prefix, ta.id()), ident(sa));
                             let right = (format!("{}.{}", files[fb].prefix, tb.id()), ident(sb));
-                            let unique = if ua { format!("{}.{}", files[fa].prefix, ta.id()) } else { format!("{}.{}", files[fb].prefix, tb.id()) };
-                            out.push(Key { group: (fa, fb, na.clone()), same_id: ta.n == tb.n, left, right, shared, unique });
+                            let unique = if ua {
+                                format!("{}.{}", files[fa].prefix, ta.id())
+                            } else {
+                                format!("{}.{}", files[fb].prefix, tb.id())
+                            };
+                            out.push(Key {
+                                group: (fa, fb, na.clone()),
+                                same_id: ta.n == tb.n,
+                                left,
+                                right,
+                                shared,
+                                unique,
+                            });
                         }
                     }
                 }
@@ -133,7 +160,19 @@ fn join_keys(files: &[FileInfo]) -> Vec<Key> {
 pub fn session_lines(files: &[FileInfo], current: &str) -> Vec<String> {
     let list: Vec<String> = files
         .iter()
-        .map(|f| format!("{} = {} ({}{})", f.prefix, short(&f.name, 80), ids(&f.norm), if f.prefix == current { "; this file" } else { "" }))
+        .map(|f| {
+            format!(
+                "{} = {} ({}{})",
+                f.prefix,
+                short(&f.name, 80),
+                ids(&f.norm),
+                if f.prefix == current {
+                    "; this file"
+                } else {
+                    ""
+                }
+            )
+        })
         .collect();
     let keys = join_keys(files);
     let example = match keys.first() {
@@ -150,7 +189,17 @@ pub fn session_lines(files: &[FileInfo], current: &str) -> Vec<String> {
     if !keys.is_empty() {
         let k: Vec<String> = keys
             .iter()
-            .map(|k| format!("{}.{} = {}.{} ({} shared values; unique in {})", k.left.0, k.left.1, k.right.0, k.right.1, thousands(k.shared), k.unique))
+            .map(|k| {
+                format!(
+                    "{}.{} = {}.{} ({} shared values; unique in {})",
+                    k.left.0,
+                    k.left.1,
+                    k.right.0,
+                    k.right.1,
+                    thousands(k.shared),
+                    k.unique
+                )
+            })
             .collect();
         out.push(format!("JOIN KEYS {}", k.join(" · ")));
     }

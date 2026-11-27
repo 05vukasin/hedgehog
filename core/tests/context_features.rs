@@ -2,12 +2,13 @@
 
 use std::path::PathBuf;
 
-use hh_core::context::{self, kind_of, Kind, FEATURES};
-use hh_core::{open, Cell, Features, Grid, Rect, Sheet, Value};
+use hh_core::context::{self, FEATURES, Kind, kind_of};
+use hh_core::{Cell, Features, Grid, Rect, Sheet, Value, open};
 use rust_xlsxwriter::{ExcelDateTime, Format, Workbook};
 
 fn fixture(name: &str, build: impl FnOnce(&mut rust_xlsxwriter::Worksheet)) -> Sheet {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_ctx_{}_{name}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_ctx_{}_{name}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     build(wb.add_worksheet());
     wb.save(&path).unwrap();
@@ -31,18 +32,29 @@ impl<'a> Ctx<'a> {
 
     /// Feature `name` at A1-ish 0-based (row, col).
     fn at(&self, name: &str, r: u32, c: u32) -> f32 {
-        let i = self.grid.cell_index(r, c).unwrap_or_else(|| panic!("no cell at ({r},{c})"));
-        self.f.value(name, i).unwrap_or_else(|| panic!("no feature {name}"))
+        let i = self
+            .grid
+            .cell_index(r, c)
+            .unwrap_or_else(|| panic!("no cell at ({r},{c})"));
+        self.f
+            .value(name, i)
+            .unwrap_or_else(|| panic!("no feature {name}"))
     }
 }
 
 /// Title merged over B1:E1, empty row, header row 3, four data rows, total row with SUM formulas.
 fn report(ws: &mut rust_xlsxwriter::Worksheet) {
-    ws.merge_range(0, 1, 0, 4, "Sales report", &Format::new()).unwrap();
+    ws.merge_range(0, 1, 0, 4, "Sales report", &Format::new())
+        .unwrap();
     for (c, h) in ["ID", "City", "Q1", "Q2"].iter().enumerate() {
         ws.write_string(2, 1 + c as u16, *h).unwrap();
     }
-    let rows = [(1, "Beograd", 10.0, 12.0), (2, "Niš", 7.0, 9.5), (3, "Novi Sad", 8.0, 8.0), (4, "Niš", 3.0, 1.0)];
+    let rows = [
+        (1, "Beograd", 10.0, 12.0),
+        (2, "Niš", 7.0, 9.5),
+        (3, "Novi Sad", 8.0, 8.0),
+        (4, "Niš", 3.0, 1.0),
+    ];
     for (i, (id, city, q1, q2)) in rows.iter().enumerate() {
         let r = 3 + i as u32;
         ws.write_number(r, 1, *id as f64).unwrap();
@@ -62,7 +74,10 @@ fn adds_every_documented_column() {
     assert_eq!(ctx.f.names(), FEATURES);
     for name in FEATURES {
         assert!(name.starts_with("c_"));
-        assert!(ctx.f.get(name).unwrap().iter().all(|v| v.is_finite()), "{name} has non-finite values");
+        assert!(
+            ctx.f.get(name).unwrap().iter().all(|v| v.is_finite()),
+            "{name} has non-finite values"
+        );
     }
 }
 
@@ -76,19 +91,42 @@ fn empty_sheet_still_has_columns() {
 
 #[test]
 fn kinds() {
-    let cell = |value: Option<Value>, formula: Option<&str>| Cell { row: 0, col: 0, value, formula: formula.map(String::from) };
+    let cell = |value: Option<Value>, formula: Option<&str>| Cell {
+        row: 0,
+        col: 0,
+        value,
+        formula: formula.map(String::from),
+    };
     assert_eq!(kind_of(&cell(Some(Value::Number(1.0)), None)), Kind::Number);
-    assert_eq!(kind_of(&cell(Some(Value::Text("a".into())), None)), Kind::Text);
-    assert_eq!(kind_of(&cell(Some(Value::DateTime(45000.0)), None)), Kind::Date);
+    assert_eq!(
+        kind_of(&cell(Some(Value::Text("a".into())), None)),
+        Kind::Text
+    );
+    assert_eq!(
+        kind_of(&cell(Some(Value::DateTime(45000.0)), None)),
+        Kind::Date
+    );
     assert_eq!(kind_of(&cell(Some(Value::Bool(true)), None)), Kind::Bool);
-    assert_eq!(kind_of(&cell(Some(Value::Error("#REF!".into())), None)), Kind::Error);
+    assert_eq!(
+        kind_of(&cell(Some(Value::Error("#REF!".into())), None)),
+        Kind::Error
+    );
     assert_eq!(kind_of(&cell(None, Some("A1+1"))), Kind::FormulaOnly);
-    assert_eq!(kind_of(&cell(Some(Value::Number(2.0)), Some("A1+1"))), Kind::Number);
+    assert_eq!(
+        kind_of(&cell(Some(Value::Number(2.0)), Some("A1+1"))),
+        Kind::Number
+    );
 
     let sheet = fixture("kinds", |ws| {
         ws.write_number(0, 0, 1.0).unwrap();
         ws.write_string(0, 1, "x").unwrap();
-        ws.write_datetime_with_format(0, 2, ExcelDateTime::from_ymd(2024, 1, 31).unwrap(), &Format::new().set_num_format("yyyy-mm-dd")).unwrap();
+        ws.write_datetime_with_format(
+            0,
+            2,
+            ExcelDateTime::from_ymd(2024, 1, 31).unwrap(),
+            &Format::new().set_num_format("yyyy-mm-dd"),
+        )
+        .unwrap();
         ws.write_boolean(1, 0, true).unwrap();
         ws.merge_range(1, 1, 1, 2, "m", &Format::new()).unwrap();
     });
@@ -178,9 +216,21 @@ fn column_aggregates() {
 
 #[test]
 fn column_distinct_values_stay_scoped_to_each_component_and_column() {
-    for (reverse, duplicate, far) in [(false, false, false), (true, false, false), (false, false, true), (true, true, true)] {
+    for (reverse, duplicate, far) in [
+        (false, false, false),
+        (true, false, false),
+        (false, false, true),
+        (true, true, true),
+    ] {
         let mut cells = Vec::new();
-        let mut number = |row, col, value| cells.push(Cell { row, col, value: Some(Value::Number(value)), formula: None });
+        let mut number = |row, col, value| {
+            cells.push(Cell {
+                row,
+                col,
+                value: Some(Value::Number(value)),
+                formula: None,
+            })
+        };
         // A U-shaped component surrounds a disconnected two-row component. In columns A/B
         // the first component appears both before and after the second one.
         for row in [0, 8] {
@@ -205,13 +255,21 @@ fn column_distinct_values_stay_scoped_to_each_component_and_column() {
         if reverse {
             cells.reverse();
         }
-        let sheet = Sheet { name: "distinct".into(), cells, merges: vec![], formats: vec![] };
+        let sheet = Sheet {
+            name: "distinct".into(),
+            cells,
+            merges: vec![],
+            formats: vec![],
+        };
         let ctx = Ctx::new(&sheet);
         for col in 0..4 {
             assert_eq!(ctx.at("c_col_distinct_ratio", 0, col), 0.5);
             assert_eq!(ctx.at("c_col_distinct_ratio", 8, col), 0.5);
         }
-        assert_eq!(ctx.at("c_col_distinct_ratio", 4, 0), if duplicate { 2.0 / 3.0 } else { 1.0 });
+        assert_eq!(
+            ctx.at("c_col_distinct_ratio", 4, 0),
+            if duplicate { 2.0 / 3.0 } else { 1.0 }
+        );
         assert_eq!(ctx.at("c_col_distinct_ratio", 4, 1), 0.5);
         assert_eq!(ctx.at("c_col_distinct_ratio", 0, 4), 8.0 / 9.0);
         if far {
@@ -224,18 +282,43 @@ fn column_distinct_values_stay_scoped_to_each_component_and_column() {
 fn column_distinct_values_survive_sharply_changing_column_sizes() {
     let mut cells = Vec::new();
     for row in 0..2048 {
-        cells.push(Cell { row, col: 0, value: Some(Value::Number(row as f64)), formula: None });
+        cells.push(Cell {
+            row,
+            col: 0,
+            value: Some(Value::Number(row as f64)),
+            formula: None,
+        });
     }
     for col in 1..=256 {
-        cells.push(Cell { row: 0, col, value: Some(Value::Number(7.0)), formula: None });
+        cells.push(Cell {
+            row: 0,
+            col,
+            value: Some(Value::Number(7.0)),
+            formula: None,
+        });
     }
     // After many singleton columns, a taller column again needs distinct-value storage.
     for row in 0..128 {
-        cells.push(Cell { row, col: 257, value: Some(Value::Number((row % 8) as f64)), formula: None });
+        cells.push(Cell {
+            row,
+            col: 257,
+            value: Some(Value::Number((row % 8) as f64)),
+            formula: None,
+        });
     }
-    cells.push(Cell { row: 0, col: 258, value: Some(Value::Number(7.0)), formula: None });
+    cells.push(Cell {
+        row: 0,
+        col: 258,
+        value: Some(Value::Number(7.0)),
+        formula: None,
+    });
     cells.sort_by_key(|c| (c.row, c.col));
-    let sheet = Sheet { name: "skew".into(), cells, merges: vec![], formats: vec![] };
+    let sheet = Sheet {
+        name: "skew".into(),
+        cells,
+        merges: vec![],
+        formats: vec![],
+    };
     let ctx = Ctx::new(&sheet);
     assert_eq!(ctx.at("c_col_distinct_ratio", 0, 0), 1.0);
     assert_eq!(ctx.at("c_col_distinct_ratio", 2047, 0), 1.0);
@@ -313,12 +396,30 @@ fn multi_table_components() {
     assert_eq!(
         rects,
         vec![
-            Rect { top: 1, left: 1, bottom: 3, right: 2 },
-            Rect { top: 1, left: 4, bottom: 4, right: 5 },
-            Rect { top: 7, left: 1, bottom: 8, right: 2 },
+            Rect {
+                top: 1,
+                left: 1,
+                bottom: 3,
+                right: 2
+            },
+            Rect {
+                top: 1,
+                left: 4,
+                bottom: 4,
+                right: 5
+            },
+            Rect {
+                top: 7,
+                left: 1,
+                bottom: 8,
+                right: 2
+            },
         ]
     );
-    assert_eq!(comps.iter().map(|c| c.cells.len()).collect::<Vec<_>>(), vec![6, 8, 2]);
+    assert_eq!(
+        comps.iter().map(|c| c.cells.len()).collect::<Vec<_>>(),
+        vec![6, 8, 2]
+    );
     assert_eq!(ctx.at("c_sheet_components", 1, 1), 3.0);
     // Row aggregates are per block: row 2 has 4 cells on the sheet but 2 per block.
     assert_eq!(ctx.at("c_row_filled", 1, 1), 4.0);
@@ -353,7 +454,15 @@ fn merged_areas_bridge_components() {
     // Empty merge cells are dropped by the reader unless an anchor value exists; the cell-less
     // M1:M5 merge forms no component.
     assert_eq!(comps.len(), 1, "{comps:?}");
-    assert_eq!(comps[0].rect, Rect { top: 0, left: 0, bottom: 3, right: 9 });
+    assert_eq!(
+        comps[0].rect,
+        Rect {
+            top: 0,
+            left: 0,
+            bottom: 3,
+            right: 9
+        }
+    );
     assert_eq!(comps[0].merges.len(), 2);
     assert_eq!(ctx.at("c_sheet_components", 0, 0), 1.0);
     assert_eq!(ctx.at("c_comp_cells", 3, 9), 5.0);

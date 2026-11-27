@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use hh_core::values::{self, DecimalSep, DateOrder};
-use hh_core::{open, Features, Grid, Sheet};
+use hh_core::values::{self, DateOrder, DecimalSep};
+use hh_core::{Features, Grid, Sheet, open};
 use rust_xlsxwriter::Workbook;
 
 fn fixture(name: &str, build: impl FnOnce(&mut Workbook)) -> PathBuf {
@@ -21,7 +21,12 @@ struct View<'a> {
 
 impl View<'_> {
     fn at(&self, r: u32, c: u32, name: &str) -> f32 {
-        let i = self.sheet.cells.iter().position(|x| x.row == r && x.col == c).unwrap_or_else(|| panic!("no cell {r},{c}"));
+        let i = self
+            .sheet
+            .cells
+            .iter()
+            .position(|x| x.row == r && x.col == c)
+            .unwrap_or_else(|| panic!("no cell {r},{c}"));
         self.f.value(name, i).unwrap()
     }
 }
@@ -30,8 +35,12 @@ impl View<'_> {
 fn serbian_report_sheet() {
     let path = fixture("sr", |wb| {
         let ws = wb.add_worksheet().set_name("Izveštaj").unwrap();
-        ws.write_string(0, 0, "Pregled prihoda po opštinama (u hiljadama dinara)").unwrap();
-        for (c, h) in ["Opština", "Iznos", "Datum", "Udeo", "Napomena"].iter().enumerate() {
+        ws.write_string(0, 0, "Pregled prihoda po opštinama (u hiljadama dinara)")
+            .unwrap();
+        for (c, h) in ["Opština", "Iznos", "Datum", "Udeo", "Napomena"]
+            .iter()
+            .enumerate()
+        {
             ws.write_string(2, c as u16, *h).unwrap();
         }
         let rows = [
@@ -50,7 +59,8 @@ fn serbian_report_sheet() {
         ws.write_string(6, 0, "Укупно:").unwrap();
         ws.write_formula(6, 1, "=SUM(B4:B6)").unwrap();
         ws.write_number(6, 3, 2024).unwrap();
-        ws.write_string(8, 0, "Izvor: Ministarstvo finansija").unwrap();
+        ws.write_string(8, 0, "Izvor: Ministarstvo finansija")
+            .unwrap();
         ws.write_string(9, 0, "1. Porez na dohodak").unwrap();
     });
     let wb = open(&path).unwrap();

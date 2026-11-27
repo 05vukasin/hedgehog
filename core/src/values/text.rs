@@ -14,7 +14,10 @@ use std::borrow::Cow;
 /// Characters that render as nothing: zero-width space/joiners, word joiner, BOM, soft hyphen,
 /// Mongolian vowel separator.
 pub fn is_invisible(c: char) -> bool {
-    matches!(c, '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}' | '\u{00AD}' | '\u{180E}')
+    matches!(
+        c,
+        '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{FEFF}' | '\u{00AD}' | '\u{180E}'
+    )
 }
 
 /// Unicode whitespace (includes NBSP U+00A0, thin/narrow spaces) or an invisible character.
@@ -269,7 +272,10 @@ fn ascii_key(t: &str) -> String {
 /// tokens sorted and de-duplicated, joined with one space.
 pub fn fingerprint(s: &str) -> String {
     let key = norm_key(s);
-    let mut tokens: Vec<&str> = key.split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).collect();
+    let mut tokens: Vec<&str> = key
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .collect();
     tokens.sort_unstable();
     tokens.dedup();
     tokens.join(" ")
@@ -280,7 +286,20 @@ pub fn fingerprint(s: &str) -> String {
 pub fn is_footnote_mark_char(c: char) -> bool {
     matches!(
         c,
-        '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' | '⁰' | '⁽' | '⁾' | '*' | '†' | '‡'
+        '¹' | '²'
+            | '³'
+            | '⁴'
+            | '⁵'
+            | '⁶'
+            | '⁷'
+            | '⁸'
+            | '⁹'
+            | '⁰'
+            | '⁽'
+            | '⁾'
+            | '*'
+            | '†'
+            | '‡'
     )
 }
 
@@ -294,8 +313,15 @@ const SQUARE_UNITS: [&str; 16] = [
 /// footnote mark: the word right before them is a length unit. `s` ends right before the
 /// superscript.
 fn unit_exponent_before(s: &str) -> bool {
-    let word_start = s.char_indices().rev().take_while(|(_, c)| c.is_alphabetic()).last().map(|(i, _)| i);
-    let Some(start) = word_start else { return false };
+    let word_start = s
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| c.is_alphabetic())
+        .last()
+        .map(|(i, _)| i);
+    let Some(start) = word_start else {
+        return false;
+    };
     let word = &s[start..];
     SQUARE_UNITS.iter().any(|u| word.to_lowercase() == *u)
 }
@@ -334,7 +360,8 @@ const MAX_LABEL_CHARS: usize = 60;
 /// Whether a text value may end in a footnote mark (cheap pre-check for
 /// [`split_label_footnote`]).
 pub fn may_end_in_footnote(s: &str) -> bool {
-    s.trim_end().ends_with(|c: char| is_footnote_mark_char(c) || c == ')')
+    s.trim_end()
+        .ends_with(|c: char| is_footnote_mark_char(c) || c == ')')
 }
 
 /// Splits a trailing footnote mark off a short text label (`Delta²`, `Germany *`, `Gamma†`,
@@ -363,7 +390,9 @@ pub fn split_label_footnote(s: &str) -> Option<(&str, &str)> {
             (body, &s[open..])
         }
     };
-    body.chars().any(char::is_alphabetic).then_some((body, mark))
+    body.chars()
+        .any(char::is_alphabetic)
+        .then_some((body, mark))
 }
 
 #[cfg(test)]
@@ -380,7 +409,15 @@ mod tests {
             push_key_char(c, &mut slow);
             assert_eq!(slow, c.to_ascii_lowercase().to_string(), "{b}");
         }
-        for s in ["  N/A ", "Not  Available", "a\tb\n c", "X", "\u{b}x\u{b}", "Total 2024", ""] {
+        for s in [
+            "  N/A ",
+            "Not  Available",
+            "a\tb\n c",
+            "X",
+            "\u{b}x\u{b}",
+            "Total 2024",
+            "",
+        ] {
             let t = trim(s);
             let mut slow = String::new();
             let mut pending = false;
@@ -502,15 +539,28 @@ mod tests {
         assert!(has_cyrillic("Београд"));
         assert!(!has_cyrillic("Beograd"));
         assert_eq!(cyrillic_to_latin("Београд"), "Beograd");
-        assert_eq!(cyrillic_to_latin("Љубовија Њива Џеп"), "Ljubovija Njiva Džep");
-        assert_eq!(cyrillic_to_latin("Ђорђевић Чачак Шабац Жабаљ Ћуприја"), "Đorđević Čačak Šabac Žabalj Ćuprija");
+        assert_eq!(
+            cyrillic_to_latin("Љубовија Њива Џеп"),
+            "Ljubovija Njiva Džep"
+        );
+        assert_eq!(
+            cyrillic_to_latin("Ђорђевић Чачак Шабац Жабаљ Ћуприја"),
+            "Đorđević Čačak Šabac Žabalj Ćuprija"
+        );
         assert_eq!(cyrillic_to_latin("укупно 2024"), "ukupno 2024");
         assert!(matches!(cyrillic_to_latin("latin"), Cow::Borrowed(_)));
     }
 
     #[test]
     fn norm_key_clusters_variants() {
-        for v in ["Beograd", "BEOGRAD", " beograd ", "Београд", "БЕОГРАД", "Beo\u{200B}grad"] {
+        for v in [
+            "Beograd",
+            "BEOGRAD",
+            " beograd ",
+            "Београд",
+            "БЕОГРАД",
+            "Beo\u{200B}grad",
+        ] {
             assert_eq!(norm_key(v), "beograd", "{v:?}");
         }
         assert_eq!(norm_key("Đorđević"), "djordjevic");

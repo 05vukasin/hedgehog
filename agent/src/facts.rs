@@ -5,9 +5,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use hh_core::normalize::{ColRole, Column, Dtype, Normalized, Out, RowType, Table, T};
+use hh_core::normalize::{ColRole, Column, Dtype, Normalized, Out, RowType, T, Table};
 
-use crate::catalog::{data_cols, is_date, is_numeric, label_values, measure_classes, name_period, out_text, plural, RowInfo};
+use crate::catalog::{
+    RowInfo, data_cols, is_date, is_numeric, label_values, measure_classes, name_period, out_text,
+    plural,
+};
 use crate::text::{csv_row, ident, num, quote_ident, short, thousands};
 use crate::types::{ColType, Sem};
 
@@ -28,7 +31,10 @@ const NUMBER_ITEMS: usize = 6;
 /// All rows of a small table as CSV: the rows of `T<n>_all` (data and total rows in source order)
 /// with a `_row_type` column when the table has total rows; None when it is over the cell budget.
 pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
-    let cols: Vec<usize> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(i, _)| i).collect();
+    let cols: Vec<usize> = data_cols(t)
+        .filter(|(_, c)| c.dtype != Dtype::Empty)
+        .map(|(i, _)| i)
+        .collect();
     let rows = t.rows();
     let marked = t.row_types.iter().any(|r| *r != RowType::Data);
     let width = cols.len() + usize::from(marked);
@@ -38,11 +44,18 @@ pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
     let mut head: Vec<String> = cols.iter().map(|&i| short(&names[i], 60)).collect();
     let mut out = if marked {
         head.push("_row_type".into());
-        let other = t.row_types.iter().any(|r| matches!(r, RowType::Average | RowType::OfWhich));
+        let other = t
+            .row_types
+            .iter()
+            .any(|r| matches!(r, RowType::Average | RowType::OfWhich));
         vec![format!(
             "    all {} (CSV, as in {id}_all; rows with _row_type {} are not in {id}):",
             plural(rows, "row", "rows"),
-            if other { "other than data" } else { "total/subtotal" },
+            if other {
+                "other than data"
+            } else {
+                "total/subtotal"
+            },
             id = t.id()
         )]
     } else {
@@ -64,7 +77,14 @@ pub fn inline_rows(t: &Table, names: &[String]) -> Option<Vec<String>> {
             })
             .collect();
         if marked {
-            vals.push(t.row_types.get(r).copied().unwrap_or(RowType::Data).as_str().into());
+            vals.push(
+                t.row_types
+                    .get(r)
+                    .copied()
+                    .unwrap_or(RowType::Data)
+                    .as_str()
+                    .into(),
+            );
         }
         out.push(format!("    {}", csv_row(&vals)));
     }
@@ -85,7 +105,11 @@ fn significant(x: f64) -> String {
     let digits = (x.abs().log10().floor() as i32 + 1).max(1);
     let decimals = (6 - digits).max(0) as usize;
     let s = format!("{x:.decimals$}");
-    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
+    if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
+    }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -93,7 +117,10 @@ fn significant(x: f64) -> String {
 
 /// Numeric columns whose values can be added (not percentages).
 fn value_cols(t: &Table) -> Vec<&Column> {
-    data_cols(t).map(|(_, c)| c).filter(|c| is_numeric(c.dtype) && c.dtype != Dtype::Percent).collect()
+    data_cols(t)
+        .map(|(_, c)| c)
+        .filter(|c| is_numeric(c.dtype) && c.dtype != Dtype::Percent)
+        .collect()
 }
 
 /// +1 when a row's non-zero numbers are all positive, -1 when all negative, 0 otherwise.
@@ -145,12 +172,66 @@ const SIGN_TAIL: &str = "(outflows?) — a net figure is the SUM over all rows, 
 /// debit / credit, in / out, purchases / sales, payments, imports / exports.
 fn flow_word(s: &str) -> bool {
     const FLOW: &[&str] = &[
-        "receipt", "receipts", "received", "delivery", "deliveries", "delivered", "in", "out", "inflow", "inflows",
-        "outflow", "outflows", "incoming", "outgoing", "debit", "debits", "credit", "credits", "purchase", "purchases",
-        "sale", "sales", "sold", "bought", "buy", "sell", "payment", "payments", "paid", "withdrawal", "withdrawals",
-        "deposit", "deposits", "expense", "expenses", "expenditure", "expenditures", "cost", "costs", "income",
-        "revenue", "revenues", "import", "imports", "export", "exports", "injection", "injections", "transfer",
-        "transfers", "refund", "refunds", "spend", "spending", "einnahmen", "ausgaben", "soll", "haben", "uplata", "isplata",
+        "receipt",
+        "receipts",
+        "received",
+        "delivery",
+        "deliveries",
+        "delivered",
+        "in",
+        "out",
+        "inflow",
+        "inflows",
+        "outflow",
+        "outflows",
+        "incoming",
+        "outgoing",
+        "debit",
+        "debits",
+        "credit",
+        "credits",
+        "purchase",
+        "purchases",
+        "sale",
+        "sales",
+        "sold",
+        "bought",
+        "buy",
+        "sell",
+        "payment",
+        "payments",
+        "paid",
+        "withdrawal",
+        "withdrawals",
+        "deposit",
+        "deposits",
+        "expense",
+        "expenses",
+        "expenditure",
+        "expenditures",
+        "cost",
+        "costs",
+        "income",
+        "revenue",
+        "revenues",
+        "import",
+        "imports",
+        "export",
+        "exports",
+        "injection",
+        "injections",
+        "transfer",
+        "transfers",
+        "refund",
+        "refunds",
+        "spend",
+        "spending",
+        "einnahmen",
+        "ausgaben",
+        "soll",
+        "haben",
+        "uplata",
+        "isplata",
     ];
     words(s).iter().any(|w| FLOW.contains(&w.as_str()))
 }
@@ -158,8 +239,8 @@ fn flow_word(s: &str) -> bool {
 /// A column of prices, rates or indices: negative values there are not outflows (B49).
 fn rate_name(s: &str) -> bool {
     const RATE: &[&str] = &[
-        "price", "prices", "index", "rate", "rates", "ratio", "percent", "pct", "yield", "growth", "change", "tariff",
-        "average", "avg", "mean", "spread",
+        "price", "prices", "index", "rate", "rates", "ratio", "percent", "pct", "yield", "growth",
+        "change", "tariff", "average", "avg", "mean", "spread",
     ];
     words(s).iter().any(|w| RATE.contains(&w.as_str()))
 }
@@ -181,8 +262,19 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
     }
     let flow_cols = cols.iter().any(|c| flow_word(&c.name));
     // A label column: group column first, then text columns with 2..12 labels.
-    let mut cands: Vec<usize> = t.columns.iter().position(|c| c.role == ColRole::Group).into_iter().collect();
-    cands.extend(t.columns.iter().enumerate().filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text).map(|(i, _)| i));
+    let mut cands: Vec<usize> = t
+        .columns
+        .iter()
+        .position(|c| c.role == ColRole::Group)
+        .into_iter()
+        .collect();
+    cands.extend(
+        t.columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text)
+            .map(|(i, _)| i),
+    );
     for i in cands {
         let labels = filled_labels(&t.columns[i], rows);
         let mut by: Vec<(&str, usize, usize, usize)> = Vec::new(); // label, rows, negative rows, positive rows
@@ -206,10 +298,21 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
         if !(2..=12).contains(&by.len()) {
             continue;
         }
-        let neg: Vec<&str> = by.iter().filter(|b| b.2 >= 2 && b.3 == 0).map(|b| b.0).collect();
+        let neg: Vec<&str> = by
+            .iter()
+            .filter(|b| b.2 >= 2 && b.3 == 0)
+            .map(|b| b.0)
+            .collect();
         // B49: only blocks named as flows (receipts / deliveries, debit / credit, …).
-        if !neg.is_empty() && by.iter().any(|b| b.3 > 0) && (flow_cols || by.iter().any(|b| flow_word(b.0))) {
-            let l: Vec<String> = neg.iter().take(3).map(|s| format!("'{}'", short(s, 40))).collect();
+        if !neg.is_empty()
+            && by.iter().any(|b| b.3 > 0)
+            && (flow_cols || by.iter().any(|b| flow_word(b.0)))
+        {
+            let l: Vec<String> = neg
+                .iter()
+                .take(3)
+                .map(|s| format!("'{}'", short(s, 40)))
+                .collect();
             return Some(format!(
                 "    signs: {} {} rows are all negative {SIGN_TAIL}",
                 ident(&names[i]),
@@ -246,8 +349,15 @@ pub fn signs_line(t: &Table, names: &[String], rows: &[usize]) -> Option<String>
     if runs.is_empty() || !(flow_cols || in_runs * 10 >= signed) {
         return None;
     }
-    let r: Vec<String> = runs.iter().take(3).map(|(a, b, _)| format!("{a}–{b}")).collect();
-    Some(format!("    signs: rows with _src_row {} are all negative {SIGN_TAIL}", r.join(", ")))
+    let r: Vec<String> = runs
+        .iter()
+        .take(3)
+        .map(|(a, b, _)| format!("{a}–{b}"))
+        .collect();
+    Some(format!(
+        "    signs: rows with _src_row {} are all negative {SIGN_TAIL}",
+        r.join(", ")
+    ))
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -259,13 +369,20 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
     if info.total_rows.is_empty() {
         return None;
     }
-    let idx: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data)).collect();
-    let has = |k: RowType| idx.iter().any(|&r| t.row_types.get(r) == Some(&k));
-    let kinds: Vec<String> = [RowType::Subtotal, RowType::Total, RowType::Average, RowType::OfWhich]
-        .into_iter()
-        .filter(|&k| has(k))
-        .map(|k| format!("'{}'", k.as_str()))
+    let idx: Vec<usize> = (0..t.rows())
+        .filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data))
         .collect();
+    let has = |k: RowType| idx.iter().any(|&r| t.row_types.get(r) == Some(&k));
+    let kinds: Vec<String> = [
+        RowType::Subtotal,
+        RowType::Total,
+        RowType::Average,
+        RowType::OfWhich,
+    ]
+    .into_iter()
+    .filter(|&k| has(k))
+    .map(|k| format!("'{}'", k.as_str()))
+    .collect();
     let cond = match kinds.len() {
         0 => "_row_type = 'total'".to_string(),
         1 => format!("_row_type = {}", kinds[0]),
@@ -275,9 +392,12 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
     let mut at: HashMap<usize, usize> = HashMap::new();
     for (&r, tr) in idx.iter().zip(&info.total_rows) {
         let want = tr.label.trim();
-        let hit = t.columns.iter().enumerate().filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group)).find(
-            |(_, c)| matches!(c.values.get(r), Some(Out::Text(s)) if s.trim() == want),
-        );
+        let hit = t
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group))
+            .find(|(_, c)| matches!(c.values.get(r), Some(Out::Text(s)) if s.trim() == want));
         if let Some((i, _)) = hit {
             *at.entry(i).or_default() += 1;
         }
@@ -287,9 +407,16 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
     if !info.key_cols.is_empty() || !info.codes.is_empty() {
         let entries = crate::catalog::total_entries(info);
         let keys: Vec<String> = info.key_cols.iter().map(|&k| ident(&names[k])).collect();
-        let labels = if keys.is_empty() { String::new() } else { format!(" — labels in {}", keys.join("/")) };
+        let labels = if keys.is_empty() {
+            String::new()
+        } else {
+            format!(" — labels in {}", keys.join("/"))
+        };
         let sep = if labels.is_empty() { " — " } else { ": " };
-        return Some(format!("{head}{labels}{sep}{}", crate::catalog::totals_text(t, info, &entries, true, 15)));
+        return Some(format!(
+            "{head}{labels}{sep}{}",
+            crate::catalog::totals_text(t, info, &entries, true, 15)
+        ));
     }
     if let Some((&i, _)) = at.iter().max_by_key(|(i, n)| (**n, std::cmp::Reverse(**i))) {
         // B74: every label (up to 15) by level, the grand total named, what each adds up.
@@ -317,7 +444,11 @@ pub fn total_rows_line(t: &Table, names: &[String], info: &RowInfo) -> Option<St
     Some(format!(
         "{head} (no label; _src_row {}{})",
         rows.join(", "),
-        if more > 0 { format!(" +{more} more") } else { String::new() }
+        if more > 0 {
+            format!(" +{more} more")
+        } else {
+            String::new()
+        }
     ))
 }
 
@@ -353,27 +484,73 @@ fn words(name: &str) -> Vec<String> {
 /// `Kalenderwoche`, `Ano`).
 fn id_like_name(name: &str) -> bool {
     const EXACT: &[&str] = &[
-        "id", "ids", "nr", "no", "nº", "num", "code", "codigo", "código", "key", "ref", "uuid", "ano", "year", "jahr",
-        "month", "monat", "mes", "mês", "week", "woche", "day", "tag", "dia", "plz", "zip", "cpv", "nuts", "isin", "nif",
-        "nipc", "vat", "pib", "jmbg", "quarter", "quartal",
+        "id", "ids", "nr", "no", "nº", "num", "code", "codigo", "código", "key", "ref", "uuid",
+        "ano", "year", "jahr", "month", "monat", "mes", "mês", "week", "woche", "day", "tag",
+        "dia", "plz", "zip", "cpv", "nuts", "isin", "nif", "nipc", "vat", "pib", "jmbg", "quarter",
+        "quartal",
     ];
-    const STEMS: &[&str] = &["schlüssel", "schluessel", "nummer", "kennziffer", "kalenderwoche", "identif", "postcode"];
+    const STEMS: &[&str] = &[
+        "schlüssel",
+        "schluessel",
+        "nummer",
+        "kennziffer",
+        "kalenderwoche",
+        "identif",
+        "postcode",
+    ];
     let ws = words(name);
     let low = name.to_lowercase();
-    ws.first().is_some_and(|w| w.starts_with("id") && w.len() > 3 && !w.starts_with("ide") && !w.starts_with("ida"))
-        || ws.iter().any(|w| EXACT.contains(&w.as_str()))
+    ws.first().is_some_and(|w| {
+        w.starts_with("id") && w.len() > 3 && !w.starts_with("ide") && !w.starts_with("ida")
+    }) || ws.iter().any(|w| EXACT.contains(&w.as_str()))
         || STEMS.iter().any(|s| low.contains(s))
 }
 
 /// A money column by its name or currency.
 fn money_like(c: &Column, name: &str) -> bool {
     const STEMS: &[&str] = &[
-        "preco", "preço", "price", "precio", "prezzo", "prix", "valor", "value", "amount", "betrag", "kosten", "costo",
-        "custo", "cost", "revenue", "umsatz", "erlös", "erloes", "sales", "salary", "gehalt", "lohn", "budget", "payment",
-        "zahlung", "iznos", "cijena", "cena", "montant", "importe", "ausgaben", "einnahmen", "expense", "income", "profit",
-        "gewinn", "spend", "turnover",
+        "preco",
+        "preço",
+        "price",
+        "precio",
+        "prezzo",
+        "prix",
+        "valor",
+        "value",
+        "amount",
+        "betrag",
+        "kosten",
+        "costo",
+        "custo",
+        "cost",
+        "revenue",
+        "umsatz",
+        "erlös",
+        "erloes",
+        "sales",
+        "salary",
+        "gehalt",
+        "lohn",
+        "budget",
+        "payment",
+        "zahlung",
+        "iznos",
+        "cijena",
+        "cena",
+        "montant",
+        "importe",
+        "ausgaben",
+        "einnahmen",
+        "expense",
+        "income",
+        "profit",
+        "gewinn",
+        "spend",
+        "turnover",
     ];
-    const EXACT: &[&str] = &["eur", "euro", "euros", "usd", "chf", "gbp", "rsd", "din", "€", "$", "£"];
+    const EXACT: &[&str] = &[
+        "eur", "euro", "euros", "usd", "chf", "gbp", "rsd", "din", "€", "$", "£",
+    ];
     if c.dtype == Dtype::Currency || c.currency.is_some() {
         return true;
     }
@@ -394,7 +571,12 @@ struct NumFacts {
 }
 
 fn num_facts(c: &Column, rows: &[usize]) -> NumFacts {
-    let mut f = NumFacts { min: f64::INFINITY, max: f64::NEG_INFINITY, all_int: true, ..Default::default() };
+    let mut f = NumFacts {
+        min: f64::INFINITY,
+        max: f64::NEG_INFINITY,
+        all_int: true,
+        ..Default::default()
+    };
     for &r in rows {
         match c.values.get(r) {
             Some(Out::Num(x)) => {
@@ -435,11 +617,19 @@ fn amounts<'a>(t: &'a Table, names: &'a [String], rows: &[usize]) -> Vec<Amount<
     let mut out = Vec::new();
     for (i, c) in data_cols(t) {
         let name = names[i].as_str();
-        if !is_numeric(c.dtype) || c.dtype == Dtype::Percent || name_period(name).is_some() || id_like_name(name) {
+        if !is_numeric(c.dtype)
+            || c.dtype == Dtype::Percent
+            || name_period(name).is_some()
+            || id_like_name(name)
+        {
             continue;
         }
         let low = name.to_lowercase();
-        if measure_classes(name) & (2 | 8 | 16) != 0 || low.contains("index") || low.contains("quote") || low.contains("rate") {
+        if measure_classes(name) & (2 | 8 | 16) != 0
+            || low.contains("index")
+            || low.contains("quote")
+            || low.contains("rate")
+        {
             continue;
         }
         let f = num_facts(c, rows);
@@ -452,7 +642,14 @@ fn amounts<'a>(t: &'a Table, names: &'a [String], rows: &[usize]) -> Vec<Amount<
         }
         let money = money_like(c, name);
         let summable = money || measure_classes(name) & 4 != 0;
-        out.push(Amount { idx: i, col: c, name, facts: f, money, summable });
+        out.push(Amount {
+            idx: i,
+            col: c,
+            name,
+            facts: f,
+            money,
+            summable,
+        });
     }
     out
 }
@@ -468,7 +665,9 @@ fn big(v: f64) -> String {
         // 6 significant digits, thousands separated.
         let r: f64 = format!("{v:.5e}").parse().unwrap_or(v);
         let s = num(r);
-        let (int, frac) = s.split_once('.').map_or((s.as_str(), None), |(i, f)| (i, Some(f)));
+        let (int, frac) = s
+            .split_once('.')
+            .map_or((s.as_str(), None), |(i, f)| (i, Some(f)));
         let digits = int.trim_start_matches('-');
         let mut out = String::from(if int.starts_with('-') { "-" } else { "" });
         out.push_str(&thousands(digits.parse().unwrap_or(0)));
@@ -498,7 +697,12 @@ fn amount_text(a: &Amount, rows: usize, range: bool) -> String {
     let f = &a.facts;
     let mut parts = Vec::new();
     if a.summable {
-        let cur = a.col.currency.as_ref().map(|c| format!(" {c}")).unwrap_or_default();
+        let cur = a
+            .col
+            .currency
+            .as_ref()
+            .map(|c| format!(" {c}"))
+            .unwrap_or_default();
         parts.push(format!("sum {}{cur}", big(f.sum)));
     }
     // B104: the fill rate only when cells are missing (a sum or a count over them is partial).
@@ -519,7 +723,12 @@ fn similar_names(a: &str, b: &str) -> bool {
 
 /// Sums, fill rates and ranges of the amount columns (`numbers:`), and one line per group of
 /// look-alike amount columns (both money, or similar names) whose sums differ.
-pub fn numbers_lines(t: &Table, names: &[String], rows: &[usize], ranges_shown: bool) -> Vec<String> {
+pub fn numbers_lines(
+    t: &Table,
+    names: &[String],
+    rows: &[usize],
+    ranges_shown: bool,
+) -> Vec<String> {
     if rows.len() < NUMBERS_MIN_ROWS {
         return Vec::new();
     }
@@ -550,19 +759,30 @@ pub fn numbers_lines(t: &Table, names: &[String], rows: &[usize], ranges_shown: 
     let mut in_line: HashSet<usize> = HashSet::new();
     for g in groups.iter().filter(|g| g.len() >= 2).take(2) {
         let sums: Vec<f64> = g.iter().map(|&k| am[k].facts.sum).collect();
-        let (lo, hi) = sums.iter().fold((f64::MAX, f64::MIN), |(lo, hi), s| (lo.min(*s), hi.max(*s)));
+        let (lo, hi) = sums
+            .iter()
+            .fold((f64::MAX, f64::MIN), |(lo, hi), s| (lo.min(*s), hi.max(*s)));
         if hi - lo <= 0.01 * hi.abs().max(lo.abs()) {
             continue;
         }
-        let items: Vec<String> = g.iter().take(4).map(|&k| amount_text(&am[k], rows.len(), false)).collect();
-        out.push(format!("    {} — different measures; pick deliberately", items.join(" vs ")));
+        let items: Vec<String> = g
+            .iter()
+            .take(4)
+            .map(|&k| amount_text(&am[k], rows.len(), false))
+            .collect();
+        out.push(format!(
+            "    {} — different measures; pick deliberately",
+            items.join(" vs ")
+        ));
         in_line.extend(g.iter().copied());
     }
     let rest: Vec<String> = am
         .iter()
         .enumerate()
         // B104: a sum, or missing cells; a range only when the columns line has none.
-        .filter(|(k, a)| !in_line.contains(k) && (a.summable || a.facts.filled * 10 < rows.len() * 9))
+        .filter(|(k, a)| {
+            !in_line.contains(k) && (a.summable || a.facts.filled * 10 < rows.len() * 9)
+        })
         .take(NUMBER_ITEMS)
         .map(|(_, a)| amount_text(a, rows.len(), !ranges_shown))
         .collect();
@@ -584,7 +804,10 @@ const SHARE_KEY_MAX_DISTINCT: usize = 1000;
 /// A column naming the unit, currency or measure of each row: with several values in it, a sum
 /// over all rows adds different things.
 fn unit_column_name(name: &str) -> bool {
-    const UNIT: &[&str] = &["unit", "units", "currency", "measure", "einheit", "währung", "waehrung", "unite", "unité", "unidade", "unidad", "moeda", "jedinica", "valuta", "uom"];
+    const UNIT: &[&str] = &[
+        "unit", "units", "currency", "measure", "einheit", "währung", "waehrung", "unite", "unité",
+        "unidade", "unidad", "moeda", "jedinica", "valuta", "uom",
+    ];
     words(name).iter().any(|w| UNIT.contains(&w.as_str()))
 }
 
@@ -593,7 +816,13 @@ fn unit_column_name(name: &str) -> bool {
 /// entity's `<col>_id`) or else a dimension column with 10..1,000 values that is not a name or a
 /// period. None for small tables, without such columns, for prices / rates (B89: their sum means
 /// nothing) and when the rows mix units or currencies.
-pub fn share_line(t: &Table, names: &[String], rows: &[usize], key: Option<String>, tys: &[Option<ColType>]) -> Option<String> {
+pub fn share_line(
+    t: &Table,
+    names: &[String],
+    rows: &[usize],
+    key: Option<String>,
+    tys: &[Option<ColType>],
+) -> Option<String> {
     if rows.len() < NUMBERS_MIN_ROWS {
         return None;
     }
@@ -609,7 +838,9 @@ pub fn share_line(t: &Table, names: &[String], rows: &[usize], key: Option<Strin
         }
         seen.len()
     };
-    if data_cols(t).any(|(i, c)| c.dtype == Dtype::Text && unit_column_name(&names[i]) && distinct(c, 2) >= 2) {
+    if data_cols(t)
+        .any(|(i, c)| c.dtype == Dtype::Text && unit_column_name(&names[i]) && distinct(c, 2) >= 2)
+    {
         return None;
     }
     // A unit price has few values (one per product: "Manufacturing Price"); a contract's price
@@ -625,21 +856,43 @@ pub fn share_line(t: &Table, names: &[String], rows: &[usize], key: Option<Strin
     };
     let additive = |a: &&Amount| {
         let ws = words(a.name);
-        let price = ws.iter().any(|w| matches!(w.as_str(), "price" | "prices" | "preis" | "preise" | "prix" | "precio" | "prezzo" | "cijena" | "cena"));
+        let price = ws.iter().any(|w| {
+            matches!(
+                w.as_str(),
+                "price"
+                    | "prices"
+                    | "preis"
+                    | "preise"
+                    | "prix"
+                    | "precio"
+                    | "prezzo"
+                    | "cijena"
+                    | "cena"
+            )
+        });
         a.summable
             && !(price && unit_price(a))
             && !(rate_name(a.name) && !price)
-            && !tys.get(a.idx).and_then(|x| x.as_ref()).is_some_and(ColType::no_sum)
+            && !tys
+                .get(a.idx)
+                .and_then(|x| x.as_ref())
+                .is_some_and(ColType::no_sum)
     };
     let am = amounts(t, names, rows);
-    let a = am.iter().filter(additive).find(|a| a.money).or_else(|| am.iter().find(additive))?;
+    let a = am
+        .iter()
+        .filter(additive)
+        .find(|a| a.money)
+        .or_else(|| am.iter().find(additive))?;
     let key = match key {
         Some(k) => k,
         // The breakdown with the most values (a middle initial or a flag has few).
         None => data_cols(t)
             .filter(|(i, c)| {
                 let sem = tys.get(*i).and_then(|x| x.as_ref()).map(|x| x.sem);
-                c.dtype == Dtype::Text && !matches!(sem, Some(Sem::Name | Sem::Period | Sem::Text)) && !id_like_name(&names[*i])
+                c.dtype == Dtype::Text
+                    && !matches!(sem, Some(Sem::Name | Sem::Period | Sem::Text))
+                    && !id_like_name(&names[*i])
             })
             .map(|(i, c)| (i, distinct(c, SHARE_KEY_MAX_DISTINCT)))
             .filter(|(_, d)| (SHARE_KEY_MIN_DISTINCT..=SHARE_KEY_MAX_DISTINCT).contains(d))
@@ -659,21 +912,55 @@ pub fn share_line(t: &Table, names: &[String], rows: &[usize], key: Option<Strin
 /// The scale a title or note gives the table's numbers: `(All values in 000s)`, `in Tausend`,
 /// `Mio. €`, `en milliers`, `(in millions)`: (factor, word).
 pub fn scale_of(text: &str) -> Option<(f64, &'static str)> {
-    const THOUSANDS: &[&str] = &["thousand", "thousands", "tausend", "milliers", "milhares", "miles", "hiljadama", "хиљадама", "hiljada", "migliaia"];
-    const MILLIONS: &[&str] = &["million", "millions", "millionen", "millones", "milhões", "milhoes", "milioni", "milionima", "милионима"];
+    const THOUSANDS: &[&str] = &[
+        "thousand",
+        "thousands",
+        "tausend",
+        "milliers",
+        "milhares",
+        "miles",
+        "hiljadama",
+        "хиљадама",
+        "hiljada",
+        "migliaia",
+    ];
+    const MILLIONS: &[&str] = &[
+        "million",
+        "millions",
+        "millionen",
+        "millones",
+        "milhões",
+        "milhoes",
+        "milioni",
+        "milionima",
+        "милионима",
+    ];
     const BILLIONS: &[&str] = &["billion", "billions", "milliarden", "milliards"];
     const BEFORE: &[&str] = &["in", "en", "em", "u", "у", "of", "de", "di"];
     let low = text.to_lowercase();
     // Tokens keep digits, letters and the marks that make "000s", "'000", "(000)", "mio." readable.
-    let toks: Vec<&str> = low.split(|c: char| c.is_whitespace() || ",;:/[]".contains(c)).filter(|w| !w.is_empty()).collect();
+    let toks: Vec<&str> = low
+        .split(|c: char| c.is_whitespace() || ",;:/[]".contains(c))
+        .filter(|w| !w.is_empty())
+        .collect();
     for (k, raw) in toks.iter().enumerate() {
         let w = raw.trim_matches(|c: char| "()'’.$€£".contains(c));
-        let prev = k.checked_sub(1).map(|j| toks[j].trim_matches(|c: char| "()".contains(c))).unwrap_or("");
+        let prev = k
+            .checked_sub(1)
+            .map(|j| toks[j].trim_matches(|c: char| "()".contains(c)))
+            .unwrap_or("");
         let marked = BEFORE.contains(&prev) || raw.starts_with('(');
         // B140: "in 1 000 EUR", "(1 000 000)": thousands grouped with spaces.
-        let next = |j: usize| toks.get(k + j).map(|n| n.trim_matches(|c: char| "()'’.$€£".contains(c)));
+        let next = |j: usize| {
+            toks.get(k + j)
+                .map(|n| n.trim_matches(|c: char| "()'’.$€£".contains(c)))
+        };
         if w == "1" && marked && next(1) == Some("000") {
-            return Some(if next(2) == Some("000") { (1e6, "millions") } else { (1e3, "thousands") });
+            return Some(if next(2) == Some("000") {
+                (1e6, "millions")
+            } else {
+                (1e3, "thousands")
+            });
         }
         if matches!(w, "000s" | "000's" | "000’s" | "tsd" | "tsd." | "thous")
             || (w == "000" && (raw.starts_with(['\'', '’', '(', '$', '€', '£']) || marked))
@@ -682,12 +969,19 @@ pub fn scale_of(text: &str) -> Option<(f64, &'static str)> {
         {
             return Some((1e3, "thousands"));
         }
-        if matches!(w, "mio" | "mln" | "mn" | "mill") && (marked || raw.ends_with('.') || toks.get(k + 1).is_some_and(|n| n.contains(['€', '$', '£']) || n.len() == 3))
+        if matches!(w, "mio" | "mln" | "mn" | "mill")
+            && (marked
+                || raw.ends_with('.')
+                || toks
+                    .get(k + 1)
+                    .is_some_and(|n| n.contains(['€', '$', '£']) || n.len() == 3))
             || (MILLIONS.contains(&w) && marked)
         {
             return Some((1e6, "millions"));
         }
-        if (matches!(w, "mrd" | "bn") && (marked || raw.ends_with('.'))) || (BILLIONS.contains(&w) && marked) {
+        if (matches!(w, "mrd" | "bn") && (marked || raw.ends_with('.')))
+            || (BILLIONS.contains(&w) && marked)
+        {
             return Some((1e9, "billions"));
         }
     }
@@ -700,8 +994,15 @@ pub fn table_scale(t: &Table) -> Option<(f64, &'static str, &str)> {
         return None;
     }
     let mut texts: Vec<&str> = t.title.iter().map(|(s, _)| s.as_str()).collect();
-    texts.extend(t.notes.iter().filter(|(_, (r, _))| *r <= t.header_top).map(|(s, _)| s.as_str()));
-    texts.into_iter().find_map(|s| scale_of(s).map(|(f, w)| (f, w, s)))
+    texts.extend(
+        t.notes
+            .iter()
+            .filter(|(_, (r, _))| *r <= t.header_top)
+            .map(|(s, _)| s.as_str()),
+    );
+    texts
+        .into_iter()
+        .find_map(|s| scale_of(s).map(|(f, w)| (f, w, s)))
 }
 
 /// `units:` line of a table whose title (or a note above it) gives a scale for its numbers.
@@ -722,8 +1023,9 @@ pub fn scale_line(t: &Table) -> Option<String> {
 /// to 6 characters; `16+` reads as `16 over`.
 fn stems(text: &str) -> Vec<String> {
     const STOP: &[&str] = &[
-        "the", "a", "an", "of", "in", "to", "and", "or", "for", "by", "is", "are", "all", "on", "at", "as", "with", "from", "per",
-        "headline", "der", "die", "das", "und", "le", "la", "les", "de", "des", "et", "o", "e", "do", "da", "y", "el",
+        "the", "a", "an", "of", "in", "to", "and", "or", "for", "by", "is", "are", "all", "on",
+        "at", "as", "with", "from", "per", "headline", "der", "die", "das", "und", "le", "la",
+        "les", "de", "des", "et", "o", "e", "do", "da", "y", "el",
     ];
     let mut s = String::with_capacity(text.len());
     let mut prev_digit = false;
@@ -736,7 +1038,11 @@ fn stems(text: &str) -> Vec<String> {
         prev_digit = ch.is_ascii_digit();
     }
     let mut out: Vec<String> = Vec::new();
-    for w in s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty() && !STOP.contains(w)) {
+    for w in s
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty() && !STOP.contains(w))
+    {
         let st: String = w.chars().take(6).collect();
         if !out.contains(&st) {
             out.push(st);
@@ -748,7 +1054,10 @@ fn stems(text: &str) -> Vec<String> {
 /// A series code in a header cell (`LF24`, `MGSX`).
 fn header_code(s: &str) -> bool {
     let s = s.trim();
-    (3..=8).contains(&s.len()) && s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) && s.chars().any(|c| c.is_ascii_uppercase())
+    (3..=8).contains(&s.len())
+        && s.chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && s.chars().any(|c| c.is_ascii_uppercase())
 }
 
 /// Notes of a table that define one of its columns: a sentence naming the column's series code
@@ -756,8 +1065,13 @@ fn header_code(s: &str) -> bool {
 /// one column's header and that matches that column best. (column index, the sentence, its cell).
 pub fn column_notes(norm: &Normalized, t: &Table) -> Vec<(usize, String, (u32, u32))> {
     // The table's notes and the notes of its sheet that belong to no table (footnotes below it).
-    let mut notes: Vec<(&str, (u32, u32))> = t.notes.iter().map(|(s, at)| (s.as_str(), *at)).collect();
-    for n in norm.notes.iter().filter(|n| matches!(n.kind, "note" | "other")) {
+    let mut notes: Vec<(&str, (u32, u32))> =
+        t.notes.iter().map(|(s, at)| (s.as_str(), *at)).collect();
+    for n in norm
+        .notes
+        .iter()
+        .filter(|n| matches!(n.kind, "note" | "other"))
+    {
         let mine = n.table == Some(t.n) || (n.table.is_none() && n.sheet == t.source_sheet);
         if mine && !notes.iter().any(|x| x.1 == (n.row, n.col)) {
             notes.push((n.text.as_str(), (n.row, n.col)));
@@ -765,22 +1079,46 @@ pub fn column_notes(norm: &Normalized, t: &Table) -> Vec<(usize, String, (u32, u
     }
     let cols: Vec<(usize, Vec<String>, Vec<String>)> = data_cols(t)
         .map(|(i, c)| {
-            let codes: Vec<String> = c.original_header.iter().map(|(h, _)| h.trim().to_string()).filter(|h| header_code(h)).collect();
+            let codes: Vec<String> = c
+                .original_header
+                .iter()
+                .map(|(h, _)| h.trim().to_string())
+                .filter(|h| header_code(h))
+                .collect();
             (i, stems(&c.name), codes)
         })
         .collect();
     let mut out: Vec<(usize, String, (u32, u32))> = Vec::new();
     for (text, at) in notes {
-        for sentence in text.split(". ").map(str::trim).filter(|s| s.chars().count() >= 20) {
+        for sentence in text
+            .split(". ")
+            .map(str::trim)
+            .filter(|s| s.chars().count() >= 20)
+        {
             let words: Vec<&str> = sentence.split(|c: char| !c.is_alphanumeric()).collect();
             // The column whose code the sentence names first.
-            let by_code = words.iter().find_map(|w| cols.iter().find(|(_, _, codes)| codes.iter().any(|c| c == w)));
+            let by_code = words.iter().find_map(|w| {
+                cols.iter()
+                    .find(|(_, _, codes)| codes.iter().any(|c| c == w))
+            });
             let hit = by_code.map(|c| c.0).or_else(|| {
                 let low = sentence.to_lowercase();
-                let cut = [" is ", " are ", " means ", " refers to ", " ist ", " sind ", " est ", " sont ", " é ", " es ", " je "]
-                    .iter()
-                    .filter_map(|v| low.find(v))
-                    .min()?;
+                let cut = [
+                    " is ",
+                    " are ",
+                    " means ",
+                    " refers to ",
+                    " ist ",
+                    " sind ",
+                    " est ",
+                    " sont ",
+                    " é ",
+                    " es ",
+                    " je ",
+                ]
+                .iter()
+                .filter_map(|v| low.find(v))
+                .min()?;
                 let subject = stems(&low[..cut]);
                 if subject.len() < 2 || subject.len() > 6 {
                     return None;
@@ -800,7 +1138,8 @@ pub fn column_notes(norm: &Normalized, t: &Table) -> Vec<(usize, String, (u32, u
             {
                 // A long note naming the code: the part around it.
                 let mut text = sentence.trim_end_matches('.').to_string();
-                if let Some(code) = by_code.and_then(|c| c.2.iter().find(|k| words.contains(&k.as_str())))
+                if let Some(code) =
+                    by_code.and_then(|c| c.2.iter().find(|k| words.contains(&k.as_str())))
                     && text.chars().count() > 180
                     && let Some(pos) = text.find(code.as_str())
                 {
@@ -823,7 +1162,14 @@ pub fn column_notes_line(norm: &Normalized, t: &Table, names: &[String]) -> Opti
     let items: Vec<String> = notes
         .iter()
         .take(6)
-        .map(|(i, s, (r, c))| format!("{} ← \"{}\" ({})", ident(&names[*i]), short(s, 180), hh_core::a1(*r, *c)))
+        .map(|(i, s, (r, c))| {
+            format!(
+                "{} ← \"{}\" ({})",
+                ident(&names[*i]),
+                short(s, 180),
+                hh_core::a1(*r, *c)
+            )
+        })
         .collect();
     Some(format!("    column notes: {}", items.join(" · ")))
 }
@@ -889,7 +1235,11 @@ pub fn long_forms(tables: &[Table]) -> Vec<(usize, String)> {
                     continue;
                 }
                 let wnames = crate::catalog::sql_names(w);
-                let find = |name: &str| wnames.iter().position(|n| n.trim().eq_ignore_ascii_case(name.trim()));
+                let find = |name: &str| {
+                    wnames
+                        .iter()
+                        .position(|n| n.trim().eq_ignore_ascii_case(name.trim()))
+                };
                 let Some(targets) = cats
                     .iter()
                     .map(|cat| find(cat).filter(|&k| is_numeric(w.columns[k].dtype)))
@@ -899,8 +1249,18 @@ pub fn long_forms(tables: &[Table]) -> Vec<(usize, String)> {
                 };
                 // Key columns: the other columns both tables have, by name.
                 let keys: Vec<(usize, usize)> = data_cols(l)
-                    .filter(|(i, lc)| *i != ci && !matches!(lc.dtype, Dtype::Number | Dtype::Currency | Dtype::Percent | Dtype::Empty))
-                    .filter_map(|(i, _)| find(&lnames[i]).filter(|k| !targets.contains(k)).map(|k| (i, k)))
+                    .filter(|(i, lc)| {
+                        *i != ci
+                            && !matches!(
+                                lc.dtype,
+                                Dtype::Number | Dtype::Currency | Dtype::Percent | Dtype::Empty
+                            )
+                    })
+                    .filter_map(|(i, _)| {
+                        find(&lnames[i])
+                            .filter(|k| !targets.contains(k))
+                            .map(|k| (i, k))
+                    })
                     .collect();
                 if keys.is_empty() {
                     continue;
@@ -908,31 +1268,59 @@ pub fn long_forms(tables: &[Table]) -> Vec<(usize, String)> {
                 let wrows = crate::catalog::data_rows(w);
                 let mut index: HashMap<Vec<String>, usize> = HashMap::with_capacity(wrows.len());
                 for &r in &wrows {
-                    index.insert(keys.iter().map(|&(_, k)| key_text(w.columns[k].values.get(r))).collect(), r);
+                    index.insert(
+                        keys.iter()
+                            .map(|&(_, k)| key_text(w.columns[k].values.get(r)))
+                            .collect(),
+                        r,
+                    );
                 }
                 if index.len() * 10 < wrows.len() * 9 {
                     continue; // the keys do not identify the wide table's rows
                 }
                 let step = (lrows.len() / TWIN_SAMPLE).max(1);
-                let sample: Vec<usize> = lrows.iter().step_by(step).take(TWIN_SAMPLE).copied().collect();
-                let value = data_cols(l).filter(|(i, vc)| *i != ci && is_numeric(vc.dtype) && !keys.iter().any(|k| k.0 == *i)).find(|(_, vc)| {
-                    let (mut seen, mut same) = (0, 0);
-                    for &r in &sample {
-                        let Some(Out::Text(cat)) = c.values.get(r) else { continue };
-                        let Some(pos) = cats.iter().position(|x| *x == cat.trim()) else { continue };
-                        let key: Vec<String> = keys.iter().map(|&(i, _)| key_text(l.columns[i].values.get(r))).collect();
-                        let (Some(&wr), Some(a)) = (index.get(&key), num_at(vc, r)) else { continue };
-                        seen += 1;
-                        if num_at(&w.columns[targets[pos]], wr).is_some_and(|b| (a - b).abs() <= 1e-9 * a.abs().max(1.0)) {
-                            same += 1;
+                let sample: Vec<usize> = lrows
+                    .iter()
+                    .step_by(step)
+                    .take(TWIN_SAMPLE)
+                    .copied()
+                    .collect();
+                let value = data_cols(l)
+                    .filter(|(i, vc)| {
+                        *i != ci && is_numeric(vc.dtype) && !keys.iter().any(|k| k.0 == *i)
+                    })
+                    .find(|(_, vc)| {
+                        let (mut seen, mut same) = (0, 0);
+                        for &r in &sample {
+                            let Some(Out::Text(cat)) = c.values.get(r) else {
+                                continue;
+                            };
+                            let Some(pos) = cats.iter().position(|x| *x == cat.trim()) else {
+                                continue;
+                            };
+                            let key: Vec<String> = keys
+                                .iter()
+                                .map(|&(i, _)| key_text(l.columns[i].values.get(r)))
+                                .collect();
+                            let (Some(&wr), Some(a)) = (index.get(&key), num_at(vc, r)) else {
+                                continue;
+                            };
+                            seen += 1;
+                            if num_at(&w.columns[targets[pos]], wr)
+                                .is_some_and(|b| (a - b).abs() <= 1e-9 * a.abs().max(1.0))
+                            {
+                                same += 1;
+                            }
                         }
-                    }
-                    seen >= 4.min(sample.len()) && same * 10 >= seen * 9
-                });
+                        seen >= 4.min(sample.len()) && same * 10 >= seen * 9
+                    });
                 let Some((vi, _)) = value else { continue };
                 // The key shown: the first that alone tells the wide rows apart, else all of them.
                 let unique = keys.iter().find(|&&(_, k)| {
-                    let set: HashSet<String> = wrows.iter().map(|&r| key_text(w.columns[k].values.get(r))).collect();
+                    let set: HashSet<String> = wrows
+                        .iter()
+                        .map(|&r| key_text(w.columns[k].values.get(r)))
+                        .collect();
                     set.len() == wrows.len()
                 });
                 let key_names: Vec<String> = match unique {
@@ -966,7 +1354,13 @@ pub fn long_forms(tables: &[Table]) -> Vec<(usize, String)> {
 
 /// The label column and values that explain where a column is empty (most of the empty rows
 /// share one or two labels, and most rows with those labels are empty).
-fn empty_explained(t: &Table, names: &[String], target: &Column, rows: &[usize], empty: usize) -> Option<String> {
+fn empty_explained(
+    t: &Table,
+    names: &[String],
+    target: &Column,
+    rows: &[usize],
+    empty: usize,
+) -> Option<String> {
     let mut best: Option<(usize, String)> = None;
     for (i, c) in data_cols(t) {
         if std::ptr::eq(c, target) || label_values(c, rows).is_none_or(|v| v.len() < 2) {
@@ -982,7 +1376,11 @@ fn empty_explained(t: &Table, names: &[String], target: &Column, rows: &[usize],
                 }
             }
         }
-        let mut v: Vec<(&str, usize, usize)> = by.into_iter().map(|(k, (e, n))| (k, e, n)).filter(|x| x.1 > 0).collect();
+        let mut v: Vec<(&str, usize, usize)> = by
+            .into_iter()
+            .map(|(k, (e, n))| (k, e, n))
+            .filter(|x| x.1 > 0)
+            .collect();
         v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
         // A label explains the empty cells when most of its rows are empty, clearly more than
         // the column overall.
@@ -998,20 +1396,30 @@ fn empty_explained(t: &Table, names: &[String], target: &Column, rows: &[usize],
             used.push(if e == n {
                 format!("'{}' (all its {} rows)", short(l, 48), thousands(*n))
             } else {
-                format!("'{}' ({} of its {} rows)", short(l, 48), thousands(*e), thousands(*n))
+                format!(
+                    "'{}' ({} of its {} rows)",
+                    short(l, 48),
+                    thousands(*e),
+                    thousands(*n)
+                )
             });
         }
         if used.is_empty() || covered * 100 < empty * 95 {
             continue;
         }
         if best.as_ref().is_none_or(|(k, _)| used.len() < *k) {
-            best = Some((used.len(), format!("{} = {}", ident(&names[i]), used.join(" or "))));
+            best = Some((
+                used.len(),
+                format!("{} = {}", ident(&names[i]), used.join(" or ")),
+            ));
         }
     }
     best.map(|(_, s)| s)
 }
 
-const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 /// B73: the first / last year of a date column that has fewer months than a full year while
 /// another year has all 12: `Date: 2013 has Sep–Dec only (4 of 12 months)`.
@@ -1019,15 +1427,19 @@ fn partial_years(c: &Column, name: &str, rows: &[usize]) -> Option<String> {
     let mut by_year: std::collections::BTreeMap<i32, u16> = std::collections::BTreeMap::new();
     let mut last_day = f64::NAN;
     for &r in rows {
-        let Some(Out::Num(x) | Out::Date(x)) = c.values.get(r) else { continue };
+        let Some(Out::Num(x) | Out::Date(x)) = c.values.get(r) else {
+            continue;
+        };
         let day = x.floor();
         if day == last_day {
             continue;
         }
         last_day = day;
         let s = hh_core::normalize::iso(day);
-        let (Some(y), Some(m)) = (s.get(0..4).and_then(|y| y.parse::<i32>().ok()), s.get(5..7).and_then(|m| m.parse::<u32>().ok()))
-        else {
+        let (Some(y), Some(m)) = (
+            s.get(0..4).and_then(|y| y.parse::<i32>().ok()),
+            s.get(5..7).and_then(|m| m.parse::<u32>().ok()),
+        ) else {
             continue;
         };
         if (1..=12).contains(&m) {
@@ -1054,12 +1466,29 @@ fn partial_years(c: &Column, name: &str, rows: &[usize]) -> Option<String> {
     let (fy, fm) = by_year.iter().next().map(|(y, m)| (*y, *m))?;
     let (ly, lm) = by_year.iter().next_back().map(|(y, m)| (*y, *m))?;
     let parts: Vec<String> = [part(fy, fm), part(ly, lm)].into_iter().flatten().collect();
-    (!parts.is_empty()).then(|| format!("{}: {} — compare full years or the same months", ident(name), parts.join(", ")))
+    (!parts.is_empty()).then(|| {
+        format!(
+            "{}: {} — compare full years or the same months",
+            ident(name),
+            parts.join(", ")
+        )
+    })
 }
 
 /// A column of changes or differences (`Veränderung absolut`, `coal_cons_change_twh`, `Delta`).
 fn change_name(name: &str) -> bool {
-    const CHANGE: &[&str] = &["change", "changes", "veränderung", "differenz", "diff", "difference", "delta", "growth", "variation", "promena"];
+    const CHANGE: &[&str] = &[
+        "change",
+        "changes",
+        "veränderung",
+        "differenz",
+        "diff",
+        "difference",
+        "delta",
+        "growth",
+        "variation",
+        "promena",
+    ];
     words(name).iter().any(|w| CHANGE.contains(&w.as_str()))
 }
 
@@ -1067,13 +1496,33 @@ fn change_name(name: &str) -> bool {
 /// postcode.
 fn key_name(name: &str) -> bool {
     let ws = words(name);
-    ws.iter().any(|w| matches!(w.as_str(), "id" | "ids" | "nr" | "no" | "number" | "nummer" | "broj") || (w.len() > 3 && w.ends_with("id")))
+    ws.iter().any(|w| {
+        matches!(
+            w.as_str(),
+            "id" | "ids" | "nr" | "no" | "number" | "nummer" | "broj"
+        ) || (w.len() > 3 && w.ends_with("id"))
+    })
 }
 
 /// An ID column by its name, not a calendar column (`Order ID`, `empfaengerid`, `Nr`).
 fn id_name(name: &str) -> bool {
-    const CAL: &[&str] =
-        &["ano", "year", "jahr", "month", "monat", "mes", "mês", "week", "woche", "day", "tag", "dia", "quarter", "quartal", "kalenderwoche"];
+    const CAL: &[&str] = &[
+        "ano",
+        "year",
+        "jahr",
+        "month",
+        "monat",
+        "mes",
+        "mês",
+        "week",
+        "woche",
+        "day",
+        "tag",
+        "dia",
+        "quarter",
+        "quartal",
+        "kalenderwoche",
+    ];
     id_like_name(name) && !words(name).iter().any(|w| CAL.contains(&w.as_str()))
 }
 
@@ -1087,7 +1536,10 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
     // B48: formula cells without a saved value are NULL here.
     let no_value = t.transforms.get(T::FormulasWithoutValue);
     if no_value > 0 {
-        items.push(format!("{} without a saved value (NULL, not evaluated)", plural(no_value, "formula cell", "formula cells")));
+        items.push(format!(
+            "{} without a saved value (NULL, not evaluated)",
+            plural(no_value, "formula cell", "formula cells")
+        ));
     }
     if n < 20 {
         return (!items.is_empty()).then(|| format!("    quality: {}", items.join(" · ")));
@@ -1116,7 +1568,11 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         }
         if dups * 20 <= filled {
             // At most 5 % repeated: meant to be unique.
-            items.push(format!("{} duplicate {} values", thousands(dups), ident(&names[i])));
+            items.push(format!(
+                "{} duplicate {} values",
+                thousands(dups),
+                ident(&names[i])
+            ));
         } else if repeated < 2 && seen.len() >= 3 && key_name(&names[i]) {
             // B73: one ID on several lines (order lines, returns): rows are not IDs.
             repeated += 1;
@@ -1130,14 +1586,19 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         }
     }
     // B73: empty cells of every column, with the category that explains them.
-    let period_cols: Vec<String> =
-        hh_core::normalize::table_time_coverage(t).filter(|c| c.source == "column").map(|c| c.columns).unwrap_or_default();
+    let period_cols: Vec<String> = hh_core::normalize::table_time_coverage(t)
+        .filter(|c| c.source == "column")
+        .map(|c| c.columns)
+        .unwrap_or_default();
     let (mut explained, mut unexplained) = (0, 0);
     for (i, c) in data_cols(t) {
         if c.dtype == Dtype::Empty || c.role == ColRole::Group || explained >= 4 {
             continue;
         }
-        let empty = rows.iter().filter(|&&r| matches!(c.values.get(r), Some(Out::Null) | None)).count();
+        let empty = rows
+            .iter()
+            .filter(|&&r| matches!(c.values.get(r), Some(Out::Null) | None))
+            .count();
         if empty == 0 || empty * 100 < n || empty == n {
             continue;
         }
@@ -1149,10 +1610,16 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         // Unexplained empties only for dates (counts by date drop them) and text columns (a NULL
         // group); the numbers line has the fill rate of amounts.
         let why = empty_explained(t, names, c, rows, empty);
-        if why.is_none() && !date && !(c.dtype == Dtype::Text && unexplained < 2 && empty * 20 >= n) {
+        if why.is_none() && !date && !(c.dtype == Dtype::Text && unexplained < 2 && empty * 20 >= n)
+        {
             continue;
         }
-        let mut s = format!("{} empty in {} ({})", ident(&names[i]), plural(empty, "row", "rows"), pct(empty, n));
+        let mut s = format!(
+            "{} empty in {} ({})",
+            ident(&names[i]),
+            plural(empty, "row", "rows"),
+            pct(empty, n)
+        );
         match &why {
             Some(w) => {
                 explained += 1;
@@ -1170,7 +1637,9 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         items.push(s);
     }
     // B73: incomplete first / last years of the table's (first) period column.
-    if let Some((i, c)) = data_cols(t).find(|(_, c)| is_date(c.dtype) && (period_cols.is_empty() || period_cols.contains(&c.name))) {
+    if let Some((i, c)) = data_cols(t).find(|(_, c)| {
+        is_date(c.dtype) && (period_cols.is_empty() || period_cols.contains(&c.name))
+    }) {
         items.extend(partial_years(c, &names[i], rows));
     }
     // Negative amounts (a block of negative rows is a sign convention, said by `signs:`).
@@ -1178,7 +1647,11 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
         let neg: Vec<String> = amounts(t, names, rows)
             .iter()
             // B104: changes and differences are negative by nature; a negative amount changes a sum.
-            .filter(|a| a.facts.neg > 0 && a.facts.neg * 2 < a.facts.filled - a.facts.zero && !change_name(a.name))
+            .filter(|a| {
+                a.facts.neg > 0
+                    && a.facts.neg * 2 < a.facts.filled - a.facts.zero
+                    && !change_name(a.name)
+            })
             .take(4)
             .map(|a| format!("{} negative {}", thousands(a.facts.neg), ident(a.name)))
             .collect();
@@ -1194,7 +1667,10 @@ pub fn quality_line(t: &Table, names: &[String], rows: &[usize], signs: bool) ->
             continue;
         };
         let (col, rest) = it.split_at(at);
-        match merged.iter_mut().find(|m| m.find(" empty in ").is_some_and(|k| &m[k..] == rest)) {
+        match merged
+            .iter_mut()
+            .find(|m| m.find(" empty in ").is_some_and(|k| &m[k..] == rest))
+        {
             Some(m) => {
                 let k = m.find(" empty in ").unwrap_or(m.len());
                 m.insert_str(k, &format!(", {col}"));
@@ -1210,8 +1686,8 @@ mod tests {
     use super::*;
     use crate::catalog::catalog;
     use crate::text::MAX_CHARS;
-    use hh_core::normalize::{Normalized, SheetInfo, Transforms};
     use hh_core::Rect;
+    use hh_core::normalize::{Normalized, SheetInfo, Transforms};
 
     fn col(name: &str, dtype: Dtype, values: Vec<Out>) -> Column {
         Column {
@@ -1231,7 +1707,15 @@ mod tests {
     }
 
     fn text(v: &[&str]) -> Vec<Out> {
-        v.iter().map(|s| if s.is_empty() { Out::Null } else { Out::Text(s.to_string()) }).collect()
+        v.iter()
+            .map(|s| {
+                if s.is_empty() {
+                    Out::Null
+                } else {
+                    Out::Text(s.to_string())
+                }
+            })
+            .collect()
     }
 
     fn nums(v: &[f64]) -> Vec<Out> {
@@ -1243,13 +1727,22 @@ mod tests {
         let rows = types.len();
         columns.push(Column {
             role: ColRole::SrcRow,
-            ..col("_src_row", Dtype::Integer, (0..rows).map(|i| Out::Num(i as f64 + 2.0)).collect())
+            ..col(
+                "_src_row",
+                Dtype::Integer,
+                (0..rows).map(|i| Out::Num(i as f64 + 2.0)).collect(),
+            )
         });
         let t = Table {
             n: 1,
             sheet: "T1_s".into(),
             source_sheet: "Sheet 1".into(),
-            rect: Rect { top: 0, left: 0, bottom: rows as u32, right: columns.len() as u32 },
+            rect: Rect {
+                top: 0,
+                left: 0,
+                bottom: rows as u32,
+                right: columns.len() as u32,
+            },
             header_top: 0,
             header_rows: 1,
             title: None,
@@ -1261,17 +1754,34 @@ mod tests {
             transforms: Transforms::default(),
             warnings: vec![],
         };
-        let sheets = vec![SheetInfo { name: "Sheet 1".into(), tables: vec![1], cells: 10, ..Default::default() }];
-        Normalized { sheets, tables: vec![t], ..Default::default() }
+        let sheets = vec![SheetInfo {
+            name: "Sheet 1".into(),
+            tables: vec![1],
+            cells: 10,
+            ..Default::default()
+        }];
+        Normalized {
+            sheets,
+            tables: vec![t],
+            ..Default::default()
+        }
     }
 
     #[test]
     fn name_words() {
         assert_eq!(words("PrecoTotalEfetivo"), ["preco", "total", "efetivo"]);
         assert_eq!(words("idINCM"), ["id", "incm"]);
-        assert!(id_like_name("idcontrato") && id_like_name("contractId") && id_like_name("Kalenderwoche"));
+        assert!(
+            id_like_name("idcontrato")
+                && id_like_name("contractId")
+                && id_like_name("Kalenderwoche")
+        );
         assert!(id_like_name("Ano") && id_like_name("Stat. Schlüsselnummer"));
-        assert!(!id_like_name("precoContratual") && !id_like_name("Idade") && !id_like_name("Zuzüge insgesamt"));
+        assert!(
+            !id_like_name("precoContratual")
+                && !id_like_name("Idade")
+                && !id_like_name("Zuzüge insgesamt")
+        );
         assert_eq!(big(11_158_516_539.0), "11.16 bn");
         assert_eq!(big(352_400_000.0), "352.40 M");
         assert_eq!(pct(26_722, 176_474), "15 %");
@@ -1281,14 +1791,27 @@ mod tests {
     /// Like the Austrian pension file: 12 rows × 19 columns, a total row in the middle.
     #[test]
     fn small_wide_table_inline_with_total_rows() {
-        let groups = ["Anzahl", "Anzahl", "Anzahl", "Anzahl", "", "Euro", "Euro", "Euro", "Euro", "Satz", "Satz"];
-        let status = ["Allein", "M", "F", "Verh", "Gesamt", "Gesamt", "Allein", "M", "F", "Verh", "Allein", "Verh"];
+        let groups = [
+            "Anzahl", "Anzahl", "Anzahl", "Anzahl", "", "Euro", "Euro", "Euro", "Euro", "Satz",
+            "Satz",
+        ];
+        let status = [
+            "Allein", "M", "F", "Verh", "Gesamt", "Gesamt", "Allein", "M", "F", "Verh", "Allein",
+            "Verh",
+        ];
         let mut cols = vec![
-            Column { role: ColRole::Group, ..col("group", Dtype::Text, text(&groups)) },
+            Column {
+                role: ColRole::Group,
+                ..col("group", Dtype::Text, text(&groups))
+            },
             col("Richtsatz", Dtype::Text, text(&status)),
         ];
         for y in 2011..=2025 {
-            cols.push(col(&y.to_string(), Dtype::Number, nums(&[(y - 2000) as f64 + 0.5; 12])));
+            cols.push(col(
+                &y.to_string(),
+                Dtype::Number,
+                nums(&[(y - 2000) as f64 + 0.5; 12]),
+            ));
         }
         cols.push(col("2020/ 2025", Dtype::Number, nums(&[0.1; 12])));
         cols.push(col("2024/ 2025", Dtype::Number, nums(&[0.2; 12])));
@@ -1296,7 +1819,12 @@ mod tests {
         types[4] = RowType::Total;
         let n = book(cols, types);
         let c = catalog(&n, "x.xlsx", MAX_CHARS);
-        assert!(c.contains("all 12 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):"), "{c}");
+        assert!(
+            c.contains(
+                "all 12 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):"
+            ),
+            "{c}"
+        );
         assert!(c.contains("\n    group,Richtsatz,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2020/ 2025,2024/ 2025,_row_type\n"), "{c}");
         assert!(c.contains("\n    ,Gesamt,11.5,12.5,13.5,14.5,15.5,16.5,17.5,18.5,19.5,20.5,21.5,22.5,23.5,24.5,25.5,0.1,0.2,total\n"), "{c}");
         assert!(c.contains("\n    Euro,Allein,11.5,"), "{c}");
@@ -1312,7 +1840,10 @@ mod tests {
         let mut types = vec![RowType::Data; 8];
         types[3] = RowType::Total;
         types[7] = RowType::Total;
-        let mut cols = vec![col("Feb", Dtype::Integer, nums(&v)), col("Jan", Dtype::Integer, nums(&v.map(|x| 2.0 * x)))];
+        let mut cols = vec![
+            col("Feb", Dtype::Integer, nums(&v)),
+            col("Jan", Dtype::Integer, nums(&v.map(|x| 2.0 * x))),
+        ];
         if labels {
             cols.insert(0, col("col_C", Dtype::Text, text(&name)));
             cols.insert(0, col("col_B", Dtype::Text, text(&kind)));
@@ -1331,7 +1862,10 @@ mod tests {
         // No label column: source rows, and the sign of each total row.
         let c = catalog(&flows(false), "x.xlsx", MAX_CHARS);
         assert!(c.contains("total rows: SELECT … FROM T1_all WHERE _row_type = 'total' (no label; _src_row 5 positive, 9 negative)"), "{c}");
-        assert!(c.contains("signs: rows with _src_row 6–7 are all negative"), "{c}");
+        assert!(
+            c.contains("signs: rows with _src_row 6–7 are all negative"),
+            "{c}"
+        );
         // All positive: no sign line.
         let mut n = flows(true);
         for c in &mut n.tables[0].columns {
@@ -1348,17 +1882,56 @@ mod tests {
     /// dates missing for one procedure type, a negative price.
     fn register() -> Normalized {
         let rows = 40;
-        let ids: Vec<f64> = (0..rows).map(|i| if i == 39 { 1000.0 } else { 1000.0 + i as f64 }).collect();
-        let tipo: Vec<&str> = (0..rows).map(|i| if i % 4 == 0 { "Simplificado" } else { "Concurso" }).collect();
-        let date: Vec<Out> = (0..rows).map(|i| if i % 4 == 0 { Out::Null } else { Out::Date(43831.0 + i as f64) }).collect();
-        let preco: Vec<f64> = (0..rows).map(|i| if i == 7 { -50.0 } else { 1000.0 * (i + 1) as f64 + 0.5 }).collect();
-        let efetivo: Vec<f64> = (0..rows).map(|i| if i % 2 == 0 { 0.0 } else { 300.0 * i as f64 }).collect();
-        let winners: Vec<String> =
-            (0..rows).map(|i| if i % 10 == 3 { format!("50{i:07} - Alpha, Lda 51{i:07} - Beta SA") } else { format!("50{i:07} - Alpha, Lda") }).collect();
+        let ids: Vec<f64> = (0..rows)
+            .map(|i| if i == 39 { 1000.0 } else { 1000.0 + i as f64 })
+            .collect();
+        let tipo: Vec<&str> = (0..rows)
+            .map(|i| {
+                if i % 4 == 0 {
+                    "Simplificado"
+                } else {
+                    "Concurso"
+                }
+            })
+            .collect();
+        let date: Vec<Out> = (0..rows)
+            .map(|i| {
+                if i % 4 == 0 {
+                    Out::Null
+                } else {
+                    Out::Date(43831.0 + i as f64)
+                }
+            })
+            .collect();
+        let preco: Vec<f64> = (0..rows)
+            .map(|i| {
+                if i == 7 {
+                    -50.0
+                } else {
+                    1000.0 * (i + 1) as f64 + 0.5
+                }
+            })
+            .collect();
+        let efetivo: Vec<f64> = (0..rows)
+            .map(|i| if i % 2 == 0 { 0.0 } else { 300.0 * i as f64 })
+            .collect();
+        let winners: Vec<String> = (0..rows)
+            .map(|i| {
+                if i % 10 == 3 {
+                    format!("50{i:07} - Alpha, Lda 51{i:07} - Beta SA")
+                } else {
+                    format!("50{i:07} - Alpha, Lda")
+                }
+            })
+            .collect();
         let cols = vec![
             col("idcontrato", Dtype::Integer, nums(&ids)),
             col("tipoprocedimento", Dtype::Text, text(&tipo)),
-            col("adjudicatarios", Dtype::Text, winners.iter().map(|s| Out::Text(s.clone())).collect()),
+            col(
+                "adjudicatarios",
+                Dtype::Text,
+                winners.iter().map(|s| Out::Text(s.clone())).collect(),
+            ),
             col("dataCelebracaoContrato", Dtype::Date, date),
             col("precoContratual", Dtype::Number, nums(&preco)),
             col("PrecoTotalEfetivo", Dtype::Number, nums(&efetivo)),
@@ -1376,7 +1949,10 @@ mod tests {
         );
         // IDs and years are not amounts.
         assert!(!c.contains("idcontrato (") && !c.contains("Ano ("), "{c}");
-        let q = c.lines().find(|l| l.starts_with("    quality: ")).unwrap_or_else(|| panic!("{c}"));
+        let q = c
+            .lines()
+            .find(|l| l.starts_with("    quality: "))
+            .unwrap_or_else(|| panic!("{c}"));
         assert!(q.contains("1 duplicate idcontrato values"), "{q}");
         assert!(
             q.contains("dataCelebracaoContrato empty in 10 rows (25 %): tipoprocedimento = 'Simplificado' (all its 10 rows) — counts by this date leave them out"),
@@ -1392,7 +1968,10 @@ mod tests {
         t.src_rows.truncate(19);
         t.row_types.truncate(19);
         let c = catalog(&small, "x.xlsx", MAX_CHARS);
-        assert!(!c.contains("quality:") && !c.contains("pick deliberately"), "{c}");
+        assert!(
+            !c.contains("quality:") && !c.contains("pick deliberately"),
+            "{c}"
+        );
     }
 
     #[test]
@@ -1412,7 +1991,13 @@ mod tests {
         ] {
             assert_eq!(scale_of(s).map(|x| x.0), Some(f), "{s}");
         }
-        for s in ["Sales 2024", "Top 1000 companies", "5 million customers served", "Plant 000 status", "Top 1 000 firms"] {
+        for s in [
+            "Sales 2024",
+            "Top 1000 companies",
+            "5 million customers served",
+            "Plant 000 status",
+            "Top 1 000 firms",
+        ] {
             assert_eq!(scale_of(s), None, "{s}");
         }
         let mut n = register();
@@ -1425,10 +2010,28 @@ mod tests {
     fn notes_that_define_columns() {
         // B83, like the ONS labour market summary: the footnotes say which rate is the headline.
         let mut cols = Vec::new();
-        for (age, codes) in [("All aged 16 & over", ["MGSR", "MGSX", "MGRZ"]), ("All aged 16 to 64", ["LF24", "LF2Q", "LF2G"])] {
-            for (what, code) in ["Employment / rate (%)", "Unemployment / rate (%)", "Total in employment / level"].iter().zip(codes) {
-                let mut c = col(&format!("{age} / {what} / {code}"), Dtype::Number, nums(&[60.5; 4]));
-                c.original_header = vec![(age.into(), (5, 1)), ((*what).into(), (6, 1)), (code.into(), (8, 1))];
+        for (age, codes) in [
+            ("All aged 16 & over", ["MGSR", "MGSX", "MGRZ"]),
+            ("All aged 16 to 64", ["LF24", "LF2Q", "LF2G"]),
+        ] {
+            for (what, code) in [
+                "Employment / rate (%)",
+                "Unemployment / rate (%)",
+                "Total in employment / level",
+            ]
+            .iter()
+            .zip(codes)
+            {
+                let mut c = col(
+                    &format!("{age} / {what} / {code}"),
+                    Dtype::Number,
+                    nums(&[60.5; 4]),
+                );
+                c.original_header = vec![
+                    (age.into(), (5, 1)),
+                    ((*what).into(), (6, 1)),
+                    (code.into(), (8, 1)),
+                ];
                 cols.push(c);
             }
         }
@@ -1455,13 +2058,25 @@ mod tests {
             text: "Series MGRZ is seasonally adjusted, like all others here".into(),
             formula: None,
         });
-        let got: Vec<(String, u32)> = column_notes(&n, &n.tables[0]).iter().map(|(i, _, at)| (n.tables[0].columns[*i].name.clone(), at.0)).collect();
+        let got: Vec<(String, u32)> = column_notes(&n, &n.tables[0])
+            .iter()
+            .map(|(i, _, at)| (n.tables[0].columns[*i].name.clone(), at.0))
+            .collect();
         assert_eq!(
             got,
             [
-                ("All aged 16 to 64 / Employment / rate (%) / LF24".to_string(), 680),
-                ("All aged 16 & over / Unemployment / rate (%) / MGSX".to_string(), 681),
-                ("All aged 16 & over / Total in employment / level / MGRZ".to_string(), 690),
+                (
+                    "All aged 16 to 64 / Employment / rate (%) / LF24".to_string(),
+                    680
+                ),
+                (
+                    "All aged 16 & over / Unemployment / rate (%) / MGSX".to_string(),
+                    681
+                ),
+                (
+                    "All aged 16 & over / Total in employment / level / MGRZ".to_string(),
+                    690
+                ),
             ]
         );
         let c = catalog(&n, "x.xlsx", MAX_CHARS);
@@ -1472,24 +2087,59 @@ mod tests {
     fn coverage_facts() {
         // B73: empties of any column tied to a category, repeated IDs, a partial first year.
         let rows = 40;
-        let kind: Vec<&str> = (0..rows).map(|i| if i % 4 == 0 { "HOURLY" } else { "SALARY" }).collect();
-        let salary: Vec<Out> = (0..rows).map(|i| if i % 4 == 0 { Out::Null } else { Out::Num(50_000.0 + i as f64) }).collect();
-        let employer: Vec<&str> = (0..rows).map(|i| if i % 3 == 0 { "" } else { ["Acme", "Beta", "Gamma"][i % 3] }).collect();
+        let kind: Vec<&str> = (0..rows)
+            .map(|i| if i % 4 == 0 { "HOURLY" } else { "SALARY" })
+            .collect();
+        let salary: Vec<Out> = (0..rows)
+            .map(|i| {
+                if i % 4 == 0 {
+                    Out::Null
+                } else {
+                    Out::Num(50_000.0 + i as f64)
+                }
+            })
+            .collect();
+        let employer: Vec<&str> = (0..rows)
+            .map(|i| {
+                if i % 3 == 0 {
+                    ""
+                } else {
+                    ["Acme", "Beta", "Gamma"][i % 3]
+                }
+            })
+            .collect();
         let order: Vec<String> = (0..rows).map(|i| format!("O-{}", i / 3)).collect();
         // 2013-09-01 + 30 days per row: Sep 2013 .. Nov 2016, 2014 and 2015 full.
-        let date: Vec<Out> = (0..rows).map(|i| Out::Date(41518.0 + 30.0 * i as f64)).collect();
+        let date: Vec<Out> = (0..rows)
+            .map(|i| Out::Date(41518.0 + 30.0 * i as f64))
+            .collect();
         let cols = vec![
-            col("Order ID", Dtype::Text, order.iter().map(|s| Out::Text(s.clone())).collect()),
+            col(
+                "Order ID",
+                Dtype::Text,
+                order.iter().map(|s| Out::Text(s.clone())).collect(),
+            ),
             col("salary_or_hourly", Dtype::Text, text(&kind)),
             col("annual_salary", Dtype::Number, salary),
             col("employer", Dtype::Text, text(&employer)),
             col("Date", Dtype::Date, date),
         ];
         let c = catalog(&book(cols, vec![RowType::Data; rows]), "x.xlsx", MAX_CHARS);
-        let q = c.lines().find(|l| l.starts_with("    quality: ")).unwrap_or_else(|| panic!("{c}"));
+        let q = c
+            .lines()
+            .find(|l| l.starts_with("    quality: "))
+            .unwrap_or_else(|| panic!("{c}"));
         assert!(q.contains("annual_salary empty in 10 rows (25 %): salary_or_hourly = 'HOURLY' (all its 10 rows)"), "{q}");
-        assert!(q.contains("employer empty in 14 rows (35 %) (a NULL group when grouping)"), "{q}");
-        assert!(q.contains("\"Order ID\": 40 rows, 14 distinct — count them with COUNT(DISTINCT \"Order ID\")"), "{q}");
+        assert!(
+            q.contains("employer empty in 14 rows (35 %) (a NULL group when grouping)"),
+            "{q}"
+        );
+        assert!(
+            q.contains(
+                "\"Order ID\": 40 rows, 14 distinct — count them with COUNT(DISTINCT \"Order ID\")"
+            ),
+            "{q}"
+        );
         assert!(q.contains("Date: 2013 has Sep–Dec only (4 of 12 months), 2016 has Jan–Nov only (11 of 12 months)"), "{q}");
     }
 
@@ -1500,16 +2150,42 @@ mod tests {
         let region: Vec<String> = (0..rows).map(|i| format!("Region {}", i % 12)).collect();
         let cols = |price: &str, unit: bool| {
             let mut v = vec![
-                col("region", Dtype::Text, region.iter().map(|s| Out::Text(s.clone())).collect()),
+                col(
+                    "region",
+                    Dtype::Text,
+                    region.iter().map(|s| Out::Text(s.clone())).collect(),
+                ),
                 // A unit price takes a few values (one per product); sales are each their own.
-                col(price, Dtype::Number, nums(&(0..rows).map(|i| 10.5 * (if price.contains("Price") { i % 5 } else { i }) as f64 + 100.5).collect::<Vec<_>>())),
+                col(
+                    price,
+                    Dtype::Number,
+                    nums(
+                        &(0..rows)
+                            .map(|i| {
+                                10.5 * (if price.contains("Price") { i % 5 } else { i }) as f64
+                                    + 100.5
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                ),
             ];
             if unit {
-                v.push(col("currency", Dtype::Text, text(&(0..rows).map(|i| if i % 2 == 0 { "EUR" } else { "PPS" }).collect::<Vec<_>>())));
+                v.push(col(
+                    "currency",
+                    Dtype::Text,
+                    text(
+                        &(0..rows)
+                            .map(|i| if i % 2 == 0 { "EUR" } else { "PPS" })
+                            .collect::<Vec<_>>(),
+                    ),
+                ));
             }
             v
         };
-        let share = |c: Vec<Column>| catalog(&book(c, vec![RowType::Data; rows]), "x.xlsx", MAX_CHARS).contains("share of the total");
+        let share = |c: Vec<Column>| {
+            catalog(&book(c, vec![RowType::Data; rows]), "x.xlsx", MAX_CHARS)
+                .contains("share of the total")
+        };
         assert!(share(cols("Sales", false)));
         assert!(!share(cols("Manufacturing Price", false)));
         assert!(share(cols("Contract price", false)));
@@ -1520,16 +2196,31 @@ mod tests {
     fn optional_parts_stay_within_the_budget() {
         let n = register();
         let full = catalog(&n, "x.xlsx", MAX_CHARS);
-        assert!(full.contains("quality:") && full.contains("pick deliberately"), "{full}");
+        assert!(
+            full.contains("quality:") && full.contains("pick deliberately"),
+            "{full}"
+        );
         // Less room: column facts dropped first, the catalog stays full (not brief) and in budget.
-        let q = full.lines().find(|l| l.starts_with("    quality: ")).unwrap().len();
+        let q = full
+            .lines()
+            .find(|l| l.starts_with("    quality: "))
+            .unwrap()
+            .len();
         let c = catalog(&n, "x.xlsx", full.len() - q);
         assert!(c.len() <= full.len() - q, "{c}");
-        assert!(!c.contains("quality:") && c.contains("pick deliberately") && !c.contains("listed briefly"), "{c}");
+        assert!(
+            !c.contains("quality:")
+                && c.contains("pick deliberately")
+                && !c.contains("listed briefly"),
+            "{c}"
+        );
         let mut f = flows(true);
         let full = catalog(&f, "x.xlsx", MAX_CHARS);
         let c = catalog(&f, "x.xlsx", full.len() - 5);
-        assert!(c.len() <= full.len() - 5 && c.contains("signs:") && !c.contains("(CSV"), "{c}");
+        assert!(
+            c.len() <= full.len() - 5 && c.contains("signs:") && !c.contains("(CSV"),
+            "{c}"
+        );
         // A table with nothing to add.
         f.tables[0].row_types = vec![RowType::Data; 8];
         assert!(!catalog(&f, "x.xlsx", MAX_CHARS).contains("total rows:"));

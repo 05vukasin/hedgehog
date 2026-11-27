@@ -102,8 +102,8 @@ pub fn words(s: &str) -> Vec<String> {
 /// Suffixes stripped by [`stem`], longest first: plural and inflection endings of the eight
 /// languages (`-ungen`, `-ations`, `-ies`, `-es`, `-en`, `-s`, `-a`, `-o`, `-i`, …).
 const SUFFIXES: &[&str] = &[
-    "ations", "ements", "ungen", "ation", "ments", "ement", "ment", "ings", "ions", "ing", "ion", "ies", "oes", "ung", "es", "en",
-    "er", "ed", "os", "as", "e", "s", "a", "o", "i", "u", "y",
+    "ations", "ements", "ungen", "ation", "ments", "ement", "ment", "ings", "ions", "ing", "ion",
+    "ies", "oes", "ung", "es", "en", "er", "ed", "os", "as", "e", "s", "a", "o", "i", "u", "y",
 ];
 
 /// A folded word without one inflection ending, keeping at least 3 letters (`salaries` → `salar`,
@@ -127,33 +127,304 @@ pub fn stem(w: &str) -> String {
 /// Function words and question words of the eight languages (folded), never matched.
 const STOP: &[&str] = &[
     // en
-    "a", "an", "the", "and", "or", "of", "in", "on", "at", "to", "for", "from", "by", "with", "per", "each", "this",
-    "these", "that", "those", "there", "their", "its", "it", "as", "than", "then", "into", "over", "between", "both",
-    "any", "all", "only", "also", "not", "no", "yes", "what", "which", "who", "whom", "how", "many", "much", "when",
-    "where", "why", "did", "does", "do", "was", "were", "is", "are", "be", "been", "has", "have", "had", "most", "more",
-    "less", "least", "highest", "lowest", "largest", "smallest", "biggest", "top", "give", "show", "list", "compare",
-    "compared", "versus", "vs", "previous", "latest", "first", "last", "same", "other", "one", "two", "three", "file",
-    "files", "table", "tables", "sheet", "sheets", "data", "value", "values", "number", "amount", "including", "excluding",
-    "together", "overall", "across", "against", "after", "before", "during", "about", "if", "so", "up", "down", "go",
-    "went", "rise", "rose", "fall", "fell", "change", "changed", "did", "get", "got", "let", "say", "each", "every",
-    "they", "them", "we", "our", "you", "your", "he", "she", "his", "her", "out", "money", "much", "whole",
+    "a",
+    "an",
+    "the",
+    "and",
+    "or",
+    "of",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "from",
+    "by",
+    "with",
+    "per",
+    "each",
+    "this",
+    "these",
+    "that",
+    "those",
+    "there",
+    "their",
+    "its",
+    "it",
+    "as",
+    "than",
+    "then",
+    "into",
+    "over",
+    "between",
+    "both",
+    "any",
+    "all",
+    "only",
+    "also",
+    "not",
+    "no",
+    "yes",
+    "what",
+    "which",
+    "who",
+    "whom",
+    "how",
+    "many",
+    "much",
+    "when",
+    "where",
+    "why",
+    "did",
+    "does",
+    "do",
+    "was",
+    "were",
+    "is",
+    "are",
+    "be",
+    "been",
+    "has",
+    "have",
+    "had",
+    "most",
+    "more",
+    "less",
+    "least",
+    "highest",
+    "lowest",
+    "largest",
+    "smallest",
+    "biggest",
+    "top",
+    "give",
+    "show",
+    "list",
+    "compare",
+    "compared",
+    "versus",
+    "vs",
+    "previous",
+    "latest",
+    "first",
+    "last",
+    "same",
+    "other",
+    "one",
+    "two",
+    "three",
+    "file",
+    "files",
+    "table",
+    "tables",
+    "sheet",
+    "sheets",
+    "data",
+    "value",
+    "values",
+    "number",
+    "amount",
+    "including",
+    "excluding",
+    "together",
+    "overall",
+    "across",
+    "against",
+    "after",
+    "before",
+    "during",
+    "about",
+    "if",
+    "so",
+    "up",
+    "down",
+    "go",
+    "went",
+    "rise",
+    "rose",
+    "fall",
+    "fell",
+    "change",
+    "changed",
+    "did",
+    "get",
+    "got",
+    "let",
+    "say",
+    "each",
+    "every",
+    "they",
+    "them",
+    "we",
+    "our",
+    "you",
+    "your",
+    "he",
+    "she",
+    "his",
+    "her",
+    "out",
+    "money",
+    "much",
+    "whole",
     // total words (every table with total rows has them)
-    "total", "totals", "sum", "gesamt", "insgesamt", "summe", "ukupno", "totale", "totaal",
+    "total",
+    "totals",
+    "sum",
+    "gesamt",
+    "insgesamt",
+    "summe",
+    "ukupno",
+    "totale",
+    "totaal",
     // de
-    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einen", "und", "oder", "von", "vom", "im", "am",
-    "an", "auf", "aus", "bei", "mit", "nach", "fur", "zu", "zum", "zur", "ist", "sind", "war", "waren", "wie", "viel",
-    "viele", "welche", "welcher", "welches", "wann", "wo", "was", "wer", "nicht", "auch", "je", "pro",
+    "der",
+    "die",
+    "das",
+    "den",
+    "dem",
+    "des",
+    "ein",
+    "eine",
+    "einer",
+    "einen",
+    "und",
+    "oder",
+    "von",
+    "vom",
+    "im",
+    "am",
+    "an",
+    "auf",
+    "aus",
+    "bei",
+    "mit",
+    "nach",
+    "fur",
+    "zu",
+    "zum",
+    "zur",
+    "ist",
+    "sind",
+    "war",
+    "waren",
+    "wie",
+    "viel",
+    "viele",
+    "welche",
+    "welcher",
+    "welches",
+    "wann",
+    "wo",
+    "was",
+    "wer",
+    "nicht",
+    "auch",
+    "je",
+    "pro",
     // fr
-    "le", "la", "les", "un", "une", "du", "de", "et", "ou", "en", "au", "aux", "pour", "par", "sur", "dans", "est",
-    "sont", "quel", "quelle", "quels", "quelles", "combien", "ce", "cette", "ces", "qui", "que",
+    "le",
+    "la",
+    "les",
+    "un",
+    "une",
+    "du",
+    "de",
+    "et",
+    "ou",
+    "en",
+    "au",
+    "aux",
+    "pour",
+    "par",
+    "sur",
+    "dans",
+    "est",
+    "sont",
+    "quel",
+    "quelle",
+    "quels",
+    "quelles",
+    "combien",
+    "ce",
+    "cette",
+    "ces",
+    "qui",
+    "que",
     // es / pt / it
-    "el", "los", "las", "una", "del", "y", "o", "por", "para", "con", "es", "son", "cual", "cuales", "cuanto", "cuantos",
-    "os", "as", "um", "uma", "do", "da", "dos", "das", "e", "em", "no", "na", "nos", "nas", "com", "qual", "quais",
-    "quanto", "quantos", "il", "lo", "gli", "di", "della", "dei", "delle", "che", "quale", "quanti",
+    "el",
+    "los",
+    "las",
+    "una",
+    "del",
+    "y",
+    "o",
+    "por",
+    "para",
+    "con",
+    "es",
+    "son",
+    "cual",
+    "cuales",
+    "cuanto",
+    "cuantos",
+    "os",
+    "as",
+    "um",
+    "uma",
+    "do",
+    "da",
+    "dos",
+    "das",
+    "e",
+    "em",
+    "no",
+    "na",
+    "nos",
+    "nas",
+    "com",
+    "qual",
+    "quais",
+    "quanto",
+    "quantos",
+    "il",
+    "lo",
+    "gli",
+    "di",
+    "della",
+    "dei",
+    "delle",
+    "che",
+    "quale",
+    "quanti",
     // nl
-    "het", "een", "en", "op", "van", "voor", "met", "zijn", "wat", "welke", "hoeveel",
+    "het",
+    "een",
+    "en",
+    "op",
+    "van",
+    "voor",
+    "met",
+    "zijn",
+    "wat",
+    "welke",
+    "hoeveel",
     // sr (Latin, folded)
-    "i", "u", "na", "za", "od", "sa", "je", "su", "koji", "koja", "koje", "koliko", "sto", "iz", "ili",
+    "i",
+    "u",
+    "na",
+    "za",
+    "od",
+    "sa",
+    "je",
+    "su",
+    "koji",
+    "koja",
+    "koje",
+    "koliko",
+    "sto",
+    "iz",
+    "ili",
 ];
 
 fn is_stop(w: &str) -> bool {
@@ -163,52 +434,470 @@ fn is_stop(w: &str) -> bool {
 /// Statistical concepts and their names in the eight languages (folded); a question word that is
 /// one of them also looks for the others (`GDP` → `Bruttoinlandsprodukt`, `PIB`, …).
 const CONCEPTS: &[&[&str]] = &[
-    &["gdp", "bip", "bruttoinlandsprodukt", "inlandsprodukt", "pib", "bdp"],
-    &["population", "inhabitants", "residents", "bevolkerung", "einwohner", "populacao", "poblacion", "popolazione", "bevolking", "stanovnistvo", "stanovnika"],
-    &["unemployment", "unemployed", "arbeitslos", "arbeitslosenquote", "erwerbslos", "erwerbslosenquote", "chomage", "desemprego", "desempleo", "disoccupazione", "werkloosheid", "nezaposlenost", "nezaposleni"],
-    &["employment", "employed", "erwerbstatig", "erwerbstatige", "beschaftigung", "emploi", "emprego", "empleo", "occupazione", "werkgelegenheid", "zaposlenost"],
-    &["employees", "workers", "staff", "personnel", "pessoal", "personal", "beschaftigte", "mitarbeiter", "trabalhadores", "funcionarios", "empleados", "dipendenti", "zaposleni", "radnici", "personeel", "effectifs"],
-    &["deficit", "surplus", "defizit", "uberschuss", "finanzierungssaldo", "saldo", "excedente", "excedent", "suficit", "manjak", "visak"],
-    &["revenue", "revenues", "income", "receipts", "einnahmen", "ertrag", "ertrage", "erlose", "recettes", "receitas", "ingresos", "entrate", "prihodi", "primanja", "ontvangsten"],
-    &["expenses", "expenditure", "expenditures", "spending", "costs", "charges", "encargos", "ausgaben", "aufwand", "aufwendungen", "kosten", "depenses", "despesas", "gastos", "spese", "rashodi", "izdaci", "uitgaven"],
-    &["tax", "taxes", "steuer", "steuern", "impot", "impots", "imposto", "impostos", "impuesto", "impuestos", "imposta", "imposte", "porez", "porezi", "belasting"],
-    &["vat", "mwst", "umsatzsteuer", "mehrwertsteuer", "tva", "iva", "pdv", "btw"],
-    &["price", "prices", "preis", "preise", "prix", "preco", "precos", "precio", "precios", "prezzo", "prezzi", "cena", "cene", "prijs", "prijzen"],
-    &["inflation", "cpi", "vpi", "hicp", "hvpi", "verbraucherpreisindex", "ipc", "ipca", "inflacija", "inflatie", "inflacao", "inflacion", "inflazione"],
-    &["salary", "salaries", "wage", "wages", "pay", "earnings", "remuneracao", "remuneracoes", "vencimento", "retribucion", "retribuzione", "lohn", "lohne", "gehalt", "gehalter", "verdienst", "salaire", "salaires", "salario", "salarios", "stipendio", "plata", "zarada", "loon"],
-    &["women", "woman", "female", "females", "frauen", "weiblich", "femmes", "mulheres", "mujeres", "donne", "zene", "vrouwen"],
-    &["men", "man", "male", "males", "manner", "mannlich", "hommes", "homens", "hombres", "uomini", "muskarci", "mannen"],
-    &["profit", "profits", "gewinn", "benefice", "lucro", "beneficio", "utile", "dobit", "winst"],
-    &["sales", "umsatz", "verkauf", "ventes", "vendas", "ventas", "vendite", "prodaja", "verkoop"],
-    &["budget", "haushalt", "voranschlag", "budzet", "orcamento", "presupuesto", "bilancio", "begroting"],
-    &["age", "alter", "idade", "edad", "eta", "starost", "leeftijd", "ans"],
-    &["overnight", "nachtigungen", "ubernachtungen", "nuitees", "dormidas", "pernoctaciones", "pernottamenti", "nocenja", "overnachtingen"],
-    &["arrivals", "ankunfte", "arrivees", "chegadas", "llegadas", "arrivi", "dolasci", "aankomsten"],
-    &["daily", "day", "days", "taglich", "tag", "tage", "datum", "journalier", "jour", "diario", "dia", "giornaliero", "giorno", "dnevni", "dan", "dagelijks", "dag", "date"],
-    &["monthly", "month", "months", "monatlich", "monat", "mensuel", "mois", "mensal", "mes", "mensual", "mensile", "mese", "mesecni", "mesec", "maandelijks", "maand"],
-    &["annual", "yearly", "year", "years", "jahrlich", "jahr", "annuel", "annee", "anual", "ano", "annuale", "anno", "godisnji", "godina", "jaarlijks", "jaar"],
-    &["country", "countries", "land", "lander", "pays", "pais", "paises", "paese", "zemlja", "drzava"],
-    &["region", "regions", "state", "states", "bundesland", "bundeslander", "regiao", "regione", "oblast", "provincie"],
-    &["supplier", "suppliers", "vendor", "lieferant", "fournisseur", "fornecedor", "proveedor", "fornitore", "dobavljac", "leverancier", "adjudicatario", "adjudicatarios"],
-    &["people", "persons", "personen", "personnes", "pessoas", "personas", "persone", "osobe", "lica", "mensen"],
-    &["government", "staat", "staates", "etat", "governo", "gobierno", "vlada", "overheid"],
-    &["contract", "contracts", "vertrag", "vertrage", "contrat", "contrato", "contratos", "contratto", "ugovor", "contract"],
+    &[
+        "gdp",
+        "bip",
+        "bruttoinlandsprodukt",
+        "inlandsprodukt",
+        "pib",
+        "bdp",
+    ],
+    &[
+        "population",
+        "inhabitants",
+        "residents",
+        "bevolkerung",
+        "einwohner",
+        "populacao",
+        "poblacion",
+        "popolazione",
+        "bevolking",
+        "stanovnistvo",
+        "stanovnika",
+    ],
+    &[
+        "unemployment",
+        "unemployed",
+        "arbeitslos",
+        "arbeitslosenquote",
+        "erwerbslos",
+        "erwerbslosenquote",
+        "chomage",
+        "desemprego",
+        "desempleo",
+        "disoccupazione",
+        "werkloosheid",
+        "nezaposlenost",
+        "nezaposleni",
+    ],
+    &[
+        "employment",
+        "employed",
+        "erwerbstatig",
+        "erwerbstatige",
+        "beschaftigung",
+        "emploi",
+        "emprego",
+        "empleo",
+        "occupazione",
+        "werkgelegenheid",
+        "zaposlenost",
+    ],
+    &[
+        "employees",
+        "workers",
+        "staff",
+        "personnel",
+        "pessoal",
+        "personal",
+        "beschaftigte",
+        "mitarbeiter",
+        "trabalhadores",
+        "funcionarios",
+        "empleados",
+        "dipendenti",
+        "zaposleni",
+        "radnici",
+        "personeel",
+        "effectifs",
+    ],
+    &[
+        "deficit",
+        "surplus",
+        "defizit",
+        "uberschuss",
+        "finanzierungssaldo",
+        "saldo",
+        "excedente",
+        "excedent",
+        "suficit",
+        "manjak",
+        "visak",
+    ],
+    &[
+        "revenue",
+        "revenues",
+        "income",
+        "receipts",
+        "einnahmen",
+        "ertrag",
+        "ertrage",
+        "erlose",
+        "recettes",
+        "receitas",
+        "ingresos",
+        "entrate",
+        "prihodi",
+        "primanja",
+        "ontvangsten",
+    ],
+    &[
+        "expenses",
+        "expenditure",
+        "expenditures",
+        "spending",
+        "costs",
+        "charges",
+        "encargos",
+        "ausgaben",
+        "aufwand",
+        "aufwendungen",
+        "kosten",
+        "depenses",
+        "despesas",
+        "gastos",
+        "spese",
+        "rashodi",
+        "izdaci",
+        "uitgaven",
+    ],
+    &[
+        "tax",
+        "taxes",
+        "steuer",
+        "steuern",
+        "impot",
+        "impots",
+        "imposto",
+        "impostos",
+        "impuesto",
+        "impuestos",
+        "imposta",
+        "imposte",
+        "porez",
+        "porezi",
+        "belasting",
+    ],
+    &[
+        "vat",
+        "mwst",
+        "umsatzsteuer",
+        "mehrwertsteuer",
+        "tva",
+        "iva",
+        "pdv",
+        "btw",
+    ],
+    &[
+        "price", "prices", "preis", "preise", "prix", "preco", "precos", "precio", "precios",
+        "prezzo", "prezzi", "cena", "cene", "prijs", "prijzen",
+    ],
+    &[
+        "inflation",
+        "cpi",
+        "vpi",
+        "hicp",
+        "hvpi",
+        "verbraucherpreisindex",
+        "ipc",
+        "ipca",
+        "inflacija",
+        "inflatie",
+        "inflacao",
+        "inflacion",
+        "inflazione",
+    ],
+    &[
+        "salary",
+        "salaries",
+        "wage",
+        "wages",
+        "pay",
+        "earnings",
+        "remuneracao",
+        "remuneracoes",
+        "vencimento",
+        "retribucion",
+        "retribuzione",
+        "lohn",
+        "lohne",
+        "gehalt",
+        "gehalter",
+        "verdienst",
+        "salaire",
+        "salaires",
+        "salario",
+        "salarios",
+        "stipendio",
+        "plata",
+        "zarada",
+        "loon",
+    ],
+    &[
+        "women", "woman", "female", "females", "frauen", "weiblich", "femmes", "mulheres",
+        "mujeres", "donne", "zene", "vrouwen",
+    ],
+    &[
+        "men", "man", "male", "males", "manner", "mannlich", "hommes", "homens", "hombres",
+        "uomini", "muskarci", "mannen",
+    ],
+    &[
+        "profit",
+        "profits",
+        "gewinn",
+        "benefice",
+        "lucro",
+        "beneficio",
+        "utile",
+        "dobit",
+        "winst",
+    ],
+    &[
+        "sales", "umsatz", "verkauf", "ventes", "vendas", "ventas", "vendite", "prodaja", "verkoop",
+    ],
+    &[
+        "budget",
+        "haushalt",
+        "voranschlag",
+        "budzet",
+        "orcamento",
+        "presupuesto",
+        "bilancio",
+        "begroting",
+    ],
+    &[
+        "age", "alter", "idade", "edad", "eta", "starost", "leeftijd", "ans",
+    ],
+    &[
+        "overnight",
+        "nachtigungen",
+        "ubernachtungen",
+        "nuitees",
+        "dormidas",
+        "pernoctaciones",
+        "pernottamenti",
+        "nocenja",
+        "overnachtingen",
+    ],
+    &[
+        "arrivals",
+        "ankunfte",
+        "arrivees",
+        "chegadas",
+        "llegadas",
+        "arrivi",
+        "dolasci",
+        "aankomsten",
+    ],
+    &[
+        "daily",
+        "day",
+        "days",
+        "taglich",
+        "tag",
+        "tage",
+        "datum",
+        "journalier",
+        "jour",
+        "diario",
+        "dia",
+        "giornaliero",
+        "giorno",
+        "dnevni",
+        "dan",
+        "dagelijks",
+        "dag",
+        "date",
+    ],
+    &[
+        "monthly",
+        "month",
+        "months",
+        "monatlich",
+        "monat",
+        "mensuel",
+        "mois",
+        "mensal",
+        "mes",
+        "mensual",
+        "mensile",
+        "mese",
+        "mesecni",
+        "mesec",
+        "maandelijks",
+        "maand",
+    ],
+    &[
+        "annual",
+        "yearly",
+        "year",
+        "years",
+        "jahrlich",
+        "jahr",
+        "annuel",
+        "annee",
+        "anual",
+        "ano",
+        "annuale",
+        "anno",
+        "godisnji",
+        "godina",
+        "jaarlijks",
+        "jaar",
+    ],
+    &[
+        "country",
+        "countries",
+        "land",
+        "lander",
+        "pays",
+        "pais",
+        "paises",
+        "paese",
+        "zemlja",
+        "drzava",
+    ],
+    &[
+        "region",
+        "regions",
+        "state",
+        "states",
+        "bundesland",
+        "bundeslander",
+        "regiao",
+        "regione",
+        "oblast",
+        "provincie",
+    ],
+    &[
+        "supplier",
+        "suppliers",
+        "vendor",
+        "lieferant",
+        "fournisseur",
+        "fornecedor",
+        "proveedor",
+        "fornitore",
+        "dobavljac",
+        "leverancier",
+        "adjudicatario",
+        "adjudicatarios",
+    ],
+    &[
+        "people",
+        "persons",
+        "personen",
+        "personnes",
+        "pessoas",
+        "personas",
+        "persone",
+        "osobe",
+        "lica",
+        "mensen",
+    ],
+    &[
+        "government",
+        "staat",
+        "staates",
+        "etat",
+        "governo",
+        "gobierno",
+        "vlada",
+        "overheid",
+    ],
+    &[
+        "contract",
+        "contracts",
+        "vertrag",
+        "vertrage",
+        "contrat",
+        "contrato",
+        "contratos",
+        "contratto",
+        "ugovor",
+        "contract",
+    ],
 ];
 
 /// Month names (folded) of the eight languages, by month number.
 const MONTHS: &[(&str, u32)] = &[
-    ("january", 1), ("jan", 1), ("januar", 1), ("janvier", 1), ("janeiro", 1), ("enero", 1), ("gennaio", 1), ("januari", 1), ("januar", 1),
-    ("february", 2), ("feb", 2), ("februar", 2), ("fevrier", 2), ("fevereiro", 2), ("febrero", 2), ("febbraio", 2), ("februari", 2),
-    ("march", 3), ("mar", 3), ("marz", 3), ("mars", 3), ("marco", 3), ("marzo", 3), ("maart", 3), ("mart", 3),
-    ("april", 4), ("apr", 4), ("avril", 4), ("abril", 4), ("aprile", 4),
-    ("may", 5), ("mai", 5), ("maio", 5), ("mayo", 5), ("maggio", 5), ("mei", 5), ("maj", 5),
-    ("june", 6), ("jun", 6), ("juni", 6), ("juin", 6), ("junho", 6), ("junio", 6), ("giugno", 6),
-    ("july", 7), ("jul", 7), ("juli", 7), ("juillet", 7), ("julho", 7), ("julio", 7), ("luglio", 7),
-    ("august", 8), ("aug", 8), ("aout", 8), ("agosto", 8), ("augustus", 8), ("avgust", 8),
-    ("september", 9), ("sep", 9), ("sept", 9), ("septembre", 9), ("setembro", 9), ("septiembre", 9), ("settembre", 9), ("septembar", 9),
-    ("october", 10), ("oct", 10), ("oktober", 10), ("octobre", 10), ("outubro", 10), ("octubre", 10), ("ottobre", 10), ("oktobar", 10),
-    ("november", 11), ("nov", 11), ("novembre", 11), ("novembro", 11), ("noviembre", 11), ("novembar", 11),
-    ("december", 12), ("dec", 12), ("dezember", 12), ("decembre", 12), ("dezembro", 12), ("diciembre", 12), ("dicembre", 12), ("decembar", 12),
+    ("january", 1),
+    ("jan", 1),
+    ("januar", 1),
+    ("janvier", 1),
+    ("janeiro", 1),
+    ("enero", 1),
+    ("gennaio", 1),
+    ("januari", 1),
+    ("januar", 1),
+    ("february", 2),
+    ("feb", 2),
+    ("februar", 2),
+    ("fevrier", 2),
+    ("fevereiro", 2),
+    ("febrero", 2),
+    ("febbraio", 2),
+    ("februari", 2),
+    ("march", 3),
+    ("mar", 3),
+    ("marz", 3),
+    ("mars", 3),
+    ("marco", 3),
+    ("marzo", 3),
+    ("maart", 3),
+    ("mart", 3),
+    ("april", 4),
+    ("apr", 4),
+    ("avril", 4),
+    ("abril", 4),
+    ("aprile", 4),
+    ("may", 5),
+    ("mai", 5),
+    ("maio", 5),
+    ("mayo", 5),
+    ("maggio", 5),
+    ("mei", 5),
+    ("maj", 5),
+    ("june", 6),
+    ("jun", 6),
+    ("juni", 6),
+    ("juin", 6),
+    ("junho", 6),
+    ("junio", 6),
+    ("giugno", 6),
+    ("july", 7),
+    ("jul", 7),
+    ("juli", 7),
+    ("juillet", 7),
+    ("julho", 7),
+    ("julio", 7),
+    ("luglio", 7),
+    ("august", 8),
+    ("aug", 8),
+    ("aout", 8),
+    ("agosto", 8),
+    ("augustus", 8),
+    ("avgust", 8),
+    ("september", 9),
+    ("sep", 9),
+    ("sept", 9),
+    ("septembre", 9),
+    ("setembro", 9),
+    ("septiembre", 9),
+    ("settembre", 9),
+    ("septembar", 9),
+    ("october", 10),
+    ("oct", 10),
+    ("oktober", 10),
+    ("octobre", 10),
+    ("outubro", 10),
+    ("octubre", 10),
+    ("ottobre", 10),
+    ("oktobar", 10),
+    ("november", 11),
+    ("nov", 11),
+    ("novembre", 11),
+    ("novembro", 11),
+    ("noviembre", 11),
+    ("novembar", 11),
+    ("december", 12),
+    ("dec", 12),
+    ("dezember", 12),
+    ("decembre", 12),
+    ("dezembro", 12),
+    ("diciembre", 12),
+    ("dicembre", 12),
+    ("decembar", 12),
 ];
 
 fn month_of(w: &str) -> Option<u32> {
@@ -236,16 +925,25 @@ pub struct Question {
 }
 
 /// "Table" in the eight languages (folded).
-const TABLE_WORDS: &[&str] = &["table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabel", "tab"];
+const TABLE_WORDS: &[&str] = &[
+    "table", "tabelle", "tableau", "tabla", "tabela", "tabella", "tabel", "tab",
+];
 
 /// `Table 1`, `Tabelle 2.3`, `tableau 4` in a text: the numbers.
 fn table_numbers(text: &str) -> Vec<String> {
     let low = fold(text);
-    let toks: Vec<&str> = low.split_whitespace().map(|t| t.trim_matches(|c: char| !c.is_alphanumeric() && c != '.')).collect();
+    let toks: Vec<&str> = low
+        .split_whitespace()
+        .map(|t| t.trim_matches(|c: char| !c.is_alphanumeric() && c != '.'))
+        .collect();
     let mut out: Vec<String> = Vec::new();
     for w in toks.windows(2) {
         let num = w[1].trim_end_matches('.');
-        if TABLE_WORDS.contains(&w[0]) && !num.is_empty() && num.chars().all(|c| c.is_ascii_digit() || c == '.') && !out.iter().any(|x| x == num) {
+        if TABLE_WORDS.contains(&w[0])
+            && !num.is_empty()
+            && num.chars().all(|c| c.is_ascii_digit() || c == '.')
+            && !out.iter().any(|x| x == num)
+        {
             out.push(num.to_string());
         }
     }
@@ -272,11 +970,20 @@ fn matches(key: &str, word: &str, word_stem: &str) -> f64 {
 
 impl Question {
     pub fn parse(text: &str) -> Question {
-        let mut q = Question { numbers: table_numbers(text), ..Question::default() };
+        let mut q = Question {
+            numbers: table_numbers(text),
+            ..Question::default()
+        };
         // Acronyms of 2 letters ("EU", "UK") count only when written in capitals.
-        let raw: Vec<&str> = text.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
-        let caps: HashSet<String> =
-            raw.iter().filter(|w| w.chars().count() == 2 && w.chars().all(char::is_uppercase)).map(|w| fold(w)).collect();
+        let raw: Vec<&str> = text
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
+        let caps: HashSet<String> = raw
+            .iter()
+            .filter(|w| w.chars().count() == 2 && w.chars().all(char::is_uppercase))
+            .map(|w| fold(w))
+            .collect();
         let ws = words(text);
         let mut seen: HashSet<String> = HashSet::new();
         let mut group = 0;
@@ -290,14 +997,20 @@ impl Question {
             }
             // A month with a year right after it: `January 2002`, `Juli 2026`.
             if let Some(m) = month_of(w)
-                && let Some(y) = ws.get(i + 1).and_then(|n| n.parse::<i32>().ok()).filter(|y| (1900..=2100).contains(y))
+                && let Some(y) = ws
+                    .get(i + 1)
+                    .and_then(|n| n.parse::<i32>().ok())
+                    .filter(|y| (1900..=2100).contains(y))
             {
                 if !q.months.contains(&(y, m)) {
                     q.months.push((y, m));
                 }
                 continue;
             }
-            if w.chars().all(|c| c.is_ascii_digit()) || is_stop(w) || (w.chars().count() < 3 && !caps.contains(w)) {
+            if w.chars().all(|c| c.is_ascii_digit())
+                || is_stop(w)
+                || (w.chars().count() < 3 && !caps.contains(w))
+            {
                 continue;
             }
             let key = stem(w);
@@ -305,14 +1018,24 @@ impl Question {
                 continue;
             }
             group += 1;
-            q.terms.push(Term { key, weight: 1.0, shown: w.clone(), group });
+            q.terms.push(Term {
+                key,
+                weight: 1.0,
+                shown: w.clone(),
+                group,
+            });
             // The concept's other names, weighed a little less.
             for names in CONCEPTS {
                 if names.iter().any(|g| matches(&stem(w), g, &stem(g)) >= 0.9) {
                     for g in names.iter() {
                         let k = stem(g);
                         if seen.insert(k.clone()) {
-                            q.terms.push(Term { key: k, weight: 0.8, shown: w.clone(), group });
+                            q.terms.push(Term {
+                                key: k,
+                                weight: 0.8,
+                                shown: w.clone(),
+                                group,
+                            });
                         }
                     }
                 }
@@ -322,7 +1045,10 @@ impl Question {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.terms.is_empty() && self.years.is_empty() && self.months.is_empty() && self.numbers.is_empty()
+        self.terms.is_empty()
+            && self.years.is_empty()
+            && self.months.is_empty()
+            && self.numbers.is_empty()
     }
 }
 
@@ -369,7 +1095,8 @@ fn table_words(t: &TableText) -> Words {
             *e = e.max(*w);
         }
     }
-    let mut list: Vec<(String, String, f64)> = best.into_iter().map(|(w, x)| (stem(&w), w, x)).collect();
+    let mut list: Vec<(String, String, f64)> =
+        best.into_iter().map(|(w, x)| (stem(&w), w, x)).collect();
     list.sort_by(|a, b| a.1.cmp(&b.1));
     Words { list, years }
 }
@@ -380,8 +1107,14 @@ fn year_of(p: &str) -> Option<i32> {
 
 /// The months a table's coverage spans (12 per year when it is coarser than months; unknown: max).
 fn span_months(t: &TableText) -> i64 {
-    let (Some(from), Some(to)) = (t.from.as_deref(), t.to.as_deref()) else { return i64::MAX };
-    let month = |s: &str| s.get(5..7).and_then(|m| m.parse::<i64>().ok()).filter(|m| (1..=12).contains(m));
+    let (Some(from), Some(to)) = (t.from.as_deref(), t.to.as_deref()) else {
+        return i64::MAX;
+    };
+    let month = |s: &str| {
+        s.get(5..7)
+            .and_then(|m| m.parse::<i64>().ok())
+            .filter(|m| (1..=12).contains(m))
+    };
     match (year_of(from), year_of(to), month(from), month(to)) {
         (Some(a), Some(b), Some(m1), Some(m2)) => (b as i64 * 12 + m2) - (a as i64 * 12 + m1) + 1,
         (Some(a), Some(b), _, _) => (b as i64 - a as i64 + 1) * 12,
@@ -394,7 +1127,10 @@ fn covers_year(t: &TableText, w: &Words, y: i32) -> bool {
     if w.years.contains(&y) {
         return true;
     }
-    match (t.from.as_deref().and_then(year_of), t.to.as_deref().and_then(year_of)) {
+    match (
+        t.from.as_deref().and_then(year_of),
+        t.to.as_deref().and_then(year_of),
+    ) {
         (Some(a), Some(b)) => a <= y && y <= b,
         _ => false,
     }
@@ -402,9 +1138,15 @@ fn covers_year(t: &TableText, w: &Words, y: i32) -> bool {
 
 /// Whether a table's coverage holds the month (`2002-01` inside `2002-01-01`..`2002-01-31`).
 fn covers_month(t: &TableText, y: i32, m: u32) -> bool {
-    let (Some(from), Some(to)) = (t.from.as_deref(), t.to.as_deref()) else { return false };
+    let (Some(from), Some(to)) = (t.from.as_deref(), t.to.as_deref()) else {
+        return false;
+    };
     let p = format!("{y:04}-{m:02}");
-    let cut = |s: &str| s.get(..7).map(str::to_string).unwrap_or_else(|| s.to_string());
+    let cut = |s: &str| {
+        s.get(..7)
+            .map(str::to_string)
+            .unwrap_or_else(|| s.to_string())
+    };
     // Coarser coverage (years, quarters, halves): by year.
     if from.len() < 7 || to.len() < 7 || !from[5..7].chars().all(|c| c.is_ascii_digit()) {
         return year_of(from).is_some_and(|a| a <= y) && year_of(to).is_some_and(|b| y <= b);
@@ -439,7 +1181,12 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
             .map(|w| {
                 terms
                     .iter()
-                    .map(|term| w.list.iter().map(|(s, raw, x)| matches(&term.key, raw, s) * x * term.weight).fold(0.0, f64::max))
+                    .map(|term| {
+                        w.list
+                            .iter()
+                            .map(|(s, raw, x)| matches(&term.key, raw, s) * x * term.weight)
+                            .fold(0.0, f64::max)
+                    })
                     .fold(0.0, f64::max)
             })
             .collect();
@@ -472,8 +1219,17 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
                 t.texts.iter().any(|(w, text)| {
                     let low = fold(text);
                     let low = low.trim();
-                    let named = |rest: &str| rest.strip_prefix(num.as_str()).is_some_and(|r| !r.starts_with(|c: char| c.is_ascii_digit() || c == '.'));
-                    *w >= 2.5 && (named(low) || TABLE_WORDS.iter().any(|tw| low.match_indices(tw).any(|(i, _)| named(low[i + tw.len()..].trim_start()))))
+                    let named = |rest: &str| {
+                        rest.strip_prefix(num.as_str()).is_some_and(|r| {
+                            !r.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+                        })
+                    };
+                    *w >= 2.5
+                        && (named(low)
+                            || TABLE_WORDS.iter().any(|tw| {
+                                low.match_indices(tw)
+                                    .any(|(i, _)| named(low[i + tw.len()..].trim_start()))
+                            }))
                 })
             })
             .collect();
@@ -496,10 +1252,20 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
     // Years and months: the narrowest coverage that holds a distinctive one is its champion.
     let mut periods: Vec<(String, Vec<bool>)> = Vec::new();
     for &y in &q.years {
-        periods.push((y.to_string(), tables.iter().zip(&ws).map(|(t, w)| covers_year(t, w, y)).collect()));
+        periods.push((
+            y.to_string(),
+            tables
+                .iter()
+                .zip(&ws)
+                .map(|(t, w)| covers_year(t, w, y))
+                .collect(),
+        ));
     }
     for &(y, m) in &q.months {
-        periods.push((format!("{y}-{m:02}"), tables.iter().map(|t| covers_month(t, y, m)).collect()));
+        periods.push((
+            format!("{y}-{m:02}"),
+            tables.iter().map(|t| covers_month(t, y, m)).collect(),
+        ));
     }
     for (label, hits) in periods {
         let df = hits.iter().filter(|h| **h).count();
@@ -507,7 +1273,10 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
             continue;
         }
         // (only when one table is the narrowest: equal ones tell none apart)
-        let spans: Vec<i64> = (0..n).filter(|&k| hits[k]).map(|k| span_months(&tables[k])).collect();
+        let spans: Vec<i64> = (0..n)
+            .filter(|&k| hits[k])
+            .map(|k| span_months(&tables[k]))
+            .collect();
         let narrowest = spans.iter().copied().min().unwrap_or(i64::MAX);
         if distinctive(df)
             && spans.iter().filter(|s| **s == narrowest).count() == 1
@@ -544,7 +1313,9 @@ pub fn rank(q: &Question, tables: &[TableText]) -> Vec<Relevance> {
 pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
     let n = rel.len();
     let parts = rel.first().map_or(0, |r| r.parts.len());
-    let top: Vec<f64> = (0..parts).map(|g| rel.iter().map(|r| r.parts[g]).fold(0.0, f64::max)).collect();
+    let top: Vec<f64> = (0..parts)
+        .map(|g| rel.iter().map(|r| r.parts[g]).fold(0.0, f64::max))
+        .collect();
     let mut covered = vec![false; parts];
     let mut chosen: Vec<usize> = (0..n).filter(|&k| rel[k].named).collect();
     let named = !chosen.is_empty();
@@ -555,8 +1326,15 @@ pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
         }
     }
     while chosen.len() < n {
-        let residual = |k: usize| (0..parts).filter(|&g| !covered[g]).map(|g| rel[k].parts[g]).sum::<f64>();
-        let Some(k) = (0..n).filter(|k| !chosen.contains(k)).max_by(|a, b| residual(*a).total_cmp(&residual(*b)).then(b.cmp(a)))
+        let residual = |k: usize| {
+            (0..parts)
+                .filter(|&g| !covered[g])
+                .map(|g| rel[k].parts[g])
+                .sum::<f64>()
+        };
+        let Some(k) = (0..n)
+            .filter(|k| !chosen.contains(k))
+            .max_by(|a, b| residual(*a).total_cmp(&residual(*b)).then(b.cmp(a)))
         else {
             break;
         };
@@ -569,7 +1347,9 @@ pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
         }
         chosen.push(k);
         // The parts it answers well, and at least its strongest one.
-        let strongest = (0..parts).filter(|&g| !covered[g]).max_by(|a, b| rel[k].parts[*a].total_cmp(&rel[k].parts[*b]));
+        let strongest = (0..parts)
+            .filter(|&g| !covered[g])
+            .max_by(|a, b| rel[k].parts[*a].total_cmp(&rel[k].parts[*b]));
         for g in 0..parts {
             if rel[k].parts[g] > 0.0 && rel[k].parts[g] >= 0.7 * top[g] {
                 covered[g] = true;
@@ -579,9 +1359,16 @@ pub fn relevant(rel: &[Relevance]) -> Vec<usize> {
             covered[g] = true;
         }
     }
-    let mut ks: Vec<usize> =
-        (0..n).filter(|&k| chosen.contains(&k) || (!named && rel[k].champion && rel[k].score > 0.0)).collect();
-    ks.sort_by(|a, b| rel[*b].named.cmp(&rel[*a].named).then(rel[*b].score.total_cmp(&rel[*a].score)).then(a.cmp(b)));
+    let mut ks: Vec<usize> = (0..n)
+        .filter(|&k| chosen.contains(&k) || (!named && rel[k].champion && rel[k].score > 0.0))
+        .collect();
+    ks.sort_by(|a, b| {
+        rel[*b]
+            .named
+            .cmp(&rel[*a].named)
+            .then(rel[*b].score.total_cmp(&rel[*a].score))
+            .then(a.cmp(b))
+    });
     ks
 }
 
@@ -601,8 +1388,14 @@ mod tests {
 
     #[test]
     fn splits_words_and_camel_case() {
-        assert_eq!(words("precoContratual, Ø 22"), vec!["preco", "contratual", "o", "22"]);
-        assert_eq!(words("renewables_share_elec"), vec!["renewables", "share", "elec"]);
+        assert_eq!(
+            words("precoContratual, Ø 22"),
+            vec!["preco", "contratual", "o", "22"]
+        );
+        assert_eq!(
+            words("renewables_share_elec"),
+            vec!["renewables", "share", "elec"]
+        );
         assert_eq!(words("NPV @ 14%"), vec!["npv", "14"]);
     }
 
@@ -629,25 +1422,48 @@ mod tests {
         assert_eq!(stem("2023"), "2023");
         // prefixes and compounds
         assert!(matches(&stem("employment"), "employees", &stem("employees")) > 0.0);
-        assert!(matches(&stem("inlandsprodukt"), "bruttoinlandsprodukts", &stem("bruttoinlandsprodukts")) > 0.0);
+        assert!(
+            matches(
+                &stem("inlandsprodukt"),
+                "bruttoinlandsprodukts",
+                &stem("bruttoinlandsprodukts")
+            ) > 0.0
+        );
         assert_eq!(matches("vat", "vatican", &stem("vatican")), 0.0);
     }
 
     #[test]
     fn parses_years_months_and_drops_function_words() {
-        let q = Question::parse("What was the GDP in 2025, and on which day in January 2002 were receipts highest? EU average");
+        let q = Question::parse(
+            "What was the GDP in 2025, and on which day in January 2002 were receipts highest? EU average",
+        );
         assert_eq!(q.years, vec![2025, 2002]);
         assert_eq!(q.months, vec![(2002, 1)]);
-        let keys: Vec<&str> = q.terms.iter().filter(|t| t.weight == 1.0).map(|t| t.key.as_str()).collect();
-        assert!(keys.contains(&"gdp") && keys.contains(&"receipt") && keys.contains(&"eu"), "{keys:?}");
+        let keys: Vec<&str> = q
+            .terms
+            .iter()
+            .filter(|t| t.weight == 1.0)
+            .map(|t| t.key.as_str())
+            .collect();
+        assert!(
+            keys.contains(&"gdp") && keys.contains(&"receipt") && keys.contains(&"eu"),
+            "{keys:?}"
+        );
         assert!(!keys.contains(&"what") && !keys.contains(&"the") && !keys.contains(&"which"));
         // the concept's other names, in the same group
         let gdp = q.terms.iter().find(|t| t.key == "gdp").unwrap().group;
-        assert!(q.terms.iter().any(|t| t.key == stem("bruttoinlandsprodukt") && t.group == gdp));
+        assert!(
+            q.terms
+                .iter()
+                .any(|t| t.key == stem("bruttoinlandsprodukt") && t.group == gdp)
+        );
         // two-letter words only in capitals
         assert!(Question::parse("is it in the eu").terms.is_empty());
         // tables by number
-        assert_eq!(Question::parse("For the latest period in Table 1: what …? See Tabelle 2.3.").numbers, vec!["1", "2.3"]);
+        assert_eq!(
+            Question::parse("For the latest period in Table 1: what …? See Tabelle 2.3.").numbers,
+            vec!["1", "2.3"]
+        );
     }
 
     fn table(title: &str, cols: &str, from: Option<&str>, to: Option<&str>) -> TableText {
@@ -661,14 +1477,26 @@ mod tests {
     #[test]
     fn ranks_by_words_years_and_months() {
         let tables = vec![
-            table("Bruttoinlandsprodukt", "Jahr In jeweiligen Preisen", Some("1991"), Some("2025")),
-            table("Bevölkerung und Erwerbstätigkeit", "Jahr Einwohner Erwerbslose", Some("1991"), Some("2025")),
+            table(
+                "Bruttoinlandsprodukt",
+                "Jahr In jeweiligen Preisen",
+                Some("1991"),
+                Some("2025"),
+            ),
+            table(
+                "Bevölkerung und Erwerbstätigkeit",
+                "Jahr Einwohner Erwerbslose",
+                Some("1991"),
+                Some("2025"),
+            ),
             table("Steuern", "Jahr Einnahmen", Some("1991"), Some("2010")),
         ];
         let q = Question::parse("What was Germany's GDP in 2025?");
         let r = rank(&q, &tables);
         assert_eq!(relevant(&r), vec![0], "{r:?}");
-        let q = Question::parse("How many inhabitants did Germany have in 2025, and what was the unemployment rate?");
+        let q = Question::parse(
+            "How many inhabitants did Germany have in 2025, and what was the unemployment rate?",
+        );
         assert_eq!(relevant(&rank(&q, &tables)), vec![1]);
         // two parts, two tables
         let q = Question::parse("What was GDP in 2025, and what was the unemployment rate?");
@@ -689,10 +1517,18 @@ mod tests {
         // a table by its number
         let tables = vec![
             table("Introduction", "Day Month Year", None, None),
-            table("Table 1: Labour Force Survey Summary", "period rate", None, None),
+            table(
+                "Table 1: Labour Force Survey Summary",
+                "period rate",
+                None,
+                None,
+            ),
             table("Table 11: Claimant count", "period rate", None, None),
         ];
-        let r = rank(&Question::parse("For the latest period in Table 1, what is the rate?"), &tables);
+        let r = rank(
+            &Question::parse("For the latest period in Table 1, what is the rate?"),
+            &tables,
+        );
         assert_eq!(relevant(&r), vec![1], "{r:?}");
     }
 }

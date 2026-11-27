@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::Path;
 
-use super::gt::{Corpus, GtCell, GtFile, GtSheet, LabelCount};
 use super::EvalError;
+use super::gt::{Corpus, GtCell, GtFile, GtSheet, LabelCount};
 use crate::analysis::Role;
 use crate::model::{Rect, Sheet, Value};
 
@@ -41,7 +41,8 @@ fn parse_npy(b: Vec<u8>) -> Result<Npy, String> {
     } else {
         (u32::from_le_bytes([b[8], b[9], b[10], b[11]]) as usize, 12)
     };
-    let header = std::str::from_utf8(b.get(start..start + hlen).ok_or("short header")?).map_err(|e| e.to_string())?;
+    let header = std::str::from_utf8(b.get(start..start + hlen).ok_or("short header")?)
+        .map_err(|e| e.to_string())?;
     if header.contains("'fortran_order': True") {
         return Err("fortran-order arrays are not supported".into());
     }
@@ -51,14 +52,22 @@ fn parse_npy(b: Vec<u8>) -> Result<Npy, String> {
         .and_then(|s| s.split('\'').nth(1))
         .ok_or("no descr")?
         .to_string();
-    let shape_text = header.split("'shape':").nth(1).and_then(|s| s.split(['(', ')']).nth(1)).ok_or("no shape")?;
+    let shape_text = header
+        .split("'shape':")
+        .nth(1)
+        .and_then(|s| s.split(['(', ')']).nth(1))
+        .ok_or("no shape")?;
     let shape = shape_text
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.parse::<usize>().map_err(|e| e.to_string()))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Npy { descr, shape, data: b[start + hlen..].to_vec() })
+    Ok(Npy {
+        descr,
+        shape,
+        data: b[start + hlen..].to_vec(),
+    })
 }
 
 impl Npy {
@@ -67,7 +76,9 @@ impl Npy {
     }
 
     fn ints(&self) -> Result<Vec<i64>, String> {
-        let size: usize = self.descr[2..].parse().map_err(|_| format!("dtype {}", self.descr))?;
+        let size: usize = self.descr[2..]
+            .parse()
+            .map_err(|_| format!("dtype {}", self.descr))?;
         let signed = self.descr.as_bytes()[1] == b'i';
         if !matches!(self.descr.as_bytes()[1], b'i' | b'u') || ![1, 2, 4, 8].contains(&size) {
             return Err(format!("unsupported dtype {}", self.descr));
@@ -91,7 +102,9 @@ impl Npy {
 
     fn strings(&self) -> Result<Vec<String>, String> {
         let kind = self.descr.as_bytes()[1];
-        let n: usize = self.descr[2..].parse().map_err(|_| format!("dtype {}", self.descr))?;
+        let n: usize = self.descr[2..]
+            .parse()
+            .map_err(|_| format!("dtype {}", self.descr))?;
         let width = match kind {
             b'S' => n,
             b'U' => 4 * n,
@@ -102,7 +115,9 @@ impl Npy {
             .chunks_exact(width.max(1))
             .map(|c| {
                 if kind == b'S' {
-                    String::from_utf8_lossy(c).trim_end_matches('\0').to_string()
+                    String::from_utf8_lossy(c)
+                        .trim_end_matches('\0')
+                        .to_string()
                 } else {
                     c.chunks_exact(4)
                         .map(|u| u32::from_le_bytes([u[0], u[1], u[2], u[3]]))
@@ -121,7 +136,11 @@ fn read_npz(path: &Path) -> Result<BTreeMap<String, Npy>, String> {
     let mut out = BTreeMap::new();
     for i in 0..z.len() {
         let mut e = z.by_index(i).map_err(|e| e.to_string())?;
-        let name = e.name().map_err(|e| e.to_string())?.trim_end_matches(".npy").to_string();
+        let name = e
+            .name()
+            .map_err(|e| e.to_string())?
+            .trim_end_matches(".npy")
+            .to_string();
         let mut b = Vec::new();
         e.read_to_end(&mut b).map_err(|e| e.to_string())?;
         out.insert(name, parse_npy(b)?);
@@ -134,13 +153,20 @@ fn parse_range(s: &str) -> Option<Rect> {
     let cell = |c: &str| -> Option<(u32, u32)> {
         let letters: String = c.chars().take_while(|x| x.is_ascii_alphabetic()).collect();
         let digits = &c[letters.len()..];
-        let col = letters.bytes().try_fold(0u32, |a, b| Some(a * 26 + (b.to_ascii_uppercase() - b'A' + 1) as u32))?;
+        let col = letters.bytes().try_fold(0u32, |a, b| {
+            Some(a * 26 + (b.to_ascii_uppercase() - b'A' + 1) as u32)
+        })?;
         let row: u32 = digits.parse().ok()?;
         (col > 0 && row > 0).then(|| (row - 1, col - 1))
     };
     let (a, b) = s.split_once(':').unwrap_or((s, s));
     let ((r0, c0), (r1, c1)) = (cell(a)?, cell(b)?);
-    Some(Rect { top: r0.min(r1), left: c0.min(c1), bottom: r0.max(r1), right: c0.max(c1) })
+    Some(Rect {
+        top: r0.min(r1),
+        left: c0.min(c1),
+        bottom: r0.max(r1),
+        right: c0.max(c1),
+    })
 }
 
 fn filled(v: &Option<Value>) -> bool {
@@ -157,7 +183,9 @@ fn filled(v: &Option<Value>) -> bool {
 fn row_labels_as_data(labels: &mut [i64], rows: usize, cols: usize, changed: &mut u64) {
     for i in 0..rows {
         let row = &mut labels[i * cols..(i + 1) * cols];
-        let Some(last_data) = row.iter().rposition(|&v| v == 2) else { continue };
+        let Some(last_data) = row.iter().rposition(|&v| v == 2) else {
+            continue;
+        };
         for v in &mut row[..last_data] {
             if *v == 1 {
                 *v = 2;
@@ -190,7 +218,13 @@ fn decompress(nonempty: &[bool]) -> Vec<u32> {
 }
 
 /// Labelled cells of one sheet in sheet coordinates, and the alignment of the best mapping.
-fn map_labels(sheet: &Sheet, labels: &[i64], rows: usize, cols: usize, anchor: (i64, i64)) -> (Vec<GtCell>, f64) {
+fn map_labels(
+    sheet: &Sheet,
+    labels: &[i64],
+    rows: usize,
+    cols: usize,
+    anchor: (i64, i64),
+) -> (Vec<GtCell>, f64) {
     let (mut max_r, mut max_c) = (0u32, 0u32);
     for c in &sheet.cells {
         if filled(&c.value) {
@@ -251,12 +285,23 @@ fn map_labels(sheet: &Sheet, labels: &[i64], rows: usize, cols: usize, anchor: (
                     _ => continue,
                 };
                 total += 1;
-                let (Some(r), Some(c)) = (orig(&rmap, i as i64 + ar), orig(&cmap, j as i64 + ac)) else { continue };
+                let (Some(r), Some(c)) = (orig(&rmap, i as i64 + ar), orig(&cmap, j as i64 + ac))
+                else {
+                    continue;
+                };
                 on += cells.contains(&(r, c)) as usize;
-                out.push(GtCell { row: r, col: c, role });
+                out.push(GtCell {
+                    row: r,
+                    col: c,
+                    role,
+                });
             }
         }
-        let align = if total == 0 { 1.0 } else { on as f64 / total as f64 };
+        let align = if total == 0 {
+            1.0
+        } else {
+            on as f64 / total as f64
+        };
         if align > best.1 {
             best = (out, align);
         }
@@ -270,19 +315,36 @@ type SheetEntry = (String, String, bool);
 /// Loads StatSheets from `<data_root>/irregular/statsheets/dataset`. Opens every workbook once to
 /// map the compressed label grids (about a minute).
 pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
-    let base = data_root.join("irregular").join("statsheets").join("dataset");
+    let base = data_root
+        .join("irregular")
+        .join("statsheets")
+        .join("dataset");
     let manifest = base.join("manifest.csv");
-    let text = std::fs::read_to_string(&manifest).map_err(|e| EvalError(format!("{}: {e}", manifest.display())))?;
+    let text = std::fs::read_to_string(&manifest)
+        .map_err(|e| EvalError(format!("{}: {e}", manifest.display())))?;
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut reader = super::csv::CsvReader::new(text.as_bytes());
     let mut rec = Vec::new();
-    while reader.next_record(&mut rec).map_err(|e| EvalError(format!("{}: {e}", manifest.display())))? {
+    while reader
+        .next_record(&mut rec)
+        .map_err(|e| EvalError(format!("{}: {e}", manifest.display())))?
+    {
         rows.push(rec.clone());
     }
     let header = rows.first().cloned().unwrap_or_default();
-    let col = |name: &str| header.iter().position(|h| h == name).ok_or(EvalError(format!("manifest: no `{name}` column")));
-    let (c_src, c_file, c_sheet, c_mime, c_labels) =
-        (col("source")?, col("file_path")?, col("sheet_name")?, col("mime_type")?, col("labels_path")?);
+    let col = |name: &str| {
+        header
+            .iter()
+            .position(|h| h == name)
+            .ok_or(EvalError(format!("manifest: no `{name}` column")))
+    };
+    let (c_src, c_file, c_sheet, c_mime, c_labels) = (
+        col("source")?,
+        col("file_path")?,
+        col("sheet_name")?,
+        col("mime_type")?,
+        col("labels_path")?,
+    );
 
     let mut by_file: BTreeMap<String, (String, Vec<SheetEntry>)> = BTreeMap::new();
     for r in rows.iter().skip(1) {
@@ -293,11 +355,22 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
             .entry(r[c_file].clone())
             .or_insert_with(|| (r[c_src].clone(), Vec::new()))
             .1
-            .push((r[c_sheet].clone(), r[c_labels].clone(), r[c_mime].contains("csv")));
+            .push((
+                r[c_sheet].clone(),
+                r[c_labels].clone(),
+                r[c_mime].contains("csv"),
+            ));
     }
 
-    let mut corpus = Corpus { name: "statsheets".into(), has_tables: true, has_roles: true, coarse_roles: true, ..Corpus::default() };
-    let (mut misaligned, mut unreadable, mut align_sum, mut aligned) = (0usize, 0usize, 0.0f64, 0usize);
+    let mut corpus = Corpus {
+        name: "statsheets".into(),
+        has_tables: true,
+        has_roles: true,
+        coarse_roles: true,
+        ..Corpus::default()
+    };
+    let (mut misaligned, mut unreadable, mut align_sum, mut aligned) =
+        (0usize, 0usize, 0.0f64, 0usize);
     let (mut stubs, mut csv_aligned, mut csv_total) = (0u64, 0usize, 0usize);
     let mut counts: BTreeMap<&'static str, u64> = BTreeMap::new();
     for (file, (source, sheets)) in by_file {
@@ -326,10 +399,16 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
                 unreadable += 1;
                 continue;
             };
-            let (rows, cols) = (l.shape.first().copied().unwrap_or(0), l.shape.get(1).copied().unwrap_or(0));
+            let (rows, cols) = (
+                l.shape.first().copied().unwrap_or(0),
+                l.shape.get(1).copied().unwrap_or(0),
+            );
             let mut lv = lv;
             row_labels_as_data(&mut lv, rows, cols, &mut stubs);
-            let anchor = (av.first().copied().unwrap_or(0), av.get(1).copied().unwrap_or(0));
+            let anchor = (
+                av.first().copied().unwrap_or(0),
+                av.get(1).copied().unwrap_or(0),
+            );
             let (mut cells, align) = map_labels(&wb.sheets[si], &lv, rows, cols, anchor);
             if align < MIN_ALIGNMENT {
                 misaligned += 1;
@@ -350,14 +429,30 @@ pub fn load(data_root: &Path) -> Result<Corpus, EvalError> {
                 .iter()
                 .filter_map(|s| parse_range(s))
                 .collect();
-            gts.push(GtSheet { name, index, tables, cells });
+            gts.push(GtSheet {
+                name,
+                index,
+                tables,
+                cells,
+            });
         }
         if !gts.is_empty() {
-            corpus.files.push(GtFile { id: format!("{source}/{file}"), path, fallback_paths: Vec::new(), sheets: gts });
+            corpus.files.push(GtFile {
+                id: format!("{source}/{file}"),
+                path,
+                fallback_paths: Vec::new(),
+                sheets: gts,
+            });
         }
     }
     for (k, v) in counts {
-        corpus.labels.insert(k.to_uppercase(), LabelCount { role: super::labelled::role_named(k), count: v });
+        corpus.labels.insert(
+            k.to_uppercase(),
+            LabelCount {
+                role: super::labelled::role_named(k),
+                count: v,
+            },
+        );
     }
     corpus.notes.push(format!(
         "{aligned} sheets aligned ({csv_aligned} of {csv_total} CSV; mean {:.1}% of labelled cells on filled cells); \
@@ -375,14 +470,32 @@ mod tests {
     #[test]
     fn decompress_keeps_two_of_long_runs() {
         // filled, 5 empty, filled, 2 empty, filled
-        let ne = [true, false, false, false, false, false, true, false, false, true];
+        let ne = [
+            true, false, false, false, false, false, true, false, false, true,
+        ];
         assert_eq!(decompress(&ne), vec![0, 1, 2, 6, 7, 8, 9]);
     }
 
     #[test]
     fn ranges_and_npy() {
-        assert_eq!(parse_range("B10:E83"), Some(Rect { top: 9, left: 1, bottom: 82, right: 4 }));
-        assert_eq!(parse_range("AA1"), Some(Rect { top: 0, left: 26, bottom: 0, right: 26 }));
+        assert_eq!(
+            parse_range("B10:E83"),
+            Some(Rect {
+                top: 9,
+                left: 1,
+                bottom: 82,
+                right: 4
+            })
+        );
+        assert_eq!(
+            parse_range("AA1"),
+            Some(Rect {
+                top: 0,
+                left: 26,
+                bottom: 0,
+                right: 26
+            })
+        );
         let mut b = b"\x93NUMPY\x01\x00".to_vec();
         let h = "{'descr': '<i4', 'fortran_order': False, 'shape': (2, 2), }";
         let pad = 64 - (10 + h.len() + 1) % 64;
@@ -393,6 +506,9 @@ mod tests {
             b.extend(v.to_le_bytes());
         }
         let a = parse_npy(b).unwrap();
-        assert_eq!((a.shape.clone(), a.ints().unwrap()), (vec![2, 2], vec![1, -2, 3, 4]));
+        assert_eq!(
+            (a.shape.clone(), a.ints().unwrap()),
+            (vec![2, 2], vec![1, -2, 3, 4])
+        );
     }
 }

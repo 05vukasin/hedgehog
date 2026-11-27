@@ -1,11 +1,18 @@
 //! Tool definitions (name, description, JSON Schema of the arguments) and a dispatcher that takes
 //! JSON arguments, for MCP and other JSON-speaking hosts.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::{Session, ToolError, ToolResult, QUERY_DEFAULT_LIMIT, QUERY_MAX_LIMIT};
+use crate::{QUERY_DEFAULT_LIMIT, QUERY_MAX_LIMIT, Session, ToolError, ToolResult};
 
-pub const TOOL_NAMES: [&str; 6] = ["open_file", "describe_table", "query", "cells", "totals", "list_files"];
+pub const TOOL_NAMES: [&str; 6] = [
+    "open_file",
+    "describe_table",
+    "query",
+    "cells",
+    "totals",
+    "list_files",
+];
 
 const PATH_DESC: &str = "Spreadsheet path relative to the working folder, as the user referenced it (xlsx, xlsm, xlsb, xls, ods, csv, tsv).";
 
@@ -126,18 +133,25 @@ pub fn tool_specs() -> Value {
 }
 
 fn arg<'a>(args: &'a Value, names: &[&str]) -> Option<&'a str> {
-    names.iter().find_map(|n| args.get(*n).and_then(Value::as_str))
+    names
+        .iter()
+        .find_map(|n| args.get(*n).and_then(Value::as_str))
 }
 
 fn req<'a>(args: &'a Value, names: &[&str]) -> Result<&'a str, ToolError> {
-    arg(args, names).ok_or_else(|| ToolError(format!("missing argument \"{}\" (a string)", names[0])))
+    arg(args, names)
+        .ok_or_else(|| ToolError(format!("missing argument \"{}\" (a string)", names[0])))
 }
 
 fn limit_arg(args: &Value) -> Result<Option<usize>, ToolError> {
     match args.get("limit") {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Number(n)) => Ok(Some(n.as_f64().unwrap_or(0.0).max(1.0) as usize)),
-        Some(Value::String(s)) => s.trim().parse().map(Some).map_err(|_| ToolError("limit must be a number".into())),
+        Some(Value::String(s)) => s
+            .trim()
+            .parse()
+            .map(Some)
+            .map_err(|_| ToolError("limit must be a number".into())),
         Some(_) => Err(ToolError("limit must be a number".into())),
     }
 }
@@ -149,17 +163,34 @@ impl Session {
         let empty = json!({});
         let args = if args.is_object() { args } else { &empty };
         match name {
-            "open_file" => self.open_file_for(req(args, &["path", "file"])?, arg(args, &["question"])),
-            "describe_table" => self.describe_table(req(args, &["path", "file"])?, req(args, &["table"])?),
-            "query" => self.query(req(args, &["path", "file"])?, req(args, &["sql"])?, limit_arg(args)?),
-            "cells" => self.cells(req(args, &["path", "file"])?, arg(args, &["sheet"]).unwrap_or(""), req(args, &["range"])?),
+            "open_file" => {
+                self.open_file_for(req(args, &["path", "file"])?, arg(args, &["question"]))
+            }
+            "describe_table" => {
+                self.describe_table(req(args, &["path", "file"])?, req(args, &["table"])?)
+            }
+            "query" => self.query(
+                req(args, &["path", "file"])?,
+                req(args, &["sql"])?,
+                limit_arg(args)?,
+            ),
+            "cells" => self.cells(
+                req(args, &["path", "file"])?,
+                arg(args, &["sheet"]).unwrap_or(""),
+                req(args, &["range"])?,
+            ),
             "totals" => self.totals(
                 req(args, &["path", "file"])?,
                 arg(args, &["table"]).filter(|s| !s.is_empty()),
                 arg(args, &["status"]).filter(|s| !s.is_empty()),
             ),
-            "list_files" => self.list_files(arg(args, &["folder"]), arg(args, &["pattern", "match"])),
-            other => Err(ToolError(format!("unknown tool {other:?}; tools: {}", TOOL_NAMES.join(", ")))),
+            "list_files" => {
+                self.list_files(arg(args, &["folder"]), arg(args, &["pattern", "match"]))
+            }
+            other => Err(ToolError(format!(
+                "unknown tool {other:?}; tools: {}",
+                TOOL_NAMES.join(", ")
+            ))),
         }
     }
 }

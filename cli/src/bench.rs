@@ -2,11 +2,11 @@
 //! directory or a file list (see `hh_core::eval::bench`).
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
-use hh_core::eval::bench::{self, synth, FileRun, StageTimes, STAGES};
+use hh_core::eval::bench::{self, FileRun, STAGES, StageTimes, synth};
 
 struct Opts {
     input: Option<PathBuf>,
@@ -20,13 +20,27 @@ struct Opts {
 }
 
 fn parse(args: &[&str]) -> Result<Opts, String> {
-    let mut o = Opts { input: None, limit: None, threads: 1, top: 5, check: None, synthetic: false, case: None, open_only: false };
+    let mut o = Opts {
+        input: None,
+        limit: None,
+        threads: 1,
+        top: 5,
+        check: None,
+        synthetic: false,
+        case: None,
+        open_only: false,
+    };
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
         match *a {
             "--limit" => o.limit = Some(val()?.parse().map_err(|_| "--limit needs a number")?),
-            "--threads" => o.threads = val()?.parse::<usize>().map_err(|_| "--threads needs a number")?.max(1),
+            "--threads" => {
+                o.threads = val()?
+                    .parse::<usize>()
+                    .map_err(|_| "--threads needs a number")?
+                    .max(1)
+            }
             "--top" => o.top = val()?.parse().map_err(|_| "--top needs a number")?,
             "--check" => o.check = Some(PathBuf::from(val()?)),
             "--synthetic" => o.synthetic = true,
@@ -41,7 +55,8 @@ fn parse(args: &[&str]) -> Result<Opts, String> {
 
 fn inputs(o: &Opts) -> Result<Vec<PathBuf>, String> {
     let input = o.input.as_ref().ok_or("missing <dir|filelist>")?;
-    let mut files = bench::resolve_inputs(input).map_err(|e| format!("{}: {e}", input.display()))?;
+    let mut files =
+        bench::resolve_inputs(input).map_err(|e| format!("{}: {e}", input.display()))?;
     if let Some(l) = o.limit {
         files.truncate(l);
     }
@@ -52,7 +67,10 @@ fn inputs(o: &Opts) -> Result<Vec<PathBuf>, String> {
 fn open_only(path: &Path) -> Result<FileRun, String> {
     let t = Instant::now();
     let wb = hh_core::open(path).map_err(|e| e.to_string())?;
-    let mut r = FileRun { sheets: wb.sheets.len(), ..Default::default() };
+    let mut r = FileRun {
+        sheets: wb.sheets.len(),
+        ..Default::default()
+    };
     for s in &wb.sheets {
         r.cells += s.cells.len();
         r.merges += s.merges.len();
@@ -64,22 +82,36 @@ fn open_only(path: &Path) -> Result<FileRun, String> {
 }
 
 /// Runs the pipeline (or only `open`) over `files` on `threads` workers; results in input order.
-fn run_all(files: &[PathBuf], threads: usize, golden: bool, open: bool) -> Vec<Result<FileRun, String>> {
+fn run_all(
+    files: &[PathBuf],
+    threads: usize,
+    golden: bool,
+    open: bool,
+) -> Vec<Result<FileRun, String>> {
     let next = AtomicUsize::new(0);
-    let out: Mutex<Vec<Option<Result<FileRun, String>>>> = Mutex::new(vec![None; files.len()].into_iter().collect());
+    let out: Mutex<Vec<Option<Result<FileRun, String>>>> =
+        Mutex::new(vec![None; files.len()].into_iter().collect());
     std::thread::scope(|s| {
         for _ in 0..threads.min(files.len().max(1)) {
             s.spawn(|| {
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     let Some(path) = files.get(i) else { break };
-                    let r = if open { open_only(path) } else { bench::run_file(path, golden).map_err(|e| e.to_string()) };
+                    let r = if open {
+                        open_only(path)
+                    } else {
+                        bench::run_file(path, golden).map_err(|e| e.to_string())
+                    };
                     out.lock().unwrap()[i] = Some(r);
                 }
             });
         }
     });
-    out.into_inner().unwrap().into_iter().map(|r| r.unwrap_or_else(|| Err("not run".into()))).collect()
+    out.into_inner()
+        .unwrap()
+        .into_iter()
+        .map(|r| r.unwrap_or_else(|| Err("not run".into())))
+        .collect()
 }
 
 fn mb(b: u64) -> f64 {
@@ -97,7 +129,8 @@ pub fn bench(args: &[&str]) -> Result<(), String> {
     let wall = wall.elapsed().as_secs_f64();
 
     let mut times = StageTimes::default();
-    let (mut ok, mut sheets, mut cells, mut merges, mut formulas) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut ok, mut sheets, mut cells, mut merges, mut formulas) =
+        (0usize, 0usize, 0usize, 0usize, 0usize);
     let mut per_file: Vec<(f64, usize, &Path)> = Vec::new();
     let mut failed = Vec::new();
     for (path, r) in files.iter().zip(&results) {
@@ -131,14 +164,22 @@ pub fn bench(args: &[&str]) -> Result<(), String> {
     let total = times.total();
     println!("stage            cpu s   share");
     for (name, t) in STAGES.iter().zip(times.0) {
-        println!("  {name:<14} {t:7.3}  {:5.1}%", 100.0 * t / total.max(1e-12));
+        println!(
+            "  {name:<14} {t:7.3}  {:5.1}%",
+            100.0 * t / total.max(1e-12)
+        );
     }
     println!("  {:<14} {total:7.3}", "sum");
     per_file.sort_by(|a, b| b.0.total_cmp(&a.0));
     if o.top > 0 {
         println!("slowest files:");
         for (t, c, p) in per_file.iter().take(o.top) {
-            println!("  {t:7.3}s {c:>8} cells  {}", p.file_name().map(|f| f.to_string_lossy()).unwrap_or_default());
+            println!(
+                "  {t:7.3}s {c:>8} cells  {}",
+                p.file_name()
+                    .map(|f| f.to_string_lossy())
+                    .unwrap_or_default()
+            );
         }
     }
     for (p, e) in failed {
@@ -148,7 +189,9 @@ pub fn bench(args: &[&str]) -> Result<(), String> {
 }
 
 fn synthetic(o: &Opts) -> Result<(), String> {
-    println!("case                    cells  merges       grid    context     values     totals  det+ver   baseline   peak RSS");
+    println!(
+        "case                    cells  merges       grid    context     values     totals  det+ver   baseline   peak RSS"
+    );
     for (name, make) in synth::all() {
         if o.case.as_deref().is_some_and(|c| c != name) {
             continue;
@@ -179,7 +222,11 @@ pub fn golden(args: &[&str]) -> Result<(), String> {
     let root = hh_core::eval::data_root();
     let mut lines = Vec::new();
     for (path, r) in files.iter().zip(&results) {
-        let name = path.strip_prefix(&root).unwrap_or(path).display().to_string();
+        let name = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .display()
+            .to_string();
         lines.push(match r {
             Ok(r) => format!("{:016x}\t{}\t{name}", r.hash, r.cells),
             Err(e) => format!("error\t0\t{name}\t{}", e.replace(['\t', '\n'], " ")),
@@ -199,7 +246,10 @@ pub fn golden(args: &[&str]) -> Result<(), String> {
             for (i, l) in lines.iter().enumerate() {
                 if want.get(i) != Some(&l.as_str()) {
                     bad += 1;
-                    println!("DIFF: got  {l}\n      want {}", want.get(i).unwrap_or(&"<missing>"));
+                    println!(
+                        "DIFF: got  {l}\n      want {}",
+                        want.get(i).unwrap_or(&"<missing>")
+                    );
                 }
             }
             if want.len() != lines.len() {

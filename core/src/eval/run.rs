@@ -6,11 +6,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
 use std::time::Instant;
 
+use super::Analyzer;
 use super::gt::{Corpus, GtFile};
 use super::json;
 use super::metrics::{Confusion, FileMacro, Prf, TABLE_CRITERIA};
 use super::split::Split;
-use super::Analyzer;
 use crate::analysis::Role;
 use crate::grid::Grid;
 use crate::model::{Rect, Workbook};
@@ -28,7 +28,11 @@ pub struct RunOptions {
 
 impl Default for RunOptions {
     fn default() -> Self {
-        RunOptions { split: Split::Dev, limit: None, progress: false }
+        RunOptions {
+            split: Split::Dev,
+            limit: None,
+            progress: false,
+        }
     }
 }
 
@@ -102,18 +106,31 @@ pub struct Report {
 
 /// Finds the annotated sheet in the workbook: exact name, then trimmed case-insensitive name,
 /// then position.
-pub(crate) fn find_sheet(wb: &Workbook, name: &str, index: Option<usize>) -> Option<(usize, &'static str)> {
+pub(crate) fn find_sheet(
+    wb: &Workbook,
+    name: &str,
+    index: Option<usize>,
+) -> Option<(usize, &'static str)> {
     if let Some(i) = wb.sheets.iter().position(|s| s.name == name) {
         return Some((i, "name"));
     }
     let lname = name.trim().to_lowercase();
-    if let Some(i) = wb.sheets.iter().position(|s| s.name.trim().to_lowercase() == lname) {
+    if let Some(i) = wb
+        .sheets
+        .iter()
+        .position(|s| s.name.trim().to_lowercase() == lname)
+    {
         return Some((i, "name_ci"));
     }
     index.filter(|&i| i < wb.sheets.len()).map(|i| (i, "index"))
 }
 
-pub fn evaluate(corpus: &Corpus, analyzer: &dyn Analyzer, analyzer_name: &str, opts: &RunOptions) -> Report {
+pub fn evaluate(
+    corpus: &Corpus,
+    analyzer: &dyn Analyzer,
+    analyzer_name: &str,
+    opts: &RunOptions,
+) -> Report {
     evaluate_parallel(corpus, analyzer, analyzer_name, opts, 1)
 }
 
@@ -128,7 +145,12 @@ struct FileOutcome {
 
 fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
     let t = Instant::now();
-    let mut out = FileOutcome { via_fallback: None, failed: None, open_ms: 0.0, sheets: Vec::new() };
+    let mut out = FileOutcome {
+        via_fallback: None,
+        failed: None,
+        open_ms: 0.0,
+        sheets: Vec::new(),
+    };
     let mut opened = super::open(&file.path);
     if opened.is_err() {
         for alt in &file.fallback_paths {
@@ -169,7 +191,11 @@ fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
         };
 
         let error = (layout.roles.len() != sheet.cells.len()).then(|| {
-            format!("analyzer returned {} roles for {} cells", layout.roles.len(), sheet.cells.len())
+            format!(
+                "analyzer returned {} roles for {} cells",
+                layout.roles.len(),
+                sheet.cells.len()
+            )
         });
         let mut confusion = Confusion::default();
         let mut missing = 0;
@@ -180,7 +206,11 @@ fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
             });
             match idx {
                 Some(i) => {
-                    let pred = if error.is_none() { layout.roles[i] } else { Role::Other };
+                    let pred = if error.is_none() {
+                        layout.roles[i]
+                    } else {
+                        Role::Other
+                    };
                     confusion.add(gc.role, pred);
                 }
                 None => missing += 1,
@@ -212,7 +242,11 @@ fn evaluate_file(file: &GtFile, analyzer: &dyn Analyzer) -> FileOutcome {
 /// Header-depth agreement over the tables matched at IoU ≥ 0.5: (scored, exact). A table is scored
 /// when its ground truth labels at least one of its rows; it is exact when the predicted header
 /// (`header_top`, `header_rows`) covers the same labelled rows as the ground truth's header.
-fn header_scores(gt: &[Rect], pred: &[crate::analysis::DetectedTable], cells: &[super::gt::GtCell]) -> (usize, usize) {
+fn header_scores(
+    gt: &[Rect],
+    pred: &[crate::analysis::DetectedTable],
+    cells: &[super::gt::GtCell],
+) -> (usize, usize) {
     let rects: Vec<Rect> = pred.iter().map(|t| t.rect).collect();
     let (mut n, mut ok) = (0, 0);
     for (g, p) in super::metrics::table_pairs(gt, &rects, TABLE_CRITERIA[0]) {
@@ -234,7 +268,14 @@ fn header_scores(gt: &[Rect], pred: &[crate::analysis::DetectedTable], cells: &[
         }
         let majority: Vec<(u32, Role)> = rows
             .iter()
-            .map(|(row, k)| (*row, Role::ALL[(0..7).max_by_key(|&i| (k[i], std::cmp::Reverse(i))).unwrap()]))
+            .map(|(row, k)| {
+                (
+                    *row,
+                    Role::ALL[(0..7)
+                        .max_by_key(|&i| (k[i], std::cmp::Reverse(i)))
+                        .unwrap()],
+                )
+            })
             .collect();
         let want = super::metrics::gt_header_rows(&majority);
         let t = &pred[p];
@@ -260,7 +301,11 @@ pub fn evaluate_parallel(
     threads: usize,
 ) -> Report {
     let start = Instant::now();
-    let in_split: Vec<_> = corpus.files.iter().filter(|f| opts.split.contains(&f.id)).collect();
+    let in_split: Vec<_> = corpus
+        .files
+        .iter()
+        .filter(|f| opts.split.contains(&f.id))
+        .collect();
     let files_in_split = in_split.len();
     let take = opts.limit.unwrap_or(usize::MAX);
 
@@ -271,9 +316,17 @@ pub fn evaluate_parallel(
         limit: opts.limit,
         corpus_files: corpus.files.len(),
         corpus_sheets: corpus.sheet_count(),
-        unmatched_files: corpus.unmatched.iter().map(|u| (u.id.clone(), u.reason.clone())).collect(),
+        unmatched_files: corpus
+            .unmatched
+            .iter()
+            .map(|u| (u.id.clone(), u.reason.clone()))
+            .collect(),
         unmapped_labels: corpus.unmapped_count(),
-        labels: corpus.labels.iter().map(|(k, v)| (k.clone(), v.role, v.count)).collect(),
+        labels: corpus
+            .labels
+            .iter()
+            .map(|(k, v)| (k.clone(), v.role, v.count))
+            .collect(),
         notes: corpus.notes.clone(),
         files_in_split,
         files_evaluated: 0,
@@ -341,13 +394,15 @@ pub fn evaluate_parallel(
         let lock = Mutex::new(());
         std::thread::scope(|s| {
             for _ in 0..threads {
-                s.spawn(|| loop {
-                    let i = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(file) = files.get(i) else { break };
-                    let o = evaluate_file(file, analyzer);
-                    *slots[i].lock().unwrap() = Some(o);
-                    let _g = lock.lock().unwrap();
-                    ready.notify_all();
+                s.spawn(|| {
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(file) = files.get(i) else { break };
+                        let o = evaluate_file(file, analyzer);
+                        *slots[i].lock().unwrap() = Some(o);
+                        let _g = lock.lock().unwrap();
+                        ready.notify_all();
+                    }
                 });
             }
             for (n, file) in files.iter().enumerate() {
@@ -392,8 +447,15 @@ impl Report {
     /// Compact human-readable scoreboard.
     pub fn scoreboard(&self) -> String {
         let mut o = String::new();
-        let lim = self.limit.map(|l| format!(" · limit={l}")).unwrap_or_default();
-        let _ = writeln!(o, "hedgehog eval · {} · split={}{} · analyzer={}", self.corpus, self.split, lim, self.analyzer);
+        let lim = self
+            .limit
+            .map(|l| format!(" · limit={l}"))
+            .unwrap_or_default();
+        let _ = writeln!(
+            o,
+            "hedgehog eval · {} · split={}{} · analyzer={}",
+            self.corpus, self.split, lim, self.analyzer
+        );
         let _ = writeln!(
             o,
             "corpus: {} files matched ({} unmatched), {} annotated sheets, {} unmapped labels",
@@ -431,14 +493,28 @@ impl Report {
         let pred: usize = self.sheets.iter().map(|s| s.pred_tables).sum();
         let _ = writeln!(o, "\ntables (gt {gt}, pred {pred})     P      R     F1");
         for (c, p) in TABLE_CRITERIA.iter().zip(&self.tables) {
-            let _ = writeln!(o, "  {:<22} {} {} {}", c.label(), pct(p.precision()), pct(p.recall()), opct(p.f1()));
+            let _ = writeln!(
+                o,
+                "  {:<22} {} {} {}",
+                c.label(),
+                pct(p.precision()),
+                pct(p.recall()),
+                opct(p.f1())
+            );
         }
         let (hn, hok) = self.header_depth;
         if hn > 0 {
-            let _ = writeln!(o, "  header rows exact      {} of {hn} matched tables", pct(hok as f64 / hn as f64).trim());
+            let _ = writeln!(
+                o,
+                "  header rows exact      {} of {hn} matched tables",
+                pct(hok as f64 / hn as f64).trim()
+            );
         }
         let fm = self.file_macro.per_class();
-        let _ = writeln!(o, "\ncell roles        support      P      R  F1(pooled)  F1(file-macro)");
+        let _ = writeln!(
+            o,
+            "\ncell roles        support      P      R  F1(pooled)  F1(file-macro)"
+        );
         for (k, r) in Role::ALL.iter().enumerate() {
             let p = self.confusion.class(*r);
             let _ = writeln!(
@@ -501,8 +577,14 @@ impl Report {
         );
         let t = &self.timing;
         o.push_str(",\"timing_ms\":{");
-        for (i, (k, v)) in
-            [("load", t.load_ms), ("open", t.open_ms), ("analyze", t.analyze_ms), ("total", t.total_ms)].iter().enumerate()
+        for (i, (k, v)) in [
+            ("load", t.load_ms),
+            ("open", t.open_ms),
+            ("analyze", t.analyze_ms),
+            ("total", t.total_ms),
+        ]
+        .iter()
+        .enumerate()
         {
             json::key(&mut o, k, i == 0);
             json::num(&mut o, *v);
@@ -537,7 +619,10 @@ impl Report {
         json::key(&mut o, "file_macro_f1", false);
         json::opt_num(&mut o, self.file_macro.macro_f1());
         json::key(&mut o, "accuracy", false);
-        json::num(&mut o, self.confusion.correct() as f64 / self.confusion.total().max(1) as f64);
+        json::num(
+            &mut o,
+            self.confusion.correct() as f64 / self.confusion.total().max(1) as f64,
+        );
         o.push('}');
         o.push_str(",\"confusion\":{\"order\":[");
         for (k, r) in Role::ALL.iter().enumerate() {
@@ -591,7 +676,11 @@ impl Report {
             json::string(&mut o, &s.sheet);
             json::key(&mut o, "matched_by", false);
             json::string(&mut o, s.matched_by);
-            let _ = write!(o, ",\"gt_tables\":{},\"pred_tables\":{},\"table_tp\":{{", s.gt_tables, s.pred_tables);
+            let _ = write!(
+                o,
+                ",\"gt_tables\":{},\"pred_tables\":{},\"table_tp\":{{",
+                s.gt_tables, s.pred_tables
+            );
             for (k, c) in TABLE_CRITERIA.iter().enumerate() {
                 json::key(&mut o, &c.label(), k == 0);
                 let _ = write!(o, "{}", s.table_tp[k]);
@@ -631,7 +720,11 @@ impl Report {
 }
 
 fn prf_json(o: &mut String, p: &Prf) {
-    let _ = write!(o, "{{\"tp\":{},\"fp\":{},\"fn\":{},\"precision\":", p.tp, p.fp, p.fn_);
+    let _ = write!(
+        o,
+        "{{\"tp\":{},\"fp\":{},\"fn\":{},\"precision\":",
+        p.tp, p.fp, p.fn_
+    );
     json::num(o, p.precision());
     o.push_str(",\"recall\":");
     json::num(o, p.recall());

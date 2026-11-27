@@ -9,7 +9,7 @@
 #![deny(clippy::all)]
 
 use hh_core::totals::{self, Direction, Evidence, RefKind, TotalLevel, TotalOrigin};
-use hh_core::{a1, Cell, Grid, Rect, Sheet, Value};
+use hh_core::{Cell, Grid, Rect, Sheet, Value, a1};
 use std::sync::{Arc, Mutex};
 
 use napi::bindgen_prelude::*;
@@ -99,7 +99,10 @@ pub struct CellInfo {
     pub address: String,
     #[napi(ts_type = "number | string | boolean | null")]
     pub value: serde_json::Value,
-    #[napi(js_name = "type", ts_type = "'empty' | 'bool' | 'number' | 'text' | 'date' | 'error'")]
+    #[napi(
+        js_name = "type",
+        ts_type = "'empty' | 'bool' | 'number' | 'text' | 'date' | 'error'"
+    )]
     pub kind: String,
     #[napi(ts_type = "string | null")]
     pub formula: serde_json::Value,
@@ -113,13 +116,19 @@ fn opt_str(s: Option<String>) -> serde_json::Value {
 
 fn cell_info(sheet: &Sheet, row: u32, col: u32, cell: Option<&Cell>) -> CellInfo {
     let v = cell.and_then(|c| c.value.as_ref());
-    let merged = sheet.merges.iter().find(|m| m.top <= row && row <= m.bottom && m.left <= col && col <= m.right);
+    let merged = sheet
+        .merges
+        .iter()
+        .find(|m| m.top <= row && row <= m.bottom && m.left <= col && col <= m.right);
     CellInfo {
         sheet: sheet.name.clone(),
         address: a1(row, col),
         value: value_js(v),
         kind: value_type(v).to_string(),
-        formula: opt_str(cell.and_then(|c| c.formula.as_ref()).map(|f| format!("={f}"))),
+        formula: opt_str(
+            cell.and_then(|c| c.formula.as_ref())
+                .map(|f| format!("={f}")),
+        ),
         merged: opt_str(merged.map(|m| range_a1(*m))),
     }
 }
@@ -232,7 +241,11 @@ fn sheet_totals(s: &Sheet, out: &mut Vec<TotalInfo>) {
             double_counted: cells_a1(&cand.double_counted),
             label_address: opt_str(cand.label.map(|(r, c)| a1(r, c))),
             label: value_js(label_cell.and_then(|c| c.value.as_ref())),
-            formula: opt_str(grid.cell(cand.row, cand.col).and_then(|c| c.formula.as_ref()).map(|f| format!("={f}"))),
+            formula: opt_str(
+                grid.cell(cand.row, cand.col)
+                    .and_then(|c| c.formula.as_ref())
+                    .map(|f| format!("={f}")),
+            ),
             evidence: cand
                 .evidence
                 .iter()
@@ -246,7 +259,9 @@ fn sheet_totals(s: &Sheet, out: &mut Vec<TotalInfo>) {
             actual: opt_num(check.actual),
             expected: opt_num(check.expected),
             diff: opt_num(check.diff),
-            ok: check.ok.map_or(serde_json::Value::Null, serde_json::Value::Bool),
+            ok: check
+                .ok
+                .map_or(serde_json::Value::Null, serde_json::Value::Bool),
             reason: snake(check.reason),
             summed: check.summed as u32,
             numbers_as_text: cells_a1(&check.numbers_as_text),
@@ -270,15 +285,29 @@ impl Workbook {
             .sheets
             .iter()
             .find(|s| s.name == name)
-            .or_else(|| self.inner.sheets.iter().find(|s| s.name.eq_ignore_ascii_case(name)))
-            .ok_or_else(|| invalid(format!("no sheet named {name:?}; sheets: {:?}", self.names())))
+            .or_else(|| {
+                self.inner
+                    .sheets
+                    .iter()
+                    .find(|s| s.name.eq_ignore_ascii_case(name))
+            })
+            .ok_or_else(|| {
+                invalid(format!(
+                    "no sheet named {name:?}; sheets: {:?}",
+                    self.names()
+                ))
+            })
     }
 
     /// Sheet named in the reference wins over the `sheet` argument; with neither, the first sheet.
     fn sheet_for(&self, sheet: Option<&str>, in_ref: Option<String>) -> Result<&Sheet> {
         match in_ref.as_deref().or(sheet) {
             Some(n) => self.sheet(n),
-            None => self.inner.sheets.first().ok_or_else(|| invalid("workbook has no sheets".into())),
+            None => self
+                .inner
+                .sheets
+                .first()
+                .ok_or_else(|| invalid("workbook has no sheets".into())),
         }
     }
 }
@@ -325,13 +354,23 @@ impl Workbook {
         let (in_ref, rect) = parse_ref(&address, &[RefKind::Cell])?;
         let s = self.sheet_for(sheet.as_deref(), in_ref)?;
         let grid = Grid::new(s);
-        Ok(cell_info(s, rect.top, rect.left, grid.cell(rect.top, rect.left)))
+        Ok(cell_info(
+            s,
+            rect.top,
+            rect.left,
+            grid.cell(rect.top, rect.left),
+        ))
     }
 
     /// Values of a rectangular range (`"A1:F20"` or `"Sheet1!A1:F20"`), row by row. Ranges larger
     /// than `maxCells` (default 5000) are rejected.
     #[napi]
-    pub fn get_range(&self, sheet: Option<String>, range: String, max_cells: Option<u32>) -> Result<RangeValues> {
+    pub fn get_range(
+        &self,
+        sheet: Option<String>,
+        range: String,
+        max_cells: Option<u32>,
+    ) -> Result<RangeValues> {
         let max_cells = max_cells.unwrap_or(5000) as u64;
         let (in_ref, rect) = parse_ref(&range, &[RefKind::Cell, RefKind::Range])?;
         let s = self.sheet_for(sheet.as_deref(), in_ref)?;
@@ -346,11 +385,17 @@ impl Workbook {
         let rows = (rect.top..=rect.bottom)
             .map(|r| {
                 serde_json::Value::Array(
-                    (rect.left..=rect.right).map(|c| value_js(grid.cell(r, c).and_then(|x| x.value.as_ref()))).collect(),
+                    (rect.left..=rect.right)
+                        .map(|c| value_js(grid.cell(r, c).and_then(|x| x.value.as_ref())))
+                        .collect(),
                 )
             })
             .collect();
-        Ok(RangeValues { sheet: s.name.clone(), range: range_a1(rect), rows: serde_json::Value::Array(rows) })
+        Ok(RangeValues {
+            sheet: s.name.clone(),
+            range: range_a1(rect),
+            rows: serde_json::Value::Array(rows),
+        })
     }
 
     /// Cells whose text contains `query` (case-, diacritic- and script-insensitive), on one sheet
@@ -391,7 +436,11 @@ impl Workbook {
         let mut out = Vec::new();
         match sheet.as_deref() {
             Some(n) => sheet_totals(self.sheet(n)?, &mut out),
-            None => self.inner.sheets.iter().for_each(|s| sheet_totals(s, &mut out)),
+            None => self
+                .inner
+                .sheets
+                .iter()
+                .for_each(|s| sheet_totals(s, &mut out)),
         }
         Ok(out)
     }
@@ -407,15 +456,24 @@ impl Workbook {
 /// into N-API (which aborts the host process). The addon is built with `panic = "unwind"`.
 fn guarded<T>(what: &str, f: impl FnOnce() -> Result<T>) -> Result<T> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
-        let msg = p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default();
-        Err(Error::new(Status::GenericFailure, format!("internal error in {what} ({msg}); the file may be malformed")))
+        let msg = p
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| p.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        Err(Error::new(
+            Status::GenericFailure,
+            format!("internal error in {what} ({msg}); the file may be malformed"),
+        ))
     })
 }
 
 fn read(path: &str) -> Result<hh_core::Workbook> {
     // The reader's own message for a missing file does not name it.
     std::fs::metadata(path).map_err(|e| invalid(format!("{path}: {e}")))?;
-    guarded("open", || hh_core::open(path).map_err(|e| invalid(format!("{path}: {e}"))))
+    guarded("open", || {
+        hh_core::open(path).map_err(|e| invalid(format!("{path}: {e}")))
+    })
 }
 
 /// Reads a workbook (format detected from content) on the calling thread.
@@ -429,7 +487,10 @@ pub fn open(path: String) -> Result<Workbook> {
 /// names a CSV sheet (`Sheet1` without it).
 #[napi]
 pub fn open_bytes(data: Uint8Array, name: Option<String>) -> Result<Workbook> {
-    guarded("openBytes", || hh_core::open_bytes(&data, name.as_deref()).map_err(|e| invalid(e.to_string()))).map(|inner| Workbook { inner })
+    guarded("openBytes", || {
+        hh_core::open_bytes(&data, name.as_deref()).map_err(|e| invalid(e.to_string()))
+    })
+    .map(|inner| Workbook { inner })
 }
 
 pub struct OpenTask {
@@ -486,9 +547,10 @@ pub struct NormalizeResult {
 fn core_options(o: Option<NormalizeOptions>) -> Result<hh_core::NormalizeOptions> {
     let o = o.unwrap_or_default();
     let locale = match o.locale.as_deref() {
-        Some(tag) => {
-            Some(hh_core::values::Locale::parse(tag).ok_or_else(|| invalid(format!("unknown locale {tag:?}")))?)
-        }
+        Some(tag) => Some(
+            hh_core::values::Locale::parse(tag)
+                .ok_or_else(|| invalid(format!("unknown locale {tag:?}")))?,
+        ),
         None => None,
     };
     Ok(hh_core::NormalizeOptions {
@@ -502,9 +564,14 @@ fn core_options(o: Option<NormalizeOptions>) -> Result<hh_core::NormalizeOptions
     })
 }
 
-fn run_normalize(path: &str, out_dir: &str, opts: &hh_core::NormalizeOptions) -> Result<NormalizeResult> {
+fn run_normalize(
+    path: &str,
+    out_dir: &str,
+    opts: &hh_core::NormalizeOptions,
+) -> Result<NormalizeResult> {
     let out = guarded("normalize", || {
-        hh_core::normalize_file(path, out_dir, opts).map_err(|e| Error::new(Status::GenericFailure, e.0))
+        hh_core::normalize_file(path, out_dir, opts)
+            .map_err(|e| Error::new(Status::GenericFailure, e.0))
     })?;
     let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
     Ok(NormalizeResult {
@@ -538,13 +605,25 @@ impl Task for NormalizeTask {
 /// missing) on the libuv thread pool. The source file is never modified. Errors (missing file,
 /// unknown locale) reject the Promise.
 #[napi(ts_return_type = "Promise<NormalizeResult>")]
-pub fn normalize(path: String, out_dir: String, opts: Option<NormalizeOptions>) -> AsyncTask<NormalizeTask> {
-    AsyncTask::new(NormalizeTask { path, out_dir, opts })
+pub fn normalize(
+    path: String,
+    out_dir: String,
+    opts: Option<NormalizeOptions>,
+) -> AsyncTask<NormalizeTask> {
+    AsyncTask::new(NormalizeTask {
+        path,
+        out_dir,
+        opts,
+    })
 }
 
 /// `normalize` on the calling thread (blocks the event loop; for scripts and tests).
 #[napi]
-pub fn normalize_sync(path: String, out_dir: String, opts: Option<NormalizeOptions>) -> Result<NormalizeResult> {
+pub fn normalize_sync(
+    path: String,
+    out_dir: String,
+    opts: Option<NormalizeOptions>,
+) -> Result<NormalizeResult> {
     run_normalize(&path, &out_dir, &core_options(opts)?)
 }
 
@@ -575,8 +654,13 @@ impl Task for ToolTask {
     type JsValue = String;
 
     fn compute(&mut self) -> Result<Self::Output> {
-        let run = self.run.take().ok_or_else(|| Error::new(Status::GenericFailure, "tool task ran twice"))?;
-        guarded("the tool call", || run(&mut lock(&self.session)).map_err(|e| Error::new(Status::GenericFailure, e.0)))
+        let run = self
+            .run
+            .take()
+            .ok_or_else(|| Error::new(Status::GenericFailure, "tool task ran twice"))?;
+        guarded("the tool call", || {
+            run(&mut lock(&self.session)).map_err(|e| Error::new(Status::GenericFailure, e.0))
+        })
     }
 
     fn resolve(&mut self, _env: Env, text: Self::Output) -> Result<Self::JsValue> {
@@ -614,19 +698,33 @@ pub struct NativeSession {
 impl NativeSession {
     #[napi(constructor)]
     pub fn new(options: SessionOptions) -> Result<Self> {
-        let allow: Vec<std::path::PathBuf> = options.allow.unwrap_or_default().into_iter().map(Into::into).collect();
+        let allow: Vec<std::path::PathBuf> = options
+            .allow
+            .unwrap_or_default()
+            .into_iter()
+            .map(Into::into)
+            .collect();
         let session = hh_agent::Session::new(&options.root, &allow).map_err(|e| invalid(e.0))?;
-        Ok(NativeSession { inner: Arc::new(Mutex::new(session)) })
+        Ok(NativeSession {
+            inner: Arc::new(Mutex::new(session)),
+        })
     }
 
     fn task(&self, run: ToolFn) -> AsyncTask<ToolTask> {
-        AsyncTask::new(ToolTask { session: self.inner.clone(), run: Some(run) })
+        AsyncTask::new(ToolTask {
+            session: self.inner.clone(),
+            run: Some(run),
+        })
     }
 
     /// The canonical root folder.
     #[napi(getter)]
     pub fn root(&self) -> String {
-        lock(&self.inner).bounds().root().to_string_lossy().into_owned()
+        lock(&self.inner)
+            .bounds()
+            .root()
+            .to_string_lossy()
+            .into_owned()
     }
 
     /// Allows one more file or folder outside the root.
@@ -637,7 +735,9 @@ impl NativeSession {
 
     #[napi(ts_return_type = "Promise<string>")]
     pub fn open_file(&self, path: String, question: Option<String>) -> AsyncTask<ToolTask> {
-        self.task(Box::new(move |s| s.open_file_for(&path, question.as_deref())))
+        self.task(Box::new(move |s| {
+            s.open_file_for(&path, question.as_deref())
+        }))
     }
 
     #[napi(ts_return_type = "Promise<string>")]
@@ -647,7 +747,9 @@ impl NativeSession {
 
     #[napi(ts_return_type = "Promise<string>")]
     pub fn query(&self, path: String, sql: String, limit: Option<u32>) -> AsyncTask<ToolTask> {
-        self.task(Box::new(move |s| s.query(&path, &sql, limit.map(|n| n as usize))))
+        self.task(Box::new(move |s| {
+            s.query(&path, &sql, limit.map(|n| n as usize))
+        }))
     }
 
     #[napi(ts_return_type = "Promise<string>")]
@@ -656,20 +758,37 @@ impl NativeSession {
     }
 
     #[napi(ts_return_type = "Promise<string>")]
-    pub fn totals(&self, path: String, table: Option<String>, status: Option<String>) -> AsyncTask<ToolTask> {
-        self.task(Box::new(move |s| s.totals(&path, table.as_deref(), status.as_deref())))
+    pub fn totals(
+        &self,
+        path: String,
+        table: Option<String>,
+        status: Option<String>,
+    ) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| {
+            s.totals(&path, table.as_deref(), status.as_deref())
+        }))
     }
 
     #[napi(ts_return_type = "Promise<string>")]
-    pub fn list_files(&self, folder: Option<String>, pattern: Option<String>) -> AsyncTask<ToolTask> {
-        self.task(Box::new(move |s| s.list_files(folder.as_deref(), pattern.as_deref())))
+    pub fn list_files(
+        &self,
+        folder: Option<String>,
+        pattern: Option<String>,
+    ) -> AsyncTask<ToolTask> {
+        self.task(Box::new(move |s| {
+            s.list_files(folder.as_deref(), pattern.as_deref())
+        }))
     }
 
     /// The files opened in this session, in order, with their SQL prefix: `f1.T1`, `f2.T1`, …
     /// name the tables of each file in one query (B76).
     #[napi]
     pub fn open_files(&self) -> Vec<OpenFileInfo> {
-        lock(&self.inner).open_files().into_iter().map(|(prefix, path)| OpenFileInfo { prefix, path }).collect()
+        lock(&self.inner)
+            .open_files()
+            .into_iter()
+            .map(|(prefix, path)| OpenFileInfo { prefix, path })
+            .collect()
     }
 
     /// Runs a tool by its MCP name with JSON arguments (`{"path": ..., "sql": ...}`).

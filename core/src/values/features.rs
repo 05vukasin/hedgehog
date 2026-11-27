@@ -7,12 +7,12 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-use super::date::{parse_date, parse_time, serial_to_ymd, DateOrder, DateOrderVotes};
-use super::locale::Locale;
-use super::keywords::{is_note, starts_with_enumerator, total_score};
-use super::missing::{is_excel_error, missing_token, parse_bool};
 use super::currency::mentions_currency;
-use super::number::{parse_number, DecimalSep, DecimalVotes, NativeNumbers, NumberHint};
+use super::date::{DateOrder, DateOrderVotes, parse_date, parse_time, serial_to_ymd};
+use super::keywords::{is_note, starts_with_enumerator, total_score};
+use super::locale::Locale;
+use super::missing::{is_excel_error, missing_token, parse_bool};
+use super::number::{DecimalSep, DecimalVotes, NativeNumbers, NumberHint, parse_number};
 use super::text::{has_cyrillic, is_padded, trim};
 use crate::features::Features;
 use crate::grid::Grid;
@@ -24,36 +24,99 @@ pub const FEATURES: [(&str, &str); 34] = [
     ("v_is_text", "stored value is text"),
     ("v_is_date", "stored value is an Excel date/time"),
     ("v_is_bool", "stored value is a boolean"),
-    ("v_is_error", "stored value is an Excel error, or text spelling one (`#N/A`)"),
+    (
+        "v_is_error",
+        "stored value is an Excel error, or text spelling one (`#N/A`)",
+    ),
     ("v_is_formula", "cell has a formula"),
     ("v_no_value", "formula cell without a cached value"),
-    ("v_numeric_text", "text that parses as a number (locale, currency, units, %, scale handled)"),
-    ("v_date_text", "text that parses as a date, month or quarter"),
-    ("v_bool_text", "text that is a boolean code (yes/no, da/ne, ✓)"),
-    ("v_period_label", "text that is a month or quarter name without a year (`Jan`, `Q3`, `III kvartal`)"),
-    ("v_missing_token", "text missing-value token (`-`, `n/a`, `nema`, `..`, `x`) or an error value"),
-    ("v_has_currency", "numeric text carrying a currency symbol/code (`1.200 RSD`, `€ 15`)"),
-    ("v_has_unit", "numeric text carrying a unit (`15 kg`, `3 kom`, `120 m²`)"),
+    (
+        "v_numeric_text",
+        "text that parses as a number (locale, currency, units, %, scale handled)",
+    ),
+    (
+        "v_date_text",
+        "text that parses as a date, month or quarter",
+    ),
+    (
+        "v_bool_text",
+        "text that is a boolean code (yes/no, da/ne, ✓)",
+    ),
+    (
+        "v_period_label",
+        "text that is a month or quarter name without a year (`Jan`, `Q3`, `III kvartal`)",
+    ),
+    (
+        "v_missing_token",
+        "text missing-value token (`-`, `n/a`, `nema`, `..`, `x`) or an error value",
+    ),
+    (
+        "v_has_currency",
+        "numeric text carrying a currency symbol/code (`1.200 RSD`, `€ 15`)",
+    ),
+    (
+        "v_has_unit",
+        "numeric text carrying a unit (`15 kg`, `3 kom`, `120 m²`)",
+    ),
     ("v_is_percent", "numeric text with a `%` sign"),
-    ("v_has_scale", "numeric text with a scale word (`5k`, `1,2 mil.`)"),
-    ("v_is_negative", "numeric value is negative (any style: `-5`, `(500)`, `500-`)"),
-    ("v_has_footnote", "numeric text with a footnote marker (`1.234*`, `567 (a)`)"),
-    ("v_leading_zero", "integer text with leading zeros (`00123`) — likely an ID"),
-    ("v_is_integer", "numeric value (number or numeric text) is a whole number"),
-    ("v_is_year", "whole number 1900–2100 written as a number or plain text (`2024`, `2024.`)"),
+    (
+        "v_has_scale",
+        "numeric text with a scale word (`5k`, `1,2 mil.`)",
+    ),
+    (
+        "v_is_negative",
+        "numeric value is negative (any style: `-5`, `(500)`, `500-`)",
+    ),
+    (
+        "v_has_footnote",
+        "numeric text with a footnote marker (`1.234*`, `567 (a)`)",
+    ),
+    (
+        "v_leading_zero",
+        "integer text with leading zeros (`00123`) — likely an ID",
+    ),
+    (
+        "v_is_integer",
+        "numeric value (number or numeric text) is a whole number",
+    ),
+    (
+        "v_is_year",
+        "whole number 1900–2100 written as a number or plain text (`2024`, `2024.`)",
+    ),
     ("v_log_abs", "log10(1 + |value|) for numeric values, else 0"),
-    ("v_len", "characters in the displayed value (trimmed text; numbers in shortest form)"),
+    (
+        "v_len",
+        "characters in the displayed value (trimmed text; numbers in shortest form)",
+    ),
     ("v_word_count", "number of whitespace-separated words"),
     ("v_digit_ratio", "share of characters that are digits"),
     ("v_alpha_ratio", "share of characters that are letters"),
     ("v_upper_ratio", "share of letters that are uppercase"),
     ("v_has_cyrillic", "text contains Cyrillic letters"),
-    ("v_is_padded", "text has leading/trailing whitespace, NBSP or invisible characters"),
-    ("v_ends_with_colon", "text ends with `:` (label / group header)"),
-    ("v_kw_total", "1 if text starts with a total keyword (total/ukupno/svega/укупно…), 0.5 if one appears later"),
-    ("v_kw_note", "text starts like a note/source line (`Note:`, `Izvor:`, `Napomena`, `*`, `¹`)"),
-    ("v_starts_with_enumerator", "text starts with an enumerator (`1.`, `1.2`, `a)`, `(3)`, `IV.`, `-`, `•`) then text"),
-    ("v_time_text", "text that is a clock time alone (`6:00`, `6:00 PM`, `18:00:00`, `18h30`)"),
+    (
+        "v_is_padded",
+        "text has leading/trailing whitespace, NBSP or invisible characters",
+    ),
+    (
+        "v_ends_with_colon",
+        "text ends with `:` (label / group header)",
+    ),
+    (
+        "v_kw_total",
+        "1 if text starts with a total keyword (total/ukupno/svega/укупно…), 0.5 if one appears later",
+    ),
+    (
+        "v_kw_note",
+        "text starts like a note/source line (`Note:`, `Izvor:`, `Napomena`, `*`, `¹`)",
+    ),
+    (
+        "v_starts_with_enumerator",
+        "text starts with an enumerator (`1.`, `1.2`, `a)`, `(3)`, `IV.`, `-`, `•`) then text",
+    ),
+    (
+        "v_time_text",
+        "text that is a clock time alone (`6:00`, `6:00 PM`, `18:00:00`, `18h30`)",
+    ),
 ];
 
 const N: usize = FEATURES.len();
@@ -86,7 +149,10 @@ pub fn infer_column<'a>(values: impl IntoIterator<Item = &'a str>) -> ColumnHint
 }
 
 /// [`infer_column`] that also weighs the column's numbers stored as numbers (see [`NativeNumbers`]).
-pub fn infer_column_with<'a>(values: impl IntoIterator<Item = &'a str>, native: &NativeNumbers) -> ColumnHints {
+pub fn infer_column_with<'a>(
+    values: impl IntoIterator<Item = &'a str>,
+    native: &NativeNumbers,
+) -> ColumnHints {
     let mut d = DecimalVotes::default();
     let mut o = DateOrderVotes::default();
     let mut cur = false;
@@ -97,7 +163,11 @@ pub fn infer_column_with<'a>(values: impl IntoIterator<Item = &'a str>, native: 
         o.add(s);
         cur = cur || currency_evidence_parsed(s, p.as_ref());
     }
-    ColumnHints { decimal: d.decision_with(native), date_order: o.decision(), currency_context: cur }
+    ColumnHints {
+        decimal: d.decision_with(native),
+        date_order: o.decision(),
+        currency_context: cur,
+    }
 }
 
 /// Infers [`ColumnHints`] for every column of the sheet, from the data only.
@@ -118,7 +188,8 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
     let mut currency_cols: rustc_hash::FxHashMap<u32, bool> = Default::default();
     let mut natives: rustc_hash::FxHashMap<u32, NativeNumbers> = Default::default();
     // Each text's votes and currency evidence depend only on the text: computed once per text.
-    let mut memo: rustc_hash::FxHashMap<&str, (DecimalVotes, DateOrderVotes, bool)> = rustc_hash::FxHashMap::default();
+    let mut memo: rustc_hash::FxHashMap<&str, (DecimalVotes, DateOrderVotes, bool)> =
+        rustc_hash::FxHashMap::default();
     for c in &grid.sheet.cells {
         if let Some(Value::Number(x)) = &c.value {
             if locale.is_none() {
@@ -146,7 +217,18 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
     }
     let cur = |col: &u32| currency_cols.get(col).copied().unwrap_or(false);
     if let Some(l) = locale {
-        return votes.into_keys().map(|col| (col, ColumnHints { currency_context: cur(&col), ..l.hints() })).collect();
+        return votes
+            .into_keys()
+            .map(|col| {
+                (
+                    col,
+                    ColumnHints {
+                        currency_context: cur(&col),
+                        ..l.hints()
+                    },
+                )
+            })
+            .collect();
     }
     let mut sheet_d = DecimalVotes::default();
     let mut sheet_o = DateOrderVotes::default();
@@ -169,7 +251,14 @@ pub fn sheet_column_hints_with(grid: &Grid, locale: Option<Locale>) -> HashMap<u
             let currency_context = cur(&col);
             let native = natives.get(&col).copied().unwrap_or_default();
             let decimal = d.decision_with(&native).or(sheet_decimal);
-            (col, ColumnHints { decimal, date_order: o.decision().or(sheet_order), currency_context })
+            (
+                col,
+                ColumnHints {
+                    decimal,
+                    date_order: o.decision().or(sheet_order),
+                    currency_context,
+                },
+            )
         })
         .collect()
 }
@@ -222,13 +311,22 @@ impl<'a> Values<'a> {
 
     /// Another [`Values`] over the same sheet and hints, with memos of its own (for another thread).
     pub fn fork(&self) -> Values<'a> {
-        Values { hints: self.hints.clone(), locale: self.locale, memo: Default::default(), num_memo: Default::default() }
+        Values {
+            hints: self.hints.clone(),
+            locale: self.locale,
+            memo: Default::default(),
+            num_memo: Default::default(),
+        }
     }
 
     /// The [`FEATURES`] of `c`, a cell of the sheet given to [`Values::new`].
     pub fn cell(&mut self, c: &'a Cell) -> [f32; N] {
         let locale = self.locale;
-        let h = self.hints.get(&c.col).copied().unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
+        let h = self
+            .hints
+            .get(&c.col)
+            .copied()
+            .unwrap_or_else(|| locale.map(Locale::hints).unwrap_or_default());
         // The memos only save work: past this size they start over (a sheet of millions of
         // distinct values would otherwise hold a feature row per value).
         if self.memo.len() >= MEMO_MAX {
@@ -239,12 +337,18 @@ impl<'a> Values<'a> {
         }
         match &c.value {
             Some(Value::Text(t)) => {
-                let mut r = *self.memo.entry((t.as_str(), h)).or_insert_with(|| cell_features(c, h));
+                let mut r = *self
+                    .memo
+                    .entry((t.as_str(), h))
+                    .or_insert_with(|| cell_features(c, h));
                 r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
                 r
             }
             Some(Value::Number(x)) => {
-                let mut r = *self.num_memo.entry((x.to_bits(), h)).or_insert_with(|| cell_features(c, h));
+                let mut r = *self
+                    .num_memo
+                    .entry((x.to_bits(), h))
+                    .or_insert_with(|| cell_features(c, h));
                 r[5] = if c.formula.is_some() { 1.0 } else { 0.0 };
                 r
             }
@@ -261,7 +365,10 @@ struct StackStr {
 
 impl StackStr {
     fn new() -> Self {
-        StackStr { buf: [0; 48], len: 0 }
+        StackStr {
+            buf: [0; 48],
+            len: 0,
+        }
     }
     fn as_str(&self) -> &str {
         std::str::from_utf8(&self.buf[..self.len]).unwrap_or("")
@@ -282,7 +389,11 @@ impl std::fmt::Write for StackStr {
 
 fn format_number(x: f64, out: &mut StackStr) {
     let a = x.abs();
-    let _ = if a != 0.0 && !(1e-6..1e15).contains(&a) { write!(out, "{x:e}") } else { write!(out, "{x}") };
+    let _ = if a != 0.0 && !(1e-6..1e15).contains(&a) {
+        write!(out, "{x:e}")
+    } else {
+        write!(out, "{x}")
+    };
 }
 
 fn is_year(x: f64) -> bool {
@@ -348,8 +459,13 @@ pub fn cell_features(cell: &Cell, hints: ColumnHints) -> [f32; N] {
                 f[18] = flag(p.leading_zero);
                 let v = p.normalized();
                 numeric = Some(v);
-                let plain_year = t.len() <= 5 && t.as_bytes()[..4.min(t.len())].iter().all(u8::is_ascii_digit);
-                f[20] = flag(plain_year && t.len() >= 4 && (t.len() == 4 || t.ends_with('.')) && is_year(v));
+                let plain_year = t.len() <= 5
+                    && t.as_bytes()[..4.min(t.len())]
+                        .iter()
+                        .all(u8::is_ascii_digit);
+                f[20] = flag(
+                    plain_year && t.len() >= 4 && (t.len() == 4 || t.ends_with('.')) && is_year(v),
+                );
             } else {
                 if t.len() == 5 && t.ends_with('.') && t[..4].bytes().all(|b| b.is_ascii_digit()) {
                     // "2024." — Serbian ordinal year; not a number to the parser.
@@ -417,7 +533,12 @@ mod tests {
     use crate::model::Sheet;
 
     fn text(row: u32, col: u32, s: &str) -> Cell {
-        Cell { row, col, value: Some(Value::Text(s.into())), formula: None }
+        Cell {
+            row,
+            col,
+            value: Some(Value::Text(s.into())),
+            formula: None,
+        }
     }
     fn get(f: &[f32; N], name: &str) -> f32 {
         f[FEATURES.iter().position(|(n, _)| *n == name).unwrap()]
@@ -435,7 +556,12 @@ mod tests {
 
     #[test]
     fn number_cell() {
-        let c = Cell { row: 0, col: 0, value: Some(Value::Number(-2024.0)), formula: Some("A1".into()) };
+        let c = Cell {
+            row: 0,
+            col: 0,
+            value: Some(Value::Number(-2024.0)),
+            formula: Some("A1".into()),
+        };
         let f = cell_features(&c, ColumnHints::default());
         assert_eq!(get(&f, "v_is_number"), 1.0);
         assert_eq!(get(&f, "v_is_formula"), 1.0);
@@ -444,52 +570,128 @@ mod tests {
         assert_eq!(get(&f, "v_is_year"), 0.0);
         assert_eq!(get(&f, "v_len"), 5.0);
         assert_eq!(get(&f, "v_digit_ratio"), 0.8);
-        let c = Cell { row: 0, col: 0, value: Some(Value::Number(2024.0)), formula: None };
-        assert_eq!(get(&cell_features(&c, ColumnHints::default()), "v_is_year"), 1.0);
-        let c = Cell { row: 0, col: 0, value: Some(Value::Number(1e300)), formula: None };
+        let c = Cell {
+            row: 0,
+            col: 0,
+            value: Some(Value::Number(2024.0)),
+            formula: None,
+        };
+        assert_eq!(
+            get(&cell_features(&c, ColumnHints::default()), "v_is_year"),
+            1.0
+        );
+        let c = Cell {
+            row: 0,
+            col: 0,
+            value: Some(Value::Number(1e300)),
+            formula: None,
+        };
         assert!(get(&cell_features(&c, ColumnHints::default()), "v_len") > 0.0);
     }
 
     #[test]
     fn other_value_kinds() {
         let h = ColumnHints::default();
-        let f = cell_features(&Cell { row: 0, col: 0, value: None, formula: Some("SUM(A1)".into()) }, h);
+        let f = cell_features(
+            &Cell {
+                row: 0,
+                col: 0,
+                value: None,
+                formula: Some("SUM(A1)".into()),
+            },
+            h,
+        );
         assert_eq!(get(&f, "v_no_value"), 1.0);
-        let f = cell_features(&Cell { row: 0, col: 0, value: Some(Value::DateTime(45292.0)), formula: None }, h);
+        let f = cell_features(
+            &Cell {
+                row: 0,
+                col: 0,
+                value: Some(Value::DateTime(45292.0)),
+                formula: None,
+            },
+            h,
+        );
         assert_eq!((get(&f, "v_is_date"), get(&f, "v_len")), (1.0, 10.0));
-        let f = cell_features(&Cell { row: 0, col: 0, value: Some(Value::Bool(true)), formula: None }, h);
+        let f = cell_features(
+            &Cell {
+                row: 0,
+                col: 0,
+                value: Some(Value::Bool(true)),
+                formula: None,
+            },
+            h,
+        );
         assert_eq!((get(&f, "v_is_bool"), get(&f, "v_upper_ratio")), (1.0, 1.0));
-        let f = cell_features(&Cell { row: 0, col: 0, value: Some(Value::Error("#DIV/0!".into())), formula: None }, h);
-        assert_eq!((get(&f, "v_is_error"), get(&f, "v_missing_token")), (1.0, 1.0));
+        let f = cell_features(
+            &Cell {
+                row: 0,
+                col: 0,
+                value: Some(Value::Error("#DIV/0!".into())),
+                formula: None,
+            },
+            h,
+        );
+        assert_eq!(
+            (get(&f, "v_is_error"), get(&f, "v_missing_token")),
+            (1.0, 1.0)
+        );
     }
 
     #[test]
     fn text_cells() {
         let h = ColumnHints::default();
         let f = cell_features(&text(0, 0, " (1.200,50 RSD) "), h);
-        for n in ["v_is_text", "v_numeric_text", "v_has_currency", "v_is_negative", "v_is_padded"] {
+        for n in [
+            "v_is_text",
+            "v_numeric_text",
+            "v_has_currency",
+            "v_is_negative",
+            "v_is_padded",
+        ] {
             assert_eq!(get(&f, n), 1.0, "{n}");
         }
         assert_eq!(get(&f, "v_is_integer"), 0.0);
         let f = cell_features(&text(0, 0, "12%"), h);
         assert_eq!(get(&f, "v_is_percent"), 1.0);
         let f = cell_features(&text(0, 0, "2024"), h);
-        assert_eq!((get(&f, "v_is_year"), get(&f, "v_numeric_text")), (1.0, 1.0));
+        assert_eq!(
+            (get(&f, "v_is_year"), get(&f, "v_numeric_text")),
+            (1.0, 1.0)
+        );
         let f = cell_features(&text(0, 0, "2024."), h);
         assert_eq!(get(&f, "v_is_year"), 1.0);
         let f = cell_features(&text(0, 0, "12.03.2024."), h);
-        assert_eq!((get(&f, "v_date_text"), get(&f, "v_numeric_text")), (1.0, 0.0));
+        assert_eq!(
+            (get(&f, "v_date_text"), get(&f, "v_numeric_text")),
+            (1.0, 0.0)
+        );
         let f = cell_features(&text(0, 0, "n/a"), h);
-        assert_eq!((get(&f, "v_missing_token"), get(&f, "v_is_error")), (1.0, 0.0));
+        assert_eq!(
+            (get(&f, "v_missing_token"), get(&f, "v_is_error")),
+            (1.0, 0.0)
+        );
         let f = cell_features(&text(0, 0, "#N/A"), h);
-        assert_eq!((get(&f, "v_missing_token"), get(&f, "v_is_error")), (1.0, 1.0));
+        assert_eq!(
+            (get(&f, "v_missing_token"), get(&f, "v_is_error")),
+            (1.0, 1.0)
+        );
         let f = cell_features(&text(0, 0, "УКУПНО:"), h);
-        assert_eq!((get(&f, "v_kw_total"), get(&f, "v_has_cyrillic"), get(&f, "v_ends_with_colon")), (1.0, 1.0, 1.0));
+        assert_eq!(
+            (
+                get(&f, "v_kw_total"),
+                get(&f, "v_has_cyrillic"),
+                get(&f, "v_ends_with_colon")
+            ),
+            (1.0, 1.0, 1.0)
+        );
         assert_eq!(get(&f, "v_upper_ratio"), 1.0);
         let f = cell_features(&text(0, 0, "Izvor: RZS"), h);
         assert_eq!(get(&f, "v_kw_note"), 1.0);
         let f = cell_features(&text(0, 0, "1. Prihodi od poreza"), h);
-        assert_eq!((get(&f, "v_starts_with_enumerator"), get(&f, "v_word_count")), (1.0, 4.0));
+        assert_eq!(
+            (get(&f, "v_starts_with_enumerator"), get(&f, "v_word_count")),
+            (1.0, 4.0)
+        );
         let f = cell_features(&text(0, 0, "Q3"), h);
         assert_eq!(get(&f, "v_period_label"), 1.0);
         let f = cell_features(&text(0, 0, "Da"), h);
@@ -502,7 +704,12 @@ mod tests {
     fn column_hints_resolve_ambiguity() {
         let sheet = Sheet {
             name: "s".into(),
-            cells: vec![text(0, 0, "1.200"), text(0, 1, "1.200"), text(1, 0, "3,5"), text(1, 1, "3.25")],
+            cells: vec![
+                text(0, 0, "1.200"),
+                text(0, 1, "1.200"),
+                text(1, 0, "3,5"),
+                text(1, 1, "3.25"),
+            ],
             merges: vec![],
             formats: vec![],
         };
@@ -523,7 +730,14 @@ mod tests {
     #[test]
     fn infer_column_combines() {
         let h = infer_column(["1.200,50", "25/12/2024"]);
-        assert_eq!(h, ColumnHints { decimal: Some(DecimalSep::Comma), date_order: Some(DateOrder::DayMonth), currency_context: false });
+        assert_eq!(
+            h,
+            ColumnHints {
+                decimal: Some(DecimalSep::Comma),
+                date_order: Some(DateOrder::DayMonth),
+                currency_context: false
+            }
+        );
         assert!(infer_column(["ALL 5", "Amount (USD)"]).currency_context);
         assert!(!infer_column(["ALL 5", "TOP 10"]).currency_context);
     }

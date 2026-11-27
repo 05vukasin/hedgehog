@@ -2,7 +2,7 @@
 //! `HH_DUMP=file.xlsx cargo test --release -p hh_core --test layout_dump -- --ignored --nocapture`
 //! (`HH_DUMP_SHEET=name` limits it to one sheet; `HH_DUMP_MODEL=1` shows the model path, `learned::analyze`).
 
-use hh_core::{a1, layout, learned, open, Grid, Role, Value};
+use hh_core::{Grid, Role, Value, a1, layout, learned, open};
 
 fn short(v: &Option<Value>) -> String {
     let s = match v {
@@ -28,7 +28,9 @@ fn tag(r: Role) -> &'static str {
 #[test]
 #[ignore]
 fn dump() {
-    let Ok(path) = std::env::var("HH_DUMP") else { return };
+    let Ok(path) = std::env::var("HH_DUMP") else {
+        return;
+    };
     let only = std::env::var("HH_DUMP_SHEET").ok();
     let book = open(&path).unwrap();
     for sheet in &book.sheets {
@@ -42,7 +44,12 @@ fn dump() {
         } else {
             layout::analyze(&grid)
         };
-        println!("== {} ({} cells, layout {:.2} ms)", sheet.name, sheet.cells.len(), t.elapsed().as_secs_f64() * 1e3);
+        println!(
+            "== {} ({} cells, layout {:.2} ms)",
+            sheet.name,
+            sheet.cells.len(),
+            t.elapsed().as_secs_f64() * 1e3
+        );
         if std::env::var_os("HH_DUMP_QUIET").is_some() {
             continue;
         }
@@ -67,7 +74,13 @@ fn dump() {
                 line = format!("{:>5}:", row + 1);
             }
             let f = if c.formula.is_some() { "=" } else { "" };
-            line.push_str(&format!(" {}[{}]{}{}", a1(c.row, c.col), tag(l.roles[i]), f, short(&c.value)));
+            line.push_str(&format!(
+                " {}[{}]{}{}",
+                a1(c.row, c.col),
+                tag(l.roles[i]),
+                f,
+                short(&c.value)
+            ));
         }
         if !line.is_empty() {
             println!("{line}");

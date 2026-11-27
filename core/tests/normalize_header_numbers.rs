@@ -4,18 +4,25 @@
 
 use std::path::PathBuf;
 
-use hh_core::normalize::{normalize_workbook, Normalized, Options, Table};
+use hh_core::normalize::{Normalized, Options, Table, normalize_workbook};
 use hh_core::open;
 use rust_xlsxwriter::Workbook;
 
 fn normalize(name: &str, build: impl FnOnce(&mut rust_xlsxwriter::Worksheet)) -> Normalized {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_hnum_{name}_{}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_hnum_{name}_{}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     build(wb.add_worksheet());
     wb.save(&path).unwrap();
     let book = open(&path).unwrap();
     let _ = std::fs::remove_file(&path);
-    normalize_workbook(&book, &Options { keep_totals: true, ..Options::default() })
+    normalize_workbook(
+        &book,
+        &Options {
+            keep_totals: true,
+            ..Options::default()
+        },
+    )
 }
 
 fn names(t: &Table) -> Vec<&str> {
@@ -26,12 +33,26 @@ fn names(t: &Table) -> Vec<&str> {
 fn numbers_under_one_label_name_the_columns() {
     for merged in [false, true] {
         let n = normalize(&format!("years{merged}"), |ws| {
-            ws.write_string(0, 0, "Table 4: Percentage receiving employment income, by cohort").unwrap();
+            ws.write_string(
+                0,
+                0,
+                "Table 4: Percentage receiving employment income, by cohort",
+            )
+            .unwrap();
             // the stub's header merged down over the numbers row and the unit row (HiTab 1220)
-            ws.merge_range(2, 0, 4, 0, "Group and cohort", &rust_xlsxwriter::Format::new()).unwrap();
+            ws.merge_range(
+                2,
+                0,
+                4,
+                0,
+                "Group and cohort",
+                &rust_xlsxwriter::Format::new(),
+            )
+            .unwrap();
             let label = "Number of years since landing";
             if merged {
-                ws.merge_range(2, 1, 2, 6, label, &rust_xlsxwriter::Format::new()).unwrap();
+                ws.merge_range(2, 1, 2, 6, label, &rust_xlsxwriter::Format::new())
+                    .unwrap();
             } else {
                 ws.write_string(2, 1, label).unwrap();
             }
@@ -46,7 +67,8 @@ fn numbers_under_one_label_name_the_columns() {
                 for y in 1999..2004 {
                     ws.write_number(row, 0, y as f64).unwrap();
                     for k in 1..=6u16 {
-                        ws.write_number(row, k, 50.0 + (y - 1999) as f64 + 4.0 * k as f64 + 0.1).unwrap();
+                        ws.write_number(row, k, 50.0 + (y - 1999) as f64 + 4.0 * k as f64 + 0.1)
+                            .unwrap();
                     }
                     row += 1;
                 }
@@ -55,7 +77,11 @@ fn numbers_under_one_label_name_the_columns() {
         let t = &n.tables[0];
         let cols = names(t);
         for k in 1..=6 {
-            assert!(cols.iter().any(|c| c.starts_with(&format!("Number of years since landing / {k}"))), "{cols:?}");
+            assert!(
+                cols.iter()
+                    .any(|c| c.starts_with(&format!("Number of years since landing / {k}"))),
+                "{cols:?}"
+            );
         }
     }
 }
@@ -72,7 +98,8 @@ fn a_column_numbering_under_distinct_labels_does_not_name_the_columns() {
         for i in 0..6u32 {
             ws.write_number(2 + i, 0, 1991.0 + i as f64).unwrap();
             for j in 1..5u16 {
-                ws.write_number(2 + i, j, 1500.25 + (i * 7 + j as u32) as f64).unwrap();
+                ws.write_number(2 + i, j, 1500.25 + (i * 7 + j as u32) as f64)
+                    .unwrap();
             }
         }
     });

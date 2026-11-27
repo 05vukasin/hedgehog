@@ -18,21 +18,39 @@ fn dir(tag: &str) -> PathBuf {
 fn csv() -> String {
     let mut s = String::from("Region,Product,Revenue,Date\n");
     for i in 0..400 {
-        s.push_str(&format!("R{},\"{} - Product {}\",{}.5,2021-{:02}-01\n", i % 5, 1000 + i % 7, i % 7, 100 + i, 1 + i % 12));
+        s.push_str(&format!(
+            "R{},\"{} - Product {}\",{}.5,2021-{:02}-01\n",
+            i % 5,
+            1000 + i % 7,
+            i % 7,
+            100 + i,
+            1 + i % 12
+        ));
     }
     s.push_str("Total,,,\n");
     s
 }
 
 fn session(root: &Path, cache: Option<&Path>) -> Session {
-    let opts = Options { cache: cache.map(|c| Cache { dir: c.to_path_buf(), max_bytes: 1 << 30 }), ..Options::default() };
+    let opts = Options {
+        cache: cache.map(|c| Cache {
+            dir: c.to_path_buf(),
+            max_bytes: 1 << 30,
+        }),
+        ..Options::default()
+    };
     Session::with_options(root, &[], opts).unwrap()
 }
 
 /// The catalog without its last line (the timing line differs between a fresh and a cached open).
 fn entries(cache: &Path) -> Vec<PathBuf> {
-    let Ok(rd) = std::fs::read_dir(cache.join("v1")) else { return Vec::new() };
-    rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect()
+    let Ok(rd) = std::fs::read_dir(cache.join("v1")) else {
+        return Vec::new();
+    };
+    rd.flatten()
+        .map(|e| e.path())
+        .filter(|p| p.is_dir())
+        .collect()
 }
 
 const Q: &str = "SELECT Region, round(sum(Revenue), 1) AS r, count(DISTINCT Product_id) AS ids FROM T1 GROUP BY Region ORDER BY Region";
@@ -55,7 +73,11 @@ fn reopen_from_cache_matches() {
     let cat1 = cold.open_file("sales.csv").unwrap();
     assert!(!cold.from_cache("sales.csv"));
     assert_eq!(cold.query("sales.csv", Q, None).unwrap(), q0);
-    assert_eq!(entries(&cache).len(), 1, "the entry is written once the database is built");
+    assert_eq!(
+        entries(&cache).len(),
+        1,
+        "the entry is written once the database is built"
+    );
 
     let mut warm = session(&root, Some(&cache));
     let cat2 = warm.open_file("sales.csv").unwrap();
@@ -64,7 +86,10 @@ fn reopen_from_cache_matches() {
     assert_eq!(cat0, cat2);
     assert_eq!(warm.query("sales.csv", Q, None).unwrap(), q0);
     assert_eq!(warm.describe_table("sales.csv", "T1").unwrap(), desc0);
-    assert_eq!(warm.totals("sales.csv", None, None).unwrap(), plain.totals("sales.csv", None, None).unwrap());
+    assert_eq!(
+        warm.totals("sales.csv", None, None).unwrap(),
+        plain.totals("sales.csv", None, None).unwrap()
+    );
     // Same content under another name: one entry, the catalog made for that name.
     let copy2 = warm.open_file("sub/sales copy.csv").unwrap();
     assert_eq!(copy2, copy0);
@@ -77,7 +102,16 @@ fn reopen_from_cache_matches() {
     let mut changed = session(&root, Some(&cache));
     changed.open_file("sales.csv").unwrap();
     assert!(!changed.from_cache("sales.csv"));
-    assert!(changed.query("sales.csv", "SELECT count(*) FROM T1 WHERE Region = 'R9'", None).unwrap().starts_with("count(*)\n80"));
+    assert!(
+        changed
+            .query(
+                "sales.csv",
+                "SELECT count(*) FROM T1 WHERE Region = 'R9'",
+                None
+            )
+            .unwrap()
+            .starts_with("count(*)\n80")
+    );
     let _ = std::fs::remove_dir_all(&d);
 }
 
@@ -123,7 +157,11 @@ fn cancel_stops_a_query() {
     let d = dir("cancel");
     let root = d.join("data");
     std::fs::write(root.join("sales.csv"), csv()).unwrap();
-    let opts = Options { cache: None, query_timeout: Duration::from_secs(30), ..Options::default() };
+    let opts = Options {
+        cache: None,
+        query_timeout: Duration::from_secs(30),
+        ..Options::default()
+    };
     let mut s = Session::with_options(&root, &[], opts).unwrap();
     s.open_file("sales.csv").unwrap();
     let flag = s.cancel_flag();
@@ -139,6 +177,10 @@ fn cancel_stops_a_query() {
     assert_eq!(e.0, "cancelled");
     assert!(t0.elapsed() < Duration::from_secs(10));
     s.cancel_flag().store(false, Ordering::Relaxed);
-    assert!(s.query("sales.csv", "SELECT count(*) FROM T1", None).unwrap().starts_with("count(*)\n400"));
+    assert!(
+        s.query("sales.csv", "SELECT count(*) FROM T1", None)
+            .unwrap()
+            .starts_with("count(*)\n400")
+    );
     let _ = std::fs::remove_dir_all(&d);
 }

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
-use hh_core::eval::{self, run::RunOptions, split::Split, Analyzer};
+use hh_core::eval::{self, Analyzer, run::RunOptions, split::Split};
 
 mod bench;
 mod mcp;
@@ -58,7 +58,10 @@ fn analyzer(name: &str) -> Option<&'static dyn Analyzer> {
 fn model() -> &'static hh_core::learned::RowModel {
     static MODEL: std::sync::OnceLock<hh_core::learned::RowModel> = std::sync::OnceLock::new();
     MODEL.get_or_init(|| {
-        let Some(dir) = std::env::var("HEDGEHOG_MODEL").ok().filter(|d| !d.is_empty()) else {
+        let Some(dir) = std::env::var("HEDGEHOG_MODEL")
+            .ok()
+            .filter(|d| !d.is_empty())
+        else {
             return hh_core::learned::embedded().cloned().unwrap_or_else(|| {
                 eprintln!("the embedded model failed to load");
                 std::process::exit(2)
@@ -71,10 +74,11 @@ fn model() -> &'static hh_core::learned::RowModel {
                 std::process::exit(2)
             })
         };
-        hh_core::learned::RowModel::from_json(&read("coarse.json"), &read("fine.json")).unwrap_or_else(|e| {
-            eprintln!("{dir}: {e}");
-            std::process::exit(2)
-        })
+        hh_core::learned::RowModel::from_json(&read("coarse.json"), &read("fine.json"))
+            .unwrap_or_else(|e| {
+                eprintln!("{dir}: {e}");
+                std::process::exit(2)
+            })
     })
 }
 
@@ -84,7 +88,12 @@ fn model_analyze(g: &hh_core::Grid) -> hh_core::SheetLayout {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
         ["describe", path] => match hh_core::open(path) {
             Ok(wb) => {
                 print!("{}", hh_core::describe(&wb));
@@ -123,7 +132,9 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
     let mut analyzer_name = "baseline".to_string();
     let mut json: Option<PathBuf> = None;
     let mut write_json = true;
-    let mut threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(4);
+    let mut threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(4);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         let mut val = || it.next().copied().ok_or(format!("{a} needs a value"));
@@ -134,7 +145,12 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
             "--json" => json = Some(PathBuf::from(val()?)),
             "--no-json" => write_json = false,
             "--progress" => opts.progress = true,
-            "--threads" => threads = val()?.parse::<usize>().map_err(|_| "--threads needs a number")?.max(1),
+            "--threads" => {
+                threads = val()?
+                    .parse::<usize>()
+                    .map_err(|_| "--threads needs a number")?
+                    .max(1)
+            }
             _ => return Err(format!("unknown argument `{a}`")),
         }
     }
@@ -155,7 +171,13 @@ fn eval_deco(args: &[&str]) -> Result<(), String> {
             let dir = std::env::var_os("HEDGEHOG_SCORES")
                 .filter(|p| !p.is_empty())
                 .map(PathBuf::from)
-                .unwrap_or_else(|| root.parent().unwrap_or(&root).join("docs").join("research").join("scores"));
+                .unwrap_or_else(|| {
+                    root.parent()
+                        .unwrap_or(&root)
+                        .join("docs")
+                        .join("research")
+                        .join("scores")
+                });
             let lim = opts.limit.map(|l| format!("_n{l}")).unwrap_or_default();
             dir.join(format!("{analyzer_name}_deco_{}{lim}.json", opts.split))
         });
@@ -180,7 +202,11 @@ fn cells(path: &str, args: &[&str]) -> Result<(), String> {
     };
     let wb = hh_core::open(path).map_err(|e| format!("{path}: {e}"))?;
     let mut out = std::io::BufWriter::new(std::io::stdout().lock());
-    for s in wb.sheets.iter().filter(|s| sheet.is_none_or(|n| s.name == n)) {
+    for s in wb
+        .sheets
+        .iter()
+        .filter(|s| sheet.is_none_or(|n| s.name == n))
+    {
         for c in &s.cells {
             let v = match &c.value {
                 Some(hh_core::Value::Text(t)) => t.replace(['\t', '\n', '\r'], " "),
@@ -190,8 +216,15 @@ fn cells(path: &str, args: &[&str]) -> Result<(), String> {
                 Some(hh_core::Value::Error(e)) => format!("error:{e}"),
                 None => format!("no_saved_value:={}", c.formula.as_deref().unwrap_or("")),
             };
-            writeln!(out, "{}\t{}\t{}\t{}\t{v}", s.name, c.row, c.col, hh_core::a1(c.row, c.col))
-                .map_err(|e| e.to_string())?;
+            writeln!(
+                out,
+                "{}\t{}\t{}\t{}\t{v}",
+                s.name,
+                c.row,
+                c.col,
+                hh_core::a1(c.row, c.col)
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
     out.flush().map_err(|e| e.to_string())
@@ -211,14 +244,25 @@ fn normalize(args: &[&str]) -> Result<(), String> {
             "--csv" => opts.csv = true,
             "--rules-only" => opts.rules_only = true,
             "--model-max-cells" => {
-                opts.model_max_cells = Some(val()?.parse().map_err(|_| "--model-max-cells needs a number")?)
+                opts.model_max_cells = Some(
+                    val()?
+                        .parse()
+                        .map_err(|_| "--model-max-cells needs a number")?,
+                )
             }
             "--threads" => {
-                opts.threads = Some(val()?.parse::<usize>().map_err(|_| "--threads needs a number")?.max(1))
+                opts.threads = Some(
+                    val()?
+                        .parse::<usize>()
+                        .map_err(|_| "--threads needs a number")?
+                        .max(1),
+                )
             }
             "--locale" => {
                 let tag = val()?;
-                opts.locale = Some(hh_core::values::Locale::parse(tag).ok_or(format!("unknown locale `{tag}`"))?);
+                opts.locale = Some(
+                    hh_core::values::Locale::parse(tag).ok_or(format!("unknown locale `{tag}`"))?,
+                );
             }
             s if s.starts_with('-') => return Err(format!("unknown argument `{s}`")),
             s if input.is_none() => input = Some(s),
@@ -250,7 +294,10 @@ fn normalize(args: &[&str]) -> Result<(), String> {
 /// Scores an analyzer on a generated corpus (`tools/noise`): the standard report plus a breakdown
 /// per profile, table-boundary operator and noise operator, and optionally the value parsers.
 fn eval_synthetic(args: &[&str]) -> Result<(), String> {
-    let mut opts = RunOptions { split: Split::All, ..RunOptions::default() };
+    let mut opts = RunOptions {
+        split: Split::All,
+        ..RunOptions::default()
+    };
     let mut analyzer_name = "baseline".to_string();
     let mut dir: Option<PathBuf> = None;
     let mut json: Option<PathBuf> = None;
@@ -280,17 +327,27 @@ fn eval_synthetic(args: &[&str]) -> Result<(), String> {
     drop(corpus);
     report.timing.load_ms = load_ms;
     print!("{}", report.scoreboard());
-    let bopts = eval::synthetic::BreakdownOptions { limit: opts.limit, values };
+    let bopts = eval::synthetic::BreakdownOptions {
+        limit: opts.limit,
+        values,
+    };
     let bd = eval::synthetic::breakdown(&dir, an, &bopts).map_err(|e| e.to_string())?;
     print!("{}", bd.text());
     if write_json {
         let lim = opts.limit.map(|l| format!("_n{l}")).unwrap_or_default();
-        let path = json.unwrap_or_else(|| dir.join("scores").join(format!("{analyzer_name}_synthetic{lim}.json")));
+        let path = json.unwrap_or_else(|| {
+            dir.join("scores")
+                .join(format!("{analyzer_name}_synthetic{lim}.json"))
+        });
         if let Some(d) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
             std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }
         let body = report.to_json();
-        let merged = format!("{},\"breakdown\":{}}}", body.trim_end().trim_end_matches('}'), bd.to_json());
+        let merged = format!(
+            "{},\"breakdown\":{}}}",
+            body.trim_end().trim_end_matches('}'),
+            bd.to_json()
+        );
         std::fs::write(&path, merged).map_err(|e| format!("{}: {e}", path.display()))?;
         println!("report: {}", path.display());
     }
@@ -320,7 +377,9 @@ fn features(args: &[&str]) -> Result<(), String> {
             "--corpus" => corpora = val()?.split(',').map(str::to_string).collect(),
             "--dir" => dir = Some(PathBuf::from(val()?)),
             "--split" => opts.split = val()?.parse::<Split>()?,
-            "--data-keep" => opts.data_keep = val()?.parse().map_err(|_| "--data-keep needs a number")?,
+            "--data-keep" => {
+                opts.data_keep = val()?.parse().map_err(|_| "--data-keep needs a number")?
+            }
             "--limit" => opts.limit = Some(val()?.parse().map_err(|_| "--limit needs a number")?),
             "--level" => rows = val()? == "row",
             _ => return Err(format!("unknown argument `{a}`")),
@@ -334,10 +393,19 @@ fn features(args: &[&str]) -> Result<(), String> {
     for (k, name) in corpora.iter().enumerate() {
         let corpus = match name.as_str() {
             "deco" => eval::deco::load(&root),
-            "synthetic" => eval::synthetic::load(&dir.clone().unwrap_or_else(|| root.join("synthetic").join("v0"))),
+            "synthetic" => eval::synthetic::load(
+                &dir.clone()
+                    .unwrap_or_else(|| root.join("synthetic").join("v0")),
+            ),
             "statsheets" => eval::statsheets::load(&root),
-            "strudel" => eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"),
-            other => return Err(format!("unknown corpus `{other}` (deco, synthetic, statsheets, strudel)")),
+            "strudel" => {
+                eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel")
+            }
+            other => {
+                return Err(format!(
+                    "unknown corpus `{other}` (deco, synthetic, statsheets, strudel)"
+                ));
+            }
         }
         .map_err(|e| e.to_string())?;
         opts.source = name.clone();
@@ -348,8 +416,11 @@ fn features(args: &[&str]) -> Result<(), String> {
             eval::export::export(&corpus, &opts, &mut w, k == 0)
         }
         .map_err(|e| e.to_string())?;
-        let roles: Vec<String> =
-            hh_core::Role::ALL.iter().zip(st.per_role).map(|(r, n)| format!("{}={n}", r.as_str())).collect();
+        let roles: Vec<String> = hh_core::Role::ALL
+            .iter()
+            .zip(st.per_role)
+            .map(|(r, n)| format!("{}={n}", r.as_str()))
+            .collect();
         println!(
             "{name}: {} files ({} failed), {} sheets, {} rows [{}]",
             st.files,
@@ -360,7 +431,11 @@ fn features(args: &[&str]) -> Result<(), String> {
         );
     }
     w.flush().map_err(|e| e.to_string())?;
-    println!("wrote {} in {:.1} s", out.display(), t.elapsed().as_secs_f64());
+    println!(
+        "wrote {} in {:.1} s",
+        out.display(),
+        t.elapsed().as_secs_f64()
+    );
     Ok(())
 }
 
@@ -368,10 +443,17 @@ fn features(args: &[&str]) -> Result<(), String> {
 /// test: the learned models train on the dev files of all corpora) except `eu`, which is held out
 /// entirely and always scored whole.
 fn benchmark(args: &[&str]) -> Result<(), String> {
-    let mut corpora = vec!["deco".to_string(), "statsheets".into(), "strudel".into(), "synthetic".into()];
+    let mut corpora = vec![
+        "deco".to_string(),
+        "statsheets".into(),
+        "strudel".into(),
+        "synthetic".into(),
+    ];
     let mut analyzer_name = "layout".to_string();
     let mut split = Split::Test;
-    let mut threads = std::thread::available_parallelism().map_or(1, |n| n.get()).min(4);
+    let mut threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(4);
     let mut out: Option<PathBuf> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -380,24 +462,40 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
             "--corpora" => corpora = val()?.split(',').map(str::to_string).collect(),
             "--analyzer" => analyzer_name = val()?.to_string(),
             "--split" => split = val()?.parse::<Split>()?,
-            "--threads" => threads = val()?.parse::<usize>().map_err(|_| "--threads needs a number")?.max(1),
+            "--threads" => {
+                threads = val()?
+                    .parse::<usize>()
+                    .map_err(|_| "--threads needs a number")?
+                    .max(1)
+            }
             "--out" => out = Some(PathBuf::from(val()?)),
             _ => return Err(format!("unknown argument `{a}`")),
         }
     }
     let an = analyzer(&analyzer_name).ok_or(format!("unknown analyzer `{analyzer_name}`"))?;
     let root = eval::data_root();
-    let mut tsv = String::from("corpus\tsource\tfiles\tsheets\tcells\tfull_pooled\tfull_file\tcoarse_pooled\tcoarse_file\taccuracy\ttable_f1_iou50\ttable_f1_iou80\ttable_f1_iou100\theader_tables\theader_exact\n");
+    let mut tsv = String::from(
+        "corpus\tsource\tfiles\tsheets\tcells\tfull_pooled\tfull_file\tcoarse_pooled\tcoarse_file\taccuracy\ttable_f1_iou50\ttable_f1_iou80\ttable_f1_iou100\theader_tables\theader_exact\n",
+    );
     for name in &corpora {
         let t = Instant::now();
         let (corpus, sp) = match name.as_str() {
             "deco" => (eval::deco::load(&root), split),
-            "synthetic" => (eval::synthetic::load(&root.join("synthetic").join("v0")), split),
+            "synthetic" => (
+                eval::synthetic::load(&root.join("synthetic").join("v0")),
+                split,
+            ),
             "statsheets" => (eval::statsheets::load(&root), split),
-            "strudel" => (eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"), split),
+            "strudel" => (
+                eval::labelled::load(&root.join("irregular").join("strudel_xlsx"), "strudel"),
+                split,
+            ),
             // Hand-labelled European open-data sheets (tools/benchmarks/eu_labels.json). No model
             // ever trains on them, so the whole corpus is scored whatever `--split` says.
-            "eu" => (eval::labelled::load(&root.join("irregular").join("eu_labelled"), "eu"), Split::All),
+            "eu" => (
+                eval::labelled::load(&root.join("irregular").join("eu_labelled"), "eu"),
+                Split::All,
+            ),
             // Public benchmark corpora converted by eval/public/convert_*.py into
             // <data>/public/<name>/{labels,tables}.tsv; never trained on, scored whole, coarse roles.
             other if other.starts_with("public:") => {
@@ -414,14 +512,30 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
         for n in &corpus.notes {
             eprintln!("{name}: {n}");
         }
-        let opts = RunOptions { split: sp, ..RunOptions::default() };
+        let opts = RunOptions {
+            split: sp,
+            ..RunOptions::default()
+        };
         let report = eval::run::evaluate_parallel(&corpus, an, &analyzer_name, &opts, threads);
         let rows = eval::benchmark::by_source(&report, corpus.coarse_roles);
-        print!("{}", eval::benchmark::table(&format!("{name} ({sp})"), &analyzer_name, &rows));
-        println!("  time {:.1} s (analyze {:.1} s)\n", t.elapsed().as_secs_f64(), report.timing.analyze_ms / 1000.0);
+        print!(
+            "{}",
+            eval::benchmark::table(&format!("{name} ({sp})"), &analyzer_name, &rows)
+        );
+        println!(
+            "  time {:.1} s (analyze {:.1} s)\n",
+            t.elapsed().as_secs_f64(),
+            report.timing.analyze_ms / 1000.0
+        );
         for r in &rows {
-            let (fp, ff) = r.full.map_or((String::new(), String::new()), |(a, b)| (format!("{:.4}", a), format!("{:.4}", b)));
-            let tf = |k: usize| r.tables.and_then(|t| t[k].f1()).map_or(String::new(), |f| format!("{f:.4}"));
+            let (fp, ff) = r.full.map_or((String::new(), String::new()), |(a, b)| {
+                (format!("{:.4}", a), format!("{:.4}", b))
+            });
+            let tf = |k: usize| {
+                r.tables
+                    .and_then(|t| t[k].f1())
+                    .map_or(String::new(), |f| format!("{f:.4}"))
+            };
             tsv.push_str(&format!(
                 "{name}\t{}\t{}\t{}\t{}\t{fp}\t{ff}\t{:.4}\t{:.4}\t{:.4}\t{}\t{}\t{}\t{}\t{}\n",
                 r.source,
@@ -450,11 +564,20 @@ fn benchmark(args: &[&str]) -> Result<(), String> {
 /// the binary form `hh_core` embeds.
 fn pack_model(dir: &str) -> Result<(), String> {
     let dir = std::path::Path::new(dir);
-    let read = |n: &str| std::fs::read_to_string(dir.join(n)).map_err(|e| format!("{}: {e}", dir.join(n).display()));
-    let model = hh_core::learned::RowModel::from_json(&read("row_coarse.json")?, &read("row_fine.json")?)?;
+    let read = |n: &str| {
+        std::fs::read_to_string(dir.join(n)).map_err(|e| format!("{}: {e}", dir.join(n).display()))
+    };
+    let model =
+        hh_core::learned::RowModel::from_json(&read("row_coarse.json")?, &read("row_fine.json")?)?;
     let bytes = model.to_bytes();
     let out = dir.join("row_model.bin");
     std::fs::write(&out, &bytes).map_err(|e| format!("{}: {e}", out.display()))?;
-    println!("{}: {} + {} trees, {} bytes", out.display(), model.coarse.trees(), model.fine.trees(), bytes.len());
+    println!(
+        "{}: {} + {} trees, {} bytes",
+        out.display(),
+        model.coarse.trees(),
+        model.fine.trees(),
+        bytes.len()
+    );
     Ok(())
 }

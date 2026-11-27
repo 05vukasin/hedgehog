@@ -5,10 +5,10 @@
 //! `MERGES_THREADS` (default 8). Files are untrusted and only parsed.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use calamine::{open_workbook_auto, Reader, Sheets};
+use calamine::{Reader, Sheets, open_workbook_auto};
 use hh_core::Rect;
 
 const DEFAULT_DIR: &str = "/home/vukasin/projects/excell-lib-project/testdata/irregular/enron";
@@ -16,7 +16,9 @@ const DEFAULT_DIR: &str = "/home/vukasin/projects/excell-lib-project/testdata/ir
 fn calamine_merges(path: &PathBuf) -> Option<Vec<(String, Vec<Rect>)>> {
     let mut wb = open_workbook_auto(path).ok()?;
     let names = wb.sheet_names();
-    let Sheets::Xlsx(x) = &mut wb else { return None };
+    let Sheets::Xlsx(x) = &mut wb else {
+        return None;
+    };
     Some(
         names
             .into_iter()
@@ -25,7 +27,12 @@ fn calamine_merges(path: &PathBuf) -> Option<Vec<(String, Vec<Rect>)>> {
                     .merge_cells_by_sheet_name(&n)
                     .unwrap_or_default()
                     .into_iter()
-                    .map(|d| Rect { top: d.start.0, left: d.start.1, bottom: d.end.0, right: d.end.1 })
+                    .map(|d| Rect {
+                        top: d.start.0,
+                        left: d.start.1,
+                        bottom: d.end.0,
+                        right: d.end.1,
+                    })
                     .collect();
                 (n, m)
             })
@@ -43,32 +50,48 @@ fn merges_match_calamine() {
     };
     let mut files: Vec<PathBuf> = rd
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("xlsx") || x.eq_ignore_ascii_case("xlsm")))
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("xlsx") || x.eq_ignore_ascii_case("xlsm"))
+        })
         .collect();
     files.sort();
-    if let Some(l) = std::env::var("MERGES_LIMIT").ok().and_then(|s| s.parse().ok()) {
+    if let Some(l) = std::env::var("MERGES_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+    {
         files.truncate(l);
     }
-    let threads: usize = std::env::var("MERGES_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(8);
+    let threads: usize = std::env::var("MERGES_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8);
     let next = AtomicUsize::new(0);
     let checked = AtomicUsize::new(0);
     let with_merges = AtomicUsize::new(0);
     let diffs = Mutex::new(Vec::new());
     std::thread::scope(|s| {
         for _ in 0..threads {
-            s.spawn(|| loop {
-                let i = next.fetch_add(1, Ordering::Relaxed);
-                let Some(path) = files.get(i) else { break };
-                // Only files calamine opens directly (repaired ones take the same code path).
-                let Some(want) = calamine_merges(path) else { continue };
-                let Ok(wb) = hh_core::open(path) else { continue };
-                let got: Vec<(String, Vec<Rect>)> = wb.sheets.into_iter().map(|s| (s.name, s.merges)).collect();
-                checked.fetch_add(1, Ordering::Relaxed);
-                if want.iter().any(|(_, m)| !m.is_empty()) {
-                    with_merges.fetch_add(1, Ordering::Relaxed);
-                }
-                if got != want {
-                    diffs.lock().unwrap().push(path.display().to_string());
+            s.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(path) = files.get(i) else { break };
+                    // Only files calamine opens directly (repaired ones take the same code path).
+                    let Some(want) = calamine_merges(path) else {
+                        continue;
+                    };
+                    let Ok(wb) = hh_core::open(path) else {
+                        continue;
+                    };
+                    let got: Vec<(String, Vec<Rect>)> =
+                        wb.sheets.into_iter().map(|s| (s.name, s.merges)).collect();
+                    checked.fetch_add(1, Ordering::Relaxed);
+                    if want.iter().any(|(_, m)| !m.is_empty()) {
+                        with_merges.fetch_add(1, Ordering::Relaxed);
+                    }
+                    if got != want {
+                        diffs.lock().unwrap().push(path.display().to_string());
+                    }
                 }
             });
         }
@@ -81,5 +104,9 @@ fn merges_match_calamine() {
         with_merges.load(Ordering::Relaxed),
         diffs.len()
     );
-    assert!(diffs.is_empty(), "merged areas differ from calamine in:\n{}", diffs.join("\n"));
+    assert!(
+        diffs.is_empty(),
+        "merged areas differ from calamine in:\n{}",
+        diffs.join("\n")
+    );
 }

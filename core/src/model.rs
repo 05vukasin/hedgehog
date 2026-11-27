@@ -72,7 +72,13 @@ pub enum NumFmt {
     Other,
 }
 
-const ALIGNS: [Align; 5] = [Align::General, Align::Left, Align::Center, Align::Right, Align::Other];
+const ALIGNS: [Align; 5] = [
+    Align::General,
+    Align::Left,
+    Align::Center,
+    Align::Right,
+    Align::Other,
+];
 const NUMFMTS: [NumFmt; 9] = [
     NumFmt::General,
     NumFmt::Integer,
@@ -138,7 +144,10 @@ impl Format {
         }
         let align = ALIGNS.iter().position(|&a| a == s.align).unwrap_or(0) as u32;
         let num = NUMFMTS.iter().position(|&n| n == s.num_fmt).unwrap_or(0) as u32;
-        x |= align << 10 | (s.indent.min(15) as u32) << 13 | num << 17 | (s.size_half_pt.min(511) as u32) << 21;
+        x |= align << 10
+            | (s.indent.min(15) as u32) << 13
+            | num << 17
+            | (s.size_half_pt.min(511) as u32) << 21;
         Format(x)
     }
 
@@ -164,9 +173,15 @@ impl Format {
             border_left: bit(7),
             border_right: bit(8),
             wrap: bit(9),
-            align: ALIGNS.get((x >> 10 & 7) as usize).copied().unwrap_or_default(),
+            align: ALIGNS
+                .get((x >> 10 & 7) as usize)
+                .copied()
+                .unwrap_or_default(),
             indent: (x >> 13 & 15) as u8,
-            num_fmt: NUMFMTS.get((x >> 17 & 15) as usize).copied().unwrap_or_default(),
+            num_fmt: NUMFMTS
+                .get((x >> 17 & 15) as usize)
+                .copied()
+                .unwrap_or_default(),
             size_half_pt: (x >> 21 & 511) as u16,
         })
     }
@@ -177,7 +192,12 @@ impl Sheet {
     /// in its top-left cell but visibly spans the whole area). `None` for an empty sheet.
     pub fn used_range(&self) -> Option<Rect> {
         let first = self.cells.first()?;
-        let mut r = Rect { top: first.row, left: first.col, bottom: first.row, right: first.col };
+        let mut r = Rect {
+            top: first.row,
+            left: first.col,
+            bottom: first.row,
+            right: first.col,
+        };
         for c in &self.cells {
             r.top = r.top.min(c.row);
             r.left = r.left.min(c.col);
@@ -223,26 +243,58 @@ mod tests {
     #[test]
     fn used_range_is_independent_of_cell_order() {
         let positions = [(9, 13), (2, 21), (17, 3), (7, 29)];
-        let expected = Rect { top: 2, left: 3, bottom: 17, right: 29 };
+        let expected = Rect {
+            top: 2,
+            left: 3,
+            bottom: 17,
+            right: 29,
+        };
         let mut permutations = 0;
         for a in 0..4 {
             for b in 0..4 {
                 for c in 0..4 {
                     for d in 0..4 {
-                        if [a, b, c, d].iter().copied().collect::<std::collections::HashSet<_>>().len() != 4 { continue; }
-                        let cells: Vec<_> = [a, b, c, d].iter().map(|&i| Cell {
-                            row: positions[i].0,
-                            col: positions[i].1,
-                            value: Some(Value::Number(i as f64)),
-                            formula: None,
-                        }).collect();
-                        let mut sheet = Sheet { cells, ..Sheet::default() };
+                        if [a, b, c, d]
+                            .iter()
+                            .copied()
+                            .collect::<std::collections::HashSet<_>>()
+                            .len()
+                            != 4
+                        {
+                            continue;
+                        }
+                        let cells: Vec<_> = [a, b, c, d]
+                            .iter()
+                            .map(|&i| Cell {
+                                row: positions[i].0,
+                                col: positions[i].1,
+                                value: Some(Value::Number(i as f64)),
+                                formula: None,
+                            })
+                            .collect();
+                        let mut sheet = Sheet {
+                            cells,
+                            ..Sheet::default()
+                        };
                         assert_eq!(sheet.used_range(), Some(expected), "order {a}{b}{c}{d}");
                         // A duplicate position cannot move the bounding box.
                         sheet.cells.push(sheet.cells[0].clone());
                         assert_eq!(sheet.used_range(), Some(expected));
-                        sheet.merges.push(Rect { top: 1, left: 1, bottom: 20, right: 31 });
-                        assert_eq!(sheet.used_range(), Some(Rect { top: 1, left: 1, bottom: 20, right: 31 }));
+                        sheet.merges.push(Rect {
+                            top: 1,
+                            left: 1,
+                            bottom: 20,
+                            right: 31,
+                        });
+                        assert_eq!(
+                            sheet.used_range(),
+                            Some(Rect {
+                                top: 1,
+                                left: 1,
+                                bottom: 20,
+                                right: 31
+                            })
+                        );
                         permutations += 1;
                     }
                 }
@@ -265,7 +317,10 @@ mod tests {
             ..FormatSpec::default()
         };
         assert_eq!(Format::pack(&s).unpack(), Some(s));
-        assert_eq!(Format::pack(&FormatSpec::default()).unpack(), Some(FormatSpec::default()));
+        assert_eq!(
+            Format::pack(&FormatSpec::default()).unpack(),
+            Some(FormatSpec::default())
+        );
     }
 
     #[test]

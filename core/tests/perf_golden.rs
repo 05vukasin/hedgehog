@@ -24,15 +24,31 @@ fn outputs_match_golden() {
     let root = data_root();
     let mut bad = Vec::new();
     for (path, want) in files.iter().zip(golden.lines()) {
-        let name = path.strip_prefix(&root).unwrap_or(path).display().to_string();
+        let name = path
+            .strip_prefix(&root)
+            .unwrap_or(path)
+            .display()
+            .to_string();
         let got = match bench::run_file(path, true) {
             Ok(r) => format!("{:016x}\t{}\t{name}", r.hash, r.cells),
-            Err(e) => format!("error\t0\t{name}\t{}", e.to_string().replace(['\t', '\n'], " ")),
+            Err(e) => format!(
+                "error\t0\t{name}\t{}",
+                e.to_string().replace(['\t', '\n'], " ")
+            ),
         };
         if got != want {
             bad.push(format!("got  {got}\nwant {want}"));
         }
     }
-    assert_eq!(golden.lines().count(), files.len(), "golden file and list differ in length");
-    assert!(bad.is_empty(), "{} files differ:\n{}", bad.len(), bad.join("\n"));
+    assert_eq!(
+        golden.lines().count(),
+        files.len(),
+        "golden file and list differ in length"
+    );
+    assert!(
+        bad.is_empty(),
+        "{} files differ:\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
 }

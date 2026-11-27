@@ -17,7 +17,7 @@ use std::io::Write;
 use crate::analysis::Role;
 use crate::grid::Grid;
 
-use super::export::{role_id, sheet_features, ExportOptions, ExportStats};
+use super::export::{ExportOptions, ExportStats, role_id, sheet_features};
 use super::gt::{Corpus, GtFile};
 
 pub use crate::learned::MAX_GAP;
@@ -32,17 +32,37 @@ fn quote(s: &str) -> String {
 
 /// Writes one CSV row per labelled row segment of every file in the split. The features are
 /// exactly what [`crate::learned::segment_features`] computes at prediction time.
-pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, header: bool) -> std::io::Result<ExportStats> {
+pub fn export(
+    corpus: &Corpus,
+    opts: &ExportOptions,
+    out: &mut impl Write,
+    header: bool,
+) -> std::io::Result<ExportStats> {
     let mut stats = ExportStats::default();
-    let files: Vec<&GtFile> =
-        corpus.files.iter().filter(|f| opts.split.contains(&f.id)).take(opts.limit.unwrap_or(usize::MAX)).collect();
+    let files: Vec<&GtFile> = corpus
+        .files
+        .iter()
+        .filter(|f| opts.split.contains(&f.id))
+        .take(opts.limit.unwrap_or(usize::MAX))
+        .collect();
     let mut wrote_header = !header;
     let mut names: Option<Vec<&'static str>> = None;
     for (k, file) in files.iter().enumerate() {
         if opts.progress && k % 50 == 0 {
             eprintln!("  {}/{} files, {} segments", k, files.len(), stats.rows);
         }
-        let Some(wb) = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open_with(p, crate::reader::ReadOptions { formats: true, ..Default::default() }).ok())
+        let Some(wb) = std::iter::once(&file.path)
+            .chain(&file.fallback_paths)
+            .find_map(|p| {
+                crate::reader::open_with(
+                    p,
+                    crate::reader::ReadOptions {
+                        formats: true,
+                        ..Default::default()
+                    },
+                )
+                .ok()
+            })
         else {
             stats.failed += 1;
             continue;
@@ -50,13 +70,16 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
         stats.files += 1;
         let split = super::split::split_of(&file.id).as_str();
         for gs in &file.sheets {
-            let Some((si, _)) = super::run::find_sheet(&wb, &gs.name, gs.index) else { continue };
+            let Some((si, _)) = super::run::find_sheet(&wb, &gs.name, gs.index) else {
+                continue;
+            };
             let sheet = &wb.sheets[si];
             let grid = Grid::new(sheet);
             let f = sheet_features(&grid);
             let (segs, sf) = crate::learned::segment_features(&grid, &f);
             if !wrote_header {
-                let mut line = String::from("source,file,sheet,row,left,right,split,label,n_labelled");
+                let mut line =
+                    String::from("source,file,sheet,row,left,right,split,label,n_labelled");
                 for r in Role::ALL {
                     line.push_str(&format!(",n_{}", r.as_str()));
                 }
@@ -70,7 +93,11 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
             }
             match &names {
                 None => names = Some(sf.names().to_vec()),
-                Some(n) => assert_eq!(n.as_slice(), sf.names(), "feature columns differ between sheets"),
+                Some(n) => assert_eq!(
+                    n.as_slice(),
+                    sf.names(),
+                    "feature columns differ between sheets"
+                ),
             }
             stats.sheets += 1;
             let cols: Vec<&[f32]> = (0..sf.names().len()).map(|i| sf.column(i)).collect();
@@ -86,24 +113,37 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
                     truth.entry(i).or_insert(gc.role);
                 }
             }
-            let prefix = format!("{},{},{}", quote(&opts.source), quote(&file.id), quote(&gs.name));
+            let prefix = format!(
+                "{},{},{}",
+                quote(&opts.source),
+                quote(&file.id),
+                quote(&gs.name)
+            );
             for (s, seg) in segs.iter().enumerate() {
                 let mut counts = [0u32; Role::ALL.len()];
                 let mut pairs: HashMap<(i32, i32), u32> = HashMap::new();
                 for &i in &seg.members {
                     if let Some(&role) = truth.get(&(i as usize)) {
                         counts[role_id(role) as usize] += 1;
-                        *pairs.entry((role_id(role), rules[i as usize] as i32)).or_default() += 1;
+                        *pairs
+                            .entry((role_id(role), rules[i as usize] as i32))
+                            .or_default() += 1;
                     }
                 }
                 let labelled: u32 = counts.iter().sum();
                 if labelled == 0 {
                     continue;
                 }
-                let label = (0..counts.len()).max_by_key(|&k| (counts[k], std::cmp::Reverse(k))).unwrap();
+                let label = (0..counts.len())
+                    .max_by_key(|&k| (counts[k], std::cmp::Reverse(k)))
+                    .unwrap();
                 use std::fmt::Write as _;
                 let mut line = String::with_capacity(8 * cols.len());
-                let _ = write!(line, "{prefix},{},{},{},{split},{label},{labelled}", seg.row, seg.left, seg.right);
+                let _ = write!(
+                    line,
+                    "{prefix},{},{},{},{split},{label},{labelled}",
+                    seg.row, seg.left, seg.right
+                );
                 for c in counts {
                     let _ = write!(line, ",{c}");
                 }
@@ -132,9 +172,19 @@ mod tests {
     fn segments_split_on_wide_gaps() {
         let cells: Vec<Cell> = [0u32, 1, 3, 7, 8]
             .iter()
-            .map(|&c| Cell { row: 0, col: c, value: Some(Value::Number(1.0)), formula: None })
+            .map(|&c| Cell {
+                row: 0,
+                col: c,
+                value: Some(Value::Number(1.0)),
+                formula: None,
+            })
             .collect();
-        let sheet = crate::model::Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+        let sheet = crate::model::Sheet {
+            name: "s".into(),
+            cells,
+            merges: vec![],
+            formats: vec![],
+        };
         let grid = Grid::new(&sheet);
         let f = sheet_features(&grid);
         let (segs, sf) = crate::learned::segment_features(&grid, &f);

@@ -22,9 +22,12 @@ pub use threads::spawned as inner_threads_spawned;
 pub use analysis::{DetectedTable, Role, SheetLayout};
 pub use features::Features;
 pub use grid::Grid;
-pub use model::{a1, Cell, Rect, Sheet, Value, Workbook};
-pub use normalize::{normalize_file, normalize_workbook, try_normalize_workbook, Normalized, Options as NormalizeOptions, Output as NormalizeOutput};
-pub use reader::{open, open_bytes, Error};
+pub use model::{Cell, Rect, Sheet, Value, Workbook, a1};
+pub use normalize::{
+    Normalized, Options as NormalizeOptions, Output as NormalizeOutput, normalize_file,
+    normalize_workbook, try_normalize_workbook,
+};
+pub use reader::{Error, open, open_bytes};
 
 /// Short plain-text overview of a workbook, one line per sheet.
 pub fn describe(wb: &Workbook) -> String {

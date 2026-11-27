@@ -35,8 +35,15 @@ fn py_str(s: &str) -> String {
 }
 
 /// (name, python code) pairs, also printed on the README sheet.
-pub(super) fn load_hints(norm: &Normalized, xlsx_name: &str, manifest_name: &str) -> Vec<(&'static str, String)> {
-    let example = norm.tables.first().map_or("T1_table".to_string(), |t| t.sheet.clone());
+pub(super) fn load_hints(
+    norm: &Normalized,
+    xlsx_name: &str,
+    manifest_name: &str,
+) -> Vec<(&'static str, String)> {
+    let example = norm
+        .tables
+        .first()
+        .map_or("T1_table".to_string(), |t| t.sheet.clone());
     let x = py_str(xlsx_name);
     let e = py_str(&example);
     vec![
@@ -74,8 +81,11 @@ fn out_json(v: &Out) -> Json {
         Out::Date(x) => Json::Str(iso(*x)),
         Out::Bool(b) => Json::Bool(*b),
         Out::Text(s) => {
-            let s: String =
-                if s.chars().count() > 80 { s.chars().take(80).collect::<String>() + "…" } else { s.clone() };
+            let s: String = if s.chars().count() > 80 {
+                s.chars().take(80).collect::<String>() + "…"
+            } else {
+                s.clone()
+            };
             Json::Str(s)
         }
     }
@@ -94,8 +104,15 @@ fn footnote_marks_json(c: &Column) -> Json {
         c.footnote_marks
             .iter()
             .map(|(m, cells)| {
-                let list: Vec<Json> = cells.iter().take(MAX_MARK_CELLS).map(|(r, col)| Json::Str(a1(*r, *col))).collect();
-                Json::obj().with("mark", m.as_str()).with("count", cells.len()).with("cells", Json::Arr(list))
+                let list: Vec<Json> = cells
+                    .iter()
+                    .take(MAX_MARK_CELLS)
+                    .map(|(r, col)| Json::Str(a1(*r, *col)))
+                    .collect();
+                Json::obj()
+                    .with("mark", m.as_str())
+                    .with("count", cells.len())
+                    .with("cells", Json::Arr(list))
             })
             .collect(),
     )
@@ -120,11 +137,16 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
                 numbers.insert(fmt_num(*x));
             }
             Out::Bool(b) => booleans |= 1 << (*b as u8),
-            Out::Text(s) => { texts.insert(s.as_str()); }
+            Out::Text(s) => {
+                texts.insert(s.as_str());
+            }
         }
         example.get_or_insert(v);
     }
-    let numeric = matches!(c.dtype, Dtype::Integer | Dtype::Number | Dtype::Percent | Dtype::Currency);
+    let numeric = matches!(
+        c.dtype,
+        Dtype::Integer | Dtype::Number | Dtype::Percent | Dtype::Currency
+    );
     let dated = matches!(c.dtype, Dtype::Date | Dtype::Datetime);
     let bound = |v: Option<f64>| -> Json {
         match v {
@@ -136,7 +158,11 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
     let header: Vec<Json> = c
         .original_header
         .iter()
-        .map(|(t, (r, col))| Json::obj().with("text", t.as_str()).with("cell", a1(*r, *col)))
+        .map(|(t, (r, col))| {
+            Json::obj()
+                .with("text", t.as_str())
+                .with("cell", a1(*r, *col))
+        })
         .collect();
     let locale = Json::obj()
         .with(
@@ -156,7 +182,9 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
         .with("ambiguous", c.ambiguous);
     // A column computed from the one on its left (`<name>_period`, `<name>_key`).
     let derived = match (c.derived_kind(), left) {
-        (Some(kind), Some(base)) => Json::obj().with("from", base.name.as_str()).with("kind", kind),
+        (Some(kind), Some(base)) => Json::obj()
+            .with("from", base.name.as_str())
+            .with("kind", kind),
         _ => Json::Null,
     };
     Json::obj()
@@ -175,7 +203,10 @@ fn column_json(c: &Column, index: usize, left: Option<&Column>) -> Json {
         .with("footnote_marks", footnote_marks_json(c))
         .with("nulls", nulls)
         // The old n/s/b-prefixed keys were disjoint; only numbers/dates share an identity.
-        .with("distinct", numbers.len() + texts.len() + booleans.count_ones() as usize)
+        .with(
+            "distinct",
+            numbers.len() + texts.len() + booleans.count_ones() as usize,
+        )
         .with("min", bound(min))
         .with("max", bound(max))
         .with("example", example.map_or(Json::Null, out_json))
@@ -189,7 +220,13 @@ fn table_totals(t: &Table, totals: &[TotalItem]) -> Json {
         .rows
         .into_iter()
         .map(|r| {
-            Json::obj().with("row", r.row).with("label", r.label).with("level", r.level).with("kept_in_data", r.kept_in_data).with("period", r.period).with("sources_outside", r.sources_outside)
+            Json::obj()
+                .with("row", r.row)
+                .with("label", r.label)
+                .with("level", r.level)
+                .with("kept_in_data", r.kept_in_data)
+                .with("period", r.period)
+                .with("sources_outside", r.sources_outside)
         })
         .collect();
     Json::obj()
@@ -202,12 +239,31 @@ fn table_totals(t: &Table, totals: &[TotalItem]) -> Json {
 
 fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>) -> Json {
     let body_top = t.header_top + t.header_rows;
-    let header_range = (t.header_rows > 0)
-        .then(|| range_a1(Rect { top: t.header_top, left: t.rect.left, bottom: body_top - 1, right: t.rect.right }));
-    let data_range = (body_top <= t.rect.bottom)
-        .then(|| range_a1(Rect { top: body_top, left: t.rect.left, bottom: t.rect.bottom, right: t.rect.right }));
-    let notes: Vec<Json> =
-        t.notes.iter().map(|(s, (r, c))| Json::obj().with("text", s.as_str()).with("cell", a1(*r, *c))).collect();
+    let header_range = (t.header_rows > 0).then(|| {
+        range_a1(Rect {
+            top: t.header_top,
+            left: t.rect.left,
+            bottom: body_top - 1,
+            right: t.rect.right,
+        })
+    });
+    let data_range = (body_top <= t.rect.bottom).then(|| {
+        range_a1(Rect {
+            top: body_top,
+            left: t.rect.left,
+            bottom: t.rect.bottom,
+            right: t.rect.right,
+        })
+    });
+    let notes: Vec<Json> = t
+        .notes
+        .iter()
+        .map(|(s, (r, c))| {
+            Json::obj()
+                .with("text", s.as_str())
+                .with("cell", a1(*r, *c))
+        })
+        .collect();
     let source = Json::obj()
         .with("sheet", t.source_sheet.as_str())
         .with("range", range_a1(t.rect))
@@ -222,8 +278,16 @@ fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>)
     for k in T::ALL {
         tr.push(k.as_str(), t.transforms.get(k));
     }
-    let group = t.columns.iter().find(|c| c.role == ColRole::Group).map(|c| c.name.clone());
-    let row_type = t.columns.iter().any(|c| c.role == ColRole::RowType).then_some(ROW_TYPE);
+    let group = t
+        .columns
+        .iter()
+        .find(|c| c.role == ColRole::Group)
+        .map(|c| c.name.clone());
+    let row_type = t
+        .columns
+        .iter()
+        .any(|c| c.role == ColRole::RowType)
+        .then_some(ROW_TYPE);
     Json::obj()
         .with("id", t.id())
         .with("sheet", t.sheet.as_str())
@@ -232,7 +296,16 @@ fn table_json(t: &Table, totals: &[TotalItem], cov: Option<&coverage::Coverage>)
         .with("rows", t.rows())
         .with("confidence", t.confidence)
         .with("time_coverage", cov.map_or(Json::Null, |c| c.json(false)))
-        .with("columns", Json::Arr(t.columns.iter().enumerate().map(|(i, c)| column_json(c, i, i.checked_sub(1).map(|j| &t.columns[j]))).collect()))
+        .with(
+            "columns",
+            Json::Arr(
+                t.columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| column_json(c, i, i.checked_sub(1).map(|j| &t.columns[j])))
+                    .collect(),
+            ),
+        )
         .with("group_column", group)
         .with("source_row_column", SRC_ROW)
         .with("row_type_column", row_type)
@@ -259,7 +332,10 @@ pub(super) fn build(
                 .with("cells", s.cells)
                 .with("formulas", s.formulas)
                 .with("merges", s.merges)
-                .with("tables", s.tables.iter().map(|n| format!("T{n}")).collect::<Vec<_>>())
+                .with(
+                    "tables",
+                    s.tables.iter().map(|n| format!("T{n}")).collect::<Vec<_>>(),
+                )
         })
         .collect();
     let mut out_sheets = vec!["README".to_string()];
@@ -312,7 +388,10 @@ pub(super) fn build(
         kinds.push(k, *v);
     }
     let unassigned = norm.notes.iter().filter(|n| n.table.is_none()).count();
-    let notes = Json::obj().with("sheet", "Notes").with("count", norm.notes.len()).with("by_kind", kinds);
+    let notes = Json::obj()
+        .with("sheet", "Notes")
+        .with("count", norm.notes.len())
+        .with("by_kind", kinds);
     let cells = Json::obj()
         .with("total", norm.cells.total)
         .with("in_tables", norm.cells.in_tables)
@@ -324,14 +403,27 @@ pub(super) fn build(
     }
 
     let covs: Vec<Option<coverage::Coverage>> = norm.tables.iter().map(coverage::table).collect();
-    let with_cov: Vec<(String, coverage::Coverage)> =
-        norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
-    let tables: Vec<Json> =
-        norm.tables.iter().zip(&covs).map(|(t, c)| table_json(t, &norm.totals, c.as_ref())).collect();
+    let with_cov: Vec<(String, coverage::Coverage)> = norm
+        .tables
+        .iter()
+        .zip(&covs)
+        .filter_map(|(t, c)| c.clone().map(|c| (t.id(), c)))
+        .collect();
+    let tables: Vec<Json> = norm
+        .tables
+        .iter()
+        .zip(&covs)
+        .map(|(t, c)| table_json(t, &norm.totals, c.as_ref()))
+        .collect();
 
     Json::obj()
         .with("schema_version", SCHEMA_VERSION)
-        .with("generator", Json::obj().with("name", "hedgehog").with("version", env!("CARGO_PKG_VERSION")))
+        .with(
+            "generator",
+            Json::obj()
+                .with("name", "hedgehog")
+                .with("version", env!("CARGO_PKG_VERSION")),
+        )
         .with(
             "source",
             Json::obj()
@@ -355,9 +447,19 @@ pub(super) fn build(
                 .with("keep_totals", opts.keep_totals)
                 .with("csv", opts.csv)
                 .with("locale", opts.locale.map(|l| l.as_str()))
-                .with("cell_roles", if opts.rules_only || crate::learned::embedded().is_none() { "rules" } else { "model" }),
+                .with(
+                    "cell_roles",
+                    if opts.rules_only || crate::learned::embedded().is_none() {
+                        "rules"
+                    } else {
+                        "model"
+                    },
+                ),
         )
-        .with("time_coverage", coverage::workbook(&with_cov).map_or(Json::Null, |c| c.json(true)))
+        .with(
+            "time_coverage",
+            coverage::workbook(&with_cov).map_or(Json::Null, |c| c.json(true)),
+        )
         .with("tables", Json::Arr(tables))
         .with("totals", totals)
         .with("notes", notes)
@@ -373,46 +475,93 @@ mod tests {
 
     fn column(values: Vec<Out>) -> Column {
         Column {
-            name: "Value".into(), role: ColRole::Data, source_col: Some(0), original_header: Vec::new(),
-            dtype: Dtype::Number, unit: None, currency: None, decimal: None, date_order: None,
-            ambiguous: 0, footnote_marks: Vec::new(), values,
+            name: "Value".into(),
+            role: ColRole::Data,
+            source_col: Some(0),
+            original_header: Vec::new(),
+            dtype: Dtype::Number,
+            unit: None,
+            currency: None,
+            decimal: None,
+            date_order: None,
+            ambiguous: 0,
+            footnote_marks: Vec::new(),
+            values,
         }
     }
 
     #[test]
     fn column_stats_preserve_prefixed_formatted_distinct_identity() {
-        let mut mixed = vec![Out::Null, Out::Num(-0.0), Out::Num(0.0), Out::Date(0.0),
-            Out::Num(f64::NAN), Out::Num(f64::INFINITY), Out::Date(f64::NEG_INFINITY),
-            Out::Num(1.0), Out::Date(1.0), Out::Num(f64::from_bits(1.0f64.to_bits() + 1)),
-            Out::Num(1e15), Out::Num(1e15 - 1.0), Out::Num(1e-16),
-            Out::Bool(true), Out::Bool(false)];
-        mixed.extend(["0", "null", "NaN", "true", "false", "n1", "btrue", "s0", ""]
-            .into_iter().map(|s| Out::Text(s.into())));
+        let mut mixed = vec![
+            Out::Null,
+            Out::Num(-0.0),
+            Out::Num(0.0),
+            Out::Date(0.0),
+            Out::Num(f64::NAN),
+            Out::Num(f64::INFINITY),
+            Out::Date(f64::NEG_INFINITY),
+            Out::Num(1.0),
+            Out::Date(1.0),
+            Out::Num(f64::from_bits(1.0f64.to_bits() + 1)),
+            Out::Num(1e15),
+            Out::Num(1e15 - 1.0),
+            Out::Num(1e-16),
+            Out::Bool(true),
+            Out::Bool(false),
+        ];
+        mixed.extend(
+            ["0", "null", "NaN", "true", "false", "n1", "btrue", "s0", ""]
+                .into_iter()
+                .map(|s| Out::Text(s.into())),
+        );
         mixed.push(Out::Text("東京é".repeat(256)));
         let mut repeated = mixed.clone();
         repeated.extend(mixed.clone());
         repeated.reverse();
         for values in [Vec::new(), vec![Out::Null; 5], mixed, repeated] {
             // This is the original key contract, independent of any new storage layout.
-            let expected: HashSet<String> = values.iter().filter_map(|v| match v {
-                Out::Null => None,
-                Out::Num(x) | Out::Date(x) => Some(format!("n{}", fmt_num(*x))),
-                Out::Bool(b) => Some(format!("b{b}")),
-                Out::Text(s) => Some(format!("s{s}")),
-            }).collect();
+            let expected: HashSet<String> = values
+                .iter()
+                .filter_map(|v| match v {
+                    Out::Null => None,
+                    Out::Num(x) | Out::Date(x) => Some(format!("n{}", fmt_num(*x))),
+                    Out::Bool(b) => Some(format!("b{b}")),
+                    Out::Text(s) => Some(format!("s{s}")),
+                })
+                .collect();
             let json = column_json(&column(values.clone()), 0, None);
-            let Json::Obj(fields) = json else { panic!("column JSON must be an object") };
+            let Json::Obj(fields) = json else {
+                panic!("column JSON must be an object")
+            };
             let field = |key| &fields.iter().find(|(k, _)| k == key).unwrap().1;
             assert_eq!(field("distinct"), &Json::Int(expected.len() as i64));
-            assert_eq!(field("nulls"), &Json::Int(values.iter().filter(|v| matches!(v, Out::Null)).count() as i64));
-            assert_eq!(field("example").pretty(), values.iter().find(|v| !matches!(v, Out::Null)).map_or(Json::Null, out_json).pretty());
+            assert_eq!(
+                field("nulls"),
+                &Json::Int(values.iter().filter(|v| matches!(v, Out::Null)).count() as i64)
+            );
+            assert_eq!(
+                field("example").pretty(),
+                values
+                    .iter()
+                    .find(|v| !matches!(v, Out::Null))
+                    .map_or(Json::Null, out_json)
+                    .pretty()
+            );
         }
     }
 
     #[test]
     fn column_stats_keep_bounds_and_first_non_null_example() {
-        let c = column(vec![Out::Null, Out::Text("first".into()), Out::Num(12.5), Out::Date(-2.0), Out::Bool(true)]);
-        let Json::Obj(fields) = column_json(&c, 0, None) else { panic!("column JSON must be an object") };
+        let c = column(vec![
+            Out::Null,
+            Out::Text("first".into()),
+            Out::Num(12.5),
+            Out::Date(-2.0),
+            Out::Bool(true),
+        ]);
+        let Json::Obj(fields) = column_json(&c, 0, None) else {
+            panic!("column JSON must be an object")
+        };
         let field = |key| &fields.iter().find(|(k, _)| k == key).unwrap().1;
         assert_eq!(field("distinct"), &Json::Int(4));
         assert_eq!(field("nulls"), &Json::Int(1));

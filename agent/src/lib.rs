@@ -18,8 +18,8 @@
 pub mod brief;
 pub mod cache;
 pub mod catalog;
-pub mod codes;
 pub mod cells;
+pub mod codes;
 pub mod dialect;
 pub mod entity;
 pub mod facts;
@@ -38,17 +38,17 @@ pub mod views;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant, SystemTime};
 
 use hh_core::model::Workbook;
-use hh_core::normalize::{sha256, ColRole, Dtype, Normalized, Out, Table};
+use hh_core::normalize::{ColRole, Dtype, Normalized, Out, Table, sha256};
 
-pub use catalog::{mentioned_years, time_coverage, TimeCoverage};
+pub use catalog::{TimeCoverage, mentioned_years, time_coverage};
 pub use files::Bounds;
-pub use tools::{tool_specs, TOOL_NAMES};
+pub use tools::{TOOL_NAMES, tool_specs};
 
-use crate::text::{closest, csv_row, ident, quote_ident, sheet_ref, short, MAX_CHARS};
+use crate::text::{MAX_CHARS, closest, csv_row, ident, quote_ident, sheet_ref, short};
 
 /// A tool failure: one line of text for the model (`isError: true` in MCP).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,7 +130,10 @@ const KEEP_BOOK_CELLS: usize = 1_000_000;
 const NORMALIZE_TAG: &str = "keep_totals";
 
 fn normalize_options() -> hh_core::NormalizeOptions {
-    hh_core::NormalizeOptions { keep_totals: true, ..Default::default() }
+    hh_core::NormalizeOptions {
+        keep_totals: true,
+        ..Default::default()
+    }
 }
 
 /// A value computed on another thread: waited for when first needed.
@@ -143,9 +146,11 @@ enum Pending<V> {
 impl<V: Send + 'static> Pending<V> {
     fn spawn(f: impl FnOnce() -> Result<V, String> + Send + 'static) -> Pending<V> {
         let (tx, rx) = mpsc::channel();
-        match std::thread::Builder::new().name("hedgehog-load".into()).spawn(move || {
-            let _ = tx.send(f());
-        }) {
+        match std::thread::Builder::new()
+            .name("hedgehog-load".into())
+            .spawn(move || {
+                let _ = tx.send(f());
+            }) {
             Ok(_) => Pending::Running(rx),
             Err(e) => Pending::Failed(format!("cannot start a thread: {e}")),
         }
@@ -158,9 +163,13 @@ impl<V: Send + 'static> Pending<V> {
             let got = loop {
                 match rx.recv_timeout(Duration::from_millis(20)) {
                     Ok(r) => break r,
-                    Err(mpsc::RecvTimeoutError::Timeout) if cancel.load(Ordering::Relaxed) => return Err(cancelled()),
+                    Err(mpsc::RecvTimeoutError::Timeout) if cancel.load(Ordering::Relaxed) => {
+                        return Err(cancelled());
+                    }
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
-                    Err(mpsc::RecvTimeoutError::Disconnected) => break Err("internal error while loading the file".into()),
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        break Err("internal error while loading the file".into());
+                    }
                 }
             };
             *self = match got {
@@ -228,9 +237,14 @@ impl Session {
         Session::with_options(root, allow, Options::default())
     }
 
-    pub fn with_options(root: impl AsRef<Path>, allow: &[PathBuf], opts: Options) -> Result<Session, ToolError> {
+    pub fn with_options(
+        root: impl AsRef<Path>,
+        allow: &[PathBuf],
+        opts: Options,
+    ) -> Result<Session, ToolError> {
         let root = root.as_ref();
-        let mut bounds = Bounds::new(root).map_err(|e| ToolError(format!("{}: {e}", root.display())))?;
+        let mut bounds =
+            Bounds::new(root).map_err(|e| ToolError(format!("{}: {e}", root.display())))?;
         for a in allow {
             bounds.allow(a)?;
         }
@@ -266,7 +280,9 @@ impl Session {
             Ok(p) => Ok(p),
             Err(e) => {
                 // A bare file name of a file opened before.
-                let want = Path::new(raw.trim().trim_start_matches('@')).file_name().map(|f| f.to_string_lossy().to_lowercase());
+                let want = Path::new(raw.trim().trim_start_matches('@'))
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_lowercase());
                 let hits: Vec<&PathBuf> = self
                     .files
                     .values()
@@ -296,12 +312,19 @@ impl Session {
 
     /// The session number (`k` of `f<k>`) of the file with content `sha`.
     fn number_of(&self, sha: &str) -> Option<usize> {
-        self.order.iter().position(|p| self.hashes.get(p).is_some_and(|h| h.2 == sha)).map(|i| i + 1)
+        self.order
+            .iter()
+            .position(|p| self.hashes.get(p).is_some_and(|h| h.2 == sha))
+            .map(|i| i + 1)
     }
 
     fn load_file(&mut self, raw: &str) -> Result<(String, bool), ToolError> {
         let path = self.resolve_file(raw)?;
-        let ext = path.extension().and_then(|x| x.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
+        let ext = path
+            .extension()
+            .and_then(|x| x.to_str())
+            .map(str::to_ascii_lowercase)
+            .unwrap_or_default();
         if !files::EXTENSIONS.contains(&ext.as_str()) {
             return Err(ToolError(format!(
                 "{} is not a spreadsheet (supported: {})",
@@ -309,7 +332,8 @@ impl Session {
                 files::EXTENSIONS.join(", ")
             )));
         }
-        let meta = std::fs::metadata(&path).map_err(|e| ToolError(format!("{}: {e}", self.bounds.display(&path))))?;
+        let meta = std::fs::metadata(&path)
+            .map_err(|e| ToolError(format!("{}: {e}", self.bounds.display(&path))))?;
         if meta.len() > self.opts.max_file_bytes {
             return Err(ToolError(format!(
                 "{} is {} — larger than the {} limit of this session",
@@ -325,11 +349,15 @@ impl Session {
         let sha = match self.hashes.get(&path) {
             Some((len, m, sha)) if *len == meta.len() && *m == mtime => sha.clone(),
             _ => {
-                let known = cache.as_ref().and_then(|c| c.known_hash(&path, meta.len(), mtime));
+                let known = cache
+                    .as_ref()
+                    .and_then(|c| c.known_hash(&path, meta.len(), mtime));
                 let sha = match known {
                     Some(sha) => sha,
                     None => {
-                        let bytes = std::fs::read(&path).map_err(|e| ToolError(format!("{}: {e}", self.bounds.display(&path))))?;
+                        let bytes = std::fs::read(&path).map_err(|e| {
+                            ToolError(format!("{}: {e}", self.bounds.display(&path)))
+                        })?;
                         let sha = sha256::hex(&bytes);
                         if let Some(c) = &cache {
                             c.remember_hash(&path, meta.len(), mtime, &sha);
@@ -337,7 +365,8 @@ impl Session {
                         sha
                     }
                 };
-                self.hashes.insert(path.clone(), (meta.len(), mtime, sha.clone()));
+                self.hashes
+                    .insert(path.clone(), (meta.len(), mtime, sha.clone()));
                 sha
             }
         };
@@ -358,23 +387,30 @@ impl Session {
                     let norm_path = entry.norm_path();
                     let norm = Pending::spawn(move || {
                         let t = Instant::now();
-                        let norm = cache::read_norm(&norm_path).map_err(|e| format!("disk cache: {e}"))?;
+                        let norm =
+                            cache::read_norm(&norm_path).map_err(|e| format!("disk cache: {e}"))?;
                         cache::trace("cache: norm read", t);
                         let plan = sql::plan(&norm);
                         cache::trace("cache: norm decoded", t);
-                        Ok(Norm { norm: Arc::new(norm), plan: Some(plan) })
+                        Ok(Norm {
+                            norm: Arc::new(norm),
+                            plan: Some(plan),
+                        })
                     });
                     cache::trace("cache: entry opened", t0);
-                    self.insert(sha.clone(), Opened {
-                        path,
-                        norm,
-                        db: Pending::Ready((db, None)),
-                        loaded: None,
-                        entry: Some(entry),
-                        catalogs: HashMap::new(),
-                        from_disk: true,
-                        last_used: self.clock,
-                    });
+                    self.insert(
+                        sha.clone(),
+                        Opened {
+                            path,
+                            norm,
+                            db: Pending::Ready((db, None)),
+                            loaded: None,
+                            entry: Some(entry),
+                            catalogs: HashMap::new(),
+                            from_disk: true,
+                            last_used: self.clock,
+                        },
+                    );
                     return Ok((sha, true));
                 }
                 Err(_) => {
@@ -391,11 +427,16 @@ impl Session {
             let read = self.opts.read_options();
             let max_seconds = self.opts.max_seconds.as_secs();
             Pending::spawn(move || {
-                let wb = hh_core::reader::open_with(&path, read).map_err(|e| format!("{display}: cannot read: {}", limit_hint(&e)))?;
+                let wb = hh_core::reader::open_with(&path, read)
+                    .map_err(|e| format!("{display}: cannot read: {}", limit_hint(&e)))?;
                 cache::trace("read", t0);
-                let opts = hh_core::NormalizeOptions { deadline: read.limits.deadline, ..normalize_options() };
-                let norm = hh_core::try_normalize_workbook(&wb, &opts)
-                    .map_err(|e| format!("{display}: {e} ({max_seconds} s; the server's --max-seconds)"))?;
+                let opts = hh_core::NormalizeOptions {
+                    deadline: read.limits.deadline,
+                    ..normalize_options()
+                };
+                let norm = hh_core::try_normalize_workbook(&wb, &opts).map_err(|e| {
+                    format!("{display}: {e} ({max_seconds} s; the server's --max-seconds)")
+                })?;
                 Ok((wb, norm, t0.elapsed().as_secs_f64(), cache, key))
             })
         };
@@ -432,19 +473,22 @@ impl Session {
                 let t = Instant::now();
                 if let Some(c) = cache {
                     match c.put_with(&key, &norm, seconds, &name, || catalog_rx.recv().ok()) {
-                        Ok((entry, (skipped, entities))) => match sql::Db::open_file(&entry.db_path()) {
-                            Ok(mut db) => {
-                                db.skipped_columns = skipped;
-                                db.entities = entities;
-                                cache::trace("sql (cache file)", t);
-                                return Ok((db, Some(entry)));
+                        Ok((entry, (skipped, entities))) => {
+                            match sql::Db::open_file(&entry.db_path()) {
+                                Ok(mut db) => {
+                                    db.skipped_columns = skipped;
+                                    db.entities = entities;
+                                    cache::trace("sql (cache file)", t);
+                                    return Ok((db, Some(entry)));
+                                }
+                                Err(e) => eprintln!("[hedgehog] disk cache: {e}"),
                             }
-                            Err(e) => eprintln!("[hedgehog] disk cache: {e}"),
-                        },
+                        }
                         Err(e) => eprintln!("[hedgehog] disk cache: {e}"),
                     }
                 }
-                let db = sql::Db::load(&norm).map_err(|e| format!("{shown}: loading into SQL failed: {e}"))?;
+                let db = sql::Db::load(&norm)
+                    .map_err(|e| format!("{shown}: loading into SQL failed: {e}"))?;
                 cache::trace("sql (memory)", t);
                 Ok((db, None))
             })
@@ -454,22 +498,32 @@ impl Session {
         let _ = catalog_tx.send(text.clone());
         let mut catalogs = HashMap::new();
         catalogs.insert(name, text);
-        self.insert(sha.clone(), Opened {
-            path,
-            norm: Pending::Ready(Norm { norm, plan: None }),
-            db,
-            loaded: None,
-            entry: None,
-            catalogs,
-            from_disk: false,
-            last_used: self.clock,
-        });
+        self.insert(
+            sha.clone(),
+            Opened {
+                path,
+                norm: Pending::Ready(Norm { norm, plan: None }),
+                db,
+                loaded: None,
+                entry: None,
+                catalogs,
+                from_disk: false,
+                last_used: self.clock,
+            },
+        );
         Ok((sha, false))
     }
 
     fn insert(&mut self, sha: String, o: Opened) {
         while self.files.len() >= self.opts.max_open_files.max(1) {
-            let Some(old) = self.files.iter().min_by_key(|(_, o)| o.last_used).map(|(k, _)| k.clone()) else { break };
+            let Some(old) = self
+                .files
+                .iter()
+                .min_by_key(|(_, o)| o.last_used)
+                .map(|(k, _)| k.clone())
+            else {
+                break;
+            };
             self.files.remove(&old);
         }
         self.files.insert(sha, o);
@@ -478,15 +532,19 @@ impl Session {
     /// Waits until the normalized form and the database of an opened file are there.
     fn ready(&mut self, sha: &str) -> Result<(), ToolError> {
         let cancel = self.cancel.clone();
-        let Some(o) = self.files.get_mut(sha) else { return Err(ToolError("internal error: file not open".into())) };
+        let Some(o) = self.files.get_mut(sha) else {
+            return Err(ToolError("internal error: file not open".into()));
+        };
         if o.loaded.is_some() {
             return Ok(());
         }
         o.norm.wait(&cancel)?;
         o.db.wait(&cancel)?;
         let gone = "internal error: file loaded twice";
-        let (Pending::Ready(n), Pending::Ready((mut db, entry))) = (std::mem::replace(&mut o.norm, Pending::Failed(gone.into())), std::mem::replace(&mut o.db, Pending::Failed(gone.into())))
-        else {
+        let (Pending::Ready(n), Pending::Ready((mut db, entry))) = (
+            std::mem::replace(&mut o.norm, Pending::Failed(gone.into())),
+            std::mem::replace(&mut o.db, Pending::Failed(gone.into())),
+        ) else {
             return Err(ToolError("internal error: file not loaded".into()));
         };
         db.set_cancel(cancel);
@@ -505,7 +563,10 @@ impl Session {
     fn database(&mut self, raw: &str) -> Result<&sql::Db, ToolError> {
         let (sha, _) = self.load(raw)?;
         let cancel = self.cancel.clone();
-        let o = self.files.get_mut(&sha).ok_or_else(|| ToolError("internal error: file not open".into()))?;
+        let o = self
+            .files
+            .get_mut(&sha)
+            .ok_or_else(|| ToolError("internal error: file not open".into()))?;
         if let Some(l) = &o.loaded {
             return Ok(&l.db);
         }
@@ -529,7 +590,10 @@ impl Session {
             sha = self.load(raw)?.0;
             self.ready(&sha)?;
         }
-        self.files[&sha].loaded.as_ref().ok_or_else(|| ToolError("internal error: file not loaded".into()))
+        self.files[&sha]
+            .loaded
+            .as_ref()
+            .ok_or_else(|| ToolError("internal error: file not loaded".into()))
     }
 
     // -- tools ------------------------------------------------------------------------------------
@@ -547,9 +611,17 @@ impl Session {
         let (sha, cached) = self.load(path)?;
         let o = &self.files[&sha];
         let name = self.bounds.display(&o.path);
-        let stored = o.catalogs.get(&name).cloned().or_else(|| o.entry.as_ref().and_then(|e| e.catalog(&name)));
+        let stored = o
+            .catalogs
+            .get(&name)
+            .cloned()
+            .or_else(|| o.entry.as_ref().and_then(|e| e.catalog(&name)));
         // A question changes nothing for a file of one table (or none): its stored catalog serves.
-        let one_table = |t: &str| t.lines().next().is_some_and(|l| l.ends_with(" · 1 table") || l.ends_with(" · 0 tables"));
+        let one_table = |t: &str| {
+            t.lines()
+                .next()
+                .is_some_and(|l| l.ends_with(" · 1 table") || l.ends_with(" · 0 tables"))
+        };
         let mut text = match (stored, question) {
             (Some(t), None) => t,
             (Some(t), Some(_)) if one_table(&t) => t,
@@ -594,16 +666,26 @@ impl Session {
         let o = self.opened(path)?;
         let t = catalog::find_table(&o.norm, table)?;
         let text = catalog::describe_table(&o.norm, t);
-        let ents = o.db.entities.iter().find(|(n, _)| *n == t.n).map(|x| x.1.as_slice()).unwrap_or_default();
+        let ents =
+            o.db.entities
+                .iter()
+                .find(|(n, _)| *n == t.n)
+                .map(|x| x.1.as_slice())
+                .unwrap_or_default();
         Ok(with_entities(text, t, ents))
     }
 
     /// `query`: one read-only SELECT; CSV with header, at most `limit` rows (default 50, max 200).
     pub fn query(&mut self, path: &str, sql: &str, limit: Option<usize>) -> ToolResult {
         let timeout = self.opts.query_timeout;
-        let limit = limit.unwrap_or(QUERY_DEFAULT_LIMIT).clamp(1, QUERY_MAX_LIMIT);
+        let limit = limit
+            .unwrap_or(QUERY_DEFAULT_LIMIT)
+            .clamp(1, QUERY_MAX_LIMIT);
         // B76: `f<k>.T1` names a table of another open file.
-        let files: Vec<usize> = sqlscan::file_prefixes(&sqlscan::tokens(sql)).into_iter().filter(|&k| k <= self.order.len()).collect();
+        let files: Vec<usize> = sqlscan::file_prefixes(&sqlscan::tokens(sql))
+            .into_iter()
+            .filter(|&k| k <= self.order.len())
+            .collect();
         if !files.is_empty() {
             return self.query_files(path, sql, limit, &files);
         }
@@ -614,7 +696,10 @@ impl Session {
         let need_norm = first.as_ref().map_or(true, |r| {
             r.total == 0
                 || r.header.iter().any(|h| h == "_src_row")
-                || r.rows.iter().flatten().any(|c| matches!(entity::parse(c), entity::Parsed::One { .. }))
+                || r.rows
+                    .iter()
+                    .flatten()
+                    .any(|c| matches!(entity::parse(c), entity::Parsed::One { .. }))
         });
         let empty = Normalized::default();
         let (norm, db) = if need_norm {
@@ -629,11 +714,18 @@ impl Session {
             Err(e) if e == sql::CANCELLED => return Err(cancelled()),
             // B161: a name copied in the catalog's grouped form (`"a / {b}"`) that stands for
             // exactly one column: run the query with the name written out, and say so.
-            Err(e) if e.contains("no such column") && ungroup_names(norm, db, &used, sql).is_some() => {
-                let (fixed, read) = ungroup_names(norm, db, &used, sql).expect("checked in the guard");
+            Err(e)
+                if e.contains("no such column")
+                    && ungroup_names(norm, db, &used, sql).is_some() =>
+            {
+                let (fixed, read) =
+                    ungroup_names(norm, db, &used, sql).expect("checked in the guard");
                 return match db.query(&fixed, limit, timeout) {
                     Ok(r) => {
-                        let reads: Vec<String> = read.iter().map(|(w, n)| format!("{} as {}", quote_ident(w), quote_ident(n))).collect();
+                        let reads: Vec<String> = read
+                            .iter()
+                            .map(|(w, n)| format!("{} as {}", quote_ident(w), quote_ident(n)))
+                            .collect();
                         Ok(format!(
                             "{}\nnote: read {} ({{…}} in the catalog groups column names; write each name in full)",
                             render(norm, db, &used, &fixed, r, timeout),
@@ -641,7 +733,9 @@ impl Session {
                         ))
                     }
                     Err(e) if e == sql::CANCELLED => Err(cancelled()),
-                    Err(e) => Err(ToolError(sql_error_hint(norm, db, &used, &fixed, &e, timeout))),
+                    Err(e) => Err(ToolError(sql_error_hint(
+                        norm, db, &used, &fixed, &e, timeout,
+                    ))),
                 };
             }
             Err(e) => {
@@ -660,7 +754,9 @@ impl Session {
     fn query_files(&mut self, path: &str, sql: &str, limit: usize, files: &[usize]) -> ToolResult {
         let timeout = self.opts.query_timeout;
         let (main_sha, _) = self.load(path)?;
-        let main_k = self.number_of(&main_sha).ok_or_else(|| ToolError("internal error: file not numbered".into()))?;
+        let main_k = self
+            .number_of(&main_sha)
+            .ok_or_else(|| ToolError("internal error: file not numbered".into()))?;
         let mut attach: Vec<(String, String)> = Vec::new();
         let mut ks: Vec<usize> = vec![main_k];
         ks.extend(files.iter().copied().filter(|&k| k != main_k));
@@ -671,10 +767,15 @@ impl Session {
             attach.push((schema, o.db.uri.clone()));
         }
         let norm = self.opened(path)?.norm.clone();
-        let mut db = sql::Db::join(&attach).map_err(|e| ToolError(format!("cannot join the files: {e}")))?;
+        let mut db =
+            sql::Db::join(&attach).map_err(|e| ToolError(format!("cannot join the files: {e}")))?;
         db.set_cancel(self.cancel.clone());
         let toks = sqlscan::tokens(sql);
-        let local: Vec<String> = sqlscan::table_refs(&toks).into_iter().filter(|r| r.schema.is_none()).map(|r| r.name).collect();
+        let local: Vec<String> = sqlscan::table_refs(&toks)
+            .into_iter()
+            .filter(|r| r.schema.is_none())
+            .map(|r| r.name)
+            .collect();
         let used: Vec<&Table> = tables_in_sql(&norm, &local.join(" "));
         match db.query(sql, limit, timeout) {
             Ok(res) => Ok(render(&norm, &db, &used, sql, res, timeout)),
@@ -683,12 +784,20 @@ impl Session {
                 // Hints about the first table the query names, from its own file (its columns, its
                 // total rows; the rows a hint returns come from that file's database).
                 let first = sqlscan::table_refs(&toks).into_iter().next();
-                let k = first.as_ref().and_then(|r| r.schema.as_deref()).and_then(|s| s.strip_prefix(['f', 'F'])).and_then(|d| d.parse::<usize>().ok());
+                let k = first
+                    .as_ref()
+                    .and_then(|r| r.schema.as_deref())
+                    .and_then(|s| s.strip_prefix(['f', 'F']))
+                    .and_then(|d| d.parse::<usize>().ok());
                 let mut msg = match k.filter(|&k| k >= 1 && k <= self.order.len() && k != main_k) {
                     Some(k) => {
                         let names: Vec<String> = sqlscan::table_refs(&toks)
                             .into_iter()
-                            .filter(|r| r.schema.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(&format!("f{k}"))))
+                            .filter(|r| {
+                                r.schema
+                                    .as_deref()
+                                    .is_some_and(|s| s.eq_ignore_ascii_case(&format!("f{k}")))
+                            })
                             .map(|r| r.name)
                             .collect();
                         let raw = self.order[k - 1].to_string_lossy().into_owned();
@@ -711,22 +820,39 @@ impl Session {
         if self.order.len() < 2 {
             return String::new();
         }
-        let list: Vec<String> = self.open_files().into_iter().map(|(k, name)| format!("{k} = {name}")).collect();
-        format!(" (open files: {}; a table of another file is f<k>.T1)", list.join(", "))
+        let list: Vec<String> = self
+            .open_files()
+            .into_iter()
+            .map(|(k, name)| format!("{k} = {name}"))
+            .collect();
+        format!(
+            " (open files: {}; a table of another file is f<k>.T1)",
+            list.join(", ")
+        )
     }
 
     /// The files opened in this session with their SQL prefix (`f1`, `f2`, …; B76) and display
     /// name, in the order they were opened.
     pub fn open_files(&self) -> Vec<(String, String)> {
-        self.order.iter().enumerate().map(|(i, p)| (format!("f{}", i + 1), self.bounds.display(p))).collect()
+        self.order
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (format!("f{}", i + 1), self.bounds.display(p)))
+            .collect()
     }
 
     /// Whether the open file shown as `display` was opened from the disk cache (the catalog no
     /// longer says so; B143).
     pub fn from_cache(&self, display: &str) -> bool {
-        self.order.iter().filter(|p| self.bounds.display(p) == display).any(|p| {
-            self.hashes.get(p).and_then(|h| self.files.get(&h.2)).is_some_and(|o| o.from_disk)
-        })
+        self.order
+            .iter()
+            .filter(|p| self.bounds.display(p) == display)
+            .any(|p| {
+                self.hashes
+                    .get(p)
+                    .and_then(|h| self.files.get(&h.2))
+                    .is_some_and(|o| o.from_disk)
+            })
     }
 
     /// The normalized form of every open file still in memory (waits for its decoding), with its
@@ -735,9 +861,13 @@ impl Session {
         let cancel = self.cancel.clone();
         let mut out = Vec::new();
         for (i, p) in self.order.clone().iter().enumerate() {
-            let Some(sha) = self.hashes.get(p).map(|h| h.2.clone()) else { continue };
+            let Some(sha) = self.hashes.get(p).map(|h| h.2.clone()) else {
+                continue;
+            };
             let name = self.bounds.display(p);
-            let Some(o) = self.files.get_mut(&sha) else { continue };
+            let Some(o) = self.files.get_mut(&sha) else {
+                continue;
+            };
             let norm = match &o.loaded {
                 Some(l) => l.norm.clone(),
                 None => match o.norm.wait(&cancel) {
@@ -745,14 +875,25 @@ impl Session {
                     Err(_) => continue,
                 },
             };
-            out.push(multi::FileInfo { prefix: format!("f{}", i + 1), name, norm });
+            out.push(multi::FileInfo {
+                prefix: format!("f{}", i + 1),
+                name,
+                norm,
+            });
         }
         out
     }
 }
 
 /// The text of a query result: CSV, notes, `cite as:` and the row count line.
-fn render(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, res: sql::QueryResult, timeout: Duration) -> String {
+fn render(
+    norm: &Normalized,
+    db: &sql::Db,
+    used: &[&Table],
+    sql: &str,
+    res: sql::QueryResult,
+    timeout: Duration,
+) -> String {
     {
         let mut lines = vec![csv_row(&res.header)];
         let mut shown = 0;
@@ -778,7 +919,12 @@ fn render(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, res: sql:
                         "note: {} has no total rows; {} total row(s) ({}) are in {}_all",
                         t.id(),
                         info.total_rows.len(),
-                        info.total_rows.iter().take(3).map(|r| format!("'{}'@{}", short(&r.label, 30), r.row)).collect::<Vec<_>>().join(", "),
+                        info.total_rows
+                            .iter()
+                            .take(3)
+                            .map(|r| format!("'{}'@{}", short(&r.label, 30), r.row))
+                            .collect::<Vec<_>>()
+                            .join(", "),
                         t.id()
                     ));
                 }
@@ -822,14 +968,22 @@ impl Session {
         let p = self.resolve_file(path)?;
         let meta = std::fs::metadata(&p).map_err(|e| ToolError(e.to_string()))?;
         if meta.len() > self.opts.max_file_bytes {
-            return Err(ToolError(format!("{} is larger than the limit of this session", self.bounds.display(&p))));
+            return Err(ToolError(format!(
+                "{} is larger than the limit of this session",
+                self.bounds.display(&p)
+            )));
         }
         let mtime = meta.modified().ok();
         let fresh = matches!(&self.book, Some((bp, len, m, _)) if *bp == p && *len == meta.len() && *m == mtime);
         if !fresh {
             self.book = None;
-            let wb = hh_core::reader::open_with(&p, self.opts.read_options())
-                .map_err(|e| ToolError(format!("{}: cannot read: {}", self.bounds.display(&p), limit_hint(&e))))?;
+            let wb = hh_core::reader::open_with(&p, self.opts.read_options()).map_err(|e| {
+                ToolError(format!(
+                    "{}: cannot read: {}",
+                    self.bounds.display(&p),
+                    limit_hint(&e)
+                ))
+            })?;
             self.book = Some((p, meta.len(), mtime, wb));
         }
         let wb = &self.book.as_ref().expect("workbook loaded").3;
@@ -839,7 +993,9 @@ impl Session {
     /// `totals`: the totals check, optionally for one table and/or one status.
     pub fn totals(&mut self, path: &str, table: Option<&str>, status: Option<&str>) -> ToolResult {
         let o = self.opened(path)?;
-        let t = table.map(|id| catalog::find_table(&o.norm, id)).transpose()?;
+        let t = table
+            .map(|id| catalog::find_table(&o.norm, id))
+            .transpose()?;
         Ok(catalog::totals(&o.norm, t, status)?)
     }
 
@@ -877,24 +1033,40 @@ struct Loaded {
 }
 
 /// The catalog of `open_file` without the timing line.
-fn catalog_text(norm: &Normalized, name: &str, skipped: &[(String, usize)], question: Option<&str>) -> String {
+fn catalog_text(
+    norm: &Normalized,
+    name: &str,
+    skipped: &[(String, usize)],
+    question: Option<&str>,
+) -> String {
     let mut text = catalog::catalog_for(norm, name, MAX_CHARS - 300, question);
     for (t, n) in skipped {
-        text.push_str(&format!("\nNOTE {t}: {n} columns beyond SQLite's 2000-column limit are not queryable"));
+        text.push_str(&format!(
+            "\nNOTE {t}: {n} columns beyond SQLite's 2000-column limit are not queryable"
+        ));
     }
     text
 }
 
 fn sql_mentions(sql: &str, name: &str) -> bool {
-    sql.split(|c: char| !(c.is_alphanumeric() || c == '_')).any(|w| w.eq_ignore_ascii_case(name))
+    sql.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .any(|w| w.eq_ignore_ascii_case(name))
 }
 
 /// Tables named in the SQL (`T2`, `t2_all`, `"T2"`).
 fn tables_in_sql<'a>(norm: &'a Normalized, sql: &str) -> Vec<&'a Table> {
     let mut out: Vec<&Table> = Vec::new();
     for w in sql.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
-        let w = w.strip_suffix("_all").or_else(|| w.strip_suffix("_ALL")).unwrap_or(w);
-        let Some(n) = w.strip_prefix(['T', 't']).and_then(|d| d.parse::<usize>().ok()) else { continue };
+        let w = w
+            .strip_suffix("_all")
+            .or_else(|| w.strip_suffix("_ALL"))
+            .unwrap_or(w);
+        let Some(n) = w
+            .strip_prefix(['T', 't'])
+            .and_then(|d| d.parse::<usize>().ok())
+        else {
+            continue;
+        };
         if let Some(t) = norm.tables.iter().find(|t| t.n == n)
             && !out.iter().any(|x| x.n == n)
         {
@@ -907,7 +1079,11 @@ fn tables_in_sql<'a>(norm: &'a Normalized, sql: &str) -> Vec<&'a Table> {
 /// The column names a query can mean: those of the tables it names (all tables when it names
 /// none), with the entity columns of the SQL views, as (table id, name).
 fn scope_names(norm: &Normalized, db: &sql::Db, used: &[&Table]) -> Vec<(String, String)> {
-    let scope: Vec<&Table> = if used.is_empty() { norm.tables.iter().collect() } else { used.to_vec() };
+    let scope: Vec<&Table> = if used.is_empty() {
+        norm.tables.iter().collect()
+    } else {
+        used.to_vec()
+    };
     let mut names: Vec<(String, String)> = Vec::new();
     for t in &scope {
         for (c, name) in t.columns.iter().zip(catalog::sql_names(t)) {
@@ -915,7 +1091,12 @@ fn scope_names(norm: &Normalized, db: &sql::Db, used: &[&Table]) -> Vec<(String,
                 names.push((t.id(), name));
             }
         }
-        for e in db.entities.iter().filter(|(n, _)| *n == t.n).flat_map(|x| &x.1) {
+        for e in db
+            .entities
+            .iter()
+            .filter(|(n, _)| *n == t.n)
+            .flat_map(|x| &x.1)
+        {
             names.push((t.id(), e.id_col.clone()));
             names.push((t.id(), e.name_col.clone()));
         }
@@ -926,7 +1107,12 @@ fn scope_names(norm: &Normalized, db: &sql::Db, used: &[&Table]) -> Vec<(String,
 /// B161: the statement with every quoted name written in the catalog's grouped form (`"a / {b}"`,
 /// `"a / {b / {c}}"`) replaced by the one column it stands for ([`brief::resolve_grouped`]: exact,
 /// never a guess), and the names replaced (as written, as read); None when none is.
-fn ungroup_names(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str) -> Option<(String, Vec<(String, String)>)> {
+fn ungroup_names(
+    norm: &Normalized,
+    db: &sql::Db,
+    used: &[&Table],
+    sql: &str,
+) -> Option<(String, Vec<(String, String)>)> {
     let toks = sqlscan::tokens(sql);
     if !toks.iter().any(|t| matches!(&t.tok, sqlscan::Tok::Ident { name, quoted: true } if name.contains(['{', '}']))) {
         return None;
@@ -936,8 +1122,12 @@ fn ungroup_names(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str) ->
     let mut read: Vec<(String, String)> = Vec::new();
     let mut at = 0;
     for t in &toks {
-        let sqlscan::Tok::Ident { name, quoted: true } = &t.tok else { continue };
-        let Some(col) = brief::resolve_grouped(name, names.iter().map(|(_, n)| n.as_str())) else { continue };
+        let sqlscan::Tok::Ident { name, quoted: true } = &t.tok else {
+            continue;
+        };
+        let Some(col) = brief::resolve_grouped(name, names.iter().map(|(_, n)| n.as_str())) else {
+            continue;
+        };
         out.push_str(&sql[at..t.start]);
         out.push_str(&quote_ident(col));
         at = t.end;
@@ -957,19 +1147,37 @@ const ERROR_ROWS: usize = 10;
 /// Characters of those rows at most.
 const ERROR_ROWS_CHARS: usize = 3000;
 
-fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, err: &str, timeout: Duration) -> String {
+fn sql_error_hint(
+    norm: &Normalized,
+    db: &sql::Db,
+    used: &[&Table],
+    sql: &str,
+    err: &str,
+    timeout: Duration,
+) -> String {
     let mut err = err.replace(" - should this be a string literal in single-quotes?", "");
     // SQLite echoes the whole statement ("… in SELECT … at offset 7"); keep the position only.
     if let Some(pos) = err.rfind(" at offset ") {
         let before = &err[..pos];
-        if let Some(i) = before.find(" in SELECT").or_else(|| before.find(" in WITH")).or_else(|| before.find(" in select")) {
-            err = format!("{} (at character {})", &before[..i], &err[pos + " at offset ".len()..]);
+        if let Some(i) = before
+            .find(" in SELECT")
+            .or_else(|| before.find(" in WITH"))
+            .or_else(|| before.find(" in select"))
+        {
+            err = format!(
+                "{} (at character {})",
+                &before[..i],
+                &err[pos + " at offset ".len()..]
+            );
         }
     }
     let err = err.as_str();
     let mut msg = format!("SQL error: {}", short(err, 300));
     let low = err.to_lowercase();
-    if let Some(rest) = low.find("no such column:").map(|i| &err[i + "no such column:".len()..]) {
+    if let Some(rest) = low
+        .find("no such column:")
+        .map(|i| &err[i + "no such column:".len()..])
+    {
         let wanted = missing_column(rest);
         let wanted = wanted.as_str();
         // B88: `_row_type` is only in the _all views.
@@ -984,7 +1192,11 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
             ));
             return msg;
         }
-        let scope: Vec<&Table> = if used.is_empty() { norm.tables.iter().collect() } else { used.to_vec() };
+        let scope: Vec<&Table> = if used.is_empty() {
+            norm.tables.iter().collect()
+        } else {
+            used.to_vec()
+        };
         let names = scope_names(norm, db, used);
         // B161: the closest first; when one is clearly closest, only that one.
         let close = text::clearly_closest(wanted, names.iter().map(|(_, n)| n.as_str()), 4);
@@ -999,13 +1211,19 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
         } else if let Some((h, rows_sql)) = row_label_hint(norm, &scope, wanted) {
             msg.push_str(&format!(" — {h}"));
             if !hits.is_empty() {
-                msg.push_str(&format!(" (columns with similar names: {})", hits.join(", ")));
+                msg.push_str(&format!(
+                    " (columns with similar names: {})",
+                    hits.join(", ")
+                ));
             }
             if let Some(rows) = rows_sql.and_then(|q| rows_csv(db, &q, timeout)) {
                 msg.push_str(&format!("\n{rows}"));
             }
         } else if !hits.is_empty() {
-            msg.push_str(&format!(" — did you mean {}? (quote names with double quotes)", hits.join(", ")));
+            msg.push_str(&format!(
+                " — did you mean {}? (quote names with double quotes)",
+                hits.join(", ")
+            ));
         } else if let Some(d) = dialect::hint(err, sql) {
             msg.push_str(&format!(" — {d}"));
         } else if scope.len() <= 3 {
@@ -1021,14 +1239,28 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
                     format!("{}: {}", t.id(), ns.join(", "))
                 })
                 .collect();
-            msg.push_str(&format!(" — columns are {}", short(&lists.join("; "), 1500)));
+            msg.push_str(&format!(
+                " — columns are {}",
+                short(&lists.join("; "), 1500)
+            ));
         } else {
             msg.push_str(" — use describe_table to see the exact column names");
         }
-    } else if let Some(word) = err.strip_prefix("near \"").and_then(|r| r.split_once("\": syntax error")).map(|x| x.0) {
-        let is_col = norm.tables.iter().any(|t| catalog::sql_names(t).iter().any(|n| n.eq_ignore_ascii_case(word)));
+    } else if let Some(word) = err
+        .strip_prefix("near \"")
+        .and_then(|r| r.split_once("\": syntax error"))
+        .map(|x| x.0)
+    {
+        let is_col = norm.tables.iter().any(|t| {
+            catalog::sql_names(t)
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(word))
+        });
         if is_col {
-            msg.push_str(&format!(" — {word} is a column name that is also an SQL keyword; quote it: {}", quote_ident(word)));
+            msg.push_str(&format!(
+                " — {word} is a column name that is also an SQL keyword; quote it: {}",
+                quote_ident(word)
+            ));
         } else if let Some(d) = dialect::hint(err, sql) {
             msg.push_str(&format!(" — {d}"));
         }
@@ -1050,7 +1282,12 @@ fn sql_error_hint(norm: &Normalized, db: &sql::Db, used: &[&Table], sql: &str, e
 
 /// B88: a column the outer query takes from a subquery or CTE that does not select it (an outer
 /// `SUM("price")` over `(SELECT buyer, SUM("price") AS total …)`): the columns it does have.
-fn derived_hint(db: &sql::Db, sql: &str, wanted: &str, base: &[(String, String)]) -> Option<String> {
+fn derived_hint(
+    db: &sql::Db,
+    sql: &str,
+    wanted: &str,
+    base: &[(String, String)],
+) -> Option<String> {
     let toks = sqlscan::tokens(sql);
     let ds = sqlscan::derived(sql, &toks);
     if ds.is_empty() {
@@ -1060,33 +1297,61 @@ fn derived_hint(db: &sql::Db, sql: &str, wanted: &str, base: &[(String, String)]
         .iter()
         .filter_map(|d| {
             let c = db.columns(&d.columns_sql)?;
-            let name = d.name.as_ref().map_or_else(|| "the subquery".to_string(), |n| format!("{} ({})", ident(n), if d.cte { "CTE" } else { "subquery" }));
+            let name = d.name.as_ref().map_or_else(
+                || "the subquery".to_string(),
+                |n| format!("{} ({})", ident(n), if d.cte { "CTE" } else { "subquery" }),
+            );
             Some((name, c))
         })
         .collect();
-    if cols.is_empty() || cols.iter().any(|(_, c)| c.iter().any(|x| x.eq_ignore_ascii_case(wanted))) {
+    if cols.is_empty()
+        || cols
+            .iter()
+            .any(|(_, c)| c.iter().any(|x| x.eq_ignore_ascii_case(wanted)))
+    {
         return None;
     }
     let listed: Vec<String> = cols
         .iter()
-        .map(|(n, c)| format!("{n}: {}", short(&c.iter().map(|x| ident(x)).collect::<Vec<_>>().join(", "), 300)))
+        .map(|(n, c)| {
+            format!(
+                "{n}: {}",
+                short(
+                    &c.iter().map(|x| ident(x)).collect::<Vec<_>>().join(", "),
+                    300
+                )
+            )
+        })
         .collect();
     let near = closest(wanted, base.iter().map(|(_, n)| n.as_str()), 1);
     let exact = base.iter().find(|(_, n)| n.eq_ignore_ascii_case(wanted));
-    if let Some((t, n)) = exact.or_else(|| base.iter().find(|(_, n)| near.first() == Some(&n.as_str()))) {
-        let what = if exact.is_some() { format!("{} is a column of {t}", ident(n)) } else { format!("the closest column is {t}.{}", quote_ident(n)) };
+    if let Some((t, n)) =
+        exact.or_else(|| base.iter().find(|(_, n)| near.first() == Some(&n.as_str())))
+    {
+        let what = if exact.is_some() {
+            format!("{} is a column of {t}", ident(n))
+        } else {
+            format!("the closest column is {t}.{}", quote_ident(n))
+        };
         return Some(format!(
             " — {what}, but this part of the query reads from a subquery or CTE that does not select it ({}); select {} inside it, with an alias, and use that name outside",
             listed.join("; "),
             ident(n)
         ));
     }
-    let all: Vec<&str> = cols.iter().flat_map(|(_, c)| c.iter().map(String::as_str)).collect();
+    let all: Vec<&str> = cols
+        .iter()
+        .flat_map(|(_, c)| c.iter().map(String::as_str))
+        .collect();
     let close = closest(wanted, all, 3);
     (!close.is_empty()).then(|| {
         format!(
             " — did you mean {}? (columns of the subquery or CTE: {})",
-            close.iter().map(|c| ident(c)).collect::<Vec<_>>().join(", "),
+            close
+                .iter()
+                .map(|c| ident(c))
+                .collect::<Vec<_>>()
+                .join(", "),
             listed.join("; ")
         )
     })
@@ -1094,9 +1359,35 @@ fn derived_hint(db: &sql::Db, sql: &str, wanted: &str, base: &[(String, String)]
 
 /// Words that name a total row ("Total", "Gesamt", …), compared without case.
 const TOTAL_WORDS: &[&str] = &[
-    "total", "totals", "grand total", "subtotal", "sub-total", "sub total", "gesamt", "insgesamt", "summe", "gesamtsumme",
-    "zusammen", "totale", "totale generale", "ukupno", "svega", "укупно", "свега", "total general", "totaal", "totalt",
-    "i alt", "yhteensä", "razem", "celkem", "összesen", "suma", "somme", "ensemble", "overall",
+    "total",
+    "totals",
+    "grand total",
+    "subtotal",
+    "sub-total",
+    "sub total",
+    "gesamt",
+    "insgesamt",
+    "summe",
+    "gesamtsumme",
+    "zusammen",
+    "totale",
+    "totale generale",
+    "ukupno",
+    "svega",
+    "укупно",
+    "свега",
+    "total general",
+    "totaal",
+    "totalt",
+    "i alt",
+    "yhteensä",
+    "razem",
+    "celkem",
+    "összesen",
+    "suma",
+    "somme",
+    "ensemble",
+    "overall",
 ];
 
 fn sql_text(s: &str) -> String {
@@ -1115,7 +1406,9 @@ fn label_column(t: &Table, names: &[String], i: usize, label: &str) -> Option<St
 /// The rows of `sql` as CSV for an error text: at most [`ERROR_ROWS`] rows and
 /// [`ERROR_ROWS_CHARS`] characters, under a short time limit; None when it fails or is empty.
 fn rows_csv(db: &sql::Db, sql: &str, timeout: Duration) -> Option<String> {
-    let r = db.query(sql, ERROR_ROWS, timeout.min(Duration::from_millis(500))).ok()?;
+    let r = db
+        .query(sql, ERROR_ROWS, timeout.min(Duration::from_millis(500)))
+        .ok()?;
     if r.rows.is_empty() {
         return None;
     }
@@ -1130,52 +1423,88 @@ fn rows_csv(db: &sql::Db, sql: &str, timeout: Duration) -> Option<String> {
         lines.push(line);
     }
     let shown = lines.len() - 1;
-    let more = if r.total > shown { format!(", first {shown} of {}", text::thousands(r.total)) } else { String::new() };
-    Some(format!("Those rows (the query above, run for you{more}; pick the columns you need):\n{}", lines.join("\n")))
+    let more = if r.total > shown {
+        format!(", first {shown} of {}", text::thousands(r.total))
+    } else {
+        String::new()
+    };
+    Some(format!(
+        "Those rows (the query above, run for you{more}; pick the columns you need):\n{}",
+        lines.join("\n")
+    ))
 }
 
 /// When the "missing column" is the label of a total row (or a total word such as "Total") or a
 /// value of a text column: where those rows are and how to select them, and the query that
 /// returns them (run for the error text, B15).
-fn row_label_hint(norm: &Normalized, scope: &[&Table], wanted: &str) -> Option<(String, Option<String>)> {
+fn row_label_hint(
+    norm: &Normalized,
+    scope: &[&Table],
+    wanted: &str,
+) -> Option<(String, Option<String>)> {
     let w = wanted.trim();
     if w.chars().count() < 2 {
         return None;
     }
     let lw = w.to_lowercase();
     let generic = TOTAL_WORDS.contains(&lw.trim_end_matches([':', '.']).trim());
-    let infos: Vec<(&Table, catalog::RowInfo)> = scope.iter().map(|t| (*t, catalog::row_info(norm, t))).collect();
+    let infos: Vec<(&Table, catalog::RowInfo)> = scope
+        .iter()
+        .map(|t| (*t, catalog::row_info(norm, t)))
+        .collect();
     let find = |exact: bool| {
         infos.iter().find_map(|(t, info)| {
             let hit = |r: &&catalog::TotalRow| !exact || r.label.trim().eq_ignore_ascii_case(w);
             if let Some(r) = info.total_rows.iter().find(hit) {
                 return Some((*t, r.clone(), true));
             }
-            info.kept_totals.iter().find(hit).map(|r| (*t, r.clone(), false))
+            info.kept_totals
+                .iter()
+                .find(hit)
+                .map(|r| (*t, r.clone(), false))
         })
     };
     let quoted = quote_ident(w);
     if let Some((t, r, in_all)) = find(true).or_else(|| if generic { find(false) } else { None }) {
         let names = catalog::sql_names(t);
-        let col = t.src_rows.iter().position(|s| s + 1 == r.row).and_then(|i| label_column(t, &names, i, &r.label));
+        let col = t
+            .src_rows
+            .iter()
+            .position(|s| s + 1 == r.row)
+            .and_then(|i| label_column(t, &names, i, &r.label));
         let id = t.id();
-        let at = col.as_ref().map(|c| format!(" (label in {})", ident(c))).unwrap_or_default();
+        let at = col
+            .as_ref()
+            .map(|c| format!(" (label in {})", ident(c)))
+            .unwrap_or_default();
         return Some(if in_all {
             let kind = r.kind.as_str();
             let q = format!("SELECT * FROM {id}_all WHERE _row_type = '{kind}'");
-            (format!("{quoted} is a row label, not a column: {kind} rows are in {id}_all with _row_type = '{kind}'{at}: {q}"), Some(q))
+            (
+                format!(
+                    "{quoted} is a row label, not a column: {kind} rows are in {id}_all with _row_type = '{kind}'{at}: {q}"
+                ),
+                Some(q),
+            )
         } else {
             let filter = match &col {
                 Some(c) => format!("WHERE {} = {}", quote_ident(c), sql_text(&r.label)),
                 None => format!("WHERE _src_row = {}", r.row),
             };
             let q = format!("SELECT * FROM {id} {filter}");
-            (format!("{quoted} is a row label, not a column: that total row stays in {id}{at}: {q}"), Some(q))
+            (
+                format!(
+                    "{quoted} is a row label, not a column: that total row stays in {id}{at}: {q}"
+                ),
+                Some(q),
+            )
         });
     }
     if generic {
         let id = scope.first()?.id();
-        let h = format!("{quoted} is not a column and {id} has no total rows: compute it, e.g. SELECT SUM(<column>) FROM {id}");
+        let h = format!(
+            "{quoted} is not a column and {id} has no total rows: compute it, e.g. SELECT SUM(<column>) FROM {id}"
+        );
         return Some((h, None));
     }
     // A value of a text column (a pipeline, a region) used as a column name.
@@ -1185,9 +1514,24 @@ fn row_label_hint(norm: &Normalized, scope: &[&Table], wanted: &str) -> Option<(
             if !matches!(c.role, ColRole::Data | ColRole::Group) || c.dtype != Dtype::Text {
                 continue;
             }
-            if let Some(Out::Text(v)) = c.values.iter().find(|v| matches!(v, Out::Text(s) if s.trim().eq_ignore_ascii_case(w))) {
-                let q = format!("SELECT * FROM {} WHERE {} = {}", t.id(), quote_ident(n), sql_text(v));
-                return Some((format!("{quoted} is a value of column {}, not a column: {q}", ident(n)), Some(q)));
+            if let Some(Out::Text(v)) = c
+                .values
+                .iter()
+                .find(|v| matches!(v, Out::Text(s) if s.trim().eq_ignore_ascii_case(w)))
+            {
+                let q = format!(
+                    "SELECT * FROM {} WHERE {} = {}",
+                    t.id(),
+                    quote_ident(n),
+                    sql_text(v)
+                );
+                return Some((
+                    format!(
+                        "{quoted} is a value of column {}, not a column: {q}",
+                        ident(n)
+                    ),
+                    Some(q),
+                ));
             }
         }
     }
@@ -1200,8 +1544,16 @@ fn with_entities(text: String, t: &Table, ents: &[entity::Entity]) -> String {
     if ents.is_empty() {
         return text;
     }
-    let cols: Vec<String> = ents.iter().map(|e| format!("{}, {}", ident(&e.id_col), ident(&e.name_col))).collect();
-    let mut add = format!("entity columns (the SQL views {} and {}_all also have {}):", t.id(), t.id(), cols.join(", "));
+    let cols: Vec<String> = ents
+        .iter()
+        .map(|e| format!("{}, {}", ident(&e.id_col), ident(&e.name_col)))
+        .collect();
+    let mut add = format!(
+        "entity columns (the SQL views {} and {}_all also have {}):",
+        t.id(),
+        t.id(),
+        cols.join(", ")
+    );
     for e in ents {
         add.push_str(&format!("\n  {}", entity::line(e, &t.id()).trim_start()));
     }
@@ -1209,7 +1561,12 @@ fn with_entities(text: String, t: &Table, ents: &[entity::Entity]) -> String {
         Some(i) => format!("{}\n{add}{}", &text[..i], &text[i..]),
         None => format!("{text}\n{add}"),
     };
-    text::cut(out, MAX_CHARS, |n| format!("{n} more lines"), "query on the table for specific columns")
+    text::cut(
+        out,
+        MAX_CHARS,
+        |n| format!("{n} more lines"),
+        "query on the table for specific columns",
+    )
 }
 
 /// The column name in SQLite's `no such column: <name> - …` (`"quoted name"`, `T1.name`, `name`).
@@ -1255,7 +1612,12 @@ fn missing_column(rest: &str) -> String {
 /// different spellings (B18): which rows, and the query grouped by the ID instead.
 fn spellings_note(db: &sql::Db, used: &[&Table], res: &sql::QueryResult) -> Option<String> {
     for t in used {
-        let ents = db.entities.iter().find(|(n, _)| *n == t.n).map(|x| x.1.as_slice()).unwrap_or_default();
+        let ents = db
+            .entities
+            .iter()
+            .find(|(n, _)| *n == t.n)
+            .map(|x| x.1.as_slice())
+            .unwrap_or_default();
         for e in ents {
             let has = |n: &str| res.header.iter().position(|h| h.eq_ignore_ascii_case(n));
             let Some(j) = has(&e.name) else { continue };
@@ -1265,7 +1627,9 @@ fn spellings_note(db: &sql::Db, used: &[&Table], res: &sql::QueryResult) -> Opti
             let mut first: HashMap<&str, (usize, &str)> = HashMap::new();
             for (r, row) in res.rows.iter().enumerate() {
                 let Some(cell) = row.get(j) else { continue };
-                let entity::Parsed::One { id, .. } = entity::parse(cell) else { continue };
+                let entity::Parsed::One { id, .. } = entity::parse(cell) else {
+                    continue;
+                };
                 match first.get(id) {
                     Some(&(r0, text)) if text != cell.as_str() => {
                         return Some(format!(
@@ -1295,7 +1659,12 @@ fn cite_hint(db: &sql::Db, used: &[&Table], header: &[String]) -> Option<String>
     }
     let t = used[0];
     let names = catalog::sql_names(t);
-    let ents = db.entities.iter().find(|(n, _)| *n == t.n).map(|x| x.1.as_slice()).unwrap_or_default();
+    let ents = db
+        .entities
+        .iter()
+        .find(|(n, _)| *n == t.n)
+        .map(|x| x.1.as_slice())
+        .unwrap_or_default();
     let parts: Vec<String> = header
         .iter()
         .filter_map(|h| {
@@ -1304,11 +1673,22 @@ fn cite_hint(db: &sql::Db, used: &[&Table], header: &[String]) -> Option<String>
                 Some(i) => (i, ""),
                 None => {
                     let e = ents.iter().find(|e| e.id_col == *h || e.name_col == *h)?;
-                    (e.col, if e.id_col == *h { " (ID part)" } else { " (name part)" })
+                    (
+                        e.col,
+                        if e.id_col == *h {
+                            " (ID part)"
+                        } else {
+                            " (name part)"
+                        },
+                    )
                 }
             };
             let col = t.columns[i].source_col?;
-            Some(format!("{} = {}{part}", ident(h), sheet_ref(&t.source_sheet, &format!("{}<_src_row>", text::letter(col)))))
+            Some(format!(
+                "{} = {}{part}",
+                ident(h),
+                sheet_ref(&t.source_sheet, &format!("{}<_src_row>", text::letter(col)))
+            ))
         })
         .take(8)
         .collect();
@@ -1321,7 +1701,10 @@ mod tests {
 
     #[test]
     fn missing_column_names() {
-        assert_eq!(missing_column(" \"Dezember / 2021\" - should this be …"), "Dezember / 2021");
+        assert_eq!(
+            missing_column(" \"Dezember / 2021\" - should this be …"),
+            "Dezember / 2021"
+        );
         assert_eq!(missing_column(" T1.Revenue in SELECT"), "Revenue");
         assert_eq!(missing_column(" \"T1\".\"a \"\"b\"\"\""), "a \"b\"");
         assert_eq!(missing_column(" x"), "x");

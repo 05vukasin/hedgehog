@@ -2,11 +2,11 @@
 //! and convert to Python dicts / lists.
 
 use hh_core::totals::{self, Direction, Evidence, RefKind, TotalLevel, TotalOrigin};
-use hh_core::{a1, Cell, Grid, Rect, Sheet, Value};
+use hh_core::{Cell, Grid, Rect, Sheet, Value, a1};
+use pyo3::IntoPyObjectExt;
 use pyo3::exceptions::{PyKeyError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use pyo3::IntoPyObjectExt;
 
 #[pyclass(frozen)]
 struct Workbook(hh_core::Workbook);
@@ -73,19 +73,34 @@ fn parse_ref(text: &str, kinds: &[RefKind]) -> PyResult<(Option<String>, Rect)> 
     let parsed = totals::parse(text.trim().trim_start_matches('='));
     match parsed.refs.as_slice() {
         [r] if !r.external && kinds.contains(&r.kind) => Ok((r.sheet.clone(), r.rect)),
-        _ => Err(PyValueError::new_err(format!("not a cell reference: {text:?}"))),
+        _ => Err(PyValueError::new_err(format!(
+            "not a cell reference: {text:?}"
+        ))),
     }
 }
 
-fn cell_dict<'py>(py: Python<'py>, sheet: &Sheet, row: u32, col: u32, cell: Option<&Cell>) -> PyResult<Bound<'py, PyDict>> {
+fn cell_dict<'py>(
+    py: Python<'py>,
+    sheet: &Sheet,
+    row: u32,
+    col: u32,
+    cell: Option<&Cell>,
+) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
     d.set_item("sheet", &sheet.name)?;
     d.set_item("address", a1(row, col))?;
     let v = cell.and_then(|c| c.value.as_ref());
     d.set_item("value", value_py(py, v)?)?;
     d.set_item("type", value_type(v))?;
-    d.set_item("formula", cell.and_then(|c| c.formula.as_ref()).map(|f| format!("={f}")))?;
-    let merged = sheet.merges.iter().find(|m| m.top <= row && row <= m.bottom && m.left <= col && col <= m.right);
+    d.set_item(
+        "formula",
+        cell.and_then(|c| c.formula.as_ref())
+            .map(|f| format!("={f}")),
+    )?;
+    let merged = sheet
+        .merges
+        .iter()
+        .find(|m| m.top <= row && row <= m.bottom && m.left <= col && col <= m.right);
     d.set_item("merged", merged.map(|m| range_a1(*m)))?;
     Ok(d)
 }
@@ -96,15 +111,29 @@ impl Workbook {
             .sheets
             .iter()
             .find(|s| s.name == name)
-            .or_else(|| self.0.sheets.iter().find(|s| s.name.eq_ignore_ascii_case(name)))
-            .ok_or_else(|| PyKeyError::new_err(format!("no sheet named {name:?}; sheets: {:?}", self.names())))
+            .or_else(|| {
+                self.0
+                    .sheets
+                    .iter()
+                    .find(|s| s.name.eq_ignore_ascii_case(name))
+            })
+            .ok_or_else(|| {
+                PyKeyError::new_err(format!(
+                    "no sheet named {name:?}; sheets: {:?}",
+                    self.names()
+                ))
+            })
     }
 
     /// Sheet named in the reference wins over the `sheet` argument; with neither, the first sheet.
     fn sheet_for(&self, sheet: Option<&str>, in_ref: Option<String>) -> PyResult<&Sheet> {
         match in_ref.as_deref().or(sheet) {
             Some(n) => self.sheet(n),
-            None => self.0.sheets.first().ok_or_else(|| PyValueError::new_err("workbook has no sheets")),
+            None => self
+                .0
+                .sheets
+                .first()
+                .ok_or_else(|| PyValueError::new_err("workbook has no sheets")),
         }
     }
 
@@ -146,7 +175,12 @@ impl Workbook {
     /// `{sheet, address, value, type, formula, merged}`; an empty cell has value None, type "empty";
     /// `merged` is the merged range (`B3:C3`) the cell belongs to, or None.
     #[pyo3(signature = (sheet, address))]
-    fn get_cell<'py>(&self, py: Python<'py>, sheet: Option<&str>, address: &str) -> PyResult<Bound<'py, PyDict>> {
+    fn get_cell<'py>(
+        &self,
+        py: Python<'py>,
+        sheet: Option<&str>,
+        address: &str,
+    ) -> PyResult<Bound<'py, PyDict>> {
         let (in_ref, rect) = parse_ref(address, &[RefKind::Cell])?;
         let s = self.sheet_for(sheet, in_ref)?;
         let grid = Grid::new(s);
@@ -156,7 +190,13 @@ impl Workbook {
     /// Values of a rectangular range, row by row (None for empty cells). Larger ranges than
     /// `max_cells` are rejected so a caller cannot dump a huge sheet by accident.
     #[pyo3(signature = (sheet, range, max_cells = 5000))]
-    fn get_range<'py>(&self, py: Python<'py>, sheet: Option<&str>, range: &str, max_cells: u64) -> PyResult<Bound<'py, PyDict>> {
+    fn get_range<'py>(
+        &self,
+        py: Python<'py>,
+        sheet: Option<&str>,
+        range: &str,
+        max_cells: u64,
+    ) -> PyResult<Bound<'py, PyDict>> {
         let (in_ref, rect) = parse_ref(range, &[RefKind::Cell, RefKind::Range])?;
         let s = self.sheet_for(sheet, in_ref)?;
         let area = (rect.bottom - rect.top + 1) as u64 * (rect.right - rect.left + 1) as u64;
@@ -171,7 +211,10 @@ impl Workbook {
         for r in rect.top..=rect.bottom {
             let row = PyList::empty(py);
             for c in rect.left..=rect.right {
-                row.append(value_py(py, grid.cell(r, c).and_then(|x| x.value.as_ref()))?)?;
+                row.append(value_py(
+                    py,
+                    grid.cell(r, c).and_then(|x| x.value.as_ref()),
+                )?)?;
             }
             rows.append(row)?;
         }
@@ -185,7 +228,13 @@ impl Workbook {
     /// Cells whose text contains `query` (case-, diacritic- and script-insensitive via
     /// `values::norm_key`), on one sheet or all. Each hit is a cell dict.
     #[pyo3(signature = (query, sheet = None, limit = 50))]
-    fn find_text<'py>(&self, py: Python<'py>, query: &str, sheet: Option<&str>, limit: usize) -> PyResult<Bound<'py, PyList>> {
+    fn find_text<'py>(
+        &self,
+        py: Python<'py>,
+        query: &str,
+        sheet: Option<&str>,
+        limit: usize,
+    ) -> PyResult<Bound<'py, PyList>> {
         let key = hh_core::values::norm_key(query);
         let out = PyList::empty(py);
         if key.is_empty() {
@@ -223,39 +272,84 @@ impl Workbook {
             let d = PyDict::new(py);
             d.set_item("sheet", &s.name)?;
             d.set_item("address", a1(cand.row, cand.col))?;
-            d.set_item("origin", match cand.origin {
-                TotalOrigin::Formula => "formula",
-                TotalOrigin::Typed => "typed",
-            })?;
-            d.set_item("level", match cand.level {
-                TotalLevel::Total => "total",
-                TotalLevel::Subtotal => "subtotal",
-                TotalLevel::GrandTotal => "grand_total",
-            })?;
-            d.set_item("direction", match cand.direction {
-                Direction::Vertical => "vertical",
-                Direction::Horizontal => "horizontal",
-            })?;
-            d.set_item("sources", cand.ranges.iter().map(|r| range_a1(*r)).collect::<Vec<_>>())?;
-            d.set_item("excluded", cand.exclude.iter().map(|&(r, c)| a1(r, c)).collect::<Vec<_>>())?;
-            d.set_item("double_counted", cand.double_counted.iter().map(|&(r, c)| a1(r, c)).collect::<Vec<_>>())?;
+            d.set_item(
+                "origin",
+                match cand.origin {
+                    TotalOrigin::Formula => "formula",
+                    TotalOrigin::Typed => "typed",
+                },
+            )?;
+            d.set_item(
+                "level",
+                match cand.level {
+                    TotalLevel::Total => "total",
+                    TotalLevel::Subtotal => "subtotal",
+                    TotalLevel::GrandTotal => "grand_total",
+                },
+            )?;
+            d.set_item(
+                "direction",
+                match cand.direction {
+                    Direction::Vertical => "vertical",
+                    Direction::Horizontal => "horizontal",
+                },
+            )?;
+            d.set_item(
+                "sources",
+                cand.ranges.iter().map(|r| range_a1(*r)).collect::<Vec<_>>(),
+            )?;
+            d.set_item(
+                "excluded",
+                cand.exclude
+                    .iter()
+                    .map(|&(r, c)| a1(r, c))
+                    .collect::<Vec<_>>(),
+            )?;
+            d.set_item(
+                "double_counted",
+                cand.double_counted
+                    .iter()
+                    .map(|&(r, c)| a1(r, c))
+                    .collect::<Vec<_>>(),
+            )?;
             let label_cell = cand.label.and_then(|(r, c)| grid.cell(r, c));
             d.set_item("label_address", cand.label.map(|(r, c)| a1(r, c)))?;
-            d.set_item("label", value_py(py, label_cell.and_then(|c| c.value.as_ref()))?)?;
-            d.set_item("formula", grid.cell(cand.row, cand.col).and_then(|c| c.formula.as_ref()).map(|f| format!("={f}")))?;
-            d.set_item("evidence", cand.evidence.iter().map(|e| match e {
-                Evidence::Formula(k) => format!("formula:{}", snake(k)),
-                Evidence::Keyword(k) => format!("keyword:{}", snake(k)),
-                Evidence::GroupLabel(r, c) => format!("group_label:{}", a1(*r, *c)),
-                other => snake(other),
-            }).collect::<Vec<_>>())?;
+            d.set_item(
+                "label",
+                value_py(py, label_cell.and_then(|c| c.value.as_ref()))?,
+            )?;
+            d.set_item(
+                "formula",
+                grid.cell(cand.row, cand.col)
+                    .and_then(|c| c.formula.as_ref())
+                    .map(|f| format!("={f}")),
+            )?;
+            d.set_item(
+                "evidence",
+                cand.evidence
+                    .iter()
+                    .map(|e| match e {
+                        Evidence::Formula(k) => format!("formula:{}", snake(k)),
+                        Evidence::Keyword(k) => format!("keyword:{}", snake(k)),
+                        Evidence::GroupLabel(r, c) => format!("group_label:{}", a1(*r, *c)),
+                        other => snake(other),
+                    })
+                    .collect::<Vec<_>>(),
+            )?;
             d.set_item("actual", check.actual)?;
             d.set_item("expected", check.expected)?;
             d.set_item("diff", check.diff)?;
             d.set_item("ok", check.ok)?;
             d.set_item("reason", snake(check.reason))?;
             d.set_item("summed", check.summed)?;
-            d.set_item("numbers_as_text", check.numbers_as_text.iter().map(|&(r, c)| a1(r, c)).collect::<Vec<_>>())?;
+            d.set_item(
+                "numbers_as_text",
+                check
+                    .numbers_as_text
+                    .iter()
+                    .map(|&(r, c)| a1(r, c))
+                    .collect::<Vec<_>>(),
+            )?;
             out.append(d)?;
         }
         Ok(out)
@@ -271,15 +365,27 @@ impl Workbook {
 /// `panic = "unwind"` (the release profile), so the interpreter survives either way.
 fn guarded<T>(what: &str, f: impl FnOnce() -> PyResult<T>) -> PyResult<T> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|p| {
-        let msg = p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_default();
-        Err(pyo3::exceptions::PyRuntimeError::new_err(format!("internal error in {what} ({msg}); the file may be malformed")))
+        let msg = p
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| p.downcast_ref::<String>().cloned())
+            .unwrap_or_default();
+        Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "internal error in {what} ({msg}); the file may be malformed"
+        )))
     })
 }
 
 #[pyfunction]
 fn open(py: Python<'_>, path: &str) -> PyResult<Workbook> {
     let path = path.to_string();
-    py.detach(move || guarded("open", || hh_core::open(&path).map(Workbook).map_err(|e| PyValueError::new_err(e.to_string()))))
+    py.detach(move || {
+        guarded("open", || {
+            hh_core::open(&path)
+                .map(Workbook)
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
+    })
 }
 
 /// `hh_core::open_bytes`: a workbook from bytes in memory; `name` (file name or object key) is
@@ -289,7 +395,11 @@ fn open(py: Python<'_>, path: &str) -> PyResult<Workbook> {
 fn open_bytes(py: Python<'_>, data: &[u8], name: Option<&str>) -> PyResult<Workbook> {
     let name = name.map(str::to_string);
     py.detach(move || {
-        guarded("open_bytes", || hh_core::open_bytes(data, name.as_deref()).map(Workbook).map_err(|e| PyValueError::new_err(e.to_string())))
+        guarded("open_bytes", || {
+            hh_core::open_bytes(data, name.as_deref())
+                .map(Workbook)
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
     })
 }
 
@@ -310,19 +420,37 @@ fn normalize<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let locale = match locale {
         Some(tag) => Some(
-            hh_core::values::Locale::parse(tag).ok_or_else(|| PyValueError::new_err(format!("unknown locale {tag:?}")))?,
+            hh_core::values::Locale::parse(tag)
+                .ok_or_else(|| PyValueError::new_err(format!("unknown locale {tag:?}")))?,
         ),
         None => None,
     };
-    let opts = hh_core::normalize::Options { keep_totals, csv, locale, rules_only, model_max_cells, deadline: None, threads: None };
+    let opts = hh_core::normalize::Options {
+        keep_totals,
+        csv,
+        locale,
+        rules_only,
+        model_max_cells,
+        deadline: None,
+        threads: None,
+    };
     let (path, out_dir) = (path.to_string(), out_dir.to_string());
     let out = py.detach(move || {
-        guarded("normalize", || hh_core::normalize_file(&path, &out_dir, &opts).map_err(|e| PyValueError::new_err(e.to_string())))
+        guarded("normalize", || {
+            hh_core::normalize_file(&path, &out_dir, &opts)
+                .map_err(|e| PyValueError::new_err(e.to_string()))
+        })
     })?;
     let d = PyDict::new(py);
     d.set_item("xlsx_path", out.xlsx_path.to_string_lossy())?;
     d.set_item("manifest_path", out.manifest_path.to_string_lossy())?;
-    d.set_item("csv_paths", out.csv_paths.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>())?;
+    d.set_item(
+        "csv_paths",
+        out.csv_paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect::<Vec<_>>(),
+    )?;
     d.set_item("manifest_json", out.manifest_json)?;
     Ok(d)
 }
@@ -335,7 +463,12 @@ struct NativeSession(std::sync::Mutex<hh_agent::Session>);
 
 impl NativeSession {
     /// Runs one tool without the GIL, so other Python threads keep going during a long open.
-    fn run(&self, py: Python<'_>, what: &str, f: impl FnOnce(&mut hh_agent::Session) -> hh_agent::ToolResult + Send) -> PyResult<String> {
+    fn run(
+        &self,
+        py: Python<'_>,
+        what: &str,
+        f: impl FnOnce(&mut hh_agent::Session) -> hh_agent::ToolResult + Send,
+    ) -> PyResult<String> {
         py.detach(|| {
             guarded(what, || {
                 // A panic inside a tool poisons the mutex; the session holds only caches, so keep going.
@@ -366,7 +499,10 @@ impl NativeSession {
             opts.cache = None;
         } else if let Some(dir) = cache_dir {
             let max_bytes = opts.cache.as_ref().map_or(2048 << 20, |c| c.max_bytes);
-            opts.cache = Some(hh_agent::cache::Cache { dir: dir.into(), max_bytes });
+            opts.cache = Some(hh_agent::cache::Cache {
+                dir: dir.into(),
+                max_bytes,
+            });
         }
         if let Some(n) = max_cells {
             opts.max_cells = n;
@@ -381,17 +517,28 @@ impl NativeSession {
             opts.query_timeout = std::time::Duration::from_millis(ms);
         }
         let allow: Vec<std::path::PathBuf> = allow.into_iter().map(Into::into).collect();
-        let session = hh_agent::Session::with_options(root, &allow, opts).map_err(|e| PyValueError::new_err(e.0))?;
+        let session = hh_agent::Session::with_options(root, &allow, opts)
+            .map_err(|e| PyValueError::new_err(e.0))?;
         Ok(NativeSession(std::sync::Mutex::new(session)))
     }
 
     #[getter]
     fn root(&self) -> String {
-        self.0.lock().unwrap_or_else(|p| p.into_inner()).bounds().root().to_string_lossy().into_owned()
+        self.0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .bounds()
+            .root()
+            .to_string_lossy()
+            .into_owned()
     }
 
     fn allow(&self, path: &str) -> PyResult<()> {
-        self.0.lock().unwrap_or_else(|p| p.into_inner()).allow(path).map_err(|e| PyValueError::new_err(e.0))
+        self.0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .allow(path)
+            .map_err(|e| PyValueError::new_err(e.0))
     }
 
     #[pyo3(signature = (path, question = None))]
@@ -404,7 +551,13 @@ impl NativeSession {
     }
 
     #[pyo3(signature = (path, sql, limit = None))]
-    fn query(&self, py: Python<'_>, path: &str, sql: &str, limit: Option<usize>) -> PyResult<String> {
+    fn query(
+        &self,
+        py: Python<'_>,
+        path: &str,
+        sql: &str,
+        limit: Option<usize>,
+    ) -> PyResult<String> {
         self.run(py, "query", |s| s.query(path, sql, limit))
     }
 
@@ -413,24 +566,38 @@ impl NativeSession {
     }
 
     #[pyo3(signature = (path, table = None, status = None))]
-    fn totals(&self, py: Python<'_>, path: &str, table: Option<&str>, status: Option<&str>) -> PyResult<String> {
+    fn totals(
+        &self,
+        py: Python<'_>,
+        path: &str,
+        table: Option<&str>,
+        status: Option<&str>,
+    ) -> PyResult<String> {
         self.run(py, "totals", |s| s.totals(path, table, status))
     }
 
     #[pyo3(signature = (folder = None, pattern = None))]
-    fn list_files(&self, py: Python<'_>, folder: Option<&str>, pattern: Option<&str>) -> PyResult<String> {
+    fn list_files(
+        &self,
+        py: Python<'_>,
+        folder: Option<&str>,
+        pattern: Option<&str>,
+    ) -> PyResult<String> {
         self.run(py, "list_files", |s| s.list_files(folder, pattern))
     }
 
     /// `[(prefix, path)]` of the files opened so far: `f1`, `f2`, … name their tables in SQL.
     fn open_files(&self) -> Vec<(String, String)> {
-        self.0.lock().unwrap_or_else(|p| p.into_inner()).open_files()
+        self.0
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .open_files()
     }
 
     /// Runs a tool by its MCP name with JSON-encoded arguments.
     fn call(&self, py: Python<'_>, name: &str, args_json: &str) -> PyResult<String> {
-        let args: serde_json::Value =
-            serde_json::from_str(args_json).map_err(|e| PyValueError::new_err(format!("arguments are not JSON: {e}")))?;
+        let args: serde_json::Value = serde_json::from_str(args_json)
+            .map_err(|e| PyValueError::new_err(format!("arguments are not JSON: {e}")))?;
         self.run(py, "call", |s| s.call(name, &args))
     }
 }

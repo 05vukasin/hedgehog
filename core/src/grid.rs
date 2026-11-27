@@ -39,14 +39,62 @@ struct Vocab {
 /// Function words that mark English text, and those of the other languages hedgehog meets most
 /// (German, Italian, French, Spanish, Dutch, Polish, Czech, Slovak, Croatian, Serbian, Slovenian,
 /// Hungarian, Portuguese, Scandinavian).
-const ENGLISH_WORDS: [&str; 12] =
-    ["the", "and", "of", "for", "to", "with", "from", "by", "total", "all", "other", "number"];
+const ENGLISH_WORDS: [&str; 12] = [
+    "the", "and", "of", "for", "to", "with", "from", "by", "total", "all", "other", "number",
+];
 /// Single letters are left out: they are also section codes ("I", "U") in English sheets.
 const OTHER_WORDS: [&str; 51] = [
-    "und", "der", "die", "das", "von", "mit", "nach", "insgesamt", "oder", "zum", "zur", "dem",
-    "di", "del", "della", "delle", "dei", "totale", "nel", "et", "le", "la", "les", "du", "des",
-    "el", "los", "las", "het", "voor", "na", "do", "od", "dla", "oraz", "ogółem", "wg", "ve", "za",
-    "ze", "celkem", "ukupno", "skupaj", "és", "az", "összesen", "og", "och", "em", "não", "så",
+    "und",
+    "der",
+    "die",
+    "das",
+    "von",
+    "mit",
+    "nach",
+    "insgesamt",
+    "oder",
+    "zum",
+    "zur",
+    "dem",
+    "di",
+    "del",
+    "della",
+    "delle",
+    "dei",
+    "totale",
+    "nel",
+    "et",
+    "le",
+    "la",
+    "les",
+    "du",
+    "des",
+    "el",
+    "los",
+    "las",
+    "het",
+    "voor",
+    "na",
+    "do",
+    "od",
+    "dla",
+    "oraz",
+    "ogółem",
+    "wg",
+    "ve",
+    "za",
+    "ze",
+    "celkem",
+    "ukupno",
+    "skupaj",
+    "és",
+    "az",
+    "összesen",
+    "og",
+    "och",
+    "em",
+    "não",
+    "så",
 ];
 
 impl Vocab {
@@ -54,8 +102,13 @@ impl Vocab {
         let mut words = rustc_hash::FxHashSet::default();
         let (mut en, mut other) = (0usize, 0usize);
         for c in &sheet.cells {
-            let Some(crate::model::Value::Text(t)) = &c.value else { continue };
-            for w in t.split(|ch: char| !ch.is_alphabetic()).filter(|w| !w.is_empty()) {
+            let Some(crate::model::Value::Text(t)) = &c.value else {
+                continue;
+            };
+            for w in t
+                .split(|ch: char| !ch.is_alphabetic())
+                .filter(|w| !w.is_empty())
+            {
                 let w = w.to_lowercase();
                 if ENGLISH_WORDS.contains(&w.as_str()) {
                     en += 1;
@@ -70,7 +123,10 @@ impl Vocab {
         // Few words with letters beyond Latin-1 too: a bilingual Polish / English sheet (GUS) has
         // more English function words, but an eighth or more of its words have "ł", "ą", "ż"…;
         // French place names on an English sheet ("Montréal", "Îles") stay within Latin-1.
-        let foreign = words.iter().filter(|w| w.chars().any(|c| c as u32 > 0xff)).count();
+        let foreign = words
+            .iter()
+            .filter(|w| w.chars().any(|c| c as u32 > 0xff))
+            .count();
         let english = en > other && foreign * 20 < words.len();
         Vocab { words, english }
     }
@@ -99,7 +155,11 @@ impl<'a> Grid<'a> {
 
     /// The parsed formula of the cell at (row, col) from the dependency index, when that index is
     /// built and every position holds one cell (then it is `parse` of that cell's formula).
-    pub(crate) fn parsed_formula(&self, row: u32, col: u32) -> Option<&crate::totals::formula::ParsedFormula> {
+    pub(crate) fn parsed_formula(
+        &self,
+        row: u32,
+        col: u32,
+    ) -> Option<&crate::totals::formula::ParsedFormula> {
         match self.index {
             CellIndex::Sorted { .. } => self.deps.get()?.formula(row, col),
             CellIndex::Hashed(_) => None,
@@ -124,7 +184,8 @@ impl<'a> Grid<'a> {
 
     /// The sheet's dependency index ([`crate::totals::DependencyIndex::new`]), built once.
     pub fn deps(&self) -> &crate::totals::DependencyIndex {
-        self.deps.get_or_init(|| crate::totals::DependencyIndex::new(self))
+        self.deps
+            .get_or_init(|| crate::totals::DependencyIndex::new(self))
     }
 
     /// The cached total detection, if it was run (see `totals::detect`).
@@ -140,13 +201,17 @@ impl<'a> Grid<'a> {
     #[inline]
     pub fn cell(&self, row: u32, col: u32) -> Option<&'a Cell> {
         let sheet: &'a Sheet = self.sheet;
-        self.index.get(&sheet.cells, row, col).map(|i| &sheet.cells[i as usize])
+        self.index
+            .get(&sheet.cells, row, col)
+            .map(|i| &sheet.cells[i as usize])
     }
 
     /// Index of the cell at (row, col) in `sheet.cells` — the row index into [`crate::Features`].
     #[inline]
     pub fn cell_index(&self, row: u32, col: u32) -> Option<usize> {
-        self.index.get(&self.sheet.cells, row, col).map(|i| i as usize)
+        self.index
+            .get(&self.sheet.cells, row, col)
+            .map(|i| i as usize)
     }
 
     /// Merged area covering (row, col), if any. For overlapping (malformed) merges, the one listed
@@ -176,7 +241,9 @@ impl<'a> Grid<'a> {
 
     /// Indices (into `sheet.cells`) of the cells in `row`, ordered by column.
     pub fn row_cells(&self, row: u32) -> &[u32] {
-        self.rows.get_or_init(|| Lines::new(self, |c| (c.row, c.col))).get(row)
+        self.rows
+            .get_or_init(|| Lines::new(self, |c| (c.row, c.col)))
+            .get(row)
     }
 
     /// Indices (into `sheet.cells`) of the cells in `col`, ordered by row.
@@ -185,7 +252,8 @@ impl<'a> Grid<'a> {
     }
 
     fn columns(&self) -> &Lines {
-        self.cols.get_or_init(|| Lines::new(self, |c| (c.col, c.row)))
+        self.cols
+            .get_or_init(|| Lines::new(self, |c| (c.col, c.row)))
     }
 
     /// Indices (into `sheet.cells`) of the cells inside `rect`, row-major — the same cells, in the
@@ -211,7 +279,9 @@ impl<'a> Grid<'a> {
         if rect.bottom - rect.top <= rect.right - rect.left {
             // No taller than wide (a row of a sum across columns): row by row, each row's cells
             // already in column order, so the result needs no sort (B132).
-            let rows = self.rows.get_or_init(|| Lines::new(self, |c| (c.row, c.col)));
+            let rows = self
+                .rows
+                .get_or_init(|| Lines::new(self, |c| (c.row, c.col)));
             let lo = rows.keys.partition_point(|&r| r < rect.top);
             let hi = rows.keys.partition_point(|&r| r <= rect.bottom);
             let mut out = Vec::new();
@@ -251,17 +321,26 @@ const MAX_SORTED_SPAN: u32 = 2 << 20;
 enum CellIndex {
     /// `starts[r - first]..starts[r - first + 1]` are the cells of row `r`; `cols[i]` is the
     /// column of cell `i`.
-    Sorted { first: u32, starts: Vec<u32>, cols: Vec<u32> },
+    Sorted {
+        first: u32,
+        starts: Vec<u32>,
+        cols: Vec<u32>,
+    },
     Hashed(FxHashMap<u64, u32>),
 }
 
 impl CellIndex {
     fn new(cells: &[Cell]) -> CellIndex {
-        let sorted = cells.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col));
+        let sorted = cells
+            .windows(2)
+            .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col));
         // One entry per row of the span: at most a few MB for any row a real sheet has (Excel
         // stops at 1,048,576). A hostile file can place a cell at row 4,000,000,000: 16 GB.
         let span_ok = |a: &Cell, b: &Cell| b.row - a.row <= MAX_SORTED_SPAN;
-        if sorted && let (Some(a), Some(b)) = (cells.first(), cells.last()) && span_ok(a, b) {
+        if sorted
+            && let (Some(a), Some(b)) = (cells.first(), cells.last())
+            && span_ok(a, b)
+        {
             let (first, last) = (a.row, b.row);
             let mut starts = Vec::with_capacity((last - first) as usize + 2);
             let mut i = 0usize;
@@ -273,7 +352,11 @@ impl CellIndex {
             }
             starts.push(cells.len() as u32);
             let cols = cells.iter().map(|c| c.col).collect();
-            return CellIndex::Sorted { first, starts, cols };
+            return CellIndex::Sorted {
+                first,
+                starts,
+                cols,
+            };
         }
         let mut index = FxHashMap::with_capacity_and_hasher(cells.len(), Default::default());
         for (i, c) in cells.iter().enumerate() {
@@ -285,7 +368,11 @@ impl CellIndex {
     #[inline]
     fn get(&self, _cells: &[Cell], row: u32, col: u32) -> Option<u32> {
         match self {
-            CellIndex::Sorted { first, starts, cols } => {
+            CellIndex::Sorted {
+                first,
+                starts,
+                cols,
+            } => {
                 let r = row.checked_sub(*first)? as usize;
                 if r + 1 >= starts.len() {
                     return None;
@@ -328,7 +415,9 @@ impl Lines {
                 grid.index.get(cells, c.row, c.col) == Some(i)
             })
             .collect();
-        let sorted = order.windows(2).all(|w| major_minor(&cells[w[0] as usize]) < major_minor(&cells[w[1] as usize]));
+        let sorted = order
+            .windows(2)
+            .all(|w| major_minor(&cells[w[0] as usize]) < major_minor(&cells[w[1] as usize]));
         if !sorted {
             // Cells listed by (minor, major) — columns of a sheet in reader order — are put in
             // (major, minor) order by counting per major coordinate: the same order as the sort,
@@ -337,7 +426,11 @@ impl Lines {
                 let (major, minor) = major_minor(&cells[i as usize]);
                 (minor, major)
             };
-            let max_major = order.iter().map(|&i| major_minor(&cells[i as usize]).0).max().unwrap_or(0);
+            let max_major = order
+                .iter()
+                .map(|&i| major_minor(&cells[i as usize]).0)
+                .max()
+                .unwrap_or(0);
             if max_major < 1 << 20 && order.windows(2).all(|w| swapped(w[0]) < swapped(w[1])) {
                 let mut start = vec![0u32; max_major as usize + 2];
                 for &i in &order {
@@ -374,7 +467,9 @@ impl Lines {
     }
 
     fn get(&self, major: u32) -> &[u32] {
-        self.spans.get(&major).map_or(&[], |&(a, b)| &self.order[a as usize..b as usize])
+        self.spans
+            .get(&major)
+            .map_or(&[], |&(a, b)| &self.order[a as usize..b as usize])
     }
 }
 
@@ -396,7 +491,10 @@ const SPAN: u32 = 64;
 
 impl MergeIndex {
     fn new(merges: &[Rect]) -> MergeIndex {
-        let mut m = MergeIndex { empty: merges.is_empty(), ..Default::default() };
+        let mut m = MergeIndex {
+            empty: merges.is_empty(),
+            ..Default::default()
+        };
         for (i, r) in merges.iter().enumerate() {
             let i = i as u32;
             if r.bottom < r.top || r.right < r.left {
@@ -439,7 +537,12 @@ impl MergeIndex {
         scan(self.by_row.get(&row), col);
         scan(self.by_col.get(&col), row);
         for &(r, i) in &self.big {
-            if r.top <= row && row <= r.bottom && r.left <= col && col <= r.right && best.is_none_or(|b| i > b) {
+            if r.top <= row
+                && row <= r.bottom
+                && r.left <= col
+                && col <= r.right
+                && best.is_none_or(|b| i > b)
+            {
                 best = Some(i);
             }
         }
@@ -453,18 +556,48 @@ mod tests {
     use crate::model::Value;
 
     fn cell(row: u32, col: u32) -> Cell {
-        Cell { row, col, value: Some(Value::Number(1.0)), formula: None }
+        Cell {
+            row,
+            col,
+            value: Some(Value::Number(1.0)),
+            formula: None,
+        }
     }
 
     #[test]
     fn merges_short_tall_big_and_overlapping() {
         let merges = vec![
-            Rect { top: 0, left: 0, bottom: 0, right: 3 },                // short
-            Rect { top: 2, left: 0, bottom: 500, right: 0 },              // tall, narrow
-            Rect { top: 0, left: 10, bottom: 1_048_575, right: 16_383 },  // whole-sheet-ish
-            Rect { top: 0, left: 2, bottom: 1, right: 2 },                // overlaps the first
+            Rect {
+                top: 0,
+                left: 0,
+                bottom: 0,
+                right: 3,
+            }, // short
+            Rect {
+                top: 2,
+                left: 0,
+                bottom: 500,
+                right: 0,
+            }, // tall, narrow
+            Rect {
+                top: 0,
+                left: 10,
+                bottom: 1_048_575,
+                right: 16_383,
+            }, // whole-sheet-ish
+            Rect {
+                top: 0,
+                left: 2,
+                bottom: 1,
+                right: 2,
+            }, // overlaps the first
         ];
-        let sheet = Sheet { name: "s".into(), cells: vec![cell(0, 0), cell(5, 5)], merges, formats: vec![] };
+        let sheet = Sheet {
+            name: "s".into(),
+            cells: vec![cell(0, 0), cell(5, 5)],
+            merges,
+            formats: vec![],
+        };
         let g = Grid::new(&sheet);
         assert_eq!(g.merge_index_at(0, 1), Some(0));
         assert_eq!(g.merge_index_at(0, 2), Some(3)); // last listed wins
@@ -474,7 +607,15 @@ mod tests {
         assert_eq!(g.merge_index_at(1_048_575, 16_383), Some(2));
         assert_eq!(g.merge_index_at(5, 5), None);
         assert!(g.is_filled(5, 5) && g.is_filled(7, 12) && !g.is_filled(7, 7));
-        assert_eq!(g.used_range(), Some(Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }));
+        assert_eq!(
+            g.used_range(),
+            Some(Rect {
+                top: 0,
+                left: 0,
+                bottom: 1_048_575,
+                right: 16_383
+            })
+        );
     }
 
     #[test]
@@ -482,7 +623,12 @@ mod tests {
         // A hostile file's cell at row 4e9: the row-start table would take 16 GB (the fuzzer hit
         // an 8 GB allocation in normalize).
         let cells = vec![cell(0, 0), cell(4_000_000_000, 1)];
-        let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+        let sheet = Sheet {
+            name: "s".into(),
+            cells,
+            merges: vec![],
+            formats: vec![],
+        };
         let g = Grid::new(&sheet);
         assert!(matches!(g.index, CellIndex::Hashed(_)));
         assert_eq!(g.cell_index(4_000_000_000, 1), Some(1));
@@ -499,16 +645,27 @@ mod tests {
                 cells.push(cell(r, *c));
             }
         }
-        let sheet = Sheet { name: "s".into(), cells: cells.clone(), merges: vec![], formats: vec![] };
+        let sheet = Sheet {
+            name: "s".into(),
+            cells: cells.clone(),
+            merges: vec![],
+            formats: vec![],
+        };
         let g = Grid::new(&sheet);
         assert!(matches!(g.index, CellIndex::Sorted { .. }));
         for r in 0..12 {
             for c in 0..10 {
-                assert_eq!(g.cell_index(r, c), cells.iter().position(|x| x.row == r && x.col == c), "{r},{c}");
+                assert_eq!(
+                    g.cell_index(r, c),
+                    cells.iter().position(|x| x.row == r && x.col == c),
+                    "{r},{c}"
+                );
             }
         }
         for c in 0..10 {
-            let mut want: Vec<u32> = (0..cells.len() as u32).filter(|&i| cells[i as usize].col == c).collect();
+            let mut want: Vec<u32> = (0..cells.len() as u32)
+                .filter(|&i| cells[i as usize].col == c)
+                .collect();
             want.sort_by_key(|&i| cells[i as usize].row);
             assert_eq!(g.col_cells(c), &want[..]);
         }
@@ -530,38 +687,78 @@ mod tests {
         assert_eq!(g.col_cells(1), &[4, 3]);
         assert_eq!(g.col_cells(0), &[2, 0]);
         assert!(g.row_cells(2).is_empty());
-        let all = Rect { top: 0, left: 0, bottom: 1000, right: 1000 };
+        let all = Rect {
+            top: 0,
+            left: 0,
+            bottom: 1000,
+            right: 1000,
+        };
         assert_eq!(g.cells_in(all), vec![4, 2, 3, 0]);
-        assert_eq!(g.cells_in(Rect { top: 1, left: 1, bottom: 3, right: 1 }), vec![3]);
-        let small = Rect { top: 0, left: 0, bottom: 3, right: 1 };
+        assert_eq!(
+            g.cells_in(Rect {
+                top: 1,
+                left: 1,
+                bottom: 3,
+                right: 1
+            }),
+            vec![3]
+        );
+        let small = Rect {
+            top: 0,
+            left: 0,
+            bottom: 3,
+            right: 1,
+        };
         assert_eq!(g.cells_in(small), vec![4, 2, 3, 0]);
     }
 
     #[test]
     fn line_indices_match_last_wins_positions() {
-        let dense: Vec<Cell> = (2..6).flat_map(|r| (3..9).map(move |c| cell(r, c))).collect();
-        let sparse = vec![cell(0, 2), cell(0, 8), cell(4, 2), cell(9, 8), cell(9, 1 << 21)];
+        let dense: Vec<Cell> = (2..6)
+            .flat_map(|r| (3..9).map(move |c| cell(r, c)))
+            .collect();
+        let sparse = vec![
+            cell(0, 2),
+            cell(0, 8),
+            cell(4, 2),
+            cell(9, 8),
+            cell(9, 1 << 21),
+        ];
         let mut duplicates = sparse.clone();
         duplicates.reverse();
         duplicates.push(cell(4, 2));
         let duplicate_sorted = vec![cell(1, 3), cell(1, 3), cell(2, 4)];
-        for cells in [vec![], vec![cell(4, 8)], dense, sparse, duplicates, duplicate_sorted] {
+        for cells in [
+            vec![],
+            vec![cell(4, 8)],
+            dense,
+            sparse,
+            duplicates,
+            duplicate_sorted,
+        ] {
             // Independent position semantics: an inserted cell replaces earlier duplicates.
             let mut positions = std::collections::BTreeMap::new();
             for (i, c) in cells.iter().enumerate() {
                 positions.insert((c.row, c.col), i as u32);
             }
-            let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+            let sheet = Sheet {
+                name: "s".into(),
+                cells,
+                merges: vec![],
+                formats: vec![],
+            };
             let grid = Grid::new(&sheet);
             for row in 0..12 {
-                let expected: Vec<u32> = positions.iter()
+                let expected: Vec<u32> = positions
+                    .iter()
                     .filter(|((r, _), _)| *r == row)
                     .map(|(_, &i)| i)
                     .collect();
                 assert_eq!(grid.row_cells(row), expected, "row {row}");
             }
             for col in (0..12).chain([1 << 21]) {
-                let expected: Vec<u32> = positions.iter()
+                let expected: Vec<u32> = positions
+                    .iter()
                     .filter(|((_, c), _)| *c == col)
                     .map(|(_, &i)| i)
                     .collect();
@@ -579,7 +776,11 @@ mod tests {
         };
         let sheet = |texts: &[&str]| Sheet {
             name: "s".into(),
-            cells: texts.iter().enumerate().map(|(i, t)| text(i as u32, t)).collect(),
+            cells: texts
+                .iter()
+                .enumerate()
+                .map(|(i, t)| text(i as u32, t))
+                .collect(),
             merges: vec![],
             formats: vec![],
         };
@@ -592,11 +793,17 @@ mod tests {
         let g = Grid::new(&en);
         assert!(g.is_english());
         assert!(g.has_word("workers") && !g.has_word("frenchlanguage"));
-        let it = sheet(&["Famiglie per tipo di sistema di riscaldamento", "Riscal-damento"]);
+        let it = sheet(&[
+            "Famiglie per tipo di sistema di riscaldamento",
+            "Riscal-damento",
+        ]);
         let g = Grid::new(&it);
         assert!(!g.is_english());
         assert!(g.has_word("riscaldamento"));
-        let de = sheet(&["Ankünfte und Übernachtungen nach Herkunft", "Aufenthalts-dauer"]);
+        let de = sheet(&[
+            "Ankünfte und Übernachtungen nach Herkunft",
+            "Aufenthalts-dauer",
+        ]);
         assert!(!Grid::new(&de).is_english());
         // Bilingual Polish / English (GUS): the Polish words are the more frequent ones.
         let pl = sheet(&[

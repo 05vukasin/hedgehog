@@ -14,7 +14,9 @@ fn big_sheet() -> Sheet {
     let mut merges = Vec::new();
     let mut seed: u64 = 42;
     let mut rnd = move || {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (seed >> 33) as u32
     };
     // Two bands of tables, each band two tables wide: 4 × ~2550 rows × ~10 cols ≈ 100k.
@@ -22,31 +24,69 @@ fn big_sheet() -> Sheet {
         let top = band * 2600;
         for t in 0..2u32 {
             let left = t * 12;
-            merges.push(Rect { top, left, bottom: top, right: left + 9 });
-            cells.push((top, left, Some(Value::Text(format!("Table {band}{t}"))), None));
+            merges.push(Rect {
+                top,
+                left,
+                bottom: top,
+                right: left + 9,
+            });
+            cells.push((
+                top,
+                left,
+                Some(Value::Text(format!("Table {band}{t}"))),
+                None,
+            ));
             for c in 0..10 {
                 cells.push((top + 2, left + c, Some(Value::Text(format!("H{c}"))), None));
             }
             for r in 0..2550 {
                 let row = top + 3 + r;
-                cells.push((row, left, Some(Value::Text(format!("item {}", rnd() % 300))), None));
+                cells.push((
+                    row,
+                    left,
+                    Some(Value::Text(format!("item {}", rnd() % 300))),
+                    None,
+                ));
                 cells.push((row, left + 1, Some(Value::Number(r as f64)), None));
                 for c in 2..10 {
                     if rnd() % 50 != 0 {
-                        cells.push((row, left + c, Some(Value::Number((rnd() % 10_000) as f64 / 7.0)), None));
+                        cells.push((
+                            row,
+                            left + c,
+                            Some(Value::Number((rnd() % 10_000) as f64 / 7.0)),
+                            None,
+                        ));
                     }
                 }
             }
             let row = top + 3 + 2550;
             cells.push((row, left, Some(Value::Text("Total".into())), None));
             for c in 2..10 {
-                cells.push((row, left + c, Some(Value::Number(1.0)), Some("SUM(A1:A9)".to_string())));
+                cells.push((
+                    row,
+                    left + c,
+                    Some(Value::Number(1.0)),
+                    Some("SUM(A1:A9)".to_string()),
+                ));
             }
         }
     }
     cells.sort_by_key(|c| (c.0, c.1));
-    let cells = cells.into_iter().map(|(row, col, value, formula)| Cell { row, col, value, formula }).collect();
-    Sheet { name: "big".into(), cells, merges, formats: vec![] }
+    let cells = cells
+        .into_iter()
+        .map(|(row, col, value, formula)| Cell {
+            row,
+            col,
+            value,
+            formula,
+        })
+        .collect();
+    Sheet {
+        name: "big".into(),
+        cells,
+        merges,
+        formats: vec![],
+    }
 }
 
 #[test]

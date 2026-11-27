@@ -7,7 +7,7 @@
 //! score wins. Feature columns are looked up by name in the sheet's [`Features`].
 
 use crate::analysis::{Role, SheetLayout};
-use crate::eval::synthetic::{parse_json, J};
+use crate::eval::synthetic::{J, parse_json};
 use crate::features::Features;
 use crate::grid::Grid;
 
@@ -57,8 +57,21 @@ pub struct TreeModel {
 /// from them; its NaN thresholds never compare equal).
 impl PartialEq for TreeModel {
     fn eq(&self, o: &TreeModel) -> bool {
-        (&self.features, &self.classes, &self.base, &self.nodes, &self.roots, &self.used)
-            == (&o.features, &o.classes, &o.base, &o.nodes, &o.roots, &o.used)
+        (
+            &self.features,
+            &self.classes,
+            &self.base,
+            &self.nodes,
+            &self.roots,
+            &self.used,
+        ) == (
+            &o.features,
+            &o.classes,
+            &o.base,
+            &o.nodes,
+            &o.roots,
+            &o.used,
+        )
     }
 }
 
@@ -74,28 +87,62 @@ impl TreeModel {
             return Err("not an hh-trees-1 model".into());
         }
         let strings = |k: &str| -> Vec<String> {
-            j.get(k).map(J::arr).unwrap_or(&[]).iter().filter_map(|x| x.str().map(str::to_string)).collect()
+            j.get(k)
+                .map(J::arr)
+                .unwrap_or(&[])
+                .iter()
+                .filter_map(|x| x.str().map(str::to_string))
+                .collect()
         };
         let features = strings("features");
         let classes = strings("classes")
             .iter()
             .map(|c| role_named(c).ok_or(format!("unknown class `{c}`")))
             .collect::<Result<Vec<_>, _>>()?;
-        let base: Vec<f32> =
-            j.get("base").map(J::arr).unwrap_or(&[]).iter().map(|x| x.num().unwrap_or(0.0) as f32).collect();
+        let base: Vec<f32> = j
+            .get("base")
+            .map(J::arr)
+            .unwrap_or(&[])
+            .iter()
+            .map(|x| x.num().unwrap_or(0.0) as f32)
+            .collect();
         if classes.is_empty() || base.len() != classes.len() {
             return Err("model needs one base score per class".into());
         }
-        let mut m = TreeModel { features, classes, base, nodes: Vec::new(), roots: Vec::new(), used: Vec::new(), walk: Vec::new(), leaf: Vec::new(), depth: Vec::new() };
+        let mut m = TreeModel {
+            features,
+            classes,
+            base,
+            nodes: Vec::new(),
+            roots: Vec::new(),
+            used: Vec::new(),
+            walk: Vec::new(),
+            leaf: Vec::new(),
+            depth: Vec::new(),
+        };
         let mut compact: std::collections::HashMap<usize, u32> = std::collections::HashMap::new();
         for t in j.get("trees").map(J::arr).unwrap_or(&[]) {
-            let nums = |k: &str| -> Vec<f64> { t.get(k).map(J::arr).unwrap_or(&[]).iter().filter_map(J::num).collect() };
+            let nums = |k: &str| -> Vec<f64> {
+                t.get(k)
+                    .map(J::arr)
+                    .unwrap_or(&[])
+                    .iter()
+                    .filter_map(J::num)
+                    .collect()
+            };
             let (f, th, l, r, v) = (nums("f"), nums("t"), nums("l"), nums("r"), nums("v"));
             let n = l.len();
-            if n == 0 || [f.len(), th.len(), r.len(), v.len()].iter().any(|&x| x != n) {
+            if n == 0
+                || [f.len(), th.len(), r.len(), v.len()]
+                    .iter()
+                    .any(|&x| x != n)
+            {
                 return Err("tree arrays have different lengths".into());
             }
-            let class = t.get("class").and_then(J::u32).ok_or("tree without class")? as usize;
+            let class = t
+                .get("class")
+                .and_then(J::u32)
+                .ok_or("tree without class")? as usize;
             if class >= m.classes.len() {
                 return Err(format!("tree class {class} out of range"));
             }
@@ -103,7 +150,12 @@ impl TreeModel {
             for k in 0..n {
                 let (lk, rk) = (l[k] as i64, r[k] as i64);
                 if lk < 0 {
-                    m.nodes.push(Node { feat: LEAF, thr: v[k] as f32, left: 0, right: 0 });
+                    m.nodes.push(Node {
+                        feat: LEAF,
+                        thr: v[k] as f32,
+                        left: 0,
+                        right: 0,
+                    });
                     continue;
                 }
                 let fk = f[k] as usize;
@@ -115,7 +167,12 @@ impl TreeModel {
                     m.used.push(fk);
                     next
                 });
-                m.nodes.push(Node { feat: cf, thr: th[k] as f32, left: off + lk as u32, right: off + rk as u32 });
+                m.nodes.push(Node {
+                    feat: cf,
+                    thr: th[k] as f32,
+                    left: off + lk as u32,
+                    right: off + rk as u32,
+                });
             }
             m.roots.push((off, class as u8));
         }
@@ -133,13 +190,22 @@ impl TreeModel {
             .enumerate()
             .map(|(i, n)| {
                 if n.feat == LEAF {
-                    Node { feat: 0, thr: f32::NAN, left: i as u32, right: i as u32 }
+                    Node {
+                        feat: 0,
+                        thr: f32::NAN,
+                        left: i as u32,
+                        right: i as u32,
+                    }
                 } else {
                     *n
                 }
             })
             .collect();
-        self.leaf = self.nodes.iter().map(|n| if n.feat == LEAF { n.thr } else { 0.0 }).collect();
+        self.leaf = self
+            .nodes
+            .iter()
+            .map(|n| if n.feat == LEAF { n.thr } else { 0.0 })
+            .collect();
         self.depth.clear();
         for &(root, _) in &self.roots {
             let mut depth = 0u8;
@@ -199,7 +265,11 @@ impl TreeModel {
                     for _ in 0..depth {
                         for l in 0..LANES {
                             let node = self.walk[idx[l] as usize];
-                            idx[l] = if x[off[l] + node.feat as usize] < node.thr { node.left } else { node.right };
+                            idx[l] = if x[off[l] + node.feat as usize] < node.thr {
+                                node.left
+                            } else {
+                                node.right
+                            };
                         }
                     }
                     for l in 0..lanes {
@@ -217,7 +287,10 @@ impl TreeModel {
     fn columns<'f>(&self, f: &'f Features) -> Result<Vec<&'f [f32]>, String> {
         self.used
             .iter()
-            .map(|&k| f.get(&self.features[k]).ok_or(format!("feature `{}` not computed", self.features[k])))
+            .map(|&k| {
+                f.get(&self.features[k])
+                    .ok_or(format!("feature `{}` not computed", self.features[k]))
+            })
             .collect()
     }
 
@@ -292,7 +365,9 @@ impl TreeModel {
             base.push(f32::from_bits(r.u32()?));
         }
         let nu = r.u32()? as usize;
-        let used = (0..nu).map(|_| r.u32().map(|x| x as usize)).collect::<Result<Vec<_>, _>>()?;
+        let used = (0..nu)
+            .map(|_| r.u32().map(|x| x as usize))
+            .collect::<Result<Vec<_>, _>>()?;
         if used.iter().any(|&u| u >= features.len()) {
             return Err("bad feature index".into());
         }
@@ -300,10 +375,16 @@ impl TreeModel {
         let mut nodes = Vec::with_capacity(nn);
         for _ in 0..nn {
             let (feat, thr, left, right) = (r.u32()?, f32::from_bits(r.u32()?), r.u32()?, r.u32()?);
-            if feat != LEAF && (feat as usize >= nu || left as usize >= nn || right as usize >= nn) {
+            if feat != LEAF && (feat as usize >= nu || left as usize >= nn || right as usize >= nn)
+            {
                 return Err("bad tree node".into());
             }
-            nodes.push(Node { feat, thr, left, right });
+            nodes.push(Node {
+                feat,
+                thr,
+                left,
+                right,
+            });
         }
         let nt = r.u32()? as usize;
         let mut roots = Vec::with_capacity(nt);
@@ -315,7 +396,17 @@ impl TreeModel {
             }
             roots.push((root, class));
         }
-        let mut m = TreeModel { features, classes, base, nodes, roots, used, walk: Vec::new(), leaf: Vec::new(), depth: Vec::new() };
+        let mut m = TreeModel {
+            features,
+            classes,
+            base,
+            nodes,
+            roots,
+            used,
+            walk: Vec::new(),
+            leaf: Vec::new(),
+            depth: Vec::new(),
+        };
         m.prepare()?;
         Ok((m, r.0))
     }
@@ -327,11 +418,19 @@ impl TreeModel {
 
     /// Like [`TreeModel::scores`], but row `i` only evaluates the trees of classes `c` with
     /// `allowed(i, c)`; the scores of other classes stay at their base value.
-    pub fn scores_where(&self, f: &Features, allowed: impl Fn(usize, usize) -> bool) -> Result<Vec<f32>, String> {
+    pub fn scores_where(
+        &self,
+        f: &Features,
+        allowed: impl Fn(usize, usize) -> bool,
+    ) -> Result<Vec<f32>, String> {
         self.scores_masked(f, Some(allowed))
     }
 
-    fn scores_masked(&self, f: &Features, allowed: Option<impl Fn(usize, usize) -> bool>) -> Result<Vec<f32>, String> {
+    fn scores_masked(
+        &self,
+        f: &Features,
+        allowed: Option<impl Fn(usize, usize) -> bool>,
+    ) -> Result<Vec<f32>, String> {
         let cols = self.columns(f)?;
         let (k, nu, rows) = (self.classes.len(), cols.len(), f.rows());
         let mut out = vec![0f32; rows * k];
@@ -371,7 +470,11 @@ impl TreeModel {
             for &(root, class) in &self.roots {
                 let mut node = self.nodes[root as usize];
                 while node.feat != LEAF {
-                    let next = if cols[node.feat as usize][i] < node.thr { node.left } else { node.right };
+                    let next = if cols[node.feat as usize][i] < node.thr {
+                        node.left
+                    } else {
+                        node.right
+                    };
                     node = self.nodes[next as usize];
                 }
                 s[class as usize] += node.thr;
@@ -388,7 +491,11 @@ impl TreeModel {
     /// Role per row of `f` (the class with the highest score). Errors if a model feature is missing.
     pub fn predict(&self, f: &Features) -> Result<Vec<Role>, String> {
         let k = self.classes.len();
-        Ok(self.scores(f)?.chunks_exact(k).map(|s| self.classes[self.argmax(s)]).collect())
+        Ok(self
+            .scores(f)?
+            .chunks_exact(k)
+            .map(|s| self.classes[self.argmax(s)])
+            .collect())
     }
 }
 
@@ -399,7 +506,14 @@ const LANES: usize = 8;
 const GUARD_DEPTH: u32 = 10;
 
 /// Segment features the mid-table guard of [`analyze`] reads.
-const GUARD_FEATURES: [&str; 6] = ["m_l_role", "u_l_role", "d_l_role", "m_c_row_cells", "u_c_row_cells", "d_c_row_cells"];
+const GUARD_FEATURES: [&str; 6] = [
+    "m_l_role",
+    "u_l_role",
+    "d_l_role",
+    "m_c_row_cells",
+    "u_c_row_cells",
+    "d_c_row_cells",
+];
 
 /// Empty columns allowed inside one row segment.
 pub const MAX_GAP: u32 = 2;
@@ -438,7 +552,8 @@ fn prefixed(prefix: &str, base: &[&'static str]) -> Vec<&'static str> {
     base.iter()
         .map(|b| {
             let k = format!("{prefix}_{b}");
-            *map.entry(k.clone()).or_insert_with(|| Box::leak(k.into_boxed_str()))
+            *map.entry(k.clone())
+                .or_insert_with(|| Box::leak(k.into_boxed_str()))
         })
         .collect()
 }
@@ -452,18 +567,28 @@ pub fn segment_features(grid: &Grid, f: &Features) -> (Vec<Segment>, Features) {
 
 /// [`segment_features`] with only the segment features `keep` accepts (geometry always): what a
 /// model needs, without the memory of the columns it never reads.
-pub fn segment_features_where(grid: &Grid, f: &Features, keep: impl Fn(&str) -> bool) -> (Vec<Segment>, Features) {
+pub fn segment_features_where(
+    grid: &Grid,
+    f: &Features,
+    keep: impl Fn(&str) -> bool,
+) -> (Vec<Segment>, Features) {
     let sheet = grid.sheet;
     let names = f.names();
     let nf = names.len();
     let cols: Vec<&[f32]> = (0..nf).map(|i| f.column(i)).collect();
-    let (m_names, f_names, u_names, d_names) =
-        (prefixed("m", names), prefixed("f", names), prefixed("u", names), prefixed("d", names));
+    let (m_names, f_names, u_names, d_names) = (
+        prefixed("m", names),
+        prefixed("f", names),
+        prefixed("u", names),
+        prefixed("d", names),
+    );
     let mut rows: Vec<u32> = sheet.cells.iter().map(|c| c.row).collect();
     rows.sort_unstable();
     rows.dedup();
     // Mean features of every non-empty row, row-major, for the features needed above / below.
-    let row_feats: Vec<usize> = (0..nf).filter(|&k| keep(u_names[k]) || keep(d_names[k])).collect();
+    let row_feats: Vec<usize> = (0..nf)
+        .filter(|&k| keep(u_names[k]) || keep(d_names[k]))
+        .collect();
     let nr = row_feats.len();
     let mut slot = vec![usize::MAX; nf];
     for (j, &k) in row_feats.iter().enumerate() {
@@ -481,17 +606,28 @@ pub fn segment_features_where(grid: &Grid, f: &Features, keep: impl Fn(&str) -> 
         let n = idx.len().max(1) as f32;
         m.iter_mut().for_each(|x| *x /= n);
     }
-    let mean_of = |r: u32| rows.binary_search(&r).ok().map(|ri| &means[ri * nr..(ri + 1) * nr]);
+    let mean_of = |r: u32| {
+        rows.binary_search(&r)
+            .ok()
+            .map(|ri| &means[ri * nr..(ri + 1) * nr])
+    };
     let mut segs = Vec::new();
     let mut geom: Vec<[f32; 9]> = Vec::new();
     for (ri, &r) in rows.iter().enumerate() {
         let idx = grid.row_cells(r);
-        let gap_above = if ri > 0 { (r - rows[ri - 1]).min(50) } else { 50 };
+        let gap_above = if ri > 0 {
+            (r - rows[ri - 1]).min(50)
+        } else {
+            50
+        };
         let gap_below = rows.get(ri + 1).map_or(50, |&n| (n - r).min(50));
         let mut start = 0;
         let mut parts = Vec::new();
         for k in 1..=idx.len() {
-            if k == idx.len() || sheet.cells[idx[k] as usize].col > sheet.cells[idx[k - 1] as usize].col + MAX_GAP + 1 {
+            if k == idx.len()
+                || sheet.cells[idx[k] as usize].col
+                    > sheet.cells[idx[k - 1] as usize].col + MAX_GAP + 1
+            {
                 parts.push(start..k);
                 start = k;
             }
@@ -511,7 +647,12 @@ pub fn segment_features_where(grid: &Grid, f: &Features, keep: impl Fn(&str) -> 
                 si as f32,
                 parts.len() as f32,
             ]);
-            segs.push(Segment { row: r, left, right, members });
+            segs.push(Segment {
+                row: r,
+                left,
+                right,
+                members,
+            });
         }
     }
     let n = segs.len();
@@ -520,18 +661,38 @@ pub fn segment_features_where(grid: &Grid, f: &Features, keep: impl Fn(&str) -> 
         out.add(name, geom.iter().map(|x| x[g]).collect());
     }
     for (k, c) in cols.iter().enumerate().filter(|(k, _)| keep(m_names[*k])) {
-        out.add(m_names[k], segs.iter().map(|s| s.members.iter().map(|&i| c[i as usize]).sum::<f32>() / s.members.len() as f32).collect());
+        out.add(
+            m_names[k],
+            segs.iter()
+                .map(|s| {
+                    s.members.iter().map(|&i| c[i as usize]).sum::<f32>() / s.members.len() as f32
+                })
+                .collect(),
+        );
     }
     for (k, c) in cols.iter().enumerate().filter(|(k, _)| keep(f_names[*k])) {
-        out.add(f_names[k], segs.iter().map(|s| c[s.members[0] as usize]).collect());
+        out.add(
+            f_names[k],
+            segs.iter().map(|s| c[s.members[0] as usize]).collect(),
+        );
     }
     for k in (0..nf).filter(|&k| keep(u_names[k])) {
         let j = slot[k];
-        out.add(u_names[k], segs.iter().map(|s| s.row.checked_sub(1).and_then(mean_of).map_or(0.0, |m| m[j])).collect());
+        out.add(
+            u_names[k],
+            segs.iter()
+                .map(|s| s.row.checked_sub(1).and_then(mean_of).map_or(0.0, |m| m[j]))
+                .collect(),
+        );
     }
     for k in (0..nf).filter(|&k| keep(d_names[k])) {
         let j = slot[k];
-        out.add(d_names[k], segs.iter().map(|s| mean_of(s.row + 1).map_or(0.0, |m| m[j])).collect());
+        out.add(
+            d_names[k],
+            segs.iter()
+                .map(|s| mean_of(s.row + 1).map_or(0.0, |m| m[j]))
+                .collect(),
+        );
     }
     (segs, out)
 }
@@ -592,7 +753,9 @@ impl RowModel {
     /// Whether the trees test any formatting feature (`?_s_*`): then the reader must read cell
     /// formats for this model.
     pub fn reads_formats(&self) -> bool {
-        self.needed_features().iter().any(|n| n.get(1..4) == Some("_s_"))
+        self.needed_features()
+            .iter()
+            .any(|n| n.get(1..4) == Some("_s_"))
     }
 
     /// Role per row of `f` (one per segment).
@@ -626,7 +789,8 @@ impl RowModel {
         for row in s.sc[..n * kc].chunks_exact_mut(kc) {
             row.copy_from_slice(&self.coarse.base);
         }
-        self.coarse.add_block(&s.xc[..n * nuc], n, None, &mut s.sc[..n * kc]);
+        self.coarse
+            .add_block(&s.xc[..n * nuc], n, None, &mut s.sc[..n * kc]);
         // Only the fine roles inside a row's family can win: skip the other roles' trees, and a
         // family with a single fine role (title) needs no fine trees at all.
         let fine_classes = &self.fine.classes;
@@ -634,7 +798,11 @@ impl RowModel {
         for (b, family) in families.iter_mut().enumerate().take(n) {
             let fam = self.coarse.classes[self.coarse.argmax(&s.sc[b * kc..(b + 1) * kc])];
             *family = fam;
-            let single = fine_classes.iter().filter(|&&c| coarse_of(c) == fam).count() <= 1;
+            let single = fine_classes
+                .iter()
+                .filter(|&&c| coarse_of(c) == fam)
+                .count()
+                <= 1;
             for (m, &c) in s.mask[b * kf..(b + 1) * kf].iter_mut().zip(fine_classes) {
                 *m = !single && coarse_of(c) == fam;
             }
@@ -642,7 +810,12 @@ impl RowModel {
         for row in s.sf[..n * kf].chunks_exact_mut(kf) {
             row.copy_from_slice(&self.fine.base);
         }
-        self.fine.add_block(&s.xf[..n * nuf], n, Some(&s.mask[..n * kf]), &mut s.sf[..n * kf]);
+        self.fine.add_block(
+            &s.xf[..n * nuf],
+            n,
+            Some(&s.mask[..n * kf]),
+            &mut s.sf[..n * kf],
+        );
         for (b, &family) in families.iter().enumerate().take(n) {
             let sf = &s.sf[b * kf..(b + 1) * kf];
             let mut best: Option<usize> = None;
@@ -703,29 +876,34 @@ pub enum Input {
 pub fn analyze_on(grid: &Grid, model: &RowModel, steps: RefineSteps, input: Input) -> SheetLayout {
     let t0 = std::time::Instant::now();
     let styles = model.reads_formats();
-    let (mut lay, segs, mut pred, guard) = if input == Input::Auto && !styles && stream::eligible(grid) {
-        let (lay, s) = stream::run(grid, model);
-        let Some(s) = s else { return lay };
-        crate::normalize::trace("M:features+trees", t0);
-        (lay, s.segs, s.pred, Some(s.guard))
-    } else {
-        let need = model.needed_features();
-        let (lay, f) = crate::eval::export::layout_and_features(grid, styles);
-        crate::normalize::trace("M:layout+features", t0);
-        let (segs, sf) = segment_features_where(grid, &f, |n| need.contains(n));
-        drop(f);
-        crate::normalize::trace("M:segment_features", t0);
-        let Ok(pred) = model.predict(&sf) else { return lay };
-        crate::normalize::trace("M:trees", t0);
-        let [m, u, d, mc, uc, dc] = GUARD_FEATURES.map(|n| sf.get(n));
-        let guard = match (m, u, d, mc, uc, dc) {
-            (Some(m), Some(u), Some(d), Some(mc), Some(uc), Some(dc)) => {
-                Some((0..sf.rows()).map(|k| [m[k], u[k], d[k], mc[k], uc[k], dc[k]]).collect::<Vec<_>>())
-            }
-            _ => None,
+    let (mut lay, segs, mut pred, guard) =
+        if input == Input::Auto && !styles && stream::eligible(grid) {
+            let (lay, s) = stream::run(grid, model);
+            let Some(s) = s else { return lay };
+            crate::normalize::trace("M:features+trees", t0);
+            (lay, s.segs, s.pred, Some(s.guard))
+        } else {
+            let need = model.needed_features();
+            let (lay, f) = crate::eval::export::layout_and_features(grid, styles);
+            crate::normalize::trace("M:layout+features", t0);
+            let (segs, sf) = segment_features_where(grid, &f, |n| need.contains(n));
+            drop(f);
+            crate::normalize::trace("M:segment_features", t0);
+            let Ok(pred) = model.predict(&sf) else {
+                return lay;
+            };
+            crate::normalize::trace("M:trees", t0);
+            let [m, u, d, mc, uc, dc] = GUARD_FEATURES.map(|n| sf.get(n));
+            let guard = match (m, u, d, mc, uc, dc) {
+                (Some(m), Some(u), Some(d), Some(mc), Some(uc), Some(dc)) => Some(
+                    (0..sf.rows())
+                        .map(|k| [m[k], u[k], d[k], mc[k], uc[k], dc[k]])
+                        .collect::<Vec<_>>(),
+                ),
+                _ => None,
+            };
+            (lay, segs, pred, guard)
         };
-        (lay, segs, pred, guard)
-    };
     let raw_pred = pred.clone();
     // Titles and notes sit at the edges of a table, not between its data rows; and a header row
     // between data rows (a sub-header such as "Males") is much sparser than the data around it. So a row
@@ -738,7 +916,10 @@ pub fn analyze_on(grid: &Grid, model: &RowModel, steps: RefineSteps, input: Inpu
         let deep = |row: u32, col: u32| {
             lay.tables.iter().any(|t| {
                 let body = t.header_top + t.header_rows;
-                t.rect.left <= col && col <= t.rect.right && row <= t.rect.bottom && row >= body + GUARD_DEPTH
+                t.rect.left <= col
+                    && col <= t.rect.right
+                    && row <= t.rect.bottom
+                    && row >= body + GUARD_DEPTH
             })
         };
         for (k, p) in pred.iter_mut().enumerate() {
@@ -764,10 +945,16 @@ pub fn analyze_on(grid: &Grid, model: &RowModel, steps: RefineSteps, input: Inpu
         for &i in &seg.members {
             counts[crate::eval::export::role_id(rules[i as usize]) as usize] += 1;
         }
-        let main = (0..counts.len()).max_by_key(|&k| (counts[k], std::cmp::Reverse(k))).unwrap();
+        let main = (0..counts.len())
+            .max_by_key(|&k| (counts[k], std::cmp::Reverse(k)))
+            .unwrap();
         for &i in &seg.members {
             let r = rules[i as usize];
-            lay.roles[i as usize] = if crate::eval::export::role_id(r) as usize != main { r } else { role };
+            lay.roles[i as usize] = if crate::eval::export::role_id(r) as usize != main {
+                r
+            } else {
+                role
+            };
         }
     }
     // Ruling lines drawn with text (`-----`, `=====`, a `|` column) are never table data (B38).
@@ -793,9 +980,16 @@ mod tests {
 
     #[test]
     fn embedded_binary_matches_the_json_models() {
-        let json = RowModel::from_json(include_str!("../models/row_coarse.json"), include_str!("../models/row_fine.json"))
-            .unwrap();
-        assert_eq!(embedded(), Some(&json), "core/models/row_model.bin is stale: run `hedgehog pack-model core/models`");
+        let json = RowModel::from_json(
+            include_str!("../models/row_coarse.json"),
+            include_str!("../models/row_fine.json"),
+        )
+        .unwrap();
+        assert_eq!(
+            embedded(),
+            Some(&json),
+            "core/models/row_model.bin is stale: run `hedgehog pack-model core/models`"
+        );
         assert_eq!(RowModel::from_bytes(&json.to_bytes()).unwrap(), json);
         assert!(RowModel::from_bytes(&json.to_bytes()[..100]).is_err());
     }
@@ -805,20 +999,33 @@ mod tests {
         let m = embedded().expect("embedded model parses");
         assert_eq!((m.coarse.classes.len(), m.fine.classes.len()), (4, 7));
         use crate::model::{Cell, Sheet, Value};
-        let cell = |row: u32, col: u32, v: Value| Cell { row, col, value: Some(v), formula: None };
+        let cell = |row: u32, col: u32, v: Value| Cell {
+            row,
+            col,
+            value: Some(v),
+            formula: None,
+        };
         let mut cells = vec![
             cell(0, 0, Value::Text("Sales report 2024".into())),
             cell(2, 0, Value::Text("Region".into())),
             cell(2, 1, Value::Text("Revenue".into())),
             cell(2, 2, Value::Text("Units".into())),
         ];
-        for (k, r) in ["North", "South", "East", "West", "Central"].iter().enumerate() {
+        for (k, r) in ["North", "South", "East", "West", "Central"]
+            .iter()
+            .enumerate()
+        {
             let row = 3 + k as u32;
             cells.push(cell(row, 0, Value::Text(r.to_string())));
             cells.push(cell(row, 1, Value::Number(100.0 + k as f64 * 17.5)));
             cells.push(cell(row, 2, Value::Number(3.0 + k as f64)));
         }
-        let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+        let sheet = Sheet {
+            name: "s".into(),
+            cells,
+            merges: vec![],
+            formats: vec![],
+        };
         let grid = Grid::new(&sheet);
         let lay = analyze(&grid, m);
         let role_at = |row: u32, col: u32| lay.roles[grid.cell_index(row, col).unwrap()];
@@ -833,15 +1040,35 @@ mod tests {
         let mut cells = Vec::new();
         for r in 0..6u32 {
             for c in [0u32, 1, 2, 6] {
-                let v = if r == 0 { Value::Text(format!("h{c}")) } else { Value::Number((r * 10 + c) as f64) };
-                cells.push(Cell { row: r * 2, col: c, value: Some(v), formula: None });
+                let v = if r == 0 {
+                    Value::Text(format!("h{c}"))
+                } else {
+                    Value::Number((r * 10 + c) as f64)
+                };
+                cells.push(Cell {
+                    row: r * 2,
+                    col: c,
+                    value: Some(v),
+                    formula: None,
+                });
             }
         }
-        let sheet = Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] };
+        let sheet = Sheet {
+            name: "s".into(),
+            cells,
+            merges: vec![],
+            formats: vec![],
+        };
         let grid = Grid::new(&sheet);
         let f = crate::eval::export::sheet_features(&grid);
         let (_, all) = segment_features(&grid, &f);
-        let want = ["g_cells", "m_l_role", "f_c_kind", "u_l_role", "d_c_row_cells"];
+        let want = [
+            "g_cells",
+            "m_l_role",
+            "f_c_kind",
+            "u_l_role",
+            "d_c_row_cells",
+        ];
         let (_, some) = segment_features_where(&grid, &f, |n| want.contains(&n));
         assert_eq!(some.names().len(), want.len() + GEOMETRY.len() - 1);
         for n in want {
@@ -856,13 +1083,23 @@ mod tests {
         use crate::model::{Cell, Rect, Sheet, Value};
         let mut s = seed;
         let mut rnd = move |n: u64| {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (s >> 33) % n
         };
         let mut cells = Vec::new();
-        let cell = |row: u32, col: u32, v: Value, f: Option<&str>| Cell { row, col, value: Some(v), formula: f.map(str::to_string) };
+        let cell = |row: u32, col: u32, v: Value, f: Option<&str>| Cell {
+            row,
+            col,
+            value: Some(v),
+            formula: f.map(str::to_string),
+        };
         cells.push(cell(0, 0, Value::Text("Quarterly report".into()), None));
-        for (c, h) in ["Region", "Q1", "Q2", "Q3", "", "", "Code", "Note"].iter().enumerate() {
+        for (c, h) in ["Region", "Q1", "Q2", "Q3", "", "", "Code", "Note"]
+            .iter()
+            .enumerate()
+        {
             if !h.is_empty() {
                 cells.push(cell(2, c as u32, Value::Text(h.to_string()), None));
             }
@@ -874,7 +1111,16 @@ mod tests {
                 continue;
             }
             let total = rnd(23) == 0;
-            cells.push(cell(r, 0, Value::Text(if total { "Total".into() } else { format!("Region {}", rnd(9)) }), None));
+            cells.push(cell(
+                r,
+                0,
+                Value::Text(if total {
+                    "Total".into()
+                } else {
+                    format!("Region {}", rnd(9))
+                }),
+                None,
+            ));
             for c in 1..4u32 {
                 let v = match rnd(7) {
                     0 => Value::Text(format!("{},{}", rnd(900), rnd(99))),
@@ -898,9 +1144,24 @@ mod tests {
             }
             r += 1;
         }
-        cells.push(cell(r + 2, 0, Value::Text("Source: statistical office, provisional figures".into()), None));
-        let merges = vec![Rect { top: 0, left: 0, bottom: 0, right: 3 }];
-        Sheet { name: "s".into(), cells, merges, formats: vec![] }
+        cells.push(cell(
+            r + 2,
+            0,
+            Value::Text("Source: statistical office, provisional figures".into()),
+            None,
+        ));
+        let merges = vec![Rect {
+            top: 0,
+            left: 0,
+            bottom: 0,
+            right: 3,
+        }];
+        Sheet {
+            name: "s".into(),
+            cells,
+            merges,
+            formats: vec![],
+        }
     }
 
     #[test]
@@ -909,7 +1170,8 @@ mod tests {
         for (seed, rows) in [(1, 12), (2, 60), (3, 400), (4, 7)] {
             let sheet = mixed_sheet(seed, rows);
             let grid = Grid::new(&sheet);
-            let n = equivalence(&grid, m, &[1, 2, 3, 5]).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
+            let n =
+                equivalence(&grid, m, &[1, 2, 3, 5]).unwrap_or_else(|e| panic!("seed {seed}: {e}"));
             assert!(n > 0);
         }
         // Not row-major: the materialized path, same layout either way.

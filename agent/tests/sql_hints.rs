@@ -30,7 +30,11 @@ fn contracts_csv() -> String {
         } else {
             format!("Supplier {}", i % 4)
         };
-        csv.push_str(&format!("\"{b}\",{supplier},{},2020-{:02}-15\n", 1000 + i * 10, 1 + i % 12));
+        csv.push_str(&format!(
+            "\"{b}\",{supplier},{},2020-{:02}-15\n",
+            1000 + i * 10,
+            1 + i % 12
+        ));
     }
     csv
 }
@@ -42,24 +46,58 @@ fn entity_columns_group_by_id() {
     let mut s = Session::new(&d, &[]).unwrap();
     let cat = s.open_file("contracts.csv").unwrap();
     assert!(
-        cat.contains("buyer = \"<id> - <name>\"") && cat.contains("3 IDs, 1 with several spellings (e.g. 503933813: 3 names)"),
+        cat.contains("buyer = \"<id> - <name>\"")
+            && cat.contains("3 IDs, 1 with several spellings (e.g. 503933813: 3 names)"),
         "{cat}"
     );
     assert!(cat.contains("group by buyer_id"), "{cat}");
-    assert!(!cat.contains("supplier = \"<id>"), "plain names are no entity column:\n{cat}");
+    assert!(
+        !cat.contains("supplier = \"<id>"),
+        "plain names are no entity column:\n{cat}"
+    );
 
     let q = s
         .query("contracts.csv", "SELECT buyer_id, count(DISTINCT buyer_name) AS names, count(*) AS n FROM T1 GROUP BY buyer_id ORDER BY n DESC, buyer_id", None)
         .unwrap();
     // B18: one name per ID (the most frequent spelling; the first seen on a tie).
-    assert_eq!(q, "buyer_id,names,n\n503933813,1,18\n503278602,1,6\n600012662,1,6\n(3 rows)");
-    let q = s.query("contracts.csv", "SELECT buyer_name, count(*) AS n FROM T1 GROUP BY buyer_name ORDER BY n DESC", None).unwrap();
-    assert!(q.starts_with("buyer_name,n\n\"IP - Infraestruturas de Portugal, S.A.\",18\n"), "{q}");
+    assert_eq!(
+        q,
+        "buyer_id,names,n\n503933813,1,18\n503278602,1,6\n600012662,1,6\n(3 rows)"
+    );
+    let q = s
+        .query(
+            "contracts.csv",
+            "SELECT buyer_name, count(*) AS n FROM T1 GROUP BY buyer_name ORDER BY n DESC",
+            None,
+        )
+        .unwrap();
+    assert!(
+        q.starts_with("buyer_name,n\n\"IP - Infraestruturas de Portugal, S.A.\",18\n"),
+        "{q}"
+    );
     // Grouping by the text lists one body under several spellings: the result says so.
-    let q = s.query("contracts.csv", "SELECT buyer, count(*) AS n FROM T1 GROUP BY buyer ORDER BY buyer", None).unwrap();
-    assert!(q.contains("one buyer (ID 503933813) under different spellings"), "{q}");
-    assert!(q.contains("SELECT \"buyer_id\", \"buyer_name\", count(*) FROM T1 GROUP BY \"buyer_id\""), "{q}");
-    let q = s.query("contracts.csv", "SELECT buyer_id, count(*) AS n FROM T1 GROUP BY buyer_id", None).unwrap();
+    let q = s
+        .query(
+            "contracts.csv",
+            "SELECT buyer, count(*) AS n FROM T1 GROUP BY buyer ORDER BY buyer",
+            None,
+        )
+        .unwrap();
+    assert!(
+        q.contains("one buyer (ID 503933813) under different spellings"),
+        "{q}"
+    );
+    assert!(
+        q.contains("SELECT \"buyer_id\", \"buyer_name\", count(*) FROM T1 GROUP BY \"buyer_id\""),
+        "{q}"
+    );
+    let q = s
+        .query(
+            "contracts.csv",
+            "SELECT buyer_id, count(*) AS n FROM T1 GROUP BY buyer_id",
+            None,
+        )
+        .unwrap();
     assert!(!q.contains("note:"), "{q}");
     // B19: the share of the total, ranked by the entity.
     assert!(
@@ -70,14 +108,36 @@ fn entity_columns_group_by_id() {
         "{cat}"
     );
     // The IDs keep their text (leading zeros would survive) and are in T1_all too; cited as the source cell.
-    let q = s.query("contracts.csv", "SELECT buyer_id, buyer_name, _src_row FROM T1_all LIMIT 1", None).unwrap();
-    assert!(q.starts_with("buyer_id,buyer_name,_src_row\n503933813,\"IP - Infraestruturas de Portugal, S.A.\",2"), "{q}");
-    assert!(q.contains("cite as: buyer_id = contracts!A<_src_row> (ID part)"), "{q}");
+    let q = s
+        .query(
+            "contracts.csv",
+            "SELECT buyer_id, buyer_name, _src_row FROM T1_all LIMIT 1",
+            None,
+        )
+        .unwrap();
+    assert!(
+        q.starts_with(
+            "buyer_id,buyer_name,_src_row\n503933813,\"IP - Infraestruturas de Portugal, S.A.\",2"
+        ),
+        "{q}"
+    );
+    assert!(
+        q.contains("cite as: buyer_id = contracts!A<_src_row> (ID part)"),
+        "{q}"
+    );
 
     let desc = s.describe_table("contracts.csv", "T1").unwrap();
-    assert!(desc.contains("entity columns (the SQL views T1 and T1_all also have buyer_id, buyer_name)"), "{desc}");
+    assert!(
+        desc.contains(
+            "entity columns (the SQL views T1 and T1_all also have buyer_id, buyer_name)"
+        ),
+        "{desc}"
+    );
     // A misspelled derived column is suggested.
-    let e = s.query("contracts.csv", "SELECT buyerid FROM T1", None).unwrap_err().0;
+    let e = s
+        .query("contracts.csv", "SELECT buyerid FROM T1", None)
+        .unwrap_err()
+        .0;
     assert!(e.contains("T1.\"buyer_id\""), "{e}");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -88,8 +148,14 @@ fn other_dialects_get_the_sqlite_way() {
     std::fs::write(d.join("contracts.csv"), contracts_csv()).unwrap();
     let mut s = Session::new(&d, &[]).unwrap();
     let err = |s: &mut Session, sql: &str| s.query("contracts.csv", sql, None).unwrap_err().0;
-    let e = err(&mut s, "SELECT MONTH(signed) AS m, count(*) FROM T1 GROUP BY m");
-    assert!(e.contains("no such function: MONTH") && e.contains("strftime('%m', col)"), "{e}");
+    let e = err(
+        &mut s,
+        "SELECT MONTH(signed) AS m, count(*) FROM T1 GROUP BY m",
+    );
+    assert!(
+        e.contains("no such function: MONTH") && e.contains("strftime('%m', col)"),
+        "{e}"
+    );
     let e = err(&mut s, "SELECT YEAR(signed) FROM T1");
     assert!(e.contains("strftime('%Y', col)"), "{e}");
     let e = err(&mut s, "SELECT EXTRACT(MONTH FROM signed) FROM T1");
@@ -117,19 +183,28 @@ fn total_row_labels_are_rows() {
     for (c, h) in ["Pipeline", "Receipts", "Deliveries"].iter().enumerate() {
         ws.write_string(0, c as u16, *h).unwrap();
     }
-    let rows = [("SEA ROBIN", 123.0, 10.0), ("NGPL", 105.0, 20.0), ("MAINLINE", 100.0, 30.0)];
+    let rows = [
+        ("SEA ROBIN", 123.0, 10.0),
+        ("NGPL", 105.0, 20.0),
+        ("MAINLINE", 100.0, 30.0),
+    ];
     for (i, (p, a, b)) in rows.iter().enumerate() {
         ws.write_string(1 + i as u32, 0, *p).unwrap();
         ws.write_number(1 + i as u32, 1, *a).unwrap();
         ws.write_number(1 + i as u32, 2, *b).unwrap();
     }
     ws.write_string(4, 0, "Total").unwrap();
-    ws.write_formula(4, 1, Formula::new("=SUM(B2:B4)").set_result("328")).unwrap();
-    ws.write_formula(4, 2, Formula::new("=SUM(C2:C4)").set_result("60")).unwrap();
+    ws.write_formula(4, 1, Formula::new("=SUM(B2:B4)").set_result("328"))
+        .unwrap();
+    ws.write_formula(4, 2, Formula::new("=SUM(C2:C4)").set_result("60"))
+        .unwrap();
     wb.save(d.join("flows.xlsx")).unwrap();
     let mut s = Session::new(&d, &[]).unwrap();
     s.open_file("flows.xlsx").unwrap();
-    let e = s.query("flows.xlsx", "SELECT \"Total\" FROM T1_all", None).unwrap_err().0;
+    let e = s
+        .query("flows.xlsx", "SELECT \"Total\" FROM T1_all", None)
+        .unwrap_err()
+        .0;
     assert!(
         e.contains(
             "\"Total\" is a row label, not a column: total rows are in T1_all with _row_type = 'total' (label in Pipeline): \
@@ -138,19 +213,37 @@ fn total_row_labels_are_rows() {
         "{e}"
     );
     // B15: the error also returns the rows.
-    assert!(e.contains("\nThose rows (the query above, run for you; pick the columns you need):\n"), "{e}");
+    assert!(
+        e.contains("\nThose rows (the query above, run for you; pick the columns you need):\n"),
+        "{e}"
+    );
     assert!(e.contains("\nTotal,328,60,5,total"), "{e}");
-    let e = s.query("flows.xlsx", "SELECT Gesamt FROM T1", None).unwrap_err().0;
-    assert!(e.contains("row label, not a column") && e.contains("T1_all"), "{e}");
+    let e = s
+        .query("flows.xlsx", "SELECT Gesamt FROM T1", None)
+        .unwrap_err()
+        .0;
+    assert!(
+        e.contains("row label, not a column") && e.contains("T1_all"),
+        "{e}"
+    );
     // A data-row label used as a column.
-    let e = s.query("flows.xlsx", "SELECT \"SEA ROBIN\" FROM T1", None).unwrap_err().0;
+    let e = s
+        .query("flows.xlsx", "SELECT \"SEA ROBIN\" FROM T1", None)
+        .unwrap_err()
+        .0;
     assert!(e.contains("is a value of column Pipeline, not a column: SELECT * FROM T1 WHERE \"Pipeline\" = 'SEA ROBIN'"), "{e}");
     assert!(e.contains("\nSEA ROBIN,123,10,2"), "{e}");
     // A name that is no row label: no rows.
-    let e = s.query("flows.xlsx", "SELECT \"sea robin x\" FROM T1", None).unwrap_err().0;
+    let e = s
+        .query("flows.xlsx", "SELECT \"sea robin x\" FROM T1", None)
+        .unwrap_err()
+        .0;
     assert!(!e.contains("Those rows"), "{e}");
     // A plain typo still gets the closest names.
-    let e = s.query("flows.xlsx", "SELECT Receits FROM T1", None).unwrap_err().0;
+    let e = s
+        .query("flows.xlsx", "SELECT Receits FROM T1", None)
+        .unwrap_err()
+        .0;
     assert!(e.contains("did you mean T1.\"Receipts\""), "{e}");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -165,7 +258,8 @@ fn wide_and_long(path: &std::path::Path, off: f64) {
         wide.write_string(0, c as u16, *h).unwrap();
     }
     for i in 0..12u32 {
-        wide.write_string(1 + i, 0, format!("2023-01-{:02}", i + 1)).unwrap();
+        wide.write_string(1 + i, 0, format!("2023-01-{:02}", i + 1))
+            .unwrap();
         wide.write_number(1 + i, 1, 100.0 + i as f64).unwrap();
         wide.write_number(1 + i, 2, 90.5 + i as f64).unwrap();
     }
@@ -175,9 +269,13 @@ fn wide_and_long(path: &std::path::Path, off: f64) {
         long.write_string(0, c as u16, *h).unwrap();
     }
     for i in 0..12u32 {
-        for (k, (cat, v)) in [("unbereinigt", 100.0), ("bereinigt", 90.5)].iter().enumerate() {
+        for (k, (cat, v)) in [("unbereinigt", 100.0), ("bereinigt", 90.5)]
+            .iter()
+            .enumerate()
+        {
             let r = 1 + 2 * i + k as u32;
-            long.write_string(r, 0, format!("2023-01-{:02}", i + 1)).unwrap();
+            long.write_string(r, 0, format!("2023-01-{:02}", i + 1))
+                .unwrap();
             long.write_string(r, 1, *cat).unwrap();
             long.write_number(r, 2, v + i as f64 + off).unwrap();
         }
@@ -208,11 +306,23 @@ fn amounts_at_a_stated_rate_are_summable() {
     let d = dir("rates");
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet().set_name("Obračun").unwrap();
-    ws.write_string(0, 0, "Firma d.o.o. - Obračun zarada za septembar 2026").unwrap();
+    ws.write_string(0, 0, "Firma d.o.o. - Obračun zarada za septembar 2026")
+        .unwrap();
     ws.write_string(1, 0, "Neoporezivi iznos: 28.423,00 RSD; porez 10%; doprinosi zaposleni: PIO 14%, zdravstvo 5,15%, nezaposlenost 0,75%").unwrap();
     let heads = [
-        "Šifra", "Bruto zarada", "Osnovica za porez", "Porez 10%", "PIO 14%", "Zdravstvo 5,15%", "Nezaposlenost 0,75%",
-        "Doprinosi zaposleni ukupno", "Neto zarada", "Ukupan trošak poslodavca", "Stopa PDV", "Veränderung in %", "Anteil",
+        "Šifra",
+        "Bruto zarada",
+        "Osnovica za porez",
+        "Porez 10%",
+        "PIO 14%",
+        "Zdravstvo 5,15%",
+        "Nezaposlenost 0,75%",
+        "Doprinosi zaposleni ukupno",
+        "Neto zarada",
+        "Ukupan trošak poslodavca",
+        "Stopa PDV",
+        "Veränderung in %",
+        "Anteil",
     ];
     for (c, h) in heads.iter().enumerate() {
         ws.write_string(3, c as u16, *h).unwrap();
@@ -224,41 +334,81 @@ fn amounts_at_a_stated_rate_are_summable() {
         let contrib = pio + zdr + nez;
         let row = 4 + i;
         ws.write_string(row, 0, format!("R{}", 101 + i)).unwrap();
-        for (c, v) in [bruto, base, tax, pio, zdr, nez, contrib, bruto - tax - contrib, bruto * 1.1515].iter().enumerate() {
-            ws.write_number(row, 1 + c as u16, (v * 100.0).round() / 100.0).unwrap();
+        for (c, v) in [
+            bruto,
+            base,
+            tax,
+            pio,
+            zdr,
+            nez,
+            contrib,
+            bruto - tax - contrib,
+            bruto * 1.1515,
+        ]
+        .iter()
+        .enumerate()
+        {
+            ws.write_number(row, 1 + c as u16, (v * 100.0).round() / 100.0)
+                .unwrap();
         }
-        ws.write_number(row, 10, if i % 3 == 0 { 0.1 } else { 0.2 }).unwrap();
+        ws.write_number(row, 10, if i % 3 == 0 { 0.1 } else { 0.2 })
+            .unwrap();
         ws.write_number(row, 11, f64::from(i) * 0.7 - 3.5).unwrap();
-        ws.write_number(row, 12, 0.02 + f64::from(i) * 0.01).unwrap();
+        ws.write_number(row, 12, 0.02 + f64::from(i) * 0.01)
+            .unwrap();
     }
     let inv = wb.add_worksheet().set_name("Fakture").unwrap();
-    for (c, h) in ["Broj fakture", "Osnovica 20%", "PDV 20%", "Ukupno"].iter().enumerate() {
+    for (c, h) in ["Broj fakture", "Osnovica 20%", "PDV 20%", "Ukupno"]
+        .iter()
+        .enumerate()
+    {
         inv.write_string(0, c as u16, *h).unwrap();
     }
     for i in 0..15u32 {
         let base = 13_058.11 + 61_000.0 * f64::from(i);
-        inv.write_string(1 + i, 0, format!("FA-2026-{:04}", 401 + i)).unwrap();
+        inv.write_string(1 + i, 0, format!("FA-2026-{:04}", 401 + i))
+            .unwrap();
         inv.write_number(1 + i, 1, base).unwrap();
-        inv.write_number(1 + i, 2, (base * 20.0).round() / 100.0).unwrap();
-        inv.write_number(1 + i, 3, (base * 120.0).round() / 100.0).unwrap();
+        inv.write_number(1 + i, 2, (base * 20.0).round() / 100.0)
+            .unwrap();
+        inv.write_number(1 + i, 3, (base * 120.0).round() / 100.0)
+            .unwrap();
     }
     wb.save(d.join("plate.xlsx")).unwrap();
     let mut s = Session::new(&d, &[]).unwrap();
     let cat = s.open_file("plate.xlsx").unwrap();
     let no_sum: Vec<&str> = cat.lines().filter(|l| l.contains("do not sum:")).collect();
     assert_eq!(no_sum.len(), 1, "{cat}");
-    for real in ["\"Stopa PDV\" (rate)", "\"Veränderung in %\" (rate)", "Anteil (rate)"] {
+    for real in [
+        "\"Stopa PDV\" (rate)",
+        "\"Veränderung in %\" (rate)",
+        "Anteil (rate)",
+    ] {
         assert!(no_sum[0].contains(real), "{real} is a rate:\n{cat}");
     }
     for amount in [
-        "Osnovica za porez", "Porez 10%", "PIO 14%", "Zdravstvo 5,15%", "Nezaposlenost 0,75%", "Doprinosi zaposleni",
-        "Ukupan trošak", "Osnovica 20%", "PDV 20%",
+        "Osnovica za porez",
+        "Porez 10%",
+        "PIO 14%",
+        "Zdravstvo 5,15%",
+        "Nezaposlenost 0,75%",
+        "Doprinosi zaposleni",
+        "Ukupan trošak",
+        "Osnovica 20%",
+        "PDV 20%",
     ] {
         assert!(!no_sum[0].contains(amount), "{amount} is an amount:\n{cat}");
-        assert!(!cat.contains(&format!("{amount}\"[rate")) && !cat.contains(&format!("{amount}\"[RSD rate")), "{amount}:\n{cat}");
+        assert!(
+            !cat.contains(&format!("{amount}\"[rate"))
+                && !cat.contains(&format!("{amount}\"[RSD rate")),
+            "{amount}:\n{cat}"
+        );
     }
     let desc = s.describe_table("plate.xlsx", "T2").unwrap();
-    assert!(desc.contains("\"PDV 20%\" | number |") || desc.contains("\"PDV 20%\" | number · amount"), "{desc}");
+    assert!(
+        desc.contains("\"PDV 20%\" | number |") || desc.contains("\"PDV 20%\" | number · amount"),
+        "{desc}"
+    );
 }
 
 /// A ledger's `SALDO (D - P)` under its `UKUPNO` row is the difference of the totals: out of the
@@ -271,7 +421,12 @@ fn ledger_balance_row_is_not_data() {
     for (c, h) in ["Konto", "Opis", "Duguje", "Potražuje"].iter().enumerate() {
         ws.write_string(0, c as u16, *h).unwrap();
     }
-    let rows = [("0230", "Početno stanje", 1200.0, 0.0), ("2040", "Kupci", 0.0, 300.0), ("4350", "Dobavljači", 450.0, 0.0), ("2410", "Banka", 0.0, 2250.0)];
+    let rows = [
+        ("0230", "Početno stanje", 1200.0, 0.0),
+        ("2040", "Kupci", 0.0, 300.0),
+        ("4350", "Dobavljači", 450.0, 0.0),
+        ("2410", "Banka", 0.0, 2250.0),
+    ];
     for (i, (k, o, dug, pot)) in rows.iter().enumerate() {
         let r = 1 + i as u32;
         ws.write_string(r, 0, *k).unwrap();
@@ -284,16 +439,31 @@ fn ledger_balance_row_is_not_data() {
         }
     }
     ws.write_string(5, 1, "UKUPNO").unwrap();
-    ws.write_formula(5, 2, Formula::new("=SUM(C2:C5)").set_result("1650")).unwrap();
-    ws.write_formula(5, 3, Formula::new("=SUM(D2:D5)").set_result("2550")).unwrap();
+    ws.write_formula(5, 2, Formula::new("=SUM(C2:C5)").set_result("1650"))
+        .unwrap();
+    ws.write_formula(5, 3, Formula::new("=SUM(D2:D5)").set_result("2550"))
+        .unwrap();
     ws.write_string(6, 1, "SALDO (D - P)").unwrap();
-    ws.write_formula(6, 2, Formula::new("=C6-D6").set_result("-900")).unwrap();
+    ws.write_formula(6, 2, Formula::new("=C6-D6").set_result("-900"))
+        .unwrap();
     wb.save(d.join("knjiga.xlsx")).unwrap();
     let mut s = Session::new(&d, &[]).unwrap();
     let cat = s.open_file("knjiga.xlsx").unwrap();
     assert!(cat.contains("grand total 'UKUPNO'@6 (= rows 2–5); balance 'SALDO (D - P)'@7 (= difference of the totals @6)"), "{cat}");
-    let q = s.query("knjiga.xlsx", "SELECT SUM(Duguje) AS d, COUNT(*) AS n FROM T1", None).unwrap();
+    let q = s
+        .query(
+            "knjiga.xlsx",
+            "SELECT SUM(Duguje) AS d, COUNT(*) AS n FROM T1",
+            None,
+        )
+        .unwrap();
     assert!(q.starts_with("d,n\n1650,4\n"), "{q}");
-    let q = s.query("knjiga.xlsx", "SELECT _row_type FROM T1_all WHERE _src_row = 7", None).unwrap();
+    let q = s
+        .query(
+            "knjiga.xlsx",
+            "SELECT _row_type FROM T1_all WHERE _src_row = 7",
+            None,
+        )
+        .unwrap();
     assert!(q.starts_with("_row_type\ntotal\n"), "{q}");
 }

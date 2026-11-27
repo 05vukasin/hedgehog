@@ -12,8 +12,15 @@ use crate::model::Rect;
 pub fn analyze(grid: &Grid) -> SheetLayout {
     let sheet = grid.sheet;
     // Clip merges to the cells' bounding box (± 1).
-    let Some(first) = sheet.cells.first() else { return SheetLayout::default() };
-    let mut bb = Rect { top: first.row, left: first.col, bottom: first.row, right: first.col };
+    let Some(first) = sheet.cells.first() else {
+        return SheetLayout::default();
+    };
+    let mut bb = Rect {
+        top: first.row,
+        left: first.col,
+        bottom: first.row,
+        right: first.col,
+    };
     for c in &sheet.cells {
         bb.left = bb.left.min(c.col);
         bb.right = bb.right.max(c.col);
@@ -30,7 +37,10 @@ pub fn analyze(grid: &Grid) -> SheetLayout {
         })
         .filter(|m| m.top <= m.bottom && m.left <= m.right)
         .collect();
-    let area: u64 = clipped.iter().map(|m| (m.bottom - m.top + 1) as u64 * (m.right - m.left + 1) as u64).sum();
+    let area: u64 = clipped
+        .iter()
+        .map(|m| (m.bottom - m.top + 1) as u64 * (m.right - m.left + 1) as u64)
+        .sum();
     // Flood fill over positions is fastest for ordinary sheets; when merged areas cover many
     // positions (A1:XFD1048576 with cells far apart: 17G) union-find over cells and whole merges
     // gives the same result in O(cells + merges).
@@ -66,7 +76,12 @@ fn flood(grid: &Grid, clipped: &[Rect]) -> SheetLayout {
             continue;
         }
         let id = rects.len();
-        let mut rect = Rect { top: seed.0, left: seed.1, bottom: seed.0, right: seed.1 };
+        let mut rect = Rect {
+            top: seed.0,
+            left: seed.1,
+            bottom: seed.0,
+            right: seed.1,
+        };
         comp.insert(seed, id);
         stack.push(seed);
         while let Some((r, c)) = stack.pop() {
@@ -118,7 +133,12 @@ fn flood(grid: &Grid, clipped: &[Rect]) -> SheetLayout {
         .iter()
         .zip(&is_table)
         .filter(|(_, t)| **t)
-        .map(|(r, _)| DetectedTable { rect: *r, header_top: r.top, header_rows: 1, confidence: 0.5 })
+        .map(|(r, _)| DetectedTable {
+            rect: *r,
+            header_top: r.top,
+            header_rows: 1,
+            confidence: 0.5,
+        })
         .collect();
 
     SheetLayout { tables, roles }
@@ -139,10 +159,12 @@ fn by_union_find(grid: &Grid, clipped: &[Rect]) -> SheetLayout {
         }
         for (dr, dc) in [(-1i64, -1i64), (-1, 0), (-1, 1), (0, -1)] {
             let (r, cc) = (c.row as i64 + dr, c.col as i64 + dc);
-            if r >= 0 && cc >= 0
-                && let Some(j) = grid.cell_index(r as u32, cc as u32) {
-                    uf.union(i, j);
-                }
+            if r >= 0
+                && cc >= 0
+                && let Some(j) = grid.cell_index(r as u32, cc as u32)
+            {
+                uf.union(i, j);
+            }
         }
     }
     let grow = |m: &Rect| Rect {
@@ -181,7 +203,12 @@ fn by_union_find(grid: &Grid, clipped: &[Rect]) -> SheetLayout {
     for (i, c) in cells.iter().enumerate() {
         let root = uf.find(i);
         let id = *comp_of_root.entry(root).or_insert_with(|| {
-            rects.push(Rect { top: c.row, left: c.col, bottom: c.row, right: c.col });
+            rects.push(Rect {
+                top: c.row,
+                left: c.col,
+                bottom: c.row,
+                right: c.col,
+            });
             first.push((c.row, c.col));
             count.push(0);
             rects.len() - 1
@@ -221,7 +248,15 @@ fn by_union_find(grid: &Grid, clipped: &[Rect]) -> SheetLayout {
         .collect();
     let mut ids: Vec<usize> = (0..rects.len()).filter(|&id| count[id] >= 2).collect();
     ids.sort_by_key(|&id| first[id]);
-    let tables = ids.iter().map(|&id| DetectedTable { rect: rects[id], header_top: rects[id].top, header_rows: 1, confidence: 0.5 }).collect();
+    let tables = ids
+        .iter()
+        .map(|&id| DetectedTable {
+            rect: rects[id],
+            header_top: rects[id].top,
+            header_rows: 1,
+            confidence: 0.5,
+        })
+        .collect();
     SheetLayout { tables, roles }
 }
 
@@ -231,7 +266,9 @@ struct UnionFind {
 
 impl UnionFind {
     fn new(n: usize) -> Self {
-        UnionFind { parent: (0..n).collect() }
+        UnionFind {
+            parent: (0..n).collect(),
+        }
     }
 
     fn find(&mut self, mut x: usize) -> usize {
@@ -261,13 +298,20 @@ mod tests {
     fn union_find_matches_flood_fill() {
         let mut seed: u64 = 1;
         let mut rnd = move |m: u32| {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((seed >> 33) as u32) % m
         };
         for case in 0..400 {
             let size = 3 + rnd(12);
             let mut cells: Vec<Cell> = (0..rnd(25) + 1)
-                .map(|_| Cell { row: rnd(size), col: rnd(size), value: Some(Value::Number(1.0)), formula: None })
+                .map(|_| Cell {
+                    row: rnd(size),
+                    col: rnd(size),
+                    value: Some(Value::Number(1.0)),
+                    formula: None,
+                })
                 .collect();
             if case % 2 == 0 {
                 cells.sort_by_key(|c| (c.row, c.col));
@@ -275,13 +319,30 @@ mod tests {
             let merges = (0..rnd(5))
                 .map(|_| {
                     let (t, l) = (rnd(size + 2), rnd(size + 2));
-                    Rect { top: t, left: l, bottom: t + rnd(4), right: l + rnd(4) }
+                    Rect {
+                        top: t,
+                        left: l,
+                        bottom: t + rnd(4),
+                        right: l + rnd(4),
+                    }
                 })
                 .collect();
-            let sheet = Sheet { name: "s".into(), cells, merges, formats: vec![] };
+            let sheet = Sheet {
+                name: "s".into(),
+                cells,
+                merges,
+                formats: vec![],
+            };
             let grid = Grid::new(&sheet);
-            let Some(first) = sheet.cells.first() else { continue };
-            let mut bb = Rect { top: first.row, left: first.col, bottom: first.row, right: first.col };
+            let Some(first) = sheet.cells.first() else {
+                continue;
+            };
+            let mut bb = Rect {
+                top: first.row,
+                left: first.col,
+                bottom: first.row,
+                right: first.col,
+            };
             for c in &sheet.cells {
                 bb.left = bb.left.min(c.col);
                 bb.right = bb.right.max(c.col);
@@ -298,22 +359,44 @@ mod tests {
                 })
                 .filter(|m| m.top <= m.bottom && m.left <= m.right)
                 .collect();
-            assert_eq!(flood(&grid, &clipped), by_union_find(&grid, &clipped), "case {case}: {sheet:?}");
+            assert_eq!(
+                flood(&grid, &clipped),
+                by_union_find(&grid, &clipped),
+                "case {case}: {sheet:?}"
+            );
         }
     }
 
     #[test]
     fn giant_merge_with_far_cells_is_cheap() {
-        let cell = |row, col| Cell { row, col, value: Some(Value::Number(1.0)), formula: None };
+        let cell = |row, col| Cell {
+            row,
+            col,
+            value: Some(Value::Number(1.0)),
+            formula: None,
+        };
         let sheet = Sheet {
             name: "s".into(),
             cells: vec![cell(0, 0), cell(0, 1), cell(1_048_575, 16_383)],
-            merges: vec![Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }],
+            merges: vec![Rect {
+                top: 0,
+                left: 0,
+                bottom: 1_048_575,
+                right: 16_383,
+            }],
             formats: vec![],
         };
         let layout = analyze(&Grid::new(&sheet));
         assert_eq!(layout.tables.len(), 1);
-        assert_eq!(layout.tables[0].rect, Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 });
+        assert_eq!(
+            layout.tables[0].rect,
+            Rect {
+                top: 0,
+                left: 0,
+                bottom: 1_048_575,
+                right: 16_383
+            }
+        );
         assert_eq!(layout.roles, vec![Role::Header, Role::Header, Role::Data]);
     }
 }

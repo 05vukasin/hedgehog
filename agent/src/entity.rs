@@ -64,27 +64,43 @@ fn is_code(s: &str) -> bool {
         return false;
     }
     let digits = s.chars().filter(char::is_ascii_digit).count();
-    s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '/' | '-' | '_')) && digits * 5 >= n * 2
+    s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '/' | '-' | '_'))
+        && digits * 5 >= n * 2
 }
 
 /// A name: at least two letters, and not a number range ("10 - 20 km", "2020 - 2021": the part
 /// after the separator starts with a plain number).
 fn is_name(s: &str) -> bool {
     let first = s.split_whitespace().next().unwrap_or("");
-    s.chars().filter(|c| c.is_alphabetic()).count() >= 2 && !first.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | ','))
+    s.chars().filter(|c| c.is_alphabetic()).count() >= 2
+        && !first
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | ','))
 }
 
 /// Two codes of the same shape: digits where the other has digits, letters where it has letters,
 /// other characters equal (the IDs of one column share it: "503933813", "45247220-8").
 fn same_shape(a: &str, b: &str) -> bool {
-    let class = |c: char| if c.is_ascii_digit() { '9' } else if c.is_alphabetic() { 'a' } else { c };
+    let class = |c: char| {
+        if c.is_ascii_digit() {
+            '9'
+        } else if c.is_alphabetic() {
+            'a'
+        } else {
+            c
+        }
+    };
     a.len() == b.len() && a.chars().zip(b.chars()).all(|(x, y)| class(x) == class(y))
 }
 
 /// `<id> - <name>` with any of [`SEPS`]: (id, name, separator).
 fn split_one(s: &str) -> Option<(&str, &str, &'static str)> {
     let s = s.trim();
-    let (i, sep) = SEPS.iter().filter_map(|sep| s.find(sep).map(|i| (i, *sep))).min_by_key(|x| x.0)?;
+    let (i, sep) = SEPS
+        .iter()
+        .filter_map(|sep| s.find(sep).map(|i| (i, *sep)))
+        .min_by_key(|x| x.0)?;
     let (id, name) = (s[..i].trim(), s[i + sep.len()..].trim());
     (is_code(id) && is_name(name)).then_some((id, name, sep))
 }
@@ -92,10 +108,17 @@ fn split_one(s: &str) -> Option<(&str, &str, &'static str)> {
 /// How one cell reads.
 #[derive(Debug, PartialEq)]
 pub enum Parsed<'a> {
-    One { id: &'a str, name: &'a str, sep: &'static str },
+    One {
+        id: &'a str,
+        name: &'a str,
+        sep: &'static str,
+    },
     /// Several `<id> - <name>` parts; `sep` is the character before the second one (`' '` when
     /// they are only run together).
-    Many { parts: Vec<(&'a str, &'a str)>, sep: char },
+    Many {
+        parts: Vec<(&'a str, &'a str)>,
+        sep: char,
+    },
     /// A code alone (or `"<id> - <id>"`).
     BareId(&'a str),
     /// No ID: the name (an empty ID such as `"- - Name"` left out).
@@ -151,13 +174,22 @@ pub fn parse(s: &str) -> Parsed<'_> {
     let parts: Option<Vec<(&str, &str)>> = bounds
         .windows(2)
         .map(|w| {
-            let piece = t[w[0]..w[1]].trim_end().trim_end_matches(MULTI_SEPS).trim_end_matches(',').trim_end();
+            let piece = t[w[0]..w[1]]
+                .trim_end()
+                .trim_end_matches(MULTI_SEPS)
+                .trim_end_matches(',')
+                .trim_end();
             split_one(piece).map(|(i, n, _)| (i, n))
         })
         .collect();
     match parts {
         Some(parts) => {
-            let before = t[..starts[0]].trim_end().chars().last().filter(|c| MULTI_SEPS.contains(c)).unwrap_or(' ');
+            let before = t[..starts[0]]
+                .trim_end()
+                .chars()
+                .last()
+                .filter(|c| MULTI_SEPS.contains(c))
+                .unwrap_or(' ');
             Parsed::Many { parts, sep: before }
         }
         None => Parsed::One { id, name, sep },
@@ -207,10 +239,16 @@ pub fn canonical_names(c: &Column) -> HashMap<String, String> {
 }
 
 /// [`derived`] with the name replaced by the canonical one of its ID(s) ([`canonical_names`]).
-pub fn derived_canonical(s: &str, names: &HashMap<String, String>) -> (Option<String>, Option<String>) {
+pub fn derived_canonical(
+    s: &str,
+    names: &HashMap<String, String>,
+) -> (Option<String>, Option<String>) {
     let (id, name) = derived(s);
     let canon = id.as_deref().and_then(|ids| {
-        ids.split(" | ").map(|i| names.get(i).map(String::as_str)).collect::<Option<Vec<&str>>>().map(|v| v.join(" | "))
+        ids.split(" | ")
+            .map(|i| names.get(i).map(String::as_str))
+            .collect::<Option<Vec<&str>>>()
+            .map(|v| v.join(" | "))
     });
     match canon {
         Some(c) if name.is_some() => (id, Some(c)),
@@ -239,7 +277,10 @@ pub fn detect(t: &Table) -> Vec<Entity> {
         if sample.len() < 3 {
             continue;
         }
-        let ok = sample.iter().filter(|s| matches!(parse(s), Parsed::One { .. } | Parsed::Many { .. })).count();
+        let ok = sample
+            .iter()
+            .filter(|s| matches!(parse(s), Parsed::One { .. } | Parsed::Many { .. }))
+            .count();
         if (ok as f64) < MIN_SHARE * 0.75 * sample.len() as f64 {
             continue;
         }
@@ -297,7 +338,10 @@ pub fn detect(t: &Table) -> Vec<Entity> {
         }
         // Most used separator; a tie goes to the first in SEPS (not to the hash map's order, B68).
         let rank = |s: &str| SEPS.iter().position(|x| *x == s).unwrap_or(SEPS.len());
-        e.sep = seps.into_iter().max_by_key(|&(s, n)| (n, std::cmp::Reverse(rank(s)))).map_or(SEPS[0], |x| x.0);
+        e.sep = seps
+            .into_iter()
+            .max_by_key(|&(s, n)| (n, std::cmp::Reverse(rank(s))))
+            .map_or(SEPS[0], |x| x.0);
         e.ids = by_id.len();
         e.several = by_id.values().filter(|x| x.1.len() > 1).count();
         e.most = by_id
@@ -328,13 +372,22 @@ pub fn lines(t: &Table) -> Vec<String> {
 pub fn group_key(e: &Entity) -> String {
     match e.no_id {
         0 => quote_ident(&e.id_col),
-        _ => format!("coalesce({}, {})", quote_ident(&e.id_col), quote_ident(&e.name_col)),
+        _ => format!(
+            "coalesce({}, {})",
+            quote_ident(&e.id_col),
+            quote_ident(&e.name_col)
+        ),
     }
 }
 
 /// The ready query for grouping entity column `e` of table `id` by entity (B18).
 pub fn group_sql(e: &Entity, id: &str) -> String {
-    format!("SELECT {}, {}, count(*) FROM {id} GROUP BY {}", quote_ident(&e.id_col), quote_ident(&e.name_col), group_key(e))
+    format!(
+        "SELECT {}, {}, count(*) FROM {id} GROUP BY {}",
+        quote_ident(&e.id_col),
+        quote_ident(&e.name_col),
+        group_key(e)
+    )
 }
 
 pub fn line(e: &Entity, table: &str) -> String {
@@ -355,7 +408,10 @@ pub fn line(e: &Entity, table: &str) -> String {
         )),
         None => s.push_str(&format!(", one spelling each — group by {}", ident(&e.id_col))),
     }
-    s.push_str(&format!("; {} holds one name per ID (its most frequent spelling)", ident(&e.name_col)));
+    s.push_str(&format!(
+        "; {} holds one name per ID (its most frequent spelling)",
+        ident(&e.name_col)
+    ));
     let mut extra = Vec::new();
     if e.multi > 0 {
         let how = match e.multi_sep {
@@ -410,22 +466,68 @@ pub struct IdName {
 fn id_word(name: &str) -> bool {
     let low = name.to_lowercase();
     low.split(|c: char| !c.is_alphanumeric()).any(|w| {
-        matches!(w, "id" | "nr" | "no" | "number" | "code" | "key" | "nummer" | "kennung" | "broj" | "sifra" | "šifra" | "codigo" | "código")
-            || (w.len() > 3 && w.ends_with("id"))
-    }) || name.ends_with("Id") || name.ends_with("ID")
+        matches!(
+            w,
+            "id" | "nr"
+                | "no"
+                | "number"
+                | "code"
+                | "key"
+                | "nummer"
+                | "kennung"
+                | "broj"
+                | "sifra"
+                | "šifra"
+                | "codigo"
+                | "código"
+        ) || (w.len() > 3 && w.ends_with("id"))
+    }) || name.ends_with("Id")
+        || name.ends_with("ID")
 }
 
 /// A header of a name column: `name`, `Customer Name`, `Bezeichnung`, `Назив_програма`,
 /// `empfaenger`, `supplier` …
 fn name_header(name: &str) -> bool {
     const STEMS: &[&str] = &[
-        "name", "nome", "naam", "bezeichnung", "benennung", "naziv", "назив", "title", "titel", "titulo",
-        "título", "designa", "denomina", "razão", "razao", "firma", "company", "empresa", "unternehmen", "empfänger",
-        "empfaenger", "recipient", "beneficiar", "supplier", "customer", "vendor", "lieferant", "kunde", "client", "dobavlja",
-        "добавља", "agency", "employer",
+        "name",
+        "nome",
+        "naam",
+        "bezeichnung",
+        "benennung",
+        "naziv",
+        "назив",
+        "title",
+        "titel",
+        "titulo",
+        "título",
+        "designa",
+        "denomina",
+        "razão",
+        "razao",
+        "firma",
+        "company",
+        "empresa",
+        "unternehmen",
+        "empfänger",
+        "empfaenger",
+        "recipient",
+        "beneficiar",
+        "supplier",
+        "customer",
+        "vendor",
+        "lieferant",
+        "kunde",
+        "client",
+        "dobavlja",
+        "добавља",
+        "agency",
+        "employer",
     ];
     let low = name.to_lowercase();
-    STEMS.iter().any(|s| low.contains(s)) || low.split(|c: char| !c.is_alphanumeric()).any(|w| matches!(w, "nom" | "ime" | "име" | "naziv"))
+    STEMS.iter().any(|s| low.contains(s))
+        || low
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|w| matches!(w, "nom" | "ime" | "име" | "naziv"))
 }
 
 /// The value of a cell as a key (text, or a whole number).
@@ -446,15 +548,31 @@ pub fn id_name_pairs(t: &Table, rows: &[usize]) -> Vec<IdName> {
     if n < 20 {
         return Vec::new();
     }
-    let sample: Vec<usize> = rows.iter().copied().step_by((n / SAMPLE).max(1)).take(SAMPLE).collect();
-    let texts = |c: &Column| sample.iter().filter_map(|&r| c.values.get(r).and_then(key_of)).collect::<Vec<String>>();
-    let data: Vec<(usize, &Column)> =
-        t.columns.iter().enumerate().filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group)).collect();
+    let sample: Vec<usize> = rows
+        .iter()
+        .copied()
+        .step_by((n / SAMPLE).max(1))
+        .take(SAMPLE)
+        .collect();
+    let texts = |c: &Column| {
+        sample
+            .iter()
+            .filter_map(|&r| c.values.get(r).and_then(key_of))
+            .collect::<Vec<String>>()
+    };
+    let data: Vec<(usize, &Column)> = t
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group))
+        .collect();
     // IDs: codes ("vr_012174", "4711", "AB-12") in at least 90 % of the sampled cells.
     let id_cols: Vec<usize> = data
         .iter()
         // Whole numbers only under an ID-like name (an amount such as 50000 repeats too).
-        .filter(|(i, c)| c.dtype == Dtype::Text || (c.dtype == Dtype::Integer && id_word(&names[*i])))
+        .filter(|(i, c)| {
+            c.dtype == Dtype::Text || (c.dtype == Dtype::Integer && id_word(&names[*i]))
+        })
         .filter(|(_, c)| {
             let v = texts(c);
             v.len() >= 10 && v.iter().filter(|s| is_code(s)).count() * 10 >= v.len() * 9
@@ -484,7 +602,11 @@ pub fn id_name_pairs(t: &Table, rows: &[usize]) -> Vec<IdName> {
             let mut distinct_names: HashSet<&str> = HashSet::new();
             let mut pairs = 0;
             for &r in rows {
-                let (Some(id), Some(Out::Text(name))) = (idc.values.get(r).and_then(key_of), nm.values.get(r)) else { continue };
+                let (Some(id), Some(Out::Text(name))) =
+                    (idc.values.get(r).and_then(key_of), nm.values.get(r))
+                else {
+                    continue;
+                };
                 let name = name.trim();
                 if name.is_empty() {
                     continue;
@@ -513,7 +635,16 @@ pub fn id_name_pairs(t: &Table, rows: &[usize]) -> Vec<IdName> {
                 .map(|(id, x)| (id.clone(), x.1.len()));
             let score = distinct_names.len();
             if best.as_ref().is_none_or(|(s, _)| score > *s) {
-                best = Some((score, IdName { id: names[ic].clone(), name: names[nc].clone(), ids, several, most }));
+                best = Some((
+                    score,
+                    IdName {
+                        id: names[ic].clone(),
+                        name: names[nc].clone(),
+                        ids,
+                        several,
+                        most,
+                    },
+                ));
             }
         }
         out.extend(best.map(|x| x.1));
@@ -525,7 +656,11 @@ pub fn id_name_pairs(t: &Table, rows: &[usize]) -> Vec<IdName> {
 /// without the query.
 pub fn id_name_line_short(p: &IdName, first: &IdName) -> String {
     let spellings = match &p.most {
-        Some((most, k)) => format!("{} with several spellings (e.g. {}: {k} names)", thousands(p.several), short(most, 30)),
+        Some((most, k)) => format!(
+            "{} with several spellings (e.g. {}: {k} names)",
+            thousands(p.several),
+            short(most, 30)
+        ),
         None => "one name each".to_string(),
     };
     format!(
@@ -581,21 +716,39 @@ mod tests {
             footnote_marks: Vec::new(),
             values,
         };
-        let ids: Vec<Out> = (0..rows).map(|i| Out::Text(format!("vr_{:06}", i % 20))).collect();
-        let names: Vec<Out> =
-            (0..rows).map(|i| Out::Text(if i == 41 { "Verein Eins e.V.".into() } else { format!("Verein {} e.V.", i % 20) })).collect();
+        let ids: Vec<Out> = (0..rows)
+            .map(|i| Out::Text(format!("vr_{:06}", i % 20)))
+            .collect();
+        let names: Vec<Out> = (0..rows)
+            .map(|i| {
+                Out::Text(if i == 41 {
+                    "Verein Eins e.V.".into()
+                } else {
+                    format!("Verein {} e.V.", i % 20)
+                })
+            })
+            .collect();
         let t = Table {
             n: 1,
             sheet: "T1".into(),
             source_sheet: "s".into(),
-            rect: hh_core::Rect { top: 0, left: 0, bottom: rows as u32, right: 3 },
+            rect: hh_core::Rect {
+                top: 0,
+                left: 0,
+                bottom: rows as u32,
+                right: 3,
+            },
             header_top: 0,
             header_rows: 1,
             title: None,
             notes: vec![],
             confidence: 1.0,
             columns: vec![
-                col("id", Dtype::Integer, (0..rows).map(|i| Out::Num(1000.0 + i as f64)).collect()),
+                col(
+                    "id",
+                    Dtype::Integer,
+                    (0..rows).map(|i| Out::Num(1000.0 + i as f64)).collect(),
+                ),
                 col("name", Dtype::Text, names),
                 col("empfaengerid", Dtype::Text, ids),
             ],
@@ -607,7 +760,10 @@ mod tests {
         let rows: Vec<usize> = (0..rows).collect();
         let p = id_name_pairs(&t, &rows);
         assert_eq!(p.len(), 1, "{p:?}");
-        assert_eq!((p[0].id.as_str(), p[0].name.as_str(), p[0].ids, p[0].several), ("empfaengerid", "name", 20, 1));
+        assert_eq!(
+            (p[0].id.as_str(), p[0].name.as_str(), p[0].ids, p[0].several),
+            ("empfaengerid", "name", 20, 1)
+        );
         assert_eq!(
             id_name_line(&p[0], "T1"),
             "    empfaengerid is the ID of name: 20 IDs, 1 with several spellings (e.g. vr_000001: 2 names) — group by empfaengerid, not by the name, and show a name: SELECT \"empfaengerid\", MAX(\"name\") AS \"name\", count(*) FROM T1 GROUP BY \"empfaengerid\""
@@ -618,32 +774,75 @@ mod tests {
     fn parses_cells() {
         assert_eq!(
             parse("503933813 - IP - Infraestruturas de Portugal, S.A."),
-            Parsed::One { id: "503933813", name: "IP - Infraestruturas de Portugal, S.A.", sep: " - " }
+            Parsed::One {
+                id: "503933813",
+                name: "IP - Infraestruturas de Portugal, S.A.",
+                sep: " - "
+            }
         );
-        assert_eq!(parse("ESB12345678 – Acme, S.L."), Parsed::One { id: "ESB12345678", name: "Acme, S.L.", sep: " – " });
-        assert!(matches!(parse("501 - Alpha | 502 - Beta"), Parsed::Many { ref parts, sep: '|' } if parts.len() == 2));
-        assert!(matches!(parse("501 - Alpha; 502 - Beta, Lda"), Parsed::Many { sep: ';', .. }));
+        assert_eq!(
+            parse("ESB12345678 – Acme, S.L."),
+            Parsed::One {
+                id: "ESB12345678",
+                name: "Acme, S.L.",
+                sep: " – "
+            }
+        );
+        assert!(
+            matches!(parse("501 - Alpha | 502 - Beta"), Parsed::Many { ref parts, sep: '|' } if parts.len() == 2)
+        );
+        assert!(matches!(
+            parse("501 - Alpha; 502 - Beta, Lda"),
+            Parsed::Many { sep: ';', .. }
+        ));
         assert_eq!(parse("503933813"), Parsed::BareId("503933813"));
         assert_eq!(parse("Câmara Municipal"), Parsed::NoId("Câmara Municipal"));
-        assert_eq!(parse("- - NOVARTIS FARMA, S.A."), Parsed::NoId("NOVARTIS FARMA, S.A."));
+        assert_eq!(
+            parse("- - NOVARTIS FARMA, S.A."),
+            Parsed::NoId("NOVARTIS FARMA, S.A.")
+        );
         assert_eq!(parse("500934290 - 500934290"), Parsed::BareId("500934290"));
-        assert_eq!(parse("980560241 - 3M España, S.L."), Parsed::One { id: "980560241", name: "3M España, S.L.", sep: " - " });
+        assert_eq!(
+            parse("980560241 - 3M España, S.L."),
+            Parsed::One {
+                id: "980560241",
+                name: "3M España, S.L.",
+                sep: " - "
+            }
+        );
         // Several entities run together, the later ones found by the shape of the first ID.
-        let p = parse("502064080 - Veisil - A. Mendes da Silva, Lda 506058654 - FRANKLAB PORTUGAL, LDA");
+        let p = parse(
+            "502064080 - Veisil - A. Mendes da Silva, Lda 506058654 - FRANKLAB PORTUGAL, LDA",
+        );
         assert_eq!(
             p,
             Parsed::Many {
-                parts: vec![("502064080", "Veisil - A. Mendes da Silva, Lda"), ("506058654", "FRANKLAB PORTUGAL, LDA")],
+                parts: vec![
+                    ("502064080", "Veisil - A. Mendes da Silva, Lda"),
+                    ("506058654", "FRANKLAB PORTUGAL, LDA")
+                ],
                 sep: ' '
             }
         );
         // A '|' inside one name is not a second entity.
-        assert!(matches!(parse("500900469 - SUCH | Serviço de Utilização Comum"), Parsed::One { id: "500900469", .. }));
+        assert!(matches!(
+            parse("500900469 - SUCH | Serviço de Utilização Comum"),
+            Parsed::One {
+                id: "500900469",
+                ..
+            }
+        ));
         // Ranges, years and words with dashes are not entities.
         assert_eq!(parse("10 - 20 km"), Parsed::NoId("10 - 20 km"));
         assert_eq!(parse("2020 - 2021"), Parsed::NoId("2020 - 2021"));
-        assert_eq!(parse("IP - Infraestruturas"), Parsed::NoId("IP - Infraestruturas"));
-        assert_eq!(derived("501 - Alpha | 502 - Beta"), (Some("501 | 502".into()), Some("Alpha | Beta".into())));
+        assert_eq!(
+            parse("IP - Infraestruturas"),
+            Parsed::NoId("IP - Infraestruturas")
+        );
+        assert_eq!(
+            derived("501 - Alpha | 502 - Beta"),
+            (Some("501 | 502".into()), Some("Alpha | Beta".into()))
+        );
         assert_eq!(derived("501"), (Some("501".into()), None));
         assert_eq!(derived("Alpha"), (None, Some("Alpha".into())));
     }

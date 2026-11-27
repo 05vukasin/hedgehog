@@ -15,7 +15,15 @@ use crate::features::Features;
 use crate::grid::Grid;
 use crate::model::{Rect, Sheet, Value, Workbook};
 
-pub const STAGES: [&str; 7] = ["open", "grid", "context", "values", "totals", "detect_verify", "baseline"];
+pub const STAGES: [&str; 7] = [
+    "open",
+    "grid",
+    "context",
+    "values",
+    "totals",
+    "detect_verify",
+    "baseline",
+];
 
 /// Seconds spent per stage (index = position in [`STAGES`]).
 #[derive(Debug, Clone, Copy, Default)]
@@ -85,7 +93,10 @@ pub fn run_file(path: &Path, golden: bool) -> Result<FileRun, crate::reader::Err
 
 /// Runs every stage after `open` on every sheet of `wb`.
 pub fn run_workbook(wb: &Workbook, golden: bool) -> FileRun {
-    let mut run = FileRun { sheets: wb.sheets.len(), ..Default::default() };
+    let mut run = FileRun {
+        sheets: wb.sheets.len(),
+        ..Default::default()
+    };
     let mut h = Fnv::default();
     for sheet in &wb.sheets {
         run.cells += sheet.cells.len();
@@ -130,7 +141,10 @@ pub fn run_sheet(sheet: &Sheet, golden: bool) -> (StageTimes, u64) {
 
     let s = Instant::now();
     let cands = crate::totals::detect(&grid);
-    let checks: Vec<_> = cands.iter().map(|c| crate::totals::verify(&grid, c)).collect();
+    let checks: Vec<_> = cands
+        .iter()
+        .map(|c| crate::totals::verify(&grid, c))
+        .collect();
     t.0[5] = s.elapsed().as_secs_f64();
 
     let s = Instant::now();
@@ -205,7 +219,10 @@ pub fn resolve_inputs(arg: &Path) -> std::io::Result<Vec<PathBuf>> {
             .filter_map(|e| e.ok().map(|e| e.path()))
             .filter(|p| {
                 p.extension().and_then(|x| x.to_str()).is_some_and(|x| {
-                    matches!(x.to_ascii_lowercase().as_str(), "xlsx" | "xlsm" | "xlsb" | "xls" | "ods")
+                    matches!(
+                        x.to_ascii_lowercase().as_str(),
+                        "xlsx" | "xlsm" | "xlsb" | "xls" | "ods"
+                    )
                 })
             })
             .collect();
@@ -231,22 +248,39 @@ pub mod synth {
 
     fn rng(mut seed: u64) -> impl FnMut() -> u32 {
         move || {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (seed >> 33) as u32
         }
     }
 
     fn sheet(name: &str, mut cells: Vec<Cell>, merges: Vec<Rect>) -> Sheet {
         cells.sort_by_key(|c| (c.row, c.col));
-        Sheet { name: name.into(), cells, merges, formats: vec![] }
+        Sheet {
+            name: name.into(),
+            cells,
+            merges,
+            formats: vec![],
+        }
     }
 
     fn num(row: u32, col: u32, v: f64) -> Cell {
-        Cell { row, col, value: Some(Value::Number(v)), formula: None }
+        Cell {
+            row,
+            col,
+            value: Some(Value::Number(v)),
+            formula: None,
+        }
     }
 
     fn text(row: u32, col: u32, s: String) -> Cell {
-        Cell { row, col, value: Some(Value::Text(s)), formula: None }
+        Cell {
+            row,
+            col,
+            value: Some(Value::Text(s)),
+            formula: None,
+        }
     }
 
     /// ~`n` cells in stacked / side-by-side tables (merged titles, headers, label column,
@@ -260,7 +294,12 @@ pub mod synth {
             let top = band * (rows_per_table + 50);
             for t in 0..2u32 {
                 let left = t * 12;
-                merges.push(Rect { top, left, bottom: top, right: left + 9 });
+                merges.push(Rect {
+                    top,
+                    left,
+                    bottom: top,
+                    right: left + 9,
+                });
                 cells.push(text(top, left, format!("Table {band}{t}")));
                 for c in 0..10 {
                     cells.push(text(top + 2, left + c, format!("Q{c} 2024")));
@@ -298,7 +337,11 @@ pub mod synth {
         let mut cells: Vec<Cell> = (0..n)
             .map(|i| {
                 let (row, col) = (r() % 1_048_576, r() % 16_384);
-                if i % 3 == 0 { text(row, col, format!("t{}", r() % 100)) } else { num(row, col, i as f64) }
+                if i % 3 == 0 {
+                    text(row, col, format!("t{}", r() % 100))
+                } else {
+                    num(row, col, i as f64)
+                }
             })
             .collect();
         cells.push(num(0, 0, 1.0));
@@ -311,7 +354,12 @@ pub mod synth {
     /// 1M rows in one column plus a total; tests row-count scaling.
     pub fn tall(rows: u32) -> Sheet {
         let mut cells: Vec<Cell> = (0..rows).map(|r| num(r, 0, r as f64)).collect();
-        cells.push(Cell { row: rows, col: 0, value: Some(Value::Number(0.0)), formula: Some("SUM(A:A)".into()) });
+        cells.push(Cell {
+            row: rows,
+            col: 0,
+            value: Some(Value::Number(0.0)),
+            formula: Some("SUM(A:A)".into()),
+        });
         sheet("tall", cells, Vec::new())
     }
 
@@ -329,7 +377,12 @@ pub mod synth {
         for i in 0..n as u32 {
             let (band, k) = (i / per_row, i % per_row);
             let (top, left) = (band * 4, k * 3);
-            merges.push(Rect { top, left, bottom: top + 1, right: left + 2 });
+            merges.push(Rect {
+                top,
+                left,
+                bottom: top + 1,
+                right: left + 2,
+            });
             cells.push(text(top, left, format!("H{i}")));
             for c in 0..3 {
                 cells.push(num(top + 2, left + c, (i * 3 + c) as f64));
@@ -348,17 +401,40 @@ pub mod synth {
                 cells.push(num(r, c, (r * cols + c) as f64));
             }
             // row total: SUM of the row, and an addition chain
-            cells.push(Cell { row: r, col: cols, value: Some(Value::Number(0.0)), formula: Some(format!("SUM(A{0}:T{0})", r + 1)) });
-            cells.push(Cell { row: r, col: cols + 1, value: Some(Value::Number(0.0)), formula: Some(format!("A{0}+B{0}+C{0}", r + 1)) });
+            cells.push(Cell {
+                row: r,
+                col: cols,
+                value: Some(Value::Number(0.0)),
+                formula: Some(format!("SUM(A{0}:T{0})", r + 1)),
+            });
+            cells.push(Cell {
+                row: r,
+                col: cols + 1,
+                value: Some(Value::Number(0.0)),
+                formula: Some(format!("A{0}+B{0}+C{0}", r + 1)),
+            });
         }
         for c in 0..cols {
             let col = crate::model::a1(0, c);
             let col = col.trim_end_matches('1');
-            cells.push(Cell { row: rows, col: c, value: Some(Value::Number(0.0)), formula: Some(format!("SUM({col}1:{col}{rows})")) });
-            cells.push(Cell { row: rows + 1, col: c, value: Some(Value::Number(0.0)), formula: Some(format!("SUM({col}:{col})")) });
+            cells.push(Cell {
+                row: rows,
+                col: c,
+                value: Some(Value::Number(0.0)),
+                formula: Some(format!("SUM({col}1:{col}{rows})")),
+            });
+            cells.push(Cell {
+                row: rows + 1,
+                col: c,
+                value: Some(Value::Number(0.0)),
+                formula: Some(format!("SUM({col}:{col})")),
+            });
         }
         // make the body formulas too: every other cell links to its left neighbour
-        for cell in cells.iter_mut().filter(|c| c.row < rows && c.col > 0 && c.col < cols && (c.row + c.col) % 2 == 0) {
+        for cell in cells
+            .iter_mut()
+            .filter(|c| c.row < rows && c.col > 0 && c.col < cols && (c.row + c.col) % 2 == 0)
+        {
             let left = crate::model::a1(cell.row, cell.col - 1);
             cell.formula = Some(format!("{left}*1"));
         }
@@ -369,16 +445,39 @@ pub mod synth {
     pub fn giant_merge() -> Sheet {
         let cells = vec![text(0, 0, "title".into()), num(5, 5, 1.0), num(6, 5, 2.0)];
         let merges = vec![
-            Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 },
-            Rect { top: 0, left: 3, bottom: 1_048_575, right: 3 },
+            Rect {
+                top: 0,
+                left: 0,
+                bottom: 1_048_575,
+                right: 16_383,
+            },
+            Rect {
+                top: 0,
+                left: 3,
+                bottom: 1_048_575,
+                right: 3,
+            },
         ];
         sheet("giant_merge", cells, merges)
     }
 
     /// Cells in the opposite corners of the sheet, joined by one merge over the whole sheet.
     pub fn giant_merge_sparse() -> Sheet {
-        let cells = vec![text(0, 0, "title".into()), num(0, 1, 1.0), num(1_048_575, 16_383, 2.0)];
-        sheet("giant_merge_sparse", cells, vec![Rect { top: 0, left: 0, bottom: 1_048_575, right: 16_383 }])
+        let cells = vec![
+            text(0, 0, "title".into()),
+            num(0, 1, 1.0),
+            num(1_048_575, 16_383, 2.0),
+        ];
+        sheet(
+            "giant_merge_sparse",
+            cells,
+            vec![Rect {
+                top: 0,
+                left: 0,
+                bottom: 1_048_575,
+                right: 16_383,
+            }],
+        )
     }
 
     /// A named generated case: short name and generator (sheets are built on demand).
