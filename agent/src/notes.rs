@@ -57,7 +57,8 @@ struct Source {
 }
 
 fn probe(db: &Db, sql: &str, limit: usize, timeout: Duration) -> Option<QueryResult> {
-    db.query(sql, limit, timeout.min(Duration::from_millis(PROBE_MS))).ok()
+    db.query(sql, limit, timeout.min(Duration::from_millis(PROBE_MS)))
+        .ok()
 }
 
 fn sql_lit(s: &str) -> String {
@@ -77,7 +78,9 @@ fn sources(db: &Db, refs: &[TableRef], timeout: Duration) -> Vec<Source> {
     let mut out: Vec<Source> = Vec::new();
     for r in refs {
         let n = &r.name;
-        let ours = n.strip_prefix(['T', 't', 'U', 'u']).is_some_and(|d| d.starts_with(|c: char| c.is_ascii_digit()));
+        let ours = n
+            .strip_prefix(['T', 't', 'U', 'u'])
+            .is_some_and(|d| d.starts_with(|c: char| c.is_ascii_digit()));
         if !ours {
             continue;
         }
@@ -89,11 +92,24 @@ fn sources(db: &Db, refs: &[TableRef], timeout: Duration) -> Vec<Source> {
         let all_name = format!("{base}_all");
         let schema = r.schema.as_deref();
         let info = match schema {
-            Some(s) => format!("SELECT name, type FROM pragma_table_info({}, {})", sql_lit(&all_name), sql_lit(s)),
-            None => format!("SELECT name, type FROM pragma_table_info({})", sql_lit(&all_name)),
+            Some(s) => format!(
+                "SELECT name, type FROM pragma_table_info({}, {})",
+                sql_lit(&all_name),
+                sql_lit(s)
+            ),
+            None => format!(
+                "SELECT name, type FROM pragma_table_info({})",
+                sql_lit(&all_name)
+            ),
         };
-        let Some(cols) = probe(db, &info, 2100, timeout) else { continue };
-        let columns: Vec<(String, String)> = cols.rows.into_iter().map(|r| (r[0].clone(), r[1].clone())).collect();
+        let Some(cols) = probe(db, &info, 2100, timeout) else {
+            continue;
+        };
+        let columns: Vec<(String, String)> = cols
+            .rows
+            .into_iter()
+            .map(|r| (r[0].clone(), r[1].clone()))
+            .collect();
         if !columns.iter().any(|c| c.0 == "_row_type") {
             continue;
         }
@@ -114,14 +130,30 @@ fn sources(db: &Db, refs: &[TableRef], timeout: Duration) -> Vec<Source> {
 
 fn is_numeric_type(ty: &str) -> bool {
     let t = ty.to_ascii_uppercase();
-    t.contains("INT") || t.contains("REAL") || t.contains("NUM") || t.contains("FLOA") || t.contains("DOUB")
+    t.contains("INT")
+        || t.contains("REAL")
+        || t.contains("NUM")
+        || t.contains("FLOA")
+        || t.contains("DOUB")
 }
 
 /// The source holding `column` (the one the qualifier names first).
-fn source_of<'a>(srcs: &'a [Source], qualifier: Option<&str>, column: &str) -> Option<(&'a Source, &'a (String, String))> {
-    let has = |s: &'a Source| s.columns.iter().find(|c| c.0.eq_ignore_ascii_case(column)).map(|c| (s, c));
+fn source_of<'a>(
+    srcs: &'a [Source],
+    qualifier: Option<&str>,
+    column: &str,
+) -> Option<(&'a Source, &'a (String, String))> {
+    let has = |s: &'a Source| {
+        s.columns
+            .iter()
+            .find(|c| c.0.eq_ignore_ascii_case(column))
+            .map(|c| (s, c))
+    };
     if let Some(q) = qualifier
-        && let Some(hit) = srcs.iter().filter(|s| s.name.eq_ignore_ascii_case(q)).find_map(has)
+        && let Some(hit) = srcs
+            .iter()
+            .filter(|s| s.name.eq_ignore_ascii_case(q))
+            .find_map(has)
     {
         return Some(hit);
     }
@@ -138,7 +170,9 @@ pub fn looks_empty(res: &QueryResult, counts: bool) -> bool {
     }
     let row = &res.rows[0];
     row.iter().all(String::is_empty)
-        || (row.len() == 1 && row[0] == "0" && (counts || res.header[0].to_ascii_lowercase().starts_with("count(")))
+        || (row.len() == 1
+            && row[0] == "0"
+            && (counts || res.header[0].to_ascii_lowercase().starts_with("count(")))
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -149,7 +183,11 @@ fn values_list(rows: &[Vec<String>]) -> String {
     rows.iter()
         .map(|r| {
             let n: usize = r.get(1).and_then(|n| n.parse().ok()).unwrap_or(0);
-            format!("{} ({})", sql_lit(&short(&r[0], 60)), plural(n, "row", "rows"))
+            format!(
+                "{} ({})",
+                sql_lit(&short(&r[0], 60)),
+                plural(n, "row", "rows")
+            )
         })
         .collect::<Vec<_>>()
         .join(", ")
@@ -160,12 +198,19 @@ fn on_all(sql: &str, toks: &[Token], src: &Source) -> String {
     let mut out = String::new();
     let mut at = 0;
     for (i, t) in toks.iter().enumerate() {
-        let named = matches!(&t.tok, Tok::Ident { name, .. } if name.eq_ignore_ascii_case(&src.name));
+        let named =
+            matches!(&t.tok, Tok::Ident { name, .. } if name.eq_ignore_ascii_case(&src.name));
         let after_dot = i > 0 && toks[i - 1].is_op(".");
         let hit = named
             && match &src.schema {
                 None => !after_dot,
-                Some(s) => after_dot && i >= 2 && toks[i - 2].ident().is_some_and(|x| x.eq_ignore_ascii_case(s)),
+                Some(s) => {
+                    after_dot
+                        && i >= 2
+                        && toks[i - 2]
+                            .ident()
+                            .is_some_and(|x| x.eq_ignore_ascii_case(s))
+                }
             };
         if hit {
             out.push_str(&sql[at..t.start]);
@@ -180,7 +225,10 @@ fn on_all(sql: &str, toks: &[Token], src: &Source) -> String {
 /// Notes for the result `res` of `sql` (empty when there is nothing to say).
 pub fn result_notes(db: &Db, sql: &str, res: &QueryResult, timeout: Duration) -> Vec<String> {
     let toks = sqlscan::tokens(sql);
-    let ctes: Vec<String> = sqlscan::derived(sql, &toks).into_iter().filter_map(|d| d.name).collect();
+    let ctes: Vec<String> = sqlscan::derived(sql, &toks)
+        .into_iter()
+        .filter_map(|d| d.name)
+        .collect();
     let refs: Vec<TableRef> = sqlscan::table_refs(&toks)
         .into_iter()
         .filter(|r| r.schema.is_some() || !ctes.iter().any(|c| c.eq_ignore_ascii_case(&r.name)))
@@ -188,12 +236,21 @@ pub fn result_notes(db: &Db, sql: &str, res: &QueryResult, timeout: Duration) ->
     if refs.is_empty() {
         return Vec::new();
     }
-    let counts = toks.windows(2).any(|w| w[0].is_kw("count") && w[1].is_op("("));
+    let counts = toks
+        .windows(2)
+        .any(|w| w[0].is_kw("count") && w[1].is_op("("));
     let empty = looks_empty(res, counts);
     let filters = sqlscan::filters(&toks, MAX_FILTERS);
     let plus = sqlscan::plus_columns(&toks);
-    let null_cells = res.rows.iter().filter(|r| r.iter().any(String::is_empty)).count();
-    if filters.is_empty() && (plus.is_empty() || null_cells == 0) && !(empty && sqlscan::has_where(&toks)) {
+    let null_cells = res
+        .rows
+        .iter()
+        .filter(|r| r.iter().any(String::is_empty))
+        .count();
+    if filters.is_empty()
+        && (plus.is_empty() || null_cells == 0)
+        && !(empty && sqlscan::has_where(&toks))
+    {
         return Vec::new();
     }
     let srcs = sources(db, &refs, timeout);
@@ -203,7 +260,9 @@ pub fn result_notes(db: &Db, sql: &str, res: &QueryResult, timeout: Duration) ->
     let mut notes: Vec<String> = Vec::new();
     let mut only_in_all: Option<(&Source, bool)> = None;
     for f in &filters {
-        let Some((src, (col, ty))) = source_of(&srcs, f.qualifier.as_deref(), &f.column) else { continue };
+        let Some((src, (col, ty))) = source_of(&srcs, f.qualifier.as_deref(), &f.column) else {
+            continue;
+        };
         let colq = quote_ident(col);
         let at = format!("{}.{}", src.shown, crate::text::ident(col));
         for v in f.values.iter().take(MAX_VALUES) {
@@ -215,16 +274,38 @@ pub fn result_notes(db: &Db, sql: &str, res: &QueryResult, timeout: Duration) ->
                 Lit::Text(s) => (s.clone(), sql_lit(s)),
                 Lit::Num(n) => (n.clone(), n.clone()),
             };
-            let cond = if f.op == "like" { format!("{colq} LIKE {lit}") } else { format!("{colq} = {lit}") };
-            let q = format!("SELECT \"_row_type\", count(*) FROM {} WHERE {cond} GROUP BY 1", src.all);
-            let Some(r) = probe(db, &q, 20, timeout) else { continue };
+            let cond = if f.op == "like" {
+                format!("{colq} LIKE {lit}")
+            } else {
+                format!("{colq} = {lit}")
+            };
+            let q = format!(
+                "SELECT \"_row_type\", count(*) FROM {} WHERE {cond} GROUP BY 1",
+                src.all
+            );
+            let Some(r) = probe(db, &q, 20, timeout) else {
+                continue;
+            };
             let count = |pred: &dyn Fn(&str) -> bool| -> usize {
-                r.rows.iter().filter(|x| pred(&x[0])).map(|x| x[1].parse::<usize>().unwrap_or(0)).sum()
+                r.rows
+                    .iter()
+                    .filter(|x| pred(&x[0]))
+                    .map(|x| x[1].parse::<usize>().unwrap_or(0))
+                    .sum()
             };
             let data = count(&|t| t == "data");
             let other = count(&|t| t != "data");
-            let kinds: Vec<String> = r.rows.iter().filter(|x| x[0] != "data").map(|x| format!("'{}'", x[0])).collect();
-            let shown_v = if matches!(v, Lit::Text(_)) { sql_lit(&short(&text, 60)) } else { text.clone() };
+            let kinds: Vec<String> = r
+                .rows
+                .iter()
+                .filter(|x| x[0] != "data")
+                .map(|x| format!("'{}'", x[0]))
+                .collect();
+            let shown_v = if matches!(v, Lit::Text(_)) {
+                sql_lit(&short(&text, 60))
+            } else {
+                text.clone()
+            };
             if data == 0 && other > 0 && !src.reads_all {
                 if empty {
                     notes.push(format!(
@@ -256,7 +337,9 @@ pub fn result_notes(db: &Db, sql: &str, res: &QueryResult, timeout: Duration) ->
                 // The filters together may match total rows only.
                 only_in_all.get_or_insert((src, false));
             } else if data == 0 && other == 0 && empty {
-                notes.push(missing_value_note(db, src, col, ty, &at, &text, &shown_v, v, f.op, timeout));
+                notes.push(missing_value_note(
+                    db, src, col, ty, &at, &text, &shown_v, v, f.op, timeout,
+                ));
             }
         }
     }
@@ -264,30 +347,59 @@ pub fn result_notes(db: &Db, sql: &str, res: &QueryResult, timeout: Duration) ->
         let q = on_all(sql, &toks, src);
         if let Some(r) = probe(db, &q, ALL_ROWS, timeout).filter(|r| !looks_empty(r, counts)) {
             if !said {
-                notes.push(format!("note: no data row matches these filters, but total rows in {} do (not in {})", src.shown_all, src.shown));
+                notes.push(format!(
+                    "note: no data row matches these filters, but total rows in {} do (not in {})",
+                    src.shown_all, src.shown
+                ));
             }
-            let mut s = format!("The same query on {} (the total rows included):\n{}", src.shown_all, csv_row(&r.header));
+            let mut s = format!(
+                "The same query on {} (the total rows included):\n{}",
+                src.shown_all,
+                csv_row(&r.header)
+            );
             for row in &r.rows {
                 s.push('\n');
                 s.push_str(&csv_row(row));
             }
             if r.total > r.rows.len() {
-                s.push_str(&format!("\n(first {} of {} rows)", r.rows.len(), thousands(r.total)));
+                s.push_str(&format!(
+                    "\n(first {} of {} rows)",
+                    r.rows.len(),
+                    thousands(r.total)
+                ));
             }
             notes.push(s);
         }
     }
-    if empty && notes.is_empty() && res.total == 1 && res.rows[0].iter().all(String::is_empty) && sqlscan::has_where(&toks) {
+    if empty
+        && notes.is_empty()
+        && res.total == 1
+        && res.rows[0].iter().all(String::is_empty)
+        && sqlscan::has_where(&toks)
+    {
         notes.push("note: the result is empty (NULL): no row matched the filter, or the values there are empty — not 0".into());
     }
     // B88: a + b is NULL when one of them is empty.
     if !plus.is_empty() && null_cells > 0 {
         let mut sparse: Vec<String> = Vec::new();
         for c in plus.iter().take(6) {
-            let Some((src, (col, _))) = source_of(&srcs, None, c) else { continue };
-            let q = format!("SELECT count(*) FROM {} WHERE {} IS NULL", src.data, quote_ident(col));
-            if let Some(n) = probe(db, &q, 1, timeout).and_then(|r| r.rows.first().and_then(|x| x[0].parse::<usize>().ok())).filter(|&n| n > 0) {
-                sparse.push(format!("{} empty in {}", crate::text::ident(col), plural(n, "row", "rows")));
+            let Some((src, (col, _))) = source_of(&srcs, None, c) else {
+                continue;
+            };
+            let q = format!(
+                "SELECT count(*) FROM {} WHERE {} IS NULL",
+                src.data,
+                quote_ident(col)
+            );
+            if let Some(n) = probe(db, &q, 1, timeout)
+                .and_then(|r| r.rows.first().and_then(|x| x[0].parse::<usize>().ok()))
+                .filter(|&n| n > 0)
+            {
+                sparse.push(format!(
+                    "{} empty in {}",
+                    crate::text::ident(col),
+                    plural(n, "row", "rows")
+                ));
             }
         }
         if !sparse.is_empty() {
@@ -321,24 +433,47 @@ fn missing_value_note(
     timeout: Duration,
 ) -> String {
     let colq = quote_ident(col);
-    let head = format!("note: {at} has no {shown_v} — 0 rows here means the file has no such rows, not a value of 0");
+    let head = format!(
+        "note: {at} has no {shown_v} — 0 rows here means the file has no such rows, not a value of 0"
+    );
     // A quoted value against numbers (booleans are stored 1/0).
     if matches!(v, Lit::Text(_)) && is_numeric_type(ty) {
-        let q = format!("SELECT {colq}, count(*) FROM {} WHERE {colq} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 3", src.all);
-        let vals = probe(db, &q, 3, timeout).map(|r| r.rows).unwrap_or_default();
+        let q = format!(
+            "SELECT {colq}, count(*) FROM {} WHERE {colq} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 3",
+            src.all
+        );
+        let vals = probe(db, &q, 3, timeout)
+            .map(|r| r.rows)
+            .unwrap_or_default();
         let boolish = !vals.is_empty() && vals.iter().all(|r| r[0] == "0" || r[0] == "1");
         let how = if boolish {
-            format!("{} is a yes/no column stored as 1/0: use {} = 1 (or = 0)", crate::text::ident(col), crate::text::ident(col))
+            format!(
+                "{} is a yes/no column stored as 1/0: use {} = 1 (or = 0)",
+                crate::text::ident(col),
+                crate::text::ident(col)
+            )
         } else {
-            format!("{} holds numbers: compare without quotes", crate::text::ident(col))
+            format!(
+                "{} holds numbers: compare without quotes",
+                crate::text::ident(col)
+            )
         };
         return format!("{head}; {how}");
     }
-    let needle: String = if op == "like" { text.replace(['%', '_'], " ").trim().to_string() } else { text.to_string() };
+    let needle: String = if op == "like" {
+        text.replace(['%', '_'], " ").trim().to_string()
+    } else {
+        text.to_string()
+    };
     if matches!(v, Lit::Num(_)) || is_numeric_type(ty) {
         let q = format!("SELECT min({colq}), max({colq}) FROM {}", src.data);
-        if let Some(r) = probe(db, &q, 1, timeout).filter(|r| r.rows.first().is_some_and(|x| !x[0].is_empty())) {
-            return format!("{head}; its values run from {} to {}", r.rows[0][0], r.rows[0][1]);
+        if let Some(r) =
+            probe(db, &q, 1, timeout).filter(|r| r.rows.first().is_some_and(|x| !x[0].is_empty()))
+        {
+            return format!(
+                "{head}; its values run from {} to {}",
+                r.rows[0][0], r.rows[0][1]
+            );
         }
         return head;
     }
@@ -353,24 +488,42 @@ fn missing_value_note(
             return format!("{head}; values that contain it: {}", values_list(&r.rows));
         }
     }
-    let distinct = probe(db, &format!("SELECT count(DISTINCT {colq}) FROM {}", src.all), 1, timeout)
-        .and_then(|r| r.rows.first().and_then(|x| x[0].parse::<usize>().ok()))
-        .unwrap_or(0);
+    let distinct = probe(
+        db,
+        &format!("SELECT count(DISTINCT {colq}) FROM {}", src.all),
+        1,
+        timeout,
+    )
+    .and_then(|r| r.rows.first().and_then(|x| x[0].parse::<usize>().ok()))
+    .unwrap_or(0);
     if distinct == 0 {
         return format!("{head}; the column is empty");
     }
-    let q = format!("SELECT {colq}, count(*) FROM {} WHERE {colq} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5000", src.all);
-    let Some(r) = probe(db, &q, 5000, timeout) else { return head };
+    let q = format!(
+        "SELECT {colq}, count(*) FROM {} WHERE {colq} IS NOT NULL GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5000",
+        src.all
+    );
+    let Some(r) = probe(db, &q, 5000, timeout) else {
+        return head;
+    };
     if distinct <= LIST_ALL {
         return format!("{head}; its {} values: {}", distinct, values_list(&r.rows));
     }
-    let mut close: Vec<(f64, &Vec<String>)> =
-        r.rows.iter().map(|x| (similarity(&needle, &x[0]), x)).filter(|(s, _)| *s >= 0.6).collect();
+    let mut close: Vec<(f64, &Vec<String>)> = r
+        .rows
+        .iter()
+        .map(|x| (similarity(&needle, &x[0]), x))
+        .filter(|(s, _)| *s >= 0.6)
+        .collect();
     close.sort_by(|a, b| b.0.total_cmp(&a.0));
     if !close.is_empty() {
         let rows: Vec<Vec<String>> = close.iter().take(5).map(|(_, x)| (*x).clone()).collect();
         return format!("{head}; closest values: {}", values_list(&rows));
     }
     let rows: Vec<Vec<String>> = r.rows.iter().take(8).cloned().collect();
-    format!("{head}; most frequent of its {} values: {}", thousands(distinct), values_list(&rows))
+    format!(
+        "{head}; most frequent of its {} values: {}",
+        thousands(distinct),
+        values_list(&rows)
+    )
 }

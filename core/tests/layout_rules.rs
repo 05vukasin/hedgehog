@@ -2,11 +2,12 @@
 
 use std::path::PathBuf;
 
-use hh_core::{layout, open, Grid, Rect, Role, Sheet, SheetLayout};
+use hh_core::{Grid, Rect, Role, Sheet, SheetLayout, layout, open};
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 
 fn fixture(name: &str, build: impl FnOnce(&mut Worksheet)) -> Sheet {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_layout_{}_{name}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_layout_{}_{name}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     build(wb.add_worksheet());
     wb.save(&path).unwrap();
@@ -22,12 +23,21 @@ fn run(sheet: &Sheet) -> SheetLayout {
 }
 
 fn role(sheet: &Sheet, l: &SheetLayout, row: u32, col: u32) -> Role {
-    let i = sheet.cells.iter().position(|c| c.row == row && c.col == col).expect("cell exists");
+    let i = sheet
+        .cells
+        .iter()
+        .position(|c| c.row == row && c.col == col)
+        .expect("cell exists");
     l.roles[i]
 }
 
 fn rect(top: u32, left: u32, bottom: u32, right: u32) -> Rect {
-    Rect { top, left, bottom, right }
+    Rect {
+        top,
+        left,
+        bottom,
+        right,
+    }
 }
 
 /// Header row at `row` (texts), then `n` data rows: label + numbers.
@@ -36,9 +46,15 @@ fn table(ws: &mut Worksheet, row: u32, col: u16, headers: &[&str], n: u32, label
         ws.write_string(row, col + j as u16, *h).unwrap();
     }
     for i in 0..n {
-        ws.write_string(row + 1 + i, col, format!("{label} {i}")).unwrap();
+        ws.write_string(row + 1 + i, col, format!("{label} {i}"))
+            .unwrap();
         for j in 1..headers.len() {
-            ws.write_number(row + 1 + i, col + j as u16, (i * 10 + j as u32) as f64 + 0.5).unwrap();
+            ws.write_number(
+                row + 1 + i,
+                col + j as u16,
+                (i * 10 + j as u32) as f64 + 0.5,
+            )
+            .unwrap();
         }
     }
 }
@@ -62,8 +78,12 @@ fn sparse_right_edge_text_is_data_when_covered_by_a_header() {
         let s = fixture(&format!("comment_header_{header}"), |ws| {
             table(ws, 0, 0, &["Item", "Quantity", "Value"], 6, "Item");
             match header {
-                "explicit" => { ws.write_string(0, 3, "Remark").unwrap(); }
-                "merged" => { ws.merge_range(0, 2, 0, 3, "Value", &Format::new()).unwrap(); }
+                "explicit" => {
+                    ws.write_string(0, 3, "Remark").unwrap();
+                }
+                "merged" => {
+                    ws.merge_range(0, 2, 0, 3, "Value", &Format::new()).unwrap();
+                }
                 _ => {}
             }
             ws.write_string(2, 3, "check!").unwrap();
@@ -72,9 +92,17 @@ fn sparse_right_edge_text_is_data_when_covered_by_a_header() {
         let l = run(&s);
         assert_eq!(l.tables.len(), 1, "{header}");
         let headed = header != "absent";
-        assert_eq!(l.tables[0].rect.right, if headed { 3 } else { 2 }, "{header}");
+        assert_eq!(
+            l.tables[0].rect.right,
+            if headed { 3 } else { 2 },
+            "{header}"
+        );
         for row in [2, 4] {
-            assert_eq!(role(&s, &l, row, 3), if headed { Role::Data } else { Role::Note }, "{header}");
+            assert_eq!(
+                role(&s, &l, row, 3),
+                if headed { Role::Data } else { Role::Note },
+                "{header}"
+            );
         }
     }
 }
@@ -102,7 +130,8 @@ fn offset_table_with_title_and_notes() {
 #[test]
 fn title_directly_above_header() {
     let s = fixture("title_adjacent", |ws| {
-        ws.merge_range(0, 0, 0, 3, "Quarterly volumes", &Format::new()).unwrap();
+        ws.merge_range(0, 0, 0, 3, "Quarterly volumes", &Format::new())
+            .unwrap();
         table(ws, 1, 0, &["Desk", "Q1", "Q2", "Q3"], 3, "Desk");
     });
     let l = run(&s);
@@ -195,7 +224,8 @@ fn two_row_merged_header() {
         for i in 0..5u32 {
             ws.write_string(2 + i, 0, format!("R{i}")).unwrap();
             for j in 1..5u16 {
-                ws.write_number(2 + i, j, 100.0 * i as f64 + j as f64 + 0.25).unwrap();
+                ws.write_number(2 + i, j, 100.0 * i as f64 + j as f64 + 0.25)
+                    .unwrap();
             }
         }
     });
@@ -217,7 +247,8 @@ fn numeric_year_header() {
         for i in 0..4u32 {
             ws.write_string(1 + i, 0, format!("Line {i}")).unwrap();
             for j in 1..4u16 {
-                ws.write_number(1 + i, j, 3.5 * (i + 1) as f64 * j as f64).unwrap();
+                ws.write_number(1 + i, j, 3.5 * (i + 1) as f64 * j as f64)
+                    .unwrap();
             }
         }
     });
@@ -286,7 +317,8 @@ fn group_header_rows() {
             ws.write_number(r, 1, r as f64).unwrap();
             ws.write_number(r, 2, r as f64 * 1.5).unwrap();
         }
-        ws.merge_range(5, 0, 5, 2, "Region: South", &Format::new()).unwrap();
+        ws.merge_range(5, 0, 5, 2, "Region: South", &Format::new())
+            .unwrap();
         for r in 6..9u32 {
             ws.write_string(r, 0, format!("s{r}")).unwrap();
             ws.write_number(r, 1, r as f64).unwrap();
@@ -317,7 +349,11 @@ fn sparse_form_has_no_table() {
     });
     let l = run(&s);
     assert!(l.tables.is_empty(), "{:?}", l.tables);
-    assert!(l.roles.iter().all(|r| *r != Role::Data && *r != Role::Header));
+    assert!(
+        l.roles
+            .iter()
+            .all(|r| *r != Role::Data && *r != Role::Header)
+    );
 }
 
 #[test]
@@ -357,7 +393,8 @@ fn column_numbering_row_is_part_of_the_header() {
         for i in 0..6u32 {
             ws.write_number(2 + i, 0, 1991.0 + i as f64).unwrap();
             for j in 1..5u16 {
-                ws.write_number(2 + i, j, 1500.25 + (i * 7 + j as u32) as f64).unwrap();
+                ws.write_number(2 + i, j, 1500.25 + (i * 7 + j as u32) as f64)
+                    .unwrap();
             }
         }
     });
@@ -373,17 +410,24 @@ fn block_labels_in_a_second_column_are_group_keys() {
     // Henry Hub flows: "Henry Hub" once in A, "Receipts HH" / "Deliveries HH" once per block in B,
     // a pipeline name on every row in C.
     let s = fixture("blockkeys", |ws| {
-        for (j, h) in ["Hub", "Flow", "Pipeline", "Capacity", "MTD"].iter().enumerate() {
+        for (j, h) in ["Hub", "Flow", "Pipeline", "Capacity", "MTD"]
+            .iter()
+            .enumerate()
+        {
             ws.write_string(0, j as u16, *h).unwrap();
         }
         ws.write_string(1, 0, "Henry Hub").unwrap();
         let mut row = 1u32;
         for (block, label) in ["Receipts HH", "Deliveries HH"].iter().enumerate() {
             ws.write_string(row, 1, *label).unwrap();
-            for (k, p) in ["ACADIAN", "BRIDGELINE", "COLUMBIA GULF", "NGPL", "SONAT"].iter().enumerate() {
+            for (k, p) in ["ACADIAN", "BRIDGELINE", "COLUMBIA GULF", "NGPL", "SONAT"]
+                .iter()
+                .enumerate()
+            {
                 ws.write_string(row, 2, *p).unwrap();
                 ws.write_number(row, 3, 1000.0 * (k + 1) as f64).unwrap();
-                ws.write_number(row, 4, 17.5 * (k + block + 1) as f64).unwrap();
+                ws.write_number(row, 4, 17.5 * (k + block + 1) as f64)
+                    .unwrap();
                 row += 1;
             }
             ws.write_string(row, 2, "Total").unwrap();
@@ -404,16 +448,23 @@ fn statistics_database_export_with_one_data_row() {
     // PX-Web export (SCB, SURS; B53): title, parent labels over period codes, one data row, a
     // blank row, then footnotes, sources and contacts in column A.
     let s = fixture("pxweb", |ws| {
-        ws.write_string(0, 0, "Industrial production index by quarter").unwrap();
+        ws.write_string(0, 0, "Industrial production index by quarter")
+            .unwrap();
         ws.write_string(2, 0, "Calendar adjusted").unwrap();
         ws.write_string(2, 4, "Trend").unwrap();
-        for (j, p) in ["2016K3", "2016K4", "2017K1", "2017K2", "2016K3", "2016K4", "2017K1", "2017K2"].iter().enumerate() {
+        for (j, p) in [
+            "2016K3", "2016K4", "2017K1", "2017K2", "2016K3", "2016K4", "2017K1", "2017K2",
+        ]
+        .iter()
+        .enumerate()
+        {
             ws.write_string(3, j as u16, *p).unwrap();
         }
         for j in 0..8u16 {
             ws.write_number(4, j, 97.0 + j as f64 * 1.3).unwrap();
         }
-        ws.write_string(6, 0, "2016-12-01: revised figures for the whole series").unwrap();
+        ws.write_string(6, 0, "2016-12-01: revised figures for the whole series")
+            .unwrap();
         ws.write_string(7, 0, "Source:").unwrap();
         ws.write_string(8, 0, "Statistics Sweden").unwrap();
         ws.write_string(9, 0, "+46 010-479 50 00").unwrap();
@@ -438,18 +489,28 @@ fn two_column_summary_beside_a_table_stays_in_a_table() {
         for (j, h) in ["Positions", "Nov", "Dec", "Total"].iter().enumerate() {
             ws.write_string(0, 3 + j as u16, *h).unwrap();
         }
-        for (i, name) in ["ngi socal", "rocky", "san juan", "waha", "permian"].iter().enumerate() {
+        for (i, name) in ["ngi socal", "rocky", "san juan", "waha", "permian"]
+            .iter()
+            .enumerate()
+        {
             let r = 1 + i as u32;
             ws.write_string(r, 0, *name).unwrap();
             ws.write_number(r, 1, 1000.0 * (i + 1) as f64).unwrap();
             ws.write_string(r, 3, *name).unwrap();
             for j in 0..3u16 {
-                ws.write_number(r, 4 + j, (i as f64 + 1.0) * (j as f64 + 2.5)).unwrap();
+                ws.write_number(r, 4 + j, (i as f64 + 1.0) * (j as f64 + 2.5))
+                    .unwrap();
             }
         }
     });
     let l = run(&s);
-    assert!(l.tables.iter().any(|t| t.rect.left == 0 && t.rect.bottom == 5), "{:?}", l.tables);
+    assert!(
+        l.tables
+            .iter()
+            .any(|t| t.rect.left == 0 && t.rect.bottom == 5),
+        "{:?}",
+        l.tables
+    );
     assert_eq!(role(&s, &l, 2, 0), Role::Data);
     assert_eq!(role(&s, &l, 2, 1), Role::Data);
 }
@@ -462,19 +523,55 @@ fn two_column_summary_beside_a_table_stays_in_a_table() {
 fn full_row_merged_title_lines_stay_titles() {
     let s = fixture("full_row_merge", |ws| {
         let f = Format::new();
-        ws.merge_range(0, 0, 0, 11, "Australian Bureau of Statistics", &f).unwrap();
-        ws.merge_range(1, 0, 1, 16_383, "6291.0.55.001 - EQ08 - Employed persons by Occupation, Sex, State", &f).unwrap();
-        ws.merge_range(2, 0, 2, 11, "Released at 11.30 am (Canberra time) 23 December 2021", &f).unwrap();
-        ws.write_string(2, 13, "© Commonwealth of Australia 2021").unwrap();
-        for (j, h) in ["Midquarter month", "Sex", "State", "Occupation", "Employed total ('000)", "Hours ('000)"].iter().enumerate() {
+        ws.merge_range(0, 0, 0, 11, "Australian Bureau of Statistics", &f)
+            .unwrap();
+        ws.merge_range(
+            1,
+            0,
+            1,
+            16_383,
+            "6291.0.55.001 - EQ08 - Employed persons by Occupation, Sex, State",
+            &f,
+        )
+        .unwrap();
+        ws.merge_range(
+            2,
+            0,
+            2,
+            11,
+            "Released at 11.30 am (Canberra time) 23 December 2021",
+            &f,
+        )
+        .unwrap();
+        ws.write_string(2, 13, "© Commonwealth of Australia 2021")
+            .unwrap();
+        for (j, h) in [
+            "Midquarter month",
+            "Sex",
+            "State",
+            "Occupation",
+            "Employed total ('000)",
+            "Hours ('000)",
+        ]
+        .iter()
+        .enumerate()
+        {
             ws.write_string(3, j as u16, *h).unwrap();
         }
         for i in 0..30u32 {
             let r = 4 + i;
-            ws.write_number(r, 0, 31_000.0 + 91.0 * (i / 6) as f64).unwrap();
-            ws.write_string(r, 1, if i % 2 == 0 { "Males" } else { "Females" }).unwrap();
-            ws.write_string(r, 2, ["New South Wales", "Victoria", "Queensland"][(i % 3) as usize]).unwrap();
-            ws.write_string(r, 3, format!("Occupation {}", i % 5)).unwrap();
+            ws.write_number(r, 0, 31_000.0 + 91.0 * (i / 6) as f64)
+                .unwrap();
+            ws.write_string(r, 1, if i % 2 == 0 { "Males" } else { "Females" })
+                .unwrap();
+            ws.write_string(
+                r,
+                2,
+                ["New South Wales", "Victoria", "Queensland"][(i % 3) as usize],
+            )
+            .unwrap();
+            ws.write_string(r, 3, format!("Occupation {}", i % 5))
+                .unwrap();
             ws.write_number(r, 4, 1.5 + i as f64 * 0.37).unwrap();
             ws.write_number(r, 5, 20.25 + i as f64 * 1.13).unwrap();
         }
@@ -493,10 +590,18 @@ fn full_row_merged_title_lines_stay_titles() {
 #[test]
 fn one_value_column_under_section_labels() {
     let s = fixture("one_value_col", |ws| {
-        ws.write_string(0, 0, "Table 1: Responses to household food security questions, percentage").unwrap();
+        ws.write_string(
+            0,
+            0,
+            "Table 1: Responses to household food security questions, percentage",
+        )
+        .unwrap();
         ws.write_string(2, 1, "percentage").unwrap();
         let mut r = 3;
-        for q in ["Q1. Food didn't last and there was no money to buy more", "Q2. Balanced meals unaffordable"] {
+        for q in [
+            "Q1. Food didn't last and there was no money to buy more",
+            "Q2. Balanced meals unaffordable",
+        ] {
             ws.write_string(r, 0, q).unwrap();
             r += 1;
             if q.starts_with("Q2") {
@@ -504,14 +609,20 @@ fn one_value_column_under_section_labels() {
                 ws.write_string(r, 1, "...").unwrap();
                 r += 1;
             }
-            for (k, a) in ["Often true", "Sometimes true", "Never true"].iter().enumerate() {
+            for (k, a) in ["Often true", "Sometimes true", "Never true"]
+                .iter()
+                .enumerate()
+            {
                 ws.write_string(r, 0, *a).unwrap();
                 ws.write_number(r, 1, 10.5 + k as f64).unwrap();
                 r += 1;
             }
         }
     });
-    for l in [run(&s), hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap())] {
+    for l in [
+        run(&s),
+        hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap()),
+    ] {
         assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
         assert_eq!(l.tables[0].rect.left, 0);
         assert_eq!(l.tables[0].rect.right, 1);
@@ -532,7 +643,10 @@ fn one_value_column_header_over_number() {
         ws.write_string(3, 0, "Total").unwrap();
         ws.write_number(3, 1, 30.0).unwrap();
         let mut r = 4;
-        for (sec, items) in [("Sex", vec!["Male", "Female"]), ("Age", vec!["15 to 34", "35 to 64", "65 and older"])] {
+        for (sec, items) in [
+            ("Sex", vec!["Male", "Female"]),
+            ("Age", vec!["15 to 34", "35 to 64", "65 and older"]),
+        ] {
             ws.write_string(r, 0, sec).unwrap();
             r += 1;
             for (k, it) in items.iter().enumerate() {
@@ -542,9 +656,19 @@ fn one_value_column_header_over_number() {
             }
         }
     });
-    for l in [run(&s), hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap())] {
+    for l in [
+        run(&s),
+        hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap()),
+    ] {
         assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
-        assert_eq!((l.tables[0].rect.left, l.tables[0].rect.right, l.tables[0].rect.bottom), (0, 1, 10));
+        assert_eq!(
+            (
+                l.tables[0].rect.left,
+                l.tables[0].rect.right,
+                l.tables[0].rect.bottom
+            ),
+            (0, 1, 10)
+        );
         assert_eq!(role(&s, &l, 2, 1), Role::Header);
         assert_eq!(role(&s, &l, 6, 1), Role::Data);
     }
@@ -555,8 +679,23 @@ fn one_value_column_header_over_number() {
 #[test]
 fn headerless_label_number_list() {
     let s = fixture("label_number_list", |ws| {
-        ws.write_string(0, 0, "Table 4: Decomposition of change in the gender wage gap, 1997 to 2017").unwrap();
-        let items = ["Change in log wage ratio", "Gap in 2017", "Gap in 1997", "Explained", "Province", "Education", "Age", "Job tenure", "Occupation"];
+        ws.write_string(
+            0,
+            0,
+            "Table 4: Decomposition of change in the gender wage gap, 1997 to 2017",
+        )
+        .unwrap();
+        let items = [
+            "Change in log wage ratio",
+            "Gap in 2017",
+            "Gap in 1997",
+            "Explained",
+            "Province",
+            "Education",
+            "Age",
+            "Job tenure",
+            "Occupation",
+        ];
         for (k, it) in items.iter().enumerate() {
             ws.write_string(2 + k as u32, 0, *it).unwrap();
             ws.write_number(2 + k as u32, 1, k as f64 - 3.5).unwrap();
@@ -564,7 +703,14 @@ fn headerless_label_number_list() {
     });
     let l = run(&s);
     assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
-    assert_eq!((l.tables[0].rect.left, l.tables[0].rect.right, l.tables[0].rect.bottom), (0, 1, 10));
+    assert_eq!(
+        (
+            l.tables[0].rect.left,
+            l.tables[0].rect.right,
+            l.tables[0].rect.bottom
+        ),
+        (0, 1, 10)
+    );
     assert_eq!(role(&s, &l, 5, 1), Role::Data);
     let kv = fixture("short_kv", |ws| {
         for (k, it) in ["Prepared by", "Date", "Version"].iter().enumerate() {
@@ -583,22 +729,47 @@ fn short_table_under_sparse_metadata_row() {
         ws.write_string(0, 0, "Stock D").unwrap();
         ws.write_string(0, 1, "Code:").unwrap();
         ws.write_number(0, 2, 656839.0).unwrap();
-        let h = ["No", "Date", "Direction", "Price", "Shares", "Fee", "Total Amount", "Cost", "Held", "Average", "Current", "P&L"];
+        let h = [
+            "No",
+            "Date",
+            "Direction",
+            "Price",
+            "Shares",
+            "Fee",
+            "Total Amount",
+            "Cost",
+            "Held",
+            "Average",
+            "Current",
+            "P&L",
+        ];
         for (j, x) in h.iter().enumerate() {
             ws.write_string(1, j as u16, *x).unwrap();
         }
         for i in 0..3u32 {
             ws.write_string(2 + i, 0, format!("0{}", i + 1)).unwrap();
             ws.write_number(2 + i, 1, 44198.0 + i as f64).unwrap();
-            ws.write_string(2 + i, 2, if i == 2 { "Sell" } else { "Buy" }).unwrap();
+            ws.write_string(2 + i, 2, if i == 2 { "Sell" } else { "Buy" })
+                .unwrap();
             for j in 3..12u16 {
-                ws.write_number(2 + i, j, 10.0 * j as f64 + i as f64).unwrap();
+                ws.write_number(2 + i, j, 10.0 * j as f64 + i as f64)
+                    .unwrap();
             }
         }
     });
-    for l in [run(&s), hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap())] {
+    for l in [
+        run(&s),
+        hh_core::learned::analyze(&Grid::new(&s), hh_core::learned::embedded().unwrap()),
+    ] {
         assert_eq!(l.tables.len(), 1, "{:?}", l.tables);
-        assert_eq!((l.tables[0].rect.left, l.tables[0].rect.right, l.tables[0].rect.bottom), (0, 11, 4));
+        assert_eq!(
+            (
+                l.tables[0].rect.left,
+                l.tables[0].rect.right,
+                l.tables[0].rect.bottom
+            ),
+            (0, 11, 4)
+        );
         assert_eq!(role(&s, &l, 1, 6), Role::Header);
         assert_eq!(role(&s, &l, 3, 6), Role::Data);
         assert_eq!(l.tables[0].header_top, 1, "{:?}", l.tables);

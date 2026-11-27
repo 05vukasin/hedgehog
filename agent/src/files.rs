@@ -26,9 +26,15 @@ impl Bounds {
     pub fn new(root: impl AsRef<Path>) -> std::io::Result<Bounds> {
         let root = root.as_ref().canonicalize()?;
         if !root.is_dir() {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotADirectory, format!("{} is not a folder", root.display())));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotADirectory,
+                format!("{} is not a folder", root.display()),
+            ));
         }
-        Ok(Bounds { root, allow: Vec::new() })
+        Ok(Bounds {
+            root,
+            allow: Vec::new(),
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -39,7 +45,9 @@ impl Bounds {
     /// rejected.
     pub fn allow(&mut self, path: impl AsRef<Path>) -> Result<(), String> {
         let p = path.as_ref();
-        let c = p.canonicalize().map_err(|e| format!("{}: {e}", p.display()))?;
+        let c = p
+            .canonicalize()
+            .map_err(|e| format!("{}: {e}", p.display()))?;
         let dir = c.is_dir();
         if !self.allow.iter().any(|(a, _)| *a == c) {
             self.allow.push((c, dir));
@@ -48,17 +56,29 @@ impl Bounds {
     }
 
     fn permitted(&self, canon: &Path) -> bool {
-        canon.starts_with(&self.root) || self.allow.iter().any(|(a, dir)| canon == a || (*dir && canon.starts_with(a)))
+        canon.starts_with(&self.root)
+            || self
+                .allow
+                .iter()
+                .any(|(a, dir)| canon == a || (*dir && canon.starts_with(a)))
     }
 
     /// Resolves a path a tool received (relative to the root; `@` prefix and quotes stripped).
     pub fn resolve(&self, raw: &str, want_dir: bool) -> Result<PathBuf, String> {
         let s = clean(raw);
         if s.is_empty() {
-            return if want_dir { Ok(self.root.clone()) } else { Err("path is empty".into()) };
+            return if want_dir {
+                Ok(self.root.clone())
+            } else {
+                Err("path is empty".into())
+            };
         }
         let p = Path::new(&s);
-        let joined = if p.is_absolute() { p.to_path_buf() } else { self.root.join(p) };
+        let joined = if p.is_absolute() {
+            p.to_path_buf()
+        } else {
+            self.root.join(p)
+        };
         let canon = joined.canonicalize().map_err(|_| {
             format!("no such {}: {s} (paths are relative to the working folder; list_files shows what is there)", if want_dir { "folder" } else { "file" })
         })?;
@@ -84,7 +104,11 @@ impl Bounds {
     }
 
     /// The `list_files` tool.
-    pub fn list_files(&self, folder: Option<&str>, pattern: Option<&str>) -> Result<String, String> {
+    pub fn list_files(
+        &self,
+        folder: Option<&str>,
+        pattern: Option<&str>,
+    ) -> Result<String, String> {
         let dir = self.resolve(folder.unwrap_or("."), true)?;
         let pattern = pattern.map(str::trim).filter(|p| !p.is_empty());
         let mut found: Vec<(PathBuf, u64, Option<SystemTime>)> = Vec::new();
@@ -92,7 +116,9 @@ impl Bounds {
         let mut truncated = false;
         let mut stack = vec![(dir.clone(), 0usize)];
         while let Some((d, depth)) = stack.pop() {
-            let Ok(rd) = std::fs::read_dir(&d) else { continue };
+            let Ok(rd) = std::fs::read_dir(&d) else {
+                continue;
+            };
             let mut entries: Vec<_> = rd.flatten().collect();
             entries.sort_by_key(|e| e.file_name());
             let mut subdirs = Vec::new();
@@ -120,18 +146,30 @@ impl Bounds {
                     }
                     continue;
                 }
-                let ext = path.extension().and_then(|x| x.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
+                let ext = path
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .map(str::to_ascii_lowercase)
+                    .unwrap_or_default();
                 if !EXTENSIONS.contains(&ext.as_str()) {
                     continue;
                 }
-                let rel = path.strip_prefix(&dir).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                let rel = path
+                    .strip_prefix(&dir)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
                 if let Some(p) = pattern
                     && !matches(p, &rel)
                 {
                     continue;
                 }
                 let meta = std::fs::metadata(&path).ok();
-                found.push((path, meta.as_ref().map_or(0, |m| m.len()), meta.and_then(|m| m.modified().ok())));
+                found.push((
+                    path,
+                    meta.as_ref().map_or(0, |m| m.len()),
+                    meta.and_then(|m| m.modified().ok()),
+                ));
             }
             stack.extend(subdirs.into_iter().rev());
         }
@@ -149,10 +187,17 @@ impl Bounds {
             "{} spreadsheet file{} under {where_}{} (path · size · modified):",
             found.len(),
             if found.len() == 1 { "" } else { "s" },
-            pattern.map(|p| format!(" matching {p:?}")).unwrap_or_default()
+            pattern
+                .map(|p| format!(" matching {p:?}"))
+                .unwrap_or_default()
         )];
         for (p, size, modified) in found.iter().take(MAX_LINES) {
-            lines.push(format!("{} · {} · {}", self.display(p), human_size(*size), modified.map(ymd).unwrap_or_default()));
+            lines.push(format!(
+                "{} · {} · {}",
+                self.display(p),
+                human_size(*size),
+                modified.map(ymd).unwrap_or_default()
+            ));
         }
         if found.len() > MAX_LINES {
             lines.push(format!(
@@ -161,9 +206,16 @@ impl Bounds {
             ));
         }
         if truncated {
-            lines.push(format!("(stopped after {WALK_BUDGET} entries; list a subfolder for the rest)"));
+            lines.push(format!(
+                "(stopped after {WALK_BUDGET} entries; list a subfolder for the rest)"
+            ));
         }
-        Ok(cut(lines.join("\n"), crate::text::MAX_CHARS, |n| format!("{n} more files"), "list_files with a subfolder or a pattern"))
+        Ok(cut(
+            lines.join("\n"),
+            crate::text::MAX_CHARS,
+            |n| format!("{n} more files"),
+            "list_files with a subfolder or a pattern",
+        ))
     }
 }
 
@@ -181,7 +233,11 @@ pub fn matches(pattern: &str, rel: &str) -> bool {
     let p = pattern.to_lowercase();
     let rel = rel.to_lowercase();
     if p.contains(['*', '?']) {
-        let target = if p.contains('/') { rel.as_str() } else { rel.rsplit('/').next().unwrap_or(&rel) };
+        let target = if p.contains('/') {
+            rel.as_str()
+        } else {
+            rel.rsplit('/').next().unwrap_or(&rel)
+        };
         return glob(p.as_bytes(), target.as_bytes());
     }
     p.split('|').any(|alt| {
@@ -225,7 +281,9 @@ pub fn human_size(n: u64) -> String {
 
 /// `YYYY-MM-DD` (UTC) of a timestamp.
 fn ymd(t: SystemTime) -> String {
-    let secs = t.duration_since(SystemTime::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
+    let secs = t
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs()) as i64;
     let days = secs.div_euclid(86_400);
     // civil-from-days (H. Hinnant)
     let z = days + 719_468;
@@ -268,18 +326,32 @@ mod tests {
         let abs = d.join("outside/secret.csv");
         assert!(b.resolve(abs.to_str().unwrap(), false).is_err());
         assert!(b.resolve("/etc/passwd", false).is_err());
-        assert!(b.resolve("missing.xlsx", false).unwrap_err().contains("no such file"));
+        assert!(
+            b.resolve("missing.xlsx", false)
+                .unwrap_err()
+                .contains("no such file")
+        );
         assert!(b.resolve("..", true).is_err());
         // An allowed file outside the root opens; its siblings do not.
         b.allow(&abs).unwrap();
         assert!(b.resolve(abs.to_str().unwrap(), false).is_ok());
-        assert!(b.resolve(d.join("outside").to_str().unwrap(), true).is_err());
+        assert!(
+            b.resolve(d.join("outside").to_str().unwrap(), true)
+                .is_err()
+        );
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(d.join("outside"), d.join("root/link")).unwrap();
-            assert!(b.resolve("link/secret.csv", false).is_ok(), "allowed file through a link");
+            assert!(
+                b.resolve("link/secret.csv", false).is_ok(),
+                "allowed file through a link"
+            );
             std::fs::write(d.join("outside/other.csv"), b"x").unwrap();
-            assert!(b.resolve("link/other.csv", false).unwrap_err().contains("outside"));
+            assert!(
+                b.resolve("link/other.csv", false)
+                    .unwrap_err()
+                    .contains("outside")
+            );
         }
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -292,9 +364,21 @@ mod tests {
         assert!(all.starts_with("2 spreadsheet files under ."), "{all}");
         assert!(all.contains("sub/Preise 2022.csv"));
         assert!(!all.contains("notes.txt"));
-        assert!(b.list_files(None, Some("preis|price")).unwrap().contains("Preise"));
-        assert!(b.list_files(None, Some("*.xlsx")).unwrap().contains("a.xlsx"));
-        assert!(b.list_files(None, Some("preise 2023")).unwrap().starts_with("no spreadsheet file"));
+        assert!(
+            b.list_files(None, Some("preis|price"))
+                .unwrap()
+                .contains("Preise")
+        );
+        assert!(
+            b.list_files(None, Some("*.xlsx"))
+                .unwrap()
+                .contains("a.xlsx")
+        );
+        assert!(
+            b.list_files(None, Some("preise 2023"))
+                .unwrap()
+                .starts_with("no spreadsheet file")
+        );
         assert!(b.list_files(Some(".."), None).is_err());
         assert!(matches("sub/*.csv", "sub/preise 2022.csv"));
         assert!(!matches("*.xlsx", "a.xls"));
@@ -303,6 +387,9 @@ mod tests {
 
     #[test]
     fn dates() {
-        assert_eq!(ymd(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)), "2023-11-14");
+        assert_eq!(
+            ymd(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
+            "2023-11-14"
+        );
     }
 }

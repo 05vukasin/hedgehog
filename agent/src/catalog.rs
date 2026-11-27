@@ -6,13 +6,15 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub use hh_core::normalize::TimeCoverage;
 use hh_core::normalize::{
-    iso, table_totals, time_coverages, workbook_time_coverage, ColRole, Column, Dtype, Normalized, Out, RowType,
-    Table, TableTotals,
+    ColRole, Column, Dtype, Normalized, Out, RowType, Table, TableTotals, iso, table_totals,
+    time_coverages, workbook_time_coverage,
 };
 
 use crate::facts;
+use crate::text::{
+    MAX_CHARS, csv_row, cut, ident, letter, num, range_a1, sheet_ref, short, thousands, years_in,
+};
 use crate::types::{self, ColType}; // B21 semantic types (types.rs)
-use crate::text::{csv_row, cut, ident, letter, num, range_a1, sheet_ref, short, thousands, years_in, MAX_CHARS};
 
 /// The cap of a brief catalog (one line per table), in characters, plus this much per table (up to
 /// the catalog's budget).
@@ -101,7 +103,10 @@ pub(crate) fn is_date(d: Dtype) -> bool {
 }
 
 pub(crate) fn is_numeric(d: Dtype) -> bool {
-    matches!(d, Dtype::Integer | Dtype::Number | Dtype::Percent | Dtype::Currency)
+    matches!(
+        d,
+        Dtype::Integer | Dtype::Number | Dtype::Percent | Dtype::Currency
+    )
 }
 
 /// Like [`bound`], numbers to 6 significant digits (catalog lines).
@@ -118,13 +123,21 @@ fn brief_bound(v: f64, d: Dtype) -> String {
     let digits = v.abs().log10().floor() as i32 + 1;
     let decimals = (4 - digits).max(0) as usize;
     let s = format!("{v:.decimals$}");
-    if s.contains('.') { s.trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
+    if s.contains('.') {
+        s.trim_end_matches('0').trim_end_matches('.').to_string()
+    } else {
+        s
+    }
 }
 
 fn bound(v: f64, d: Dtype) -> String {
     if is_date(d) {
         let s = iso(v);
-        if d == Dtype::Date { s.chars().take(10).collect() } else { s }
+        if d == Dtype::Date {
+            s.chars().take(10).collect()
+        } else {
+            s
+        }
     } else {
         num(v)
     }
@@ -138,7 +151,11 @@ pub fn sql_names(t: &Table) -> Vec<String> {
         .iter()
         .map(|c| {
             let base: String = c.name.chars().filter(|ch| !ch.is_control()).collect();
-            let base = if base.trim().is_empty() { format!("col_{}", c.source_col.map(letter).unwrap_or_default()) } else { base };
+            let base = if base.trim().is_empty() {
+                format!("col_{}", c.source_col.map(letter).unwrap_or_default())
+            } else {
+                base
+            };
             let mut name = base.clone();
             let mut k = 2;
             while !seen.insert(name.to_lowercase()) {
@@ -186,12 +203,20 @@ pub struct RowInfo {
 
 /// Indexes of a table's data rows (all rows when it has no row types).
 pub(crate) fn data_rows(t: &Table) -> Vec<usize> {
-    (0..t.rows()).filter(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data)).collect()
+    (0..t.rows())
+        .filter(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data))
+        .collect()
 }
 
 pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
     let totals = table_totals(t, &norm.totals);
-    let label_at = |row1: u32| totals.rows.iter().find(|r| r.row == row1).and_then(|r| r.label.clone());
+    let label_at = |row1: u32| {
+        totals
+            .rows
+            .iter()
+            .find(|r| r.row == row1)
+            .and_then(|r| r.label.clone())
+    };
     let mut info = RowInfo::default();
     for (i, rt) in t.row_types.iter().enumerate() {
         if *rt == RowType::Data {
@@ -200,12 +225,19 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
         }
         let src = t.src_rows.get(i).copied().unwrap_or(0);
         let label = label_at(src + 1).or_else(|| {
-            t.columns.iter().filter(|c| matches!(c.role, ColRole::Data | ColRole::Group)).find_map(|c| match c.values.get(i) {
-                Some(Out::Text(s)) if !s.trim().is_empty() => Some(s.clone()),
-                _ => None,
-            })
+            t.columns
+                .iter()
+                .filter(|c| matches!(c.role, ColRole::Data | ColRole::Group))
+                .find_map(|c| match c.values.get(i) {
+                    Some(Out::Text(s)) if !s.trim().is_empty() => Some(s.clone()),
+                    _ => None,
+                })
         });
-        info.total_rows.push(TotalRow { label: label.unwrap_or_else(|| "(no label)".into()), row: src + 1, kind: *rt });
+        info.total_rows.push(TotalRow {
+            label: label.unwrap_or_else(|| "(no label)".into()),
+            row: src + 1,
+            kind: *rt,
+        });
     }
     // Tables normalized without keep_totals have only data rows.
     if t.row_types.is_empty() {
@@ -218,7 +250,10 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
         info.key_cols = full_key_labels(t, &mut info.total_rows);
     }
     info.codes = crate::codes::total_codes(t);
-    let in_data: HashSet<u32> = data_rows(t).into_iter().filter_map(|r| t.src_rows.get(r).map(|s| s + 1)).collect();
+    let in_data: HashSet<u32> = data_rows(t)
+        .into_iter()
+        .filter_map(|r| t.src_rows.get(r).map(|s| s + 1))
+        .collect();
     info.kept_totals = totals
         .rows
         .iter()
@@ -226,14 +261,22 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
         .map(|r| TotalRow {
             label: r.label.clone().unwrap_or_else(|| "(no label)".into()),
             row: r.row,
-            kind: if r.level == "subtotal" { RowType::Subtotal } else { RowType::Total },
+            kind: if r.level == "subtotal" {
+                RowType::Subtotal
+            } else {
+                RowType::Total
+            },
         })
         .collect();
     // What a total adds up: the rows most of its confirmed checks add (one odd formula in one
     // column does not decide), inside the table.
     let mut votes: HashMap<u32, Vec<(Scope, usize)>> = HashMap::new();
     let (top, bottom) = (t.rect.top + 1, t.rect.bottom + 1);
-    for x in norm.totals.iter().filter(|x| x.table == Some(t.n) && x.direction == "vertical") {
+    for x in norm
+        .totals
+        .iter()
+        .filter(|x| x.table == Some(t.n) && x.direction == "vertical")
+    {
         let scope = source_rows(&x.sources);
         if x.level == "balance" {
             if let Some(&(total_row, _)) = scope.first().filter(|_| x.status == "ok") {
@@ -241,7 +284,10 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
             }
             continue;
         }
-        if x.status == "ok" && !scope.is_empty() && scope.iter().all(|(a, b)| *a >= top && *b <= bottom) {
+        if x.status == "ok"
+            && !scope.is_empty()
+            && scope.iter().all(|(a, b)| *a >= top && *b <= bottom)
+        {
             let v = votes.entry(x.row + 1).or_default();
             match v.iter_mut().find(|(s, _)| *s == scope) {
                 Some(e) => e.1 += x.count,
@@ -253,7 +299,10 @@ pub fn row_info(norm: &Normalized, t: &Table) -> RowInfo {
         }
     }
     for (row, v) in votes {
-        if let Some((scope, _)) = v.into_iter().max_by_key(|(s, n)| (*n, std::cmp::Reverse(s.clone()))) {
+        if let Some((scope, _)) = v
+            .into_iter()
+            .max_by_key(|(s, n)| (*n, std::cmp::Reverse(s.clone())))
+        {
             info.scopes.insert(row, scope);
         }
     }
@@ -269,7 +318,9 @@ fn relabel_totals(t: &Table, rows: &mut [TotalRow]) {
         return;
     }
     // The total rows in table order, as `rows` was built.
-    let idx: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data)).collect();
+    let idx: Vec<usize> = (0..t.rows())
+        .filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data))
+        .collect();
     if idx.len() != rows.len() {
         return;
     }
@@ -279,11 +330,21 @@ fn relabel_totals(t: &Table, rows: &mut [TotalRow]) {
         if c.dtype != Dtype::Text || !matches!(c.role, ColRole::Data | ColRole::Group) {
             continue;
         }
-        let in_data: HashSet<&str> =
-            data.iter().filter_map(|&r| if let Some(Out::Text(s)) = c.values.get(r) { Some(s.as_str()) } else { None }).collect();
+        let in_data: HashSet<&str> = data
+            .iter()
+            .filter_map(|&r| {
+                if let Some(Out::Text(s)) = c.values.get(r) {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
         let named = idx.iter().filter(|&&r| matches!(c.values.get(r), Some(Out::Text(s)) if !in_data.contains(s.as_str()))).count();
         // The label's own column names them already ('Total' in a label column).
-        if named * 2 > idx.len() && matches!(c.values.get(idx[0]), Some(Out::Text(s)) if *s == rows[0].label) {
+        if named * 2 > idx.len()
+            && matches!(c.values.get(idx[0]), Some(Out::Text(s)) if *s == rows[0].label)
+        {
             return;
         }
         if named * 2 > idx.len() && best.is_none_or(|(b, _)| named > b) {
@@ -309,7 +370,9 @@ fn full_key_labels(t: &Table, rows: &mut [TotalRow]) -> Vec<usize> {
     if keys.len() < 2 || rows.len() < 2 || t.rows() > crate::codes::MAX_ROWS {
         return Vec::new();
     }
-    let idx: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data)).collect();
+    let idx: Vec<usize> = (0..t.rows())
+        .filter(|&r| t.row_types.get(r).is_some_and(|x| *x != RowType::Data))
+        .collect();
     if idx.len() != rows.len() {
         return Vec::new();
     }
@@ -334,7 +397,13 @@ fn full_key_labels(t: &Table, rows: &mut [TotalRow]) -> Vec<usize> {
     let full: Vec<Option<String>> = idx
         .iter()
         .zip(rows.iter())
-        .map(|(&r, tr)| if tr.kind == RowType::Total { crate::codes::row_key(t, &keys, r) } else { None })
+        .map(|(&r, tr)| {
+            if tr.kind == RowType::Total {
+                crate::codes::row_key(t, &keys, r)
+            } else {
+                None
+            }
+        })
         .collect();
     if full.iter().all(Option::is_none) {
         return Vec::new();
@@ -358,18 +427,39 @@ fn rolling_text(t: &Table, seen: &mut HashMap<(i64, i64), String>) -> Option<Str
 
 /// B160: total rows as the catalog lists them: with a total code, the code's phrase first (the
 /// grand total by the code column, its subtotals per group), then the other total rows as usual.
-pub(crate) fn totals_text(t: &Table, info: &RowInfo, entries: &[TotalEntry], scopes: bool, max: usize) -> String {
+pub(crate) fn totals_text(
+    t: &Table,
+    info: &RowInfo,
+    entries: &[TotalEntry],
+    scopes: bool,
+    max: usize,
+) -> String {
     if let Some(code) = info.codes.first()
         && let Some((text, covered)) = crate::codes::coded_totals(t, &sql_names(t), code, entries)
     {
-        let rest: Vec<TotalEntry> = entries.iter().filter(|e| !covered.contains(&e.row)).cloned().collect();
-        return if rest.is_empty() { text } else { format!("{text}; {}", total_entries_text(&rest, &t.id(), scopes, max)) };
+        let rest: Vec<TotalEntry> = entries
+            .iter()
+            .filter(|e| !covered.contains(&e.row))
+            .cloned()
+            .collect();
+        return if rest.is_empty() {
+            text
+        } else {
+            format!(
+                "{text}; {}",
+                total_entries_text(&rest, &t.id(), scopes, max)
+            )
+        };
     }
     total_entries_text(entries, &t.id(), scopes, max)
 }
 
 fn total_rows_text(rows: &[TotalRow], n: usize) -> String {
-    let shown: Vec<String> = rows.iter().take(n).map(|r| format!("'{}'@{}", short(&r.label, 32), r.row)).collect();
+    let shown: Vec<String> = rows
+        .iter()
+        .take(n)
+        .map(|r| format!("'{}'@{}", short(&r.label, 32), r.row))
+        .collect();
     let more = rows.len().saturating_sub(n);
     let mut s = shown.join(", ");
     if more > 0 {
@@ -389,7 +479,11 @@ fn kept_totals_text(rows: &[TotalRow]) -> String {
             labels.push(&r.label);
         }
     }
-    let mut l: Vec<String> = labels.iter().take(3).map(|s| format!("'{}'", short(s, 32))).collect();
+    let mut l: Vec<String> = labels
+        .iter()
+        .take(3)
+        .map(|s| format!("'{}'", short(s, 32)))
+        .collect();
     if labels.len() > 3 {
         l.push(format!("+{} more labels", labels.len() - 3));
     }
@@ -449,9 +543,17 @@ enum BriefMode {
 /// Source rows (1-based) a total adds up, from its check's `sources` ("B5:B15", "B41 B47"), as
 /// ranges.
 fn source_rows(sources: &[String]) -> Vec<(u32, u32)> {
-    let row_of = |cell: &str| cell.trim_start_matches(|c: char| c.is_ascii_alphabetic() || c == '$').parse::<u32>().ok();
+    let row_of = |cell: &str| {
+        cell.trim_start_matches(|c: char| c.is_ascii_alphabetic() || c == '$')
+            .parse::<u32>()
+            .ok()
+    };
     let mut out: Vec<(u32, u32)> = Vec::new();
-    for tok in sources.iter().flat_map(|s| s.split([' ', ',', ';'])).filter(|s| !s.is_empty()) {
+    for tok in sources
+        .iter()
+        .flat_map(|s| s.split([' ', ',', ';']))
+        .filter(|s| !s.is_empty())
+    {
         let tok = tok.rsplit('!').next().unwrap_or(tok);
         let (a, b) = tok.split_once(':').unwrap_or((tok, tok));
         if let (Some(a), Some(b)) = (row_of(a), row_of(b)) {
@@ -506,15 +608,24 @@ pub(crate) fn total_entries(info: &RowInfo) -> Vec<TotalEntry> {
         }))
         .collect();
     out.sort_by_key(|e| e.row);
-    let inside = |row: u32, e: &TotalEntry| e.row != row && e.scope.iter().any(|(a, b)| (*a..=*b).contains(&row));
+    let inside = |row: u32, e: &TotalEntry| {
+        e.row != row && e.scope.iter().any(|(a, b)| (*a..=*b).contains(&row))
+    };
     // A balance under the totals is not on top of them.
-    let top: Vec<usize> =
-        (0..out.len()).filter(|&k| out[k].balance_of.is_none() && !out.iter().any(|e| inside(out[k].row, e))).collect();
+    let top: Vec<usize> = (0..out.len())
+        .filter(|&k| out[k].balance_of.is_none() && !out.iter().any(|e| inside(out[k].row, e)))
+        .collect();
     let grand = match top.as_slice() {
         // One total on top of others, or the only total and it adds up rows.
-        [k] if out[*k].kind == RowType::Total && (out.len() > 1 || !out[*k].scope.is_empty()) => Some(*k),
+        [k] if out[*k].kind == RowType::Total && (out.len() > 1 || !out[*k].scope.is_empty()) => {
+            Some(*k)
+        }
         _ => {
-            let marked: Vec<usize> = top.iter().copied().filter(|&k| info.grand_rows.contains(&out[k].row)).collect();
+            let marked: Vec<usize> = top
+                .iter()
+                .copied()
+                .filter(|&k| info.grand_rows.contains(&out[k].row))
+                .collect();
             (marked.len() == 1).then(|| marked[0])
         }
     };
@@ -533,7 +644,17 @@ fn ranges_text(scope: &[(u32, u32)]) -> String {
             _ => merged.push((a, b)),
         }
     }
-    let mut parts: Vec<String> = merged.iter().take(4).map(|(a, b)| if a == b { a.to_string() } else { format!("{a}–{b}") }).collect();
+    let mut parts: Vec<String> = merged
+        .iter()
+        .take(4)
+        .map(|(a, b)| {
+            if a == b {
+                a.to_string()
+            } else {
+                format!("{a}–{b}")
+            }
+        })
+        .collect();
     if merged.len() > 4 {
         parts.push("…".into());
     }
@@ -543,7 +664,12 @@ fn ranges_text(scope: &[(u32, u32)]) -> String {
 /// Total rows listed by level: `grand total 'Total Expenses'@65 (= rows 7, 49, 57, 63); totals
 /// 'Total O&M'@49 (= 41, 47); subtotals (_row_type 'subtotal') 'Subtotal Fixed O&M'@41 …`, up to
 /// `max` rows; with `scopes`, the rows each adds up.
-pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bool, max: usize) -> String {
+pub(crate) fn total_entries_text(
+    entries: &[TotalEntry],
+    table: &str,
+    scopes: bool,
+    max: usize,
+) -> String {
     let item = |e: &TotalEntry| {
         let mut s = format!("'{}'@{}", short(&e.label, 40), e.row);
         if scopes && !e.scope.is_empty() {
@@ -561,9 +687,20 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
             distinct.push(&e.label);
         }
     }
-    if entries.len() > max && distinct.len() * 2 <= entries.len() && !entries.iter().any(|e| e.grand) {
-        let l: Vec<String> = distinct.iter().take(max).map(|s| format!("'{}'", short(s, 40))).collect();
-        let more = if distinct.len() > max { format!(" +{} more labels", distinct.len() - max) } else { String::new() };
+    if entries.len() > max
+        && distinct.len() * 2 <= entries.len()
+        && !entries.iter().any(|e| e.grand)
+    {
+        let l: Vec<String> = distinct
+            .iter()
+            .take(max)
+            .map(|s| format!("'{}'", short(s, 40)))
+            .collect();
+        let more = if distinct.len() > max {
+            format!(" +{} more labels", distinct.len() - max)
+        } else {
+            String::new()
+        };
         return format!("{} rows labelled {}{more}", entries.len(), l.join(", "));
     }
     let mut groups: Vec<String> = Vec::new();
@@ -572,16 +709,24 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
         groups.push(format!("grand total {}", item(g)));
         shown += 1;
     }
-    let both = entries.iter().any(|e| e.kind == RowType::Subtotal) && entries.iter().any(|e| e.kind == RowType::Total);
-    let note = if both { " (_row_type 'subtotal', not 'total')" } else { "" };
+    let both = entries.iter().any(|e| e.kind == RowType::Subtotal)
+        && entries.iter().any(|e| e.kind == RowType::Total);
+    let note = if both {
+        " (_row_type 'subtotal', not 'total')"
+    } else {
+        ""
+    };
     for (kind, one, many) in [
         (RowType::Total, "total", "totals"),
         (RowType::Subtotal, "subtotal", "subtotals"),
         (RowType::Average, "average", "averages"),
         (RowType::OfWhich, "of-which row", "of-which rows"),
     ] {
-        let of_kind: Vec<&TotalEntry> =
-            entries.iter().filter(|e| e.kind == kind && !e.grand && e.balance_of.is_none()).take(max.saturating_sub(shown)).collect();
+        let of_kind: Vec<&TotalEntry> = entries
+            .iter()
+            .filter(|e| e.kind == kind && !e.grand && e.balance_of.is_none())
+            .take(max.saturating_sub(shown))
+            .collect();
         // B104: rows of one label without a scope of their own once: `'T'@13/16/19`.
         let plain = |e: &TotalEntry| !e.kept && (!scopes || e.scope.is_empty());
         let mut items: Vec<String> = Vec::new();
@@ -590,13 +735,17 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
             if done[a] {
                 continue;
             }
-            let same: Vec<usize> =
-                (a + 1..of_kind.len()).filter(|&b| plain(e) && plain(of_kind[b]) && of_kind[b].label == e.label).collect();
+            let same: Vec<usize> = (a + 1..of_kind.len())
+                .filter(|&b| plain(e) && plain(of_kind[b]) && of_kind[b].label == e.label)
+                .collect();
             if same.is_empty() {
                 items.push(item(e));
                 continue;
             }
-            let rows: Vec<String> = std::iter::once(e.row).chain(same.iter().map(|&b| of_kind[b].row)).map(|r| r.to_string()).collect();
+            let rows: Vec<String> = std::iter::once(e.row)
+                .chain(same.iter().map(|&b| of_kind[b].row))
+                .map(|r| r.to_string())
+                .collect();
             items.push(format!("'{}'@{}", short(&e.label, 40), rows.join("/")));
             for b in same {
                 done[b] = true;
@@ -614,11 +763,25 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
         .iter()
         .filter_map(|e| e.balance_of.map(|t| (e, t)))
         .take(max.saturating_sub(shown))
-        .map(|(e, t)| format!("'{}'@{} (= difference of the totals @{t})", short(&e.label, 40), e.row))
+        .map(|(e, t)| {
+            format!(
+                "'{}'@{} (= difference of the totals @{t})",
+                short(&e.label, 40),
+                e.row
+            )
+        })
         .collect();
     if !balances.is_empty() {
         shown += balances.len();
-        groups.push(format!("{} {}", if balances.len() == 1 { "balance" } else { "balances" }, balances.join(", ")));
+        groups.push(format!(
+            "{} {}",
+            if balances.len() == 1 {
+                "balance"
+            } else {
+                "balances"
+            },
+            balances.join(", ")
+        ));
     }
     let mut s = groups.join("; ");
     if entries.len() > shown {
@@ -630,8 +793,21 @@ pub(crate) fn total_entries_text(entries: &[TotalEntry], table: &str, scopes: bo
 /// A word that marks a total in a row label.
 fn total_word(w: &str) -> bool {
     const W: &[&str] = &[
-        "total", "totals", "gesamt", "insgesamt", "zusammen", "summe", "sum", "ukupno", "totale", "totaal", "ensemble",
-        "subtotal", "zwischensumme", "gesamtsumme", "grand",
+        "total",
+        "totals",
+        "gesamt",
+        "insgesamt",
+        "zusammen",
+        "summe",
+        "sum",
+        "ukupno",
+        "totale",
+        "totaal",
+        "ensemble",
+        "subtotal",
+        "zwischensumme",
+        "gesamtsumme",
+        "grand",
     ];
     W.contains(&w)
 }
@@ -646,12 +822,22 @@ pub(crate) fn group_totals_note(entries: &[TotalEntry], col: Option<&str>) -> Op
     let mut example = None;
     for e in entries.iter().filter(|e| !e.grand) {
         let low = e.label.to_lowercase();
-        let ws: Vec<&str> = low.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).collect();
+        let ws: Vec<&str> = low
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .collect();
         let rest: Vec<&str> = ws.iter().copied().filter(|w| !total_word(w)).collect();
-        if rest.len() < ws.len() && rest.iter().any(|w| w.chars().any(char::is_alphabetic)) && !labels.contains(&e.label.as_str()) {
+        if rest.len() < ws.len()
+            && rest.iter().any(|w| w.chars().any(char::is_alphabetic))
+            && !labels.contains(&e.label.as_str())
+        {
             if example.is_none() {
                 // The group's name: the label without its total word, as written.
-                let g: Vec<&str> = e.label.split_whitespace().filter(|w| !total_word(&w.to_lowercase())).collect();
+                let g: Vec<&str> = e
+                    .label
+                    .split_whitespace()
+                    .filter(|w| !total_word(&w.to_lowercase()))
+                    .collect();
                 example = Some(g.join(" "));
             }
             labels.push(&e.label);
@@ -661,13 +847,25 @@ pub(crate) fn group_totals_note(entries: &[TotalEntry], col: Option<&str>) -> Op
         return None;
     }
     let more = labels.len().saturating_sub(4);
-    let mut l: Vec<String> = labels.iter().take(4).map(|s| format!("'{}'", short(s, 40))).collect();
+    let mut l: Vec<String> = labels
+        .iter()
+        .take(4)
+        .map(|s| format!("'{}'", short(s, 40)))
+        .collect();
     if more > 0 {
         l.push(format!("+{more} more"));
     }
     let of = col.map(|c| format!(" of {c}")).unwrap_or_default();
-    let each = if labels.len() == 1 { "totals" } else { "each total" };
-    Some(format!(" · {} {each} one group{of} (e.g. {}), not the table", l.join(", "), example.unwrap_or_default()))
+    let each = if labels.len() == 1 {
+        "totals"
+    } else {
+        "each total"
+    };
+    Some(format!(
+        " · {} {each} one group{of} (e.g. {}), not the table",
+        l.join(", "),
+        example.unwrap_or_default()
+    ))
 }
 
 pub(crate) fn plural(n: usize, one: &str, many: &str) -> String {
@@ -675,10 +873,15 @@ pub(crate) fn plural(n: usize, one: &str, many: &str) -> String {
 }
 
 pub(crate) fn data_cols(t: &Table) -> impl Iterator<Item = (usize, &Column)> {
-    t.columns.iter().enumerate().filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group))
+    t.columns
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group))
 }
 
-fn status_counts<'a>(items: impl Iterator<Item = &'a hh_core::normalize::TotalItem>) -> (usize, usize, usize) {
+fn status_counts<'a>(
+    items: impl Iterator<Item = &'a hh_core::normalize::TotalItem>,
+) -> (usize, usize, usize) {
     let (mut ok, mut bad, mut unk) = (0, 0, 0);
     for x in items {
         match x.status {
@@ -719,7 +922,10 @@ const CODE_LEN: usize = 12;
 /// are what a filter needs and cannot be guessed from the question. Repeated codes (a dimension),
 /// no spaces, at most [`CODE_VALUES`] of at most [`CODE_LEN`] characters.
 fn code_values(c: &Column, rows: &[usize]) -> Option<Vec<String>> {
-    if c.dtype != Dtype::Text || !matches!(c.role, ColRole::Data | ColRole::Group) || rows.len() < 2 * CODE_VALUES {
+    if c.dtype != Dtype::Text
+        || !matches!(c.role, ColRole::Data | ColRole::Group)
+        || rows.len() < 2 * CODE_VALUES
+    {
         return None;
     }
     let mut vals: Vec<&str> = Vec::new();
@@ -731,7 +937,8 @@ fn code_values(c: &Column, rows: &[usize]) -> Option<Vec<String>> {
             // Codes: 2..12 capitals, digits and `_.-` (`AT`, `EU27_2020`, `KWH2500-4999`), not
             // words or initials.
             let code = (2..=CODE_LEN).contains(&s.chars().count())
-                && s.chars().all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || "_.-".contains(ch));
+                && s.chars()
+                    .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || "_.-".contains(ch));
             if vals.len() == CODE_VALUES || !code {
                 return None;
             }
@@ -771,11 +978,16 @@ fn row_labels_line(t: &Table, names: &[String]) -> Option<String> {
             vals.push(s.clone());
         }
     }
-    (vals.len() > LABEL_VALUES).then(|| format!("    {} values: {}", ident(&names[i]), values_text(&vals)))
+    (vals.len() > LABEL_VALUES)
+        .then(|| format!("    {} values: {}", ident(&names[i]), values_text(&vals)))
 }
 
 fn values_text(vals: &[String]) -> String {
-    let s = vals.iter().map(|v| format!("\"{}\"", short(v, 60))).collect::<Vec<_>>().join(" | ");
+    let s = vals
+        .iter()
+        .map(|v| format!("\"{}\"", short(v, 60)))
+        .collect::<Vec<_>>()
+        .join(" | ");
     short(&s, 700)
 }
 
@@ -792,11 +1004,17 @@ pub(crate) fn measure_classes(label: &str) -> u8 {
     if low.contains('%') {
         m |= 2;
     }
-    for w in low.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()) {
+    for w in low
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+    {
         m |= match w {
-            "eur" | "euro" | "euros" | "usd" | "chf" | "gbp" | "dollar" | "dollars" | "rsd" | "din" | "dinar" | "dinara" => 1,
-            "prozent" | "percent" | "pct" | "anteil" | "share" | "rate" | "quote" | "procenat" | "pourcentage" => 2,
-            "anzahl" | "number" | "count" | "zahl" | "personen" | "persons" | "people" | "cases" | "broj" | "nombre" => 4,
+            "eur" | "euro" | "euros" | "usd" | "chf" | "gbp" | "dollar" | "dollars" | "rsd"
+            | "din" | "dinar" | "dinara" => 1,
+            "prozent" | "percent" | "pct" | "anteil" | "share" | "rate" | "quote" | "procenat"
+            | "pourcentage" => 2,
+            "anzahl" | "number" | "count" | "zahl" | "personen" | "persons" | "people"
+            | "cases" | "broj" | "nombre" => 4,
             "average" | "mean" | "avg" | "median" | "mittelwert" | "ø" | "prosek" | "moyenne" => 8,
             "index" | "messzahl" | "indeks" => 16,
             _ if w.starts_with("durchschnitt") => 8,
@@ -820,9 +1038,23 @@ fn median_abs(mut v: Vec<f64>) -> Option<f64> {
 /// or by numbers of very different size under each label. Linear in the rows: a column with more
 /// than [`LABEL_VALUES`] labels is left at the first label too many.
 pub(crate) fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
-    let mut cands: Vec<usize> = t.columns.iter().position(|c| c.role == ColRole::Group).into_iter().collect();
-    cands.extend(t.columns.iter().enumerate().filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text).map(|(i, _)| i));
-    let numeric: Vec<&Column> = data_cols(t).map(|(_, c)| c).filter(|c| is_numeric(c.dtype) && c.dtype != Dtype::Percent).collect();
+    let mut cands: Vec<usize> = t
+        .columns
+        .iter()
+        .position(|c| c.role == ColRole::Group)
+        .into_iter()
+        .collect();
+    cands.extend(
+        t.columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.role == ColRole::Data && c.dtype == Dtype::Text)
+            .map(|(i, _)| i),
+    );
+    let numeric: Vec<&Column> = data_cols(t)
+        .map(|(_, c)| c)
+        .filter(|c| is_numeric(c.dtype) && c.dtype != Dtype::Percent)
+        .collect();
     'cand: for i in cands {
         let c = &t.columns[i];
         // Labels written once per block count for the rows below them: each row's label index.
@@ -854,7 +1086,11 @@ pub(crate) fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
         if distinct.len() < 2 {
             continue;
         }
-        let classes: HashSet<u8> = distinct.iter().map(|l| measure_classes(l)).filter(|m| *m != 0).collect();
+        let classes: HashSet<u8> = distinct
+            .iter()
+            .map(|l| measure_classes(l))
+            .filter(|m| *m != 0)
+            .collect();
         if classes.len() >= 2 {
             return Some(i);
         }
@@ -877,7 +1113,9 @@ pub(crate) fn mixed_measures_by(t: &Table, rows: &[usize]) -> Option<usize> {
             if meds.len() < 2 {
                 continue;
             }
-            let (lo, hi) = meds.iter().fold((f64::MAX, 0.0f64), |(lo, hi), m| (lo.min(*m), hi.max(*m)));
+            let (lo, hi) = meds
+                .iter()
+                .fold((f64::MAX, 0.0f64), |(lo, hi), m| (lo.min(*m), hi.max(*m)));
             cols += 1;
             if hi >= 100.0 * lo {
                 votes += 1;
@@ -941,7 +1179,11 @@ fn span(years: &[i32]) -> String {
 }
 
 fn period_range(tc: &TimeCoverage) -> String {
-    if tc.from == tc.to { tc.from.clone() } else { format!("{}–{}", tc.from, tc.to) }
+    if tc.from == tc.to {
+        tc.from.clone()
+    } else {
+        format!("{}–{}", tc.from, tc.to)
+    }
 }
 
 fn label_year(label: &str) -> Option<i32> {
@@ -963,12 +1205,19 @@ fn time_line(wb: Option<&TimeCoverage>, tables: &[(String, TimeCoverage)], weak:
         if weak.is_empty() {
             return "TIME no dates or periods found".into();
         }
-        return format!("TIME {} (only mentioned in titles/notes/sheet or file names; no date or period columns)", span(weak));
+        return format!(
+            "TIME {} (only mentioned in titles/notes/sheet or file names; no date or period columns)",
+            span(weak)
+        );
     };
     const ORDER: [&str; 5] = ["year", "quarter", "month", "week", "day"];
     let mut by_gran: Vec<(&str, Vec<String>)> = Vec::new();
     for g in ORDER {
-        let ids: Vec<String> = tables.iter().filter(|(_, c)| c.granularity == g).map(|(id, _)| id.clone()).collect();
+        let ids: Vec<String> = tables
+            .iter()
+            .filter(|(_, c)| c.granularity == g)
+            .map(|(id, _)| id.clone())
+            .collect();
         if !ids.is_empty() {
             by_gran.push((g, ids));
         }
@@ -976,7 +1225,11 @@ fn time_line(wb: Option<&TimeCoverage>, tables: &[(String, TimeCoverage)], weak:
     let gran = if by_gran.len() > 1 {
         format!(
             "mixed: {} — check what one row is before summing",
-            by_gran.iter().map(|(g, ids)| format!("{g} ({})", id_list(ids, 3))).collect::<Vec<_>>().join(", ")
+            by_gran
+                .iter()
+                .map(|(g, ids)| format!("{g} ({})", id_list(ids, 3)))
+                .collect::<Vec<_>>()
+                .join(", ")
         )
     } else {
         wb.granularity.to_string()
@@ -985,20 +1238,47 @@ fn time_line(wb: Option<&TimeCoverage>, tables: &[(String, TimeCoverage)], weak:
     let cols: Vec<String> = tables
         .iter()
         .filter(|(_, c)| c.source == "column")
-        .flat_map(|(id, c)| c.columns.iter().map(move |n| format!("{id}.{}", ident(&short(n, 30)))))
+        .flat_map(|(id, c)| {
+            c.columns
+                .iter()
+                .map(move |n| format!("{id}.{}", ident(&short(n, 30))))
+        })
         .collect();
     if !cols.is_empty() {
         from.push(format!("from columns {}", id_list(&cols, 4)));
     }
-    let hdr: Vec<String> = tables.iter().filter(|(_, c)| c.source == "header").map(|(id, _)| id.clone()).collect();
+    let hdr: Vec<String> = tables
+        .iter()
+        .filter(|(_, c)| c.source == "header")
+        .map(|(id, _)| id.clone())
+        .collect();
     if !hdr.is_empty() {
         from.push(format!("from column headers in {}", id_list(&hdr, 6)));
     }
-    let (lo, hi) = (label_year(&wb.from).unwrap_or(i32::MIN), label_year(&wb.to).unwrap_or(i32::MAX));
-    let outside: Vec<i32> = weak.iter().copied().filter(|y| *y < lo || *y > hi).collect();
-    let mut s = format!("TIME {} ({}{}{})", period_range(wb), gran, if by_gran.len() > 1 { "; " } else { ", " }, from.join("; "));
+    let (lo, hi) = (
+        label_year(&wb.from).unwrap_or(i32::MIN),
+        label_year(&wb.to).unwrap_or(i32::MAX),
+    );
+    let outside: Vec<i32> = weak
+        .iter()
+        .copied()
+        .filter(|y| *y < lo || *y > hi)
+        .collect();
+    let mut s = format!(
+        "TIME {} ({}{}{})",
+        period_range(wb),
+        gran,
+        if by_gran.len() > 1 { "; " } else { ", " },
+        from.join("; ")
+    );
     if !outside.is_empty() {
-        s.insert_str(s.len() - 1, &format!("; titles/notes/sheet or file names also mention {}", span(&outside)));
+        s.insert_str(
+            s.len() - 1,
+            &format!(
+                "; titles/notes/sheet or file names also mention {}",
+                span(&outside)
+            ),
+        );
     }
     s
 }
@@ -1010,7 +1290,10 @@ fn time_line(wb: Option<&TimeCoverage>, tables: &[(String, TimeCoverage)], weak:
 /// booleans, the unit or currency, `group`; plain text and numbers say nothing.
 fn kind_text(c: &Column) -> String {
     let mut parts: Vec<&str> = Vec::new();
-    if matches!(c.dtype, Dtype::Date | Dtype::Datetime | Dtype::Percent | Dtype::Bool | Dtype::Empty) {
+    if matches!(
+        c.dtype,
+        Dtype::Date | Dtype::Datetime | Dtype::Percent | Dtype::Bool | Dtype::Empty
+    ) {
         parts.push(c.dtype.as_str());
     }
     if let Some(u) = c.currency.as_ref().or(c.unit.as_ref()) {
@@ -1024,7 +1307,11 @@ fn kind_text(c: &Column) -> String {
 
 /// `name[kind]`, or the bare name when there is nothing to say.
 fn item(name: &str, kind: &str) -> String {
-    if kind.is_empty() { ident(name) } else { format!("{}[{kind}]", ident(name)) }
+    if kind.is_empty() {
+        ident(name)
+    } else {
+        format!("{}[{kind}]", ident(name))
+    }
 }
 
 /// Appends a word to a kind text, with a space when it is not empty.
@@ -1048,7 +1335,10 @@ fn col_detail(c: &Column, name: &str, rows: usize, example: bool, ty: Option<&Co
         && (is_numeric(c.dtype) || is_date(c.dtype))
     {
         if !id {
-            push_word(&mut kind, &format!("{}..{}", brief_bound(lo, c.dtype), brief_bound(hi, c.dtype)));
+            push_word(
+                &mut kind,
+                &format!("{}..{}", brief_bound(lo, c.dtype), brief_bound(hi, c.dtype)),
+            );
         }
         if is_date(c.dtype) {
             kind.push_str(&format!(", {} distinct", st.distinct));
@@ -1066,7 +1356,10 @@ fn col_detail(c: &Column, name: &str, rows: usize, example: bool, ty: Option<&Co
     if c.dtype == Dtype::Text && rows > 3 && st.nulls * 2 > rows && !label_like {
         kind.push_str(&format!("{sep}{}/{} empty", st.nulls, rows));
     } else if c.dtype == Dtype::Text && rows > 3 && st.nulls * 2 > rows {
-        kind.push_str(&format!("{sep}{}/{} empty: label written once per block?", st.nulls, rows));
+        kind.push_str(&format!(
+            "{sep}{}/{} empty: label written once per block?",
+            st.nulls, rows
+        ));
     }
     item(name, &kind)
 }
@@ -1080,16 +1373,44 @@ fn col_compact(c: &Column, name: &str, ty: Option<&ColType>) -> String {
     if is_date(c.dtype) {
         let st = col_stats(c);
         if let (Some(lo), Some(hi)) = (st.min, st.max) {
-            push_word(&mut kind, &format!("{}..{}", bound(lo, c.dtype), bound(hi, c.dtype)));
+            push_word(
+                &mut kind,
+                &format!("{}..{}", bound(lo, c.dtype), bound(hi, c.dtype)),
+            );
         }
     }
     item(name, &kind)
 }
 
 const WEEKDAYS: &[&str] = &[
-    "mon", "tue", "wed", "thu", "fri", "sat", "sun", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-    "sunday", "mo", "di", "mi", "do", "fr", "sa", "so", "montag", "dienstag", "mittwoch", "donnerstag", "freitag",
-    "samstag", "sonntag",
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+    "sat",
+    "sun",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "mo",
+    "di",
+    "mi",
+    "do",
+    "fr",
+    "sa",
+    "so",
+    "montag",
+    "dienstag",
+    "mittwoch",
+    "donnerstag",
+    "freitag",
+    "samstag",
+    "sonntag",
 ];
 
 /// Days since 1970-01-01 of a proleptic Gregorian date.
@@ -1113,8 +1434,13 @@ pub(crate) fn name_period(name: &str) -> Option<(u8, i64, String)> {
     }
     let b = s.as_bytes();
     for i in 0..b.len().saturating_sub(6) {
-        let digits = |r: std::ops::Range<usize>| r.clone().all(|k| b.get(k).is_some_and(u8::is_ascii_digit));
-        if (i > 0 && b[i - 1].is_ascii_digit()) || !digits(i..i + 4) || b[i + 4] != b'-' || !digits(i + 5..i + 7) {
+        let digits =
+            |r: std::ops::Range<usize>| r.clone().all(|k| b.get(k).is_some_and(u8::is_ascii_digit));
+        if (i > 0 && b[i - 1].is_ascii_digit())
+            || !digits(i..i + 4)
+            || b[i + 4] != b'-'
+            || !digits(i + 5..i + 7)
+        {
             continue;
         }
         let y: i64 = s[i..i + 4].parse().ok()?;
@@ -1132,8 +1458,14 @@ pub(crate) fn name_period(name: &str) -> Option<(u8, i64, String)> {
             return None;
         }
         let rest = format!("{}{}", &s[..i], &s[end..]).to_lowercase();
-        let rest = rest.trim_matches(|c: char| c.is_whitespace() || "/-,:".contains(c)).to_string();
-        let rest = if WEEKDAYS.contains(&rest.trim_end_matches('.')) { String::new() } else { rest };
+        let rest = rest
+            .trim_matches(|c: char| c.is_whitespace() || "/-,:".contains(c))
+            .to_string();
+        let rest = if WEEKDAYS.contains(&rest.trim_end_matches('.')) {
+            String::new()
+        } else {
+            rest
+        };
         return Some((unit, idx, rest));
     }
     None
@@ -1145,7 +1477,10 @@ fn name_prefix(name: &str) -> Option<&str> {
     // A header path's first level (`Total / 2021` → `Total / `), else the first word or `_` part.
     let end = match name.find(" / ") {
         Some(i) => i + 3,
-        None => [name.find('_').map(|i| i + 1), name.find(' ').map(|i| i + 1)].into_iter().flatten().min()?,
+        None => [name.find('_').map(|i| i + 1), name.find(' ').map(|i| i + 1)]
+            .into_iter()
+            .flatten()
+            .min()?,
     };
     (end >= 3 && end < name.len()).then(|| &name[..end])
 }
@@ -1153,23 +1488,48 @@ fn name_prefix(name: &str) -> Option<&str> {
 /// Columns compactly: runs of 4+ columns of one type named by consecutive periods (years, months
 /// or days) as `"2011".."2025"[15 × number EUR]` (nothing hidden); with `runs`, also runs of 3+
 /// columns with one name prefix, every member named (B71).
-fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &[Option<ColType>]) -> Vec<String> {
+fn compact_items(
+    cols: &[(usize, &Column)],
+    names: &[String],
+    runs: bool,
+    tys: &[Option<ColType>],
+) -> Vec<String> {
     let ty = |k: usize| tys.get(cols[k].0).and_then(|x| x.as_ref()); // B21
-    let same_col = |a: &Column, b: &Column| a.dtype == b.dtype && a.role == b.role && a.unit == b.unit && a.currency == b.currency;
+    let same_col = |a: &Column, b: &Column| {
+        a.dtype == b.dtype && a.role == b.role && a.unit == b.unit && a.currency == b.currency
+    };
     let same = |k: usize, j: usize| same_col(cols[k].1, cols[j].1) && ty(k) == ty(j);
     let run_text = |k: usize, j: usize| {
         let kind = types::kind_with(&kind_text(cols[k].1), cols[k].1, ty(k));
-        let range = format!("{}..{}", ident(&names[cols[k].0]), ident(&names[cols[j - 1].0]));
-        if kind.is_empty() { format!("{range}[{} cols]", j - k) } else { format!("{range}[{} × {kind}]", j - k) }
+        let range = format!(
+            "{}..{}",
+            ident(&names[cols[k].0]),
+            ident(&names[cols[j - 1].0])
+        );
+        if kind.is_empty() {
+            format!("{range}[{} cols]", j - k)
+        } else {
+            format!("{range}[{} × {kind}]", j - k)
+        }
     };
     // Periods, or plain numbers as names (`"1".."20"`: years of a projection, B104).
-    let number = |s: &str| (s.len() <= 3 && s.bytes().all(|b| b.is_ascii_digit())).then(|| s.parse::<i64>().ok()).flatten();
-    let periods: Vec<Option<(u8, i64, String)>> =
-        cols.iter().map(|(i, _)| name_period(&names[*i]).or_else(|| number(&names[*i]).map(|n| (9, n, String::new())))).collect();
+    let number = |s: &str| {
+        (s.len() <= 3 && s.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| s.parse::<i64>().ok())
+            .flatten()
+    };
+    let periods: Vec<Option<(u8, i64, String)>> = cols
+        .iter()
+        .map(|(i, _)| {
+            name_period(&names[*i]).or_else(|| number(&names[*i]).map(|n| (9, n, String::new())))
+        })
+        .collect();
     // Index of period column j if it continues the run started at k with direction `step`.
     let follows = |k: usize, j: usize, step: i64| -> bool {
         match (&periods[k], &periods[j]) {
-            (Some((u0, i0, r0)), Some((u, i, r))) => u == u0 && r == r0 && *i == i0 + step * (j - k) as i64,
+            (Some((u0, i0, r0)), Some((u, i, r))) => {
+                u == u0 && r == r0 && *i == i0 + step * (j - k) as i64
+            }
             _ => false,
         }
     };
@@ -1178,7 +1538,11 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &
     let mut k = 0;
     while k < n {
         if periods[k].is_some() {
-            let step = if k + 1 < n && follows(k, k + 1, -1) { -1 } else { 1 };
+            let step = if k + 1 < n && follows(k, k + 1, -1) {
+                -1
+            } else {
+                1
+            };
             let mut j = k + 1;
             while j < n && same(k, j) && follows(k, j, step) {
                 j += 1;
@@ -1197,7 +1561,9 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &
                 j += 1;
             }
             if j - k >= 3 {
-                let kinds: Vec<String> = (k..j).map(|m| types::kind_with(&kind_text(cols[m].1), cols[m].1, ty(m))).collect();
+                let kinds: Vec<String> = (k..j)
+                    .map(|m| types::kind_with(&kind_text(cols[m].1), cols[m].1, ty(m)))
+                    .collect();
                 let mut count: Vec<(&String, usize)> = Vec::new();
                 for x in &kinds {
                     match count.iter_mut().find(|c| c.0 == x) {
@@ -1205,17 +1571,29 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &
                         None => count.push((x, 1)),
                     }
                 }
-                let main = count.iter().max_by_key(|c| c.1).map(|c| c.0.clone()).unwrap_or_default();
+                let main = count
+                    .iter()
+                    .max_by_key(|c| c.1)
+                    .map(|c| c.0.clone())
+                    .unwrap_or_default();
                 let members: Vec<String> = (k..j)
                     .map(|m| {
                         let rest = &names[cols[m].0][p.len()..];
-                        if kinds[m - k] == main || kinds[m - k].is_empty() { rest.to_string() } else { format!("{rest}[{}]", kinds[m - k]) }
+                        if kinds[m - k] == main || kinds[m - k].is_empty() {
+                            rest.to_string()
+                        } else {
+                            format!("{rest}[{}]", kinds[m - k])
+                        }
                     })
                     .collect();
                 let text = format!("{p}{{{}}}", members.join(", "));
                 let quoted = (k..j).any(|m| ident(&names[cols[m].0]).starts_with('"'));
                 let text = if quoted { format!("\"{text}\"") } else { text };
-                out.push(if main.is_empty() { text } else { format!("{text}[{} × {main}]", j - k) });
+                out.push(if main.is_empty() {
+                    text
+                } else {
+                    format!("{text}[{} × {main}]", j - k)
+                });
                 k = j;
                 continue;
             }
@@ -1229,24 +1607,42 @@ fn compact_items(cols: &[(usize, &Column)], names: &[String], runs: bool, tys: &
 fn columns_line(t: &Table, names: &[String], examples: bool, tys: &[Option<ColType>]) -> String {
     let all = data_cols(t).count();
     // Empty columns (spacers in the source) take room and say nothing.
-    let cols: Vec<(usize, &Column)> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).collect();
+    let cols: Vec<(usize, &Column)> = data_cols(t)
+        .filter(|(_, c)| c.dtype != Dtype::Empty)
+        .collect();
     let empty = all - cols.len();
     let rows = t.rows();
     let n = cols.len();
-    let label = if empty > 0 { format!("{all}, {empty} empty not shown") } else { all.to_string() };
+    let label = if empty > 0 {
+        format!("{all}, {empty} empty not shown")
+    } else {
+        all.to_string()
+    };
     if n == 0 {
         return format!("    columns ({label})");
     }
     let data = data_rows(t);
     let mut items: Vec<String> = if n <= DETAIL_COLS {
         cols.iter()
-            .map(|(i, c)| col_detail(c, &names[*i], rows, examples && label_values(c, &data).is_none(), tys.get(*i).and_then(|x| x.as_ref())))
+            .map(|(i, c)| {
+                col_detail(
+                    c,
+                    &names[*i],
+                    rows,
+                    examples && label_values(c, &data).is_none(),
+                    tys.get(*i).and_then(|x| x.as_ref()),
+                )
+            })
             .collect()
     } else {
         // B71: every name in full; grouped by prefix when that is a tenth shorter (B104).
         let plain = compact_items(&cols, names, false, tys);
         let grouped = compact_items(&cols, names, true, tys);
-        if len_of(&grouped) * 10 <= len_of(&plain) * 9 { grouped } else { plain }
+        if len_of(&grouped) * 10 <= len_of(&plain) * 9 {
+            grouped
+        } else {
+            plain
+        }
     };
     let grouped = items.iter().any(|x| x.contains("{") && x.contains("}"));
     // Last resort for very wide tables: the rest by name only, still every one.
@@ -1262,7 +1658,10 @@ fn columns_line(t: &Table, names: &[String], examples: bool, tys: &[Option<ColTy
         items = all[..keep].to_vec();
         items.insert(0, "(names only; describe_table has the types)".into());
         if keep < all.len() {
-            items.push(format!("… +{} more (describe_table lists them)", all.len() - keep));
+            items.push(format!(
+                "… +{} more (describe_table lists them)",
+                all.len() - keep
+            ));
         }
     }
     let legend = if grouped { "; a_{b, c} = a_b, a_c" } else { "" };
@@ -1281,19 +1680,30 @@ fn head_totals(t: &Table, info: &RowInfo) -> Option<HeadTotals> {
     if !info.total_rows.is_empty() {
         let k = info.total_rows.len();
         let what = if k == 1 { "total row" } else { "total rows" };
-        long.push_str(&format!(" (+{k} {what}: {} — only in {}_all)", total_rows_text(&info.total_rows, 3), t.id()));
+        long.push_str(&format!(
+            " (+{k} {what}: {} — only in {}_all)",
+            total_rows_text(&info.total_rows, 3),
+            t.id()
+        ));
         short.push_str(&format!(" (+{k} {what} only in {}_all)", t.id()));
     }
     if !info.kept_totals.is_empty() {
         let k = info.kept_totals.len();
-        let (stay, them) = if k == 1 { ("stays", "it") } else { ("stay", "them") };
+        let (stay, them) = if k == 1 {
+            ("stays", "it")
+        } else {
+            ("stay", "them")
+        };
         let what = plural(k, "total row", "total rows");
         long.push_str(&format!(
             " · {what} {stay} in {} ({}) — exclude {them} before summing",
             t.id(),
             kept_totals_text(&info.kept_totals)
         ));
-        short.push_str(&format!(" · {what} {stay} in {} — exclude {them} before summing", t.id()));
+        short.push_str(&format!(
+            " · {what} {stay} in {} — exclude {them} before summing",
+            t.id()
+        ));
     }
     (!long.is_empty()).then_some(HeadTotals { long, short })
 }
@@ -1301,9 +1711,16 @@ fn head_totals(t: &Table, info: &RowInfo) -> Option<HeadTotals> {
 fn table_head(t: &Table, info: &RowInfo, cov: Option<&TimeCoverage>, brief: bool) -> String {
     let mut s = format!("{:<3} ", t.id());
     if let Some((title, _)) = &t.title {
-        s.push_str(&format!("'{}' ", short(title, if brief { 60 } else { 100 })));
+        s.push_str(&format!(
+            "'{}' ",
+            short(title, if brief { 60 } else { 100 })
+        ));
     }
-    s.push_str(&format!("← {} · {}", sheet_ref(&t.source_sheet, &range_a1(t.rect)), plural(info.data, "row", "rows")));
+    s.push_str(&format!(
+        "← {} · {}",
+        sheet_ref(&t.source_sheet, &range_a1(t.rect)),
+        plural(info.data, "row", "rows")
+    ));
     // Brief lines get their total rows from the caller (B74: all labels, repeated ones once).
     if !brief && let Some(h) = head_totals(t, info) {
         s.push_str(&h.long);
@@ -1355,7 +1772,9 @@ fn merge_runs(blocks: Vec<Block>) -> Vec<Block> {
         }
         match b.parts.as_slice() {
             [] => Some(None),
-            [(0, p)] if p.len() == 1 => p[0].split_once(" — labels as in ").map(|(_, x)| Some(x.to_string())),
+            [(0, p)] if p.len() == 1 => p[0]
+                .split_once(" — labels as in ")
+                .map(|(_, x)| Some(x.to_string())),
             _ => None,
         }
     };
@@ -1363,13 +1782,16 @@ fn merge_runs(blocks: Vec<Block>) -> Vec<Block> {
     let mut i = 0;
     let mut blocks: Vec<Option<Block>> = blocks.into_iter().map(Some).collect();
     while i < blocks.len() {
-        let start = blocks[i].as_ref().and_then(|b| Some((b.run.as_ref()?, labels_as(b)?)));
+        let start = blocks[i]
+            .as_ref()
+            .and_then(|b| Some((b.run.as_ref()?, labels_as(b)?)));
         let mut j = i + 1;
         if let Some((r0, l0)) = start {
             while j < blocks.len() {
                 let ok = blocks[j].as_ref().is_some_and(|b| {
-                    b.run.as_ref().is_some_and(|r| r.first == r0.first && r.key == r0.key && r.n == r0.n + (j - i))
-                        && labels_as(b).as_ref() == Some(&l0)
+                    b.run.as_ref().is_some_and(|r| {
+                        r.first == r0.first && r.key == r0.key && r.n == r0.n + (j - i)
+                    }) && labels_as(b).as_ref() == Some(&l0)
                 });
                 if !ok {
                     break;
@@ -1377,18 +1799,44 @@ fn merge_runs(blocks: Vec<Block>) -> Vec<Block> {
                 j += 1;
             }
             if j - i >= 3 {
-                let runs: Vec<&RunKey> = blocks[i..j].iter().filter_map(|b| b.as_ref()?.run.as_ref()).collect();
+                let runs: Vec<&RunKey> = blocks[i..j]
+                    .iter()
+                    .filter_map(|b| b.as_ref()?.run.as_ref())
+                    .collect();
                 let members: Vec<crate::brief::RunMember> = runs
                     .iter()
-                    .map(|r| crate::brief::RunMember { id: format!("T{}", r.n), title: r.title.as_deref(), sheet: &r.sheet })
+                    .map(|r| crate::brief::RunMember {
+                        id: format!("T{}", r.n),
+                        title: r.title.as_deref(),
+                        sheet: &r.sheet,
+                    })
                     .collect();
-                let (lo, hi) = runs.iter().fold((usize::MAX, 0), |(lo, hi), r| (lo.min(r.rows), hi.max(r.rows)));
-                let rows = if lo == hi { format!(" · {} each", plural(lo, "row", "rows")) } else { format!(" · {lo}–{hi} rows") };
+                let (lo, hi) = runs.iter().fold((usize::MAX, 0), |(lo, hi), r| {
+                    (lo.min(r.rows), hi.max(r.rows))
+                });
+                let rows = if lo == hi {
+                    format!(" · {} each", plural(lo, "row", "rows"))
+                } else {
+                    format!(" · {lo}–{hi} rows")
+                };
                 let (totals, cov) = r0.key.split_once('|').unwrap_or((&r0.key, ""));
-                let totals = totals.replace("<id>_all", "T<n>_all").replace("in <id>", "in each");
-                let labels = l0.map(|x| format!(" · total rows labelled as in {x}")).unwrap_or_default();
-                let line = crate::brief::run_line(&members, &r0.first, &format!("{rows}{totals}{cov}{labels}"));
-                out.push(Block { lines: vec![line], parts: Vec::new(), head_totals: None, run: None });
+                let totals = totals
+                    .replace("<id>_all", "T<n>_all")
+                    .replace("in <id>", "in each");
+                let labels = l0
+                    .map(|x| format!(" · total rows labelled as in {x}"))
+                    .unwrap_or_default();
+                let line = crate::brief::run_line(
+                    &members,
+                    &r0.first,
+                    &format!("{rows}{totals}{cov}{labels}"),
+                );
+                out.push(Block {
+                    lines: vec![line],
+                    parts: Vec::new(),
+                    head_totals: None,
+                    run: None,
+                });
                 i = j;
                 continue;
             }
@@ -1401,7 +1849,13 @@ fn merge_runs(blocks: Vec<Block>) -> Vec<Block> {
 
 impl Block {
     /// The table's lines with its total-rows and signs lines, and its rows when it is small.
-    fn new(lines: Vec<String>, t: &Table, names: &[String], info: &RowInfo, inline: Option<Vec<String>>) -> Self {
+    fn new(
+        lines: Vec<String>,
+        t: &Table,
+        names: &[String],
+        info: &RowInfo,
+        inline: Option<Vec<String>>,
+    ) -> Self {
         let data = data_rows(t);
         let mut parts: Vec<(u8, Vec<String>)> = Vec::new();
         let totals = facts::total_rows_line(t, names, info);
@@ -1411,24 +1865,40 @@ impl Block {
         parts.extend(totals.map(|l| (0, vec![l])));
         parts.extend(facts::signs_line(t, names, &data).map(|l| (0, vec![l])));
         parts.extend(inline.map(|rows| (1, rows)));
-        Block { lines, parts, head_totals, run: None }
+        Block {
+            lines,
+            parts,
+            head_totals,
+            run: None,
+        }
     }
 
     /// The head line without the total-row labels when the kept parts name them.
     fn shorten_head(&mut self, kept: &[bool]) {
-        let named = self.parts.iter().zip(kept).any(|((_, p), k)| *k && p.first().is_some_and(|l| l.starts_with("    total rows: ")));
-        if let (true, Some(h), Some(first)) = (named, self.head_totals.as_ref(), self.lines.first_mut()) {
+        let named =
+            self.parts.iter().zip(kept).any(|((_, p), k)| {
+                *k && p.first().is_some_and(|l| l.starts_with("    total rows: "))
+            });
+        if let (true, Some(h), Some(first)) =
+            (named, self.head_totals.as_ref(), self.lines.first_mut())
+        {
             *first = first.replacen(&h.long, &h.short, 1);
         }
     }
 
     fn has_signs(&self) -> bool {
-        self.parts.iter().any(|(_, p)| p.iter().any(|l| l.starts_with("    signs:")))
+        self.parts
+            .iter()
+            .any(|(_, p)| p.iter().any(|l| l.starts_with("    signs:")))
     }
 
     /// Column facts, one part per line, before the inline rows.
     fn add_facts(&mut self, lines: Vec<String>) {
-        let at = self.parts.iter().position(|(tier, _)| *tier == 1).unwrap_or(self.parts.len());
+        let at = self
+            .parts
+            .iter()
+            .position(|(tier, _)| *tier == 1)
+            .unwrap_or(self.parts.len());
         for (k, l) in lines.into_iter().enumerate() {
             self.parts.insert(at + k, (2, vec![l]));
         }
@@ -1443,8 +1913,17 @@ fn len_of(lines: &[String]) -> usize {
 /// with columns, label values, group column and totals check, small tables' rows, notes and
 /// warnings; at most `budget` characters, cut with an explicit `… cut:` line.
 /// Time per catalog step on this thread, for `HEDGEHOG_TRACE` (`cat.*` lines).
-const STEPS: [&str; 9] =
-    ["cat.time", "cat.row_info", "cat.types", "cat.entities", "cat.id_pairs", "cat.share", "cat.values", "cat.numbers", "cat.quality"];
+const STEPS: [&str; 9] = [
+    "cat.time",
+    "cat.row_info",
+    "cat.types",
+    "cat.entities",
+    "cat.id_pairs",
+    "cat.share",
+    "cat.values",
+    "cat.numbers",
+    "cat.quality",
+];
 
 thread_local! {
     static STEP_TIME: std::cell::RefCell<[std::time::Duration; STEPS.len()]> = const { std::cell::RefCell::new([std::time::Duration::ZERO; STEPS.len()]) };
@@ -1506,7 +1985,12 @@ pub fn catalog(norm: &Normalized, display_name: &str, budget: usize) -> String {
 
 /// B150: the catalog for a question: the tables it matches in full (first), the others one line
 /// each. Without a question (or with an empty one) the same as [`catalog`].
-pub fn catalog_for(norm: &Normalized, display_name: &str, budget: usize, question: Option<&str>) -> String {
+pub fn catalog_for(
+    norm: &Normalized,
+    display_name: &str,
+    budget: usize,
+    question: Option<&str>,
+) -> String {
     let t = std::time::Instant::now();
     let question = question.map(str::trim).filter(|q| !q.is_empty());
     let text = catalog_inner(norm, display_name, budget, question);
@@ -1534,7 +2018,10 @@ fn table_text(t: &Table, cov: Option<&TimeCoverage>) -> crate::question::TableTe
         texts.push((3.0, title.clone()));
     }
     texts.push((2.5, t.source_sheet.clone()));
-    let names: Vec<&str> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(_, c)| c.name.as_str()).collect();
+    let names: Vec<&str> = data_cols(t)
+        .filter(|(_, c)| c.dtype != Dtype::Empty)
+        .map(|(_, c)| c.name.as_str())
+        .collect();
     texts.push((2.0, names.join(" | ")));
     let mut vals: Vec<String> = Vec::new();
     for (_, c) in data_cols(t).filter(|(_, c)| c.dtype == Dtype::Text) {
@@ -1549,7 +2036,11 @@ fn table_text(t: &Table, cov: Option<&TimeCoverage>) -> crate::question::TableTe
         }
     }
     texts.push((1.0, vals.join(" | ")));
-    crate::question::TableText { texts, from: cov.map(|c| c.from.clone()), to: cov.map(|c| c.to.clone()) }
+    crate::question::TableText {
+        texts,
+        from: cov.map(|c| c.from.clone()),
+        to: cov.map(|c| c.to.clone()),
+    }
 }
 
 /// B150: the tables a question matches, best first, and how the catalog names them
@@ -1568,9 +2059,19 @@ fn focus(norm: &Normalized, covs: &[Option<TimeCoverage>], question: &str) -> Op
     if q.is_empty() {
         return None;
     }
-    let mut texts: Vec<_> = norm.tables.iter().zip(covs).map(|(t, c)| table_text(t, c.as_ref())).collect();
+    let mut texts: Vec<_> = norm
+        .tables
+        .iter()
+        .zip(covs)
+        .map(|(t, c)| table_text(t, c.as_ref()))
+        .collect();
     for (caption, ids) in shared_context_groups(norm) {
-        for (k, _) in norm.tables.iter().enumerate().filter(|(_, t)| ids.contains(&t.n)) {
+        for (k, _) in norm
+            .tables
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| ids.contains(&t.n))
+        {
             texts[k].texts.push((3.0, caption.into()));
         }
     }
@@ -1578,7 +2079,13 @@ fn focus(norm: &Normalized, covs: &[Option<TimeCoverage>], question: &str) -> Op
     let ks = crate::question::relevant(&rel);
     if crate::cache::tracing() {
         for (k, r) in rel.iter().enumerate().filter(|(_, r)| r.score > 0.0) {
-            eprintln!("focus T{} {:.3} {} {:?}", k + 1, r.score, r.champion, r.matched);
+            eprintln!(
+                "focus T{} {:.3} {} {:?}",
+                k + 1,
+                r.score,
+                r.champion,
+                r.matched
+            );
         }
         eprintln!("focus relevant {ks:?}");
     }
@@ -1591,14 +2098,30 @@ fn focus(norm: &Normalized, covs: &[Option<TimeCoverage>], question: &str) -> Op
         .map(|&k| {
             // A table number first (`table 1`), then words, then years and months.
             let num = |w: &&String| w.starts_with(|c: char| c.is_ascii_digit());
-            let mut m: Vec<&String> = rel[k].matched.iter().filter(|w| w.starts_with("table ")).collect();
-            m.extend(rel[k].matched.iter().filter(|w| !num(w) && !w.starts_with("table ")));
+            let mut m: Vec<&String> = rel[k]
+                .matched
+                .iter()
+                .filter(|w| w.starts_with("table "))
+                .collect();
+            m.extend(
+                rel[k]
+                    .matched
+                    .iter()
+                    .filter(|w| !num(w) && !w.starts_with("table ")),
+            );
             m.extend(rel[k].matched.iter().filter(num));
             m.truncate(2);
-            format!("{} ({})", norm.tables[k].id(), m.iter().map(|w| w.as_str()).collect::<Vec<_>>().join(", "))
+            format!(
+                "{} ({})",
+                norm.tables[k].id(),
+                m.iter().map(|w| w.as_str()).collect::<Vec<_>>().join(", ")
+            )
         })
         .collect();
-    Some(Focus { ks, items: items.join(", ") })
+    Some(Focus {
+        ks,
+        items: items.join(", "),
+    })
 }
 
 /// Section captions shared by multiple tables, once with their table ids. This exposes context
@@ -1608,37 +2131,86 @@ fn shared_context_groups(norm: &Normalized) -> Vec<(&str, Vec<usize>)> {
     let mut groups: BTreeMap<SourceCaption<'_>, Vec<usize>> = BTreeMap::new();
     for t in &norm.tables {
         for (text, at) in t.title.iter().chain(t.notes.iter()) {
-            let Some((key, value)) = text.split_once('=') else { continue };
-            if key.trim().is_empty() || key.chars().count() > 32 || !key.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
-                || !value.trim().starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+') || text.chars().count() > 120 { continue; }
+            let Some((key, value)) = text.split_once('=') else {
+                continue;
+            };
+            if key.trim().is_empty()
+                || key.chars().count() > 32
+                || !key.chars().all(|c| c.is_alphabetic() || c.is_whitespace())
+                || !value
+                    .trim()
+                    .starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '+')
+                || text.chars().count() > 120
+            {
+                continue;
+            }
             let ids = groups.entry((&t.source_sheet, *at, text)).or_default();
-            if ids.last() != Some(&t.n) { ids.push(t.n); }
+            if ids.last() != Some(&t.n) {
+                ids.push(t.n);
+            }
         }
     }
-    groups.into_iter().filter(|(_, ids)| ids.len() > 1).map(|((_, _, text), ids)| (text, ids)).collect()
+    groups
+        .into_iter()
+        .filter(|(_, ids)| ids.len() > 1)
+        .map(|((_, _, text), ids)| (text, ids))
+        .collect()
 }
 
 fn shared_context(norm: &Normalized) -> Vec<String> {
     let groups = shared_context_groups(norm);
-    let mut lines: Vec<String> = groups.iter().take(8).map(|(text, ids)| {
-        let mut shown = ids.iter().take(24).map(|id| format!("T{id}")).collect::<Vec<_>>().join(",");
-        if ids.len() > 24 { shown.push_str(&format!(", +{} tables (cells reads source captions)", ids.len() - 24)); }
-        format!("CONTEXT {shown}: {text}")
-    }).collect();
-    if groups.len() > 8 { lines.push(format!("CONTEXT +{} sections (cells reads source captions)", groups.len() - 8)); }
+    let mut lines: Vec<String> = groups
+        .iter()
+        .take(8)
+        .map(|(text, ids)| {
+            let mut shown = ids
+                .iter()
+                .take(24)
+                .map(|id| format!("T{id}"))
+                .collect::<Vec<_>>()
+                .join(",");
+            if ids.len() > 24 {
+                shown.push_str(&format!(
+                    ", +{} tables (cells reads source captions)",
+                    ids.len() - 24
+                ));
+            }
+            format!("CONTEXT {shown}: {text}")
+        })
+        .collect();
+    if groups.len() > 8 {
+        lines.push(format!(
+            "CONTEXT +{} sections (cells reads source captions)",
+            groups.len() - 8
+        ));
+    }
     lines
 }
 
-fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question: Option<&str>) -> String {
+fn catalog_inner(
+    norm: &Normalized,
+    display_name: &str,
+    budget: usize,
+    question: Option<&str>,
+) -> String {
     let budget = budget.min(MAX_CHARS);
-    let file_name = display_name.rsplit(['/', '\\']).next().unwrap_or(display_name);
+    let file_name = display_name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(display_name);
     let (mut covs, mut wb_cov) = tm(0, || time_coverages(norm));
     crate::views::fix_stamp_coverage(norm, &mut covs, &mut wb_cov); // B89
-    let with_cov: Vec<(String, TimeCoverage)> =
-        norm.tables.iter().zip(&covs).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
+    let with_cov: Vec<(String, TimeCoverage)> = norm
+        .tables
+        .iter()
+        .zip(&covs)
+        .filter_map(|(t, c)| c.clone().map(|c| (t.id(), c)))
+        .collect();
     // Per-table periods only when there is more than one table (else the TIME line says it).
     let table_cov = |k: usize| covs[k].as_ref().filter(|_| norm.tables.len() > 1);
-    let pct = (100 * norm.cells.in_tables).checked_div(norm.cells.total).unwrap_or(0);
+    let pct = (100 * norm.cells.in_tables)
+        .checked_div(norm.cells.total)
+        .unwrap_or(0);
     let mut head = vec![
         format!(
             "FILE {display_name} · {} · {} ({pct}% in tables) · {}",
@@ -1646,10 +2218,19 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             plural(norm.cells.total, "cell", "cells"),
             plural(norm.tables.len(), "table", "tables"),
         ),
-        time_line(wb_cov.as_ref(), &with_cov, &mentioned_years(norm, file_name)),
+        time_line(
+            wb_cov.as_ref(),
+            &with_cov,
+            &mentioned_years(norm, file_name),
+        ),
     ];
     head.extend(shared_context(norm));
-    let empty: Vec<&str> = norm.sheets.iter().filter(|s| s.tables.is_empty() && s.cells > 0).map(|s| s.name.as_str()).collect();
+    let empty: Vec<&str> = norm
+        .sheets
+        .iter()
+        .filter(|s| s.tables.is_empty() && s.cells > 0)
+        .map(|s| s.name.as_str())
+        .collect();
     if !empty.is_empty() {
         // Names as shown (shortened), a repeated one once with its count.
         let mut shown: Vec<(String, usize)> = Vec::new();
@@ -1665,7 +2246,11 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             shown
                 .iter()
                 .take(10)
-                .map(|(n, k)| if *k > 1 { format!("'{n}' ×{k}") } else { format!("'{n}'") })
+                .map(|(n, k)| if *k > 1 {
+                    format!("'{n}' ×{k}")
+                } else {
+                    format!("'{n}'")
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -1675,10 +2260,17 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         head.push(s);
     }
 
-    let infos: Vec<RowInfo> = tm(1, || norm.tables.iter().map(|t| row_info(norm, t)).collect());
+    let infos: Vec<RowInfo> = tm(1, || {
+        norm.tables.iter().map(|t| row_info(norm, t)).collect()
+    });
     // `keep`: the tables to list (all of them without a question).
     // Key/value tables have their own line (KEY/VALUE), not a block.
-    let listed = |keep: &[bool]| -> Vec<bool> { keep.iter().zip(&norm.tables).map(|(&k, t)| k && !t.is_key_value()).collect() };
+    let listed = |keep: &[bool]| -> Vec<bool> {
+        keep.iter()
+            .zip(&norm.tables)
+            .map(|(&k, t)| k && !t.is_key_value())
+            .collect()
+    };
     let full = |keep: &[bool]| -> Vec<Block> {
         let keep = &listed(keep)[..];
         let mut out = Vec::new();
@@ -1690,8 +2282,9 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 continue;
             }
             let names = sql_names(t);
-            let cols: Vec<(String, &'static str)> =
-                data_cols(t).map(|(i, c)| (names[i].clone(), c.dtype.as_str())).collect();
+            let cols: Vec<(String, &'static str)> = data_cols(t)
+                .map(|(i, c)| (names[i].clone(), c.dtype.as_str()))
+                .collect();
             let shape: Vec<&'static str> = cols.iter().map(|c| c.1).collect();
             let mut line = table_head(t, info, table_cov(k), false);
             let inline = facts::inline_rows(t, &names);
@@ -1703,8 +2296,12 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 lines.extend(facts::scale_line(t)); // B85
                 let mut b = Block::new(lines, t, &names, info, inline);
                 if view.is_none() {
-                    let short = head_totals(t, info).map(|h| h.short.replace(&t.id(), "<id>")).unwrap_or_default();
-                    let cov = table_cov(k).map(|c| format!(" · time {} ({})", period_range(c), c.granularity)).unwrap_or_default();
+                    let short = head_totals(t, info)
+                        .map(|h| h.short.replace(&t.id(), "<id>"))
+                        .unwrap_or_default();
+                    let cov = table_cov(k)
+                        .map(|c| format!(" · time {} ({})", period_range(c), c.granularity))
+                        .unwrap_or_default();
                     b.run = Some(RunKey {
                         first: first.clone(),
                         n: t.n,
@@ -1721,7 +2318,9 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 && let Some((first, first_names)) = shapes.get(&shape)
             {
                 // The headers that differ, period runs collapsed.
-                let diff: Vec<(usize, &Column)> = data_cols(t).filter(|(i, _)| !first_names.contains(&names[*i])).collect();
+                let diff: Vec<(usize, &Column)> = data_cols(t)
+                    .filter(|(i, _)| !first_names.contains(&names[*i]))
+                    .collect();
                 let items = compact_items(&diff, &names, false, &[]);
                 line.push_str(&format!(" · same layout as {first}"));
                 line.extend(crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv))); // B20
@@ -1735,7 +2334,10 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                     let keep = keep.count().max(1);
                     line.push_str(&format!("; headers here: {}", items[..keep].join(" ")));
                     if items.len() > keep {
-                        line.push_str(&format!(" … +{} more (describe_table lists them)", items.len() - keep));
+                        line.push_str(&format!(
+                            " … +{} more (describe_table lists them)",
+                            items.len() - keep
+                        ));
                     }
                 }
                 let mut lines = vec![line];
@@ -1748,7 +2350,10 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             let data = data_rows(t);
             let (mixed, tys) = tm(2, || {
                 let mixed = mixed_measures_by(t, &data);
-                (mixed, types::classify(t, &names, mixed, &types::summed_cols(norm, t))) // B21
+                (
+                    mixed,
+                    types::classify(t, &names, mixed, &types::summed_cols(norm, t)),
+                ) // B21
             });
             let mut lines = vec![line, columns_line(t, &names, inline.is_none(), &tys)];
             lines.extend(facts::scale_line(t)); // B85: "(All values in 000s)"
@@ -1760,10 +2365,17 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             // B80: an ID column with its names in another column.
             let pairs = tm(4, || crate::entity::id_name_pairs(t, &data));
             for (k, p) in pairs.iter().enumerate() {
-                lines.push(if k == 0 { crate::entity::id_name_line(p, &t.id()) } else { crate::entity::id_name_line_short(p, &pairs[0]) });
+                lines.push(if k == 0 {
+                    crate::entity::id_name_line(p, &t.id())
+                } else {
+                    crate::entity::id_name_line_short(p, &pairs[0])
+                });
             }
             // B19: a share of the total, with the entity (or label) column to rank by.
-            let key = ents.first().map(crate::entity::group_key).or_else(|| pairs.first().map(|p| crate::text::quote_ident(&p.id)));
+            let key = ents
+                .first()
+                .map(crate::entity::group_key)
+                .or_else(|| pairs.first().map(|p| crate::text::quote_ident(&p.id)));
             lines.extend(tm(5, || facts::share_line(t, &names, &data, key, &tys)));
             // The values to filter on; a small inlined table shows them in its rows. Code lists
             // (B103) and row labels (B102) are optional, after the rows of small tables.
@@ -1772,21 +2384,39 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 tm(6, || {
                     for (i, c) in data_cols(t) {
                         if let Some(vals) = label_values(c, &data) {
-                            lines.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
-                        } else if let Some(vals) = code_values(c, &data).filter(|_| !pairs.iter().any(|p| p.id == names[i])) {
+                            lines.push(format!(
+                                "    {} values: {}",
+                                ident(&names[i]),
+                                values_text(&vals)
+                            ));
+                        } else if let Some(vals) = code_values(c, &data)
+                            .filter(|_| !pairs.iter().any(|p| p.id == names[i]))
+                        {
                             // (an ID with a name column: the names say more than the codes)
-                            more_values.push(format!("    {} values: {}", ident(&names[i]), values_text(&vals)));
+                            more_values.push(format!(
+                                "    {} values: {}",
+                                ident(&names[i]),
+                                values_text(&vals)
+                            ));
                         }
                     }
                     more_values.extend(row_labels_line(t, &names));
                 });
             }
             if let Some(i) = mixed {
-                lines.push(format!("    rows mix measures by {} — filter before aggregating", ident(&names[i])));
+                lines.push(format!(
+                    "    rows mix measures by {} — filter before aggregating",
+                    ident(&names[i])
+                ));
             }
             // B20 long view (views.rs), B21 do-not-sum hint (types.rs)
             if let Some(lv) = crate::views::long_view(t, &tys) {
-                lines.push(crate::views::catalog_line(t, &lv, mixed, !info.total_rows.is_empty()));
+                lines.push(crate::views::catalog_line(
+                    t,
+                    &lv,
+                    mixed,
+                    !info.total_rows.is_empty(),
+                ));
             }
             lines.extend(types::no_sum_line(t, &names, &tys, mixed));
             let mut extra = Vec::new();
@@ -1799,7 +2429,11 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 extra.push(format!("totals: {} mismatch (call totals)", tt.mismatch));
             }
             if !t.warnings.is_empty() {
-                extra.push(format!("warnings: {} (e.g. {})", t.warnings.len(), short(&t.warnings[0], 90)));
+                extra.push(format!(
+                    "warnings: {} (e.g. {})",
+                    t.warnings.len(),
+                    short(&t.warnings[0], 90)
+                ));
             }
             if !extra.is_empty() {
                 lines.push(format!("    {}", extra.join(" · ")));
@@ -1808,19 +2442,38 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             let mut b = Block::new(lines, t, &names, info, inline);
             b.add_facts(more_values);
             if !small && mixed.is_none() {
-                let ranges_shown = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).count() <= DETAIL_COLS;
+                let ranges_shown = data_cols(t)
+                    .filter(|(_, c)| c.dtype != Dtype::Empty)
+                    .count()
+                    <= DETAIL_COLS;
                 let mut f = tm(7, || facts::numbers_lines(t, &names, &data, ranges_shown));
-                f.extend(tm(8, || facts::quality_line(t, &names, &data, b.has_signs())));
+                f.extend(tm(8, || {
+                    facts::quality_line(t, &names, &data, b.has_signs())
+                }));
                 b.add_facts(f);
             }
             out.push(b);
         }
         // B74: a table whose total rows read like an earlier table's says so instead.
         let mut seen: HashMap<String, String> = HashMap::new();
-        for (t, b) in norm.tables.iter().zip(keep).filter(|(_, k)| **k).map(|(t, _)| t).zip(out.iter_mut()) {
+        for (t, b) in norm
+            .tables
+            .iter()
+            .zip(keep)
+            .filter(|(_, k)| **k)
+            .map(|(t, _)| t)
+            .zip(out.iter_mut())
+        {
             for (_, part) in b.parts.iter_mut() {
-                let Some(l) = part.first_mut().filter(|l| l.starts_with("    total rows: ")) else { continue };
-                let key = l.replace(&format!("{}_all", t.id()), "_all").replace(&format!("[stays in {}]", t.id()), "[stays]");
+                let Some(l) = part
+                    .first_mut()
+                    .filter(|l| l.starts_with("    total rows: "))
+                else {
+                    continue;
+                };
+                let key = l
+                    .replace(&format!("{}_all", t.id()), "_all")
+                    .replace(&format!("[stays in {}]", t.id()), "[stays]");
                 match seen.get(&key) {
                     Some(first) => {
                         let cond = l.split(" — labels in ").next().unwrap_or(l).to_string();
@@ -1849,7 +2502,13 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
     // tables), which the brief lines refer to; `prio`: tables a question matches, listed first
     // with every column name; `room_cap`: at most this many characters of titles and column names
     // for the other tables.
-    let brief = |avail: usize, keep: &[bool], shown: &[bool], prio: &[bool], room_cap: Option<usize>, mode: BriefMode| -> Vec<String> {
+    let brief = |avail: usize,
+                 keep: &[bool],
+                 shown: &[bool],
+                 prio: &[bool],
+                 room_cap: Option<usize>,
+                 mode: BriefMode|
+     -> Vec<String> {
         let keep = &listed(keep)[..];
         let what = match mode {
             BriefMode::Plain => "tables listed briefly",
@@ -1867,13 +2526,18 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         // others (the question's tables come first).
         let mut rolls: Vec<Option<String>> = vec![None; norm.tables.len()];
         {
-            let order: Vec<usize> = (0..norm.tables.len()).filter(|&k| keep[k] && prio[k]).chain((0..norm.tables.len()).filter(|&k| keep[k] && !prio[k])).collect();
+            let order: Vec<usize> = (0..norm.tables.len())
+                .filter(|&k| keep[k] && prio[k])
+                .chain((0..norm.tables.len()).filter(|&k| keep[k] && !prio[k]))
+                .collect();
             // (length and step, the first table, its windows, the other tables)
             type Windows = ((i64, i64), usize, crate::views::Rolling, Vec<String>);
             let mut by: Vec<Windows> = Vec::new();
             for k in order {
                 let t = &norm.tables[k];
-                let Some(r) = crate::views::rolling(t) else { continue };
+                let Some(r) = crate::views::rolling(t) else {
+                    continue;
+                };
                 match by.iter_mut().find(|x| x.0 == (r.len, r.step)) {
                     Some(x) => x.3.push(t.id()),
                     None => by.push(((r.len, r.step), k, r, Vec::new())),
@@ -1889,22 +2553,35 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         }
         for (t, _) in norm.tables.iter().zip(shown).filter(|(_, s)| **s) {
             let names = sql_names(t);
-            let list: Vec<String> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).map(|(i, _)| names[i].clone()).collect();
+            let list: Vec<String> = data_cols(t)
+                .filter(|(_, c)| c.dtype != Dtype::Empty)
+                .map(|(i, _)| names[i].clone())
+                .collect();
             seen_cols.entry(list).or_insert_with(|| t.id());
         }
         // A table's period only when it is not inside the TIME line's span at its granularity (the
         // most common one is said once there too).
         let inside = |c: &TimeCoverage| {
-            wb_cov.as_ref().is_some_and(|w| w.granularity == c.granularity && w.from <= c.from && c.to <= w.to)
+            wb_cov
+                .as_ref()
+                .is_some_and(|w| w.granularity == c.granularity && w.from <= c.from && c.to <= w.to)
         };
         let covs_text: Vec<Option<String>> = (0..norm.tables.len())
-            .map(|k| table_cov(k).filter(|c| !inside(c)).map(|c| format!(" · time {} ({})", period_range(c), c.granularity)))
+            .map(|k| {
+                table_cov(k)
+                    .filter(|c| !inside(c))
+                    .map(|c| format!(" · time {} ({})", period_range(c), c.granularity))
+            })
             .collect();
         let mut count: HashMap<&str, usize> = HashMap::new();
         for c in covs_text.iter().flatten() {
             *count.entry(c.as_str()).or_default() += 1;
         }
-        let common = count.iter().max_by_key(|(c, n)| (**n, std::cmp::Reverse(**c))).filter(|(_, n)| **n >= 2).map(|(c, _)| c.to_string());
+        let common = count
+            .iter()
+            .max_by_key(|(c, n)| (**n, std::cmp::Reverse(**c)))
+            .filter(|(_, n)| **n >= 2)
+            .map(|(c, _)| c.to_string());
         let mut sheets_seen: HashSet<&str> = HashSet::new();
         let mut rows: Vec<BriefRow> = Vec::new();
         for (k, (t, info)) in norm.tables.iter().zip(&infos).enumerate() {
@@ -1913,7 +2590,10 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             }
             let names = sql_names(t);
             let mut tail = String::new();
-            if let Some(c) = covs_text[k].as_ref().filter(|c| Some(*c) != common.as_ref()) {
+            if let Some(c) = covs_text[k]
+                .as_ref()
+                .filter(|c| Some(*c) != common.as_ref())
+            {
                 tail.push_str(c);
             }
             if t.confidence < 0.6 {
@@ -1922,15 +2602,30 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             let entries = total_entries(info);
             if !entries.is_empty() && mode != BriefMode::Plain && !prio[k] {
                 // B150: a table the question does not match: how many, not which.
-                tail.push_str(&format!(" · {} in {}_all", plural(entries.len(), "total row", "total rows"), t.id()));
+                tail.push_str(&format!(
+                    " · {} in {}_all",
+                    plural(entries.len(), "total row", "total rows"),
+                    t.id()
+                ));
                 // B160: a total code, briefly.
                 if let Some(code) = info.codes.first() {
                     tail.push_str(&format!(" ({})", crate::codes::brief_note(code, &names)));
                 }
             } else if !entries.is_empty() {
-                let groups = if info.codes.is_empty() && info.key_cols.is_empty() { group_totals_note(&entries, None) } else { None };
+                let groups = if info.codes.is_empty() && info.key_cols.is_empty() {
+                    group_totals_note(&entries, None)
+                } else {
+                    None
+                };
                 let text = totals_text(t, info, &entries, false, 15) + &groups.unwrap_or_default();
-                let key = format!("{text}|{}", entries.iter().map(|e| e.row.to_string()).collect::<Vec<_>>().join(","));
+                let key = format!(
+                    "{text}|{}",
+                    entries
+                        .iter()
+                        .map(|e| e.row.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
                 match seen_totals.get(&key) {
                     Some(first) => tail.push_str(&format!(" · total rows as in {first}")),
                     None => {
@@ -1938,18 +2633,29 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                         tail.push_str(&format!(
                             " · {} ({}): {text}",
                             plural(entries.len(), "total row", "total rows"),
-                            if kept == 0 { format!("only in {}_all", t.id()) } else { format!("only in {}_all unless marked", t.id()) }
+                            if kept == 0 {
+                                format!("only in {}_all", t.id())
+                            } else {
+                                format!("only in {}_all unless marked", t.id())
+                            }
                         ));
                         seen_totals.insert(key, t.id());
                     }
                 }
             }
             if let Some((f, word, _)) = facts::table_scale(t) {
-                tail.push_str(&format!(" · amounts in {word} (× {})", thousands(f as usize)));
+                tail.push_str(&format!(
+                    " · amounts in {word} (× {})",
+                    thousands(f as usize)
+                ));
             }
-            let cols: Vec<(usize, &Column)> = data_cols(t).filter(|(_, c)| c.dtype != Dtype::Empty).collect();
+            let cols: Vec<(usize, &Column)> = data_cols(t)
+                .filter(|(_, c)| c.dtype != Dtype::Empty)
+                .collect();
             let list: Vec<String> = cols.iter().map(|(i, _)| names[*i].clone()).collect();
-            let mut view = crate::views::table_view(t).map(|lv| crate::views::brief_text(&lv)).unwrap_or_default();
+            let mut view = crate::views::table_view(t)
+                .map(|lv| crate::views::brief_text(&lv))
+                .unwrap_or_default();
             // B83: notes that define a column, on their own line under the table.
             if let Some(l) = facts::column_notes_line(norm, t, &names) {
                 view.push('\n');
@@ -1969,7 +2675,11 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 first_of_sheet: sheets_seen.insert(t.source_sheet.as_str()),
             };
             // A table the question matches lists its own columns (unless another one above has them).
-            let same = if prio[k] { seen_prio.get(&list) } else { seen_cols.get(&list) };
+            let same = if prio[k] {
+                seen_prio.get(&list)
+            } else {
+                seen_cols.get(&list)
+            };
             let cols = match same {
                 Some(first) => BriefCols::Same(first.clone()),
                 None => {
@@ -1977,14 +2687,29 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                     if prio[k] {
                         seen_prio.insert(list.clone(), t.id());
                     }
-                    BriefCols::Own(crate::brief::compress_names(&list), list.iter().map(|x| ident(x)).collect(), list.clone())
+                    BriefCols::Own(
+                        crate::brief::compress_names(&list),
+                        list.iter().map(|x| ident(x)).collect(),
+                        list.clone(),
+                    )
                 }
             };
-            rows.push(BriefRow { line: String::new(), cols, n: list.len(), view, member, prio: prio[k] });
+            rows.push(BriefRow {
+                line: String::new(),
+                cols,
+                n: list.len(),
+                view,
+                member,
+                prio: prio[k],
+            });
         }
         // B100: one line per run of 2+ consecutive tables with an earlier table's columns and the
         // same facts (total rows, scale, period).
-        let key_of = |r: &BriefRow| r.member.tail.replace(&format!("T{}_all", r.member.n), "T<n>_all");
+        let key_of = |r: &BriefRow| {
+            r.member
+                .tail
+                .replace(&format!("T{}_all", r.member.n), "T<n>_all")
+        };
         let mut spans: Vec<(usize, usize)> = Vec::new();
         let mut i = 0;
         while i < rows.len() {
@@ -2021,20 +2746,41 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             if k + 1 == end {
                 let ms: Vec<crate::brief::RunMember> = run
                     .iter()
-                    .map(|r| crate::brief::RunMember { id: format!("T{}", r.member.n), title: r.member.title, sheet: r.member.sheet })
+                    .map(|r| crate::brief::RunMember {
+                        id: format!("T{}", r.member.n),
+                        title: r.member.title,
+                        sheet: r.member.sheet,
+                    })
                     .collect();
-                let (lo, hi) = run.iter().fold((usize::MAX, 0), |(lo, hi), r| (lo.min(r.member.rows), hi.max(r.member.rows)));
-                let n_rows = if lo == hi { format!(" · {} each", plural(lo, "row", "rows")) } else { format!(" · {lo}–{hi} rows") };
-                let BriefCols::Same(first) = &run[0].cols else { unreachable!("runs repeat an earlier table") };
-                let line = crate::brief::run_line(&ms, first, &format!("{n_rows}{}", key_of(&run[0])));
+                let (lo, hi) = run.iter().fold((usize::MAX, 0), |(lo, hi), r| {
+                    (lo.min(r.member.rows), hi.max(r.member.rows))
+                });
+                let n_rows = if lo == hi {
+                    format!(" · {} each", plural(lo, "row", "rows"))
+                } else {
+                    format!(" · {lo}–{hi} rows")
+                };
+                let BriefCols::Same(first) = &run[0].cols else {
+                    unreachable!("runs repeat an earlier table")
+                };
+                let line =
+                    crate::brief::run_line(&ms, first, &format!("{n_rows}{}", key_of(&run[0])));
                 let first = run.remove(0);
                 run.clear();
-                merged.push(BriefRow { line, cols: BriefCols::Run, view: String::new(), ..first });
+                merged.push(BriefRow {
+                    line,
+                    cols: BriefCols::Run,
+                    view: String::new(),
+                    ..first
+                });
             }
         }
         let rows = merged;
         // The order of the lines: B150: the question's tables first.
-        let emit: Vec<usize> = (0..rows.len()).filter(|&k| rows[k].prio).chain((0..rows.len()).filter(|&k| !rows[k].prio)).collect();
+        let emit: Vec<usize> = (0..rows.len())
+            .filter(|&k| rows[k].prio)
+            .chain((0..rows.len()).filter(|&k| !rows[k].prio))
+            .collect();
         // Each line in parts: the id, the title (optional), the rest (the sheet unless it is the one
         // above, rows, period, total rows, scale), the columns, the view.
         let mut prev_sheet: Option<&str> = None;
@@ -2063,7 +2809,9 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             if r.member.title.is_some() {
                 prev_title = r.member.title;
             }
-            titles[k] = t.map(|t| format!(" '{}'", short(t, 60))).unwrap_or_default();
+            titles[k] = t
+                .map(|t| format!(" '{}'", short(t, 60)))
+                .unwrap_or_default();
         }
         let title = |k: usize| titles[k].as_str();
         // The first names (keys, labels) within a few characters.
@@ -2087,9 +2835,14 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         // B100: columns that are an earlier table's with one more header level, as a reference.
         let derived: Vec<Option<(usize, String)>> = (0..rows.len())
             .map(|k| {
-                let BriefCols::Own(_, _, b) = &rows[k].cols else { return None };
+                let BriefCols::Own(_, _, b) = &rows[k].cols else {
+                    return None;
+                };
                 (0..k).find_map(|j| match &rows[j].cols {
-                    BriefCols::Own(_, _, a) => crate::brief::derived(b, a, &format!("T{}", rows[j].member.n)).map(|t| (j, t)),
+                    BriefCols::Own(_, _, a) => {
+                        crate::brief::derived(b, a, &format!("T{}", rows[j].member.n))
+                            .map(|t| (j, t))
+                    }
                     _ => None,
                 })
             })
@@ -2102,11 +2855,26 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 BriefCols::Own(items, plain, _) => match level {
                     0 => String::new(),
                     1 => format!(" · {} cols{}", r.n, shortest(plain)),
-                    3 => format!(" · {} cols: {}", r.n, derived[k].as_ref().map(|d| d.1.as_str()).unwrap_or_default()),
+                    3 => format!(
+                        " · {} cols: {}",
+                        r.n,
+                        derived[k]
+                            .as_ref()
+                            .map(|d| d.1.as_str())
+                            .unwrap_or_default()
+                    ),
                     _ => {
                         let grouped = items.join(" ");
                         let flat = plain.join(" ");
-                        format!(" · {} cols: {}", r.n, if grouped.len() < flat.len() { grouped } else { flat })
+                        format!(
+                            " · {} cols: {}",
+                            r.n,
+                            if grouped.len() < flat.len() {
+                                grouped
+                            } else {
+                                flat
+                            }
+                        )
                     }
                 },
                 BriefCols::Same(first) => format!(" · same columns as {first}"),
@@ -2118,7 +2886,12 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             t + cols_text(k, level).len()
         };
         let fixed: usize = out.iter().map(|l| l.len() + 1).sum::<usize>()
-            + rows.iter().zip(&rest).enumerate().map(|(k, (r, s))| 5 + r.line.len() + s.len() + r.view.len() + cost(k, 0)).sum::<usize>();
+            + rows
+                .iter()
+                .zip(&rest)
+                .enumerate()
+                .map(|(k, (r, s))| 5 + r.line.len() + s.len() + r.view.len() + cost(k, 0))
+                .sum::<usize>();
         let mut room = avail.saturating_sub(fixed);
         let mut level: Vec<u8> = vec![0; rows.len()];
         // Tables that repeat no other table's columns get detail: the first table of each sheet
@@ -2133,10 +2906,14 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 _ => 2,
             }
         };
-        let mut order: Vec<usize> = (0..rows.len()).filter(|&k| matches!(rows[k].cols, BriefCols::Own(..))).collect();
+        let mut order: Vec<usize> = (0..rows.len())
+            .filter(|&k| matches!(rows[k].cols, BriefCols::Own(..)))
+            .collect();
         // B150: the question's tables first (with their titles), then the others within `room_cap`.
         order.sort_by_key(|&k| (!rows[k].prio, rank(k), k));
-        for k in (0..rows.len()).filter(|&k| rows[k].prio && matches!(rows[k].cols, BriefCols::Same(_))) {
+        for k in
+            (0..rows.len()).filter(|&k| rows[k].prio && matches!(rows[k].cols, BriefCols::Same(_)))
+        {
             room = room.saturating_sub(title(k).len());
             level[k] = 1;
         }
@@ -2166,7 +2943,9 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             // A table with every name: the tables that repeat its columns with one more level
             // follow it, by reference (cheap, and often what a question needs: `% des BIP`).
             if level[k] == 2 {
-                for j in (k + 1..rows.len()).filter(|&j| derived[j].as_ref().is_some_and(|(a, _)| *a == k)) {
+                for j in (k + 1..rows.len())
+                    .filter(|&j| derived[j].as_ref().is_some_and(|(a, _)| *a == k))
+                {
                     let extra = cost(j, 3) - cost(j, 0);
                     if level[j] == 0 && extra <= room {
                         room -= extra;
@@ -2207,20 +2986,34 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 out.push("(the other tables)".into());
             }
             let mut j = i;
-            while j + 1 < emit.len() && bare(emit[j]) && bare(emit[j + 1]) && rows[emit[j + 1]].member.n == rows[emit[j]].member.n + 1 {
+            while j + 1 < emit.len()
+                && bare(emit[j])
+                && bare(emit[j + 1])
+                && rows[emit[j + 1]].member.n == rows[emit[j]].member.n + 1
+            {
                 j += 1;
             }
             if bare(k) && j >= i + 2 {
                 let group: Vec<&BriefRow> = emit[i..=j].iter().map(|&x| &rows[x]).collect();
-                let (lo, hi) = group.iter().fold((usize::MAX, 0), |(lo, hi), r| (lo.min(r.member.rows), hi.max(r.member.rows)));
-                let n_rows = if lo == hi { format!("{} each", plural(lo, "row", "rows")) } else { format!("{lo}–{hi} rows") };
+                let (lo, hi) = group.iter().fold((usize::MAX, 0), |(lo, hi), r| {
+                    (lo.min(r.member.rows), hi.max(r.member.rows))
+                });
+                let n_rows = if lo == hi {
+                    format!("{} each", plural(lo, "row", "rows"))
+                } else {
+                    format!("{lo}–{hi} rows")
+                };
                 let mut sheets: Vec<&str> = Vec::new();
                 for r in &group {
                     if !sheets.contains(&r.member.sheet) {
                         sheets.push(r.member.sheet);
                     }
                 }
-                let mut shown: Vec<String> = sheets.iter().take(6).map(|s| sheet_ref(s, "").trim_end_matches('!').to_string()).collect();
+                let mut shown: Vec<String> = sheets
+                    .iter()
+                    .take(6)
+                    .map(|s| sheet_ref(s, "").trim_end_matches('!').to_string())
+                    .collect();
                 if sheets.len() > 6 {
                     shown.push(format!("+{} more", sheets.len() - 6));
                 }
@@ -2241,14 +3034,22 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
                 continue;
             }
             let t = if level[k] > 0 { title(k) } else { "" };
-            out.push(format!("{:<3}{t}{}{}{}", format!("T{}", r.member.n), rest[k], cols_text(k, level[k]), r.view));
+            out.push(format!(
+                "{:<3}{t}{}{}{}",
+                format!("T{}", r.member.n),
+                rest[k],
+                cols_text(k, level[k]),
+                r.view
+            ));
             i += 1;
         }
         // B150: with a question, the legend says only what the lines use.
         if mode != BriefMode::Plain {
             let lines = &out[first_line..];
             let mut legend = vec![what.to_string()];
-            if lines.iter().any(|l| l.starts_with('T') && !l.contains(" ← ") && !l.contains(" same columns as ")) {
+            if lines.iter().any(|l| {
+                l.starts_with('T') && !l.contains(" ← ") && !l.contains(" same columns as ")
+            }) {
                 legend.push("a table without ← is on the sheet above".into());
             }
             if lines.iter().any(|l| l.contains('{')) {
@@ -2263,13 +3064,21 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
     tail.extend(formulas_line(norm)); // B48
     let (ok, bad, unk) = status_counts(norm.totals.iter());
     if ok + bad + unk > 0 {
-        tail.push(format!("TOTALS {ok} ok, {bad} mismatch, {unk} unknown (details: totals)"));
+        tail.push(format!(
+            "TOTALS {ok} ok, {bad} mismatch, {unk} unknown (details: totals)"
+        ));
     }
     // B104: notes and warnings only when there are some; notes without the per-kind counts.
     if !norm.notes.is_empty() {
         let mut s = format!("NOTES {}", plural(norm.notes.len(), "cell", "cells"));
-        if let Some(n) = norm.notes.iter().find(|n| n.kind != "total_row" && n.kind != "repeated_header" && n.text.chars().count() > 12) {
-            s.push_str(&format!("; e.g. {}: \"{}\"", sheet_ref(&n.sheet, &hh_core::a1(n.row, n.col)), short(&n.text, 90)));
+        if let Some(n) = norm.notes.iter().find(|n| {
+            n.kind != "total_row" && n.kind != "repeated_header" && n.text.chars().count() > 12
+        }) {
+            s.push_str(&format!(
+                "; e.g. {}: \"{}\"",
+                sheet_ref(&n.sheet, &hh_core::a1(n.row, n.col)),
+                short(&n.text, 90)
+            ));
         }
         tail.push(s);
     }
@@ -2277,7 +3086,12 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         tail.push(format!(
             "WARNINGS {}: {}",
             norm.warnings.len(),
-            norm.warnings.iter().take(3).map(|w| short(w, 100)).collect::<Vec<_>>().join("; ")
+            norm.warnings
+                .iter()
+                .take(3)
+                .map(|w| short(w, 100))
+                .collect::<Vec<_>>()
+                .join("; ")
         ));
     }
     if norm.tables.len() == 1 {
@@ -2300,8 +3114,16 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
     // B-public: key/value cells outside the tables, one short line for all of them.
     let kv: Vec<&Table> = norm.tables.iter().filter(|t| t.is_key_value()).collect();
     if let Some(first) = kv.first() {
-        let list: Vec<String> = kv.iter().take(3).map(|t| format!("{} ({}, {})", t.id(), t.rows(), short(&t.source_sheet, 20))).collect();
-        let more = if kv.len() > 3 { format!(" +{}", kv.len() - 3) } else { String::new() };
+        let list: Vec<String> = kv
+            .iter()
+            .take(3)
+            .map(|t| format!("{} ({}, {})", t.id(), t.rows(), short(&t.source_sheet, 20)))
+            .collect();
+        let more = if kv.len() > 3 {
+            format!(" +{}", kv.len() - 3)
+        } else {
+            String::new()
+        };
         tail.push(format!(
             "KEY/VALUE {}{more}: labelled numbers outside the tables — SELECT key, value, cell FROM {}",
             list.join(", "),
@@ -2309,7 +3131,11 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         ));
     }
     // B20: the long views (views.rs).
-    let longs: Vec<String> = norm.tables.iter().filter_map(|t| crate::views::table_view(t).map(|lv| lv.name)).collect();
+    let longs: Vec<String> = norm
+        .tables
+        .iter()
+        .filter_map(|t| crate::views::table_view(t).map(|lv| lv.name))
+        .collect();
     if !longs.is_empty() {
         tail.push(format!(
             "SQL long {} {} (sum these; …_long_all adds the total rows): period columns as rows (period, period_label, value, _src_row, _src_col: the value's cell)",
@@ -2332,11 +3158,15 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
     // B150: with a question, the tables it matches in full, then the others one line each.
     let none = vec![false; norm.tables.len()];
     let n = norm.tables.len();
-    let cap_for = |others: usize| (OTHER_CHARS_PER_TABLE * others).clamp(OTHER_CHARS.0, OTHER_CHARS.1);
+    let cap_for =
+        |others: usize| (OTHER_CHARS_PER_TABLE * others).clamp(OTHER_CHARS.0, OTHER_CHARS.1);
     // Every table in full when that fits (else one line each).
-    let all_blocks: Option<Vec<Block>> = (n <= BRIEF_TABLES_OVER)
-        .then(|| full(&all))
-        .filter(|blocks| fixed + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>() <= budget + 1);
+    let all_blocks: Option<Vec<Block>> =
+        (n <= BRIEF_TABLES_OVER)
+            .then(|| full(&all))
+            .filter(|blocks| {
+                fixed + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>() <= budget + 1
+            });
     let in_full = all_blocks.is_some();
     let (all2, none2) = (all.clone(), none.clone());
     let normal = move || -> String {
@@ -2347,7 +3177,14 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         // B104: a brief catalog fills its room with column names; this much is enough for the
         // main tables' names (de-gdp, uk-ons) and keeps big files cheap.
         let budget = budget.min(BRIEF_CHARS + BRIEF_CHARS_PER_TABLE * n);
-        let body = brief(budget.saturating_sub(fixed + 50), &all2, &none2, &none2, None, BriefMode::Plain);
+        let body = brief(
+            budget.saturating_sub(fixed + 50),
+            &all2,
+            &none2,
+            &none2,
+            None,
+            BriefMode::Plain,
+        );
         let text = join(&body);
         if text.len() <= budget {
             return text;
@@ -2374,14 +3211,26 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         if text.len() <= budget {
             text
         } else {
-            cut(text, budget, |n| format!("{n} more lines"), "describe_table with a table id")
+            cut(
+                text,
+                budget,
+                |n| format!("{n} more lines"),
+                "describe_table with a table id",
+            )
         }
     };
     // B150: with a question, the tables it matches first. Like the catalog without it: in full
     // (the others one line each) when that lists every table in full, else every table one line
     // each, the matching ones first with every column name. Only when that is shorter.
-    let Some(f) = question.and_then(|q| focus(norm, &covs, q)) else { return normal() };
-    let ids = |ks: &[usize]| ks.iter().map(|&k| norm.tables[k].id()).collect::<Vec<_>>().join(", ");
+    let Some(f) = question.and_then(|q| focus(norm, &covs, q)) else {
+        return normal();
+    };
+    let ids = |ks: &[usize]| {
+        ks.iter()
+            .map(|&k| norm.tables[k].id())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
     let rest_text = plural(n - f.ks.len(), "other table", "other tables");
     let mut focused: Option<String> = None;
     if in_full {
@@ -2392,13 +3241,32 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
         more.iter().for_each(|&k| prio[k] = true);
         let others: Vec<bool> = keep.iter().map(|k| !k).collect();
         let line = if more.is_empty() {
-            format!("QUESTION matches {}: first, in full; then {rest_text}, one line each", f.items)
+            format!(
+                "QUESTION matches {}: first, in full; then {rest_text}, one line each",
+                f.items
+            )
         } else {
-            format!("QUESTION matches {}: {} first, in full; then {} and {rest_text}, one line each", f.items, ids(top), ids(more))
+            format!(
+                "QUESTION matches {}: {} first, in full; then {} and {rest_text}, one line each",
+                f.items,
+                ids(top),
+                ids(more)
+            )
         };
         let blocks = full(&keep);
-        let rest = brief(budget, &others, &keep, &prio, Some(cap_for(n - f.ks.len())), BriefMode::Others);
-        let base: usize = fixed + line.len() + 1 + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>() + len_of(&rest);
+        let rest = brief(
+            budget,
+            &others,
+            &keep,
+            &prio,
+            Some(cap_for(n - f.ks.len())),
+            BriefMode::Others,
+        );
+        let base: usize = fixed
+            + line.len()
+            + 1
+            + blocks.iter().map(|b| len_of(&b.lines)).sum::<usize>()
+            + len_of(&rest);
         if base <= budget + 1 {
             let mut body = vec![line];
             body.extend(with_parts(blocks, budget + 1 - base));
@@ -2406,13 +3274,23 @@ fn catalog_inner(norm: &Normalized, display_name: &str, budget: usize, question:
             focused = Some(join(&body));
         }
     } else {
-        let line = format!("QUESTION matches {}: first, with every column name; then {rest_text}", f.items);
+        let line = format!(
+            "QUESTION matches {}: first, with every column name; then {rest_text}",
+            f.items
+        );
         let mut prio = none.clone();
         f.ks.iter().for_each(|&k| prio[k] = true);
         let budget = budget.min(BRIEF_CHARS + BRIEF_CHARS_PER_TABLE * n);
         let mut body = vec![line];
         let avail = budget.saturating_sub(fixed + len_of(&body) + 50);
-        body.extend(brief(avail, &all, &none, &prio, Some(cap_for(n - f.ks.len())), BriefMode::Focus));
+        body.extend(brief(
+            avail,
+            &all,
+            &none,
+            &prio,
+            Some(cap_for(n - f.ks.len())),
+            BriefMode::Focus,
+        ));
         let text = join(&body);
         focused = (text.len() <= budget).then_some(text);
     }
@@ -2441,7 +3319,11 @@ pub fn find_table<'a>(norm: &'a Normalized, id: &str) -> Result<&'a Table, Strin
             } else {
                 format!(
                     "no table {raw:?}; tables are {}",
-                    norm.tables.iter().map(|t| t.id()).collect::<Vec<_>>().join(", ")
+                    norm.tables
+                        .iter()
+                        .map(|t| t.id())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )
             }
         })
@@ -2459,7 +3341,11 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
         t.confidence
     );
     if let Some((title, (r, c))) = &t.title {
-        head.push_str(&format!(" · title \"{}\" ({})", short(title, 120), hh_core::a1(*r, *c)));
+        head.push_str(&format!(
+            " · title \"{}\" ({})",
+            short(title, 120),
+            hh_core::a1(*r, *c)
+        ));
     }
     lines.push(head);
     if t.header_rows > 0 {
@@ -2469,7 +3355,12 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
             "header: {} ({} row{}; names below are flattened from it)",
             sheet_ref(
                 &t.source_sheet,
-                &range_a1(hh_core::Rect { top, left: t.rect.left, bottom, right: t.rect.right })
+                &range_a1(hh_core::Rect {
+                    top,
+                    left: t.rect.left,
+                    bottom,
+                    right: t.rect.right
+                })
             ),
             t.header_rows,
             if t.header_rows == 1 { "" } else { "s" }
@@ -2478,7 +3369,10 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
         lines.push("header: none detected (columns named col_<letter>)".into());
     }
     if let Some(g) = t.columns.iter().position(|c| c.role == ColRole::Group) {
-        lines.push(format!("group column: {} (labels of group-header rows, filled down)", ident(&names[g])));
+        lines.push(format!(
+            "group column: {} (labels of group-header rows, filled down)",
+            ident(&names[g])
+        ));
     }
     // B74: every total row by level, the grand total named, what each adds up.
     let entries = total_entries(&info);
@@ -2490,16 +3384,27 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
         ));
     }
     if !info.kept_totals.is_empty() {
-        lines.push(format!("total rows that stay in {} (exclude before summing): {}", t.id(), total_rows_text(&info.kept_totals, 12)));
+        lines.push(format!(
+            "total rows that stay in {} (exclude before summing): {}",
+            t.id(),
+            total_rows_text(&info.kept_totals, 12)
+        ));
     }
     let mixed = mixed_measures_by(t, &data_rows(t));
     if let Some(i) = mixed {
-        lines.push(format!("rows mix measures by {} — filter before aggregating", ident(&names[i])));
+        lines.push(format!(
+            "rows mix measures by {} — filter before aggregating",
+            ident(&names[i])
+        ));
     }
     // B20 long view, B21 semantic types (views.rs, types.rs)
     let tys = types::classify(t, &names, mixed, &types::summed_cols(norm, t));
     if let Some(lv) = crate::views::long_view(t, &tys) {
-        lines.push(crate::views::catalog_line(t, &lv, mixed, !info.total_rows.is_empty()).trim_start().to_string());
+        lines.push(
+            crate::views::catalog_line(t, &lv, mixed, !info.total_rows.is_empty())
+                .trim_start()
+                .to_string(),
+        );
     }
     lines.extend(types::no_sum_line(t, &names, &tys, mixed).map(|l| l.trim_start().to_string()));
     lines.extend(facts::scale_line(t).map(|l| l.trim_start().to_string())); // B85
@@ -2507,14 +3412,26 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     lines.extend(rolling_text(t, &mut HashMap::new()).map(|l| l.trim_start().to_string())); // B162
     // B80: ID columns with their names in another column.
     let pairs = crate::entity::id_name_pairs(t, &data_rows(t));
-    lines.extend(pairs.iter().map(|p| crate::entity::id_name_line(p, &t.id()).trim_start().to_string()));
+    lines.extend(pairs.iter().map(|p| {
+        crate::entity::id_name_line(p, &t.id())
+            .trim_start()
+            .to_string()
+    }));
     lines.push("columns (name | dtype · type | unit | nulls | distinct | min..max, example or all values | source column ← header cells):".into());
     let data = data_rows(t);
     let cols: Vec<(usize, &Column)> = data_cols(t).collect();
     for (k, (i, c)) in cols.iter().enumerate() {
         if k == DESCRIBE_COLS {
-            let rest: Vec<String> = cols[k..].iter().take(60).map(|(i, _)| ident(&short(&names[*i], 30))).collect();
-            lines.push(format!("  … {} more columns: {}", cols.len() - k, rest.join(", ")));
+            let rest: Vec<String> = cols[k..]
+                .iter()
+                .take(60)
+                .map(|(i, _)| ident(&short(&names[*i], 30)))
+                .collect();
+            lines.push(format!(
+                "  … {} more columns: {}",
+                cols.len() - k,
+                rest.join(", ")
+            ));
             break;
         }
         let st = col_stats(c);
@@ -2526,7 +3443,11 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
             _ if c.dtype == Dtype::Bool => BOOL_STORED.to_string(), // B82
             _ => match label_values(c, &data) {
                 Some(vals) if vals.len() > 1 => values_text(&vals),
-                _ => st.example.as_ref().map(|e| format!("e.g. \"{}\"", short(e, 40))).unwrap_or_default(),
+                _ => st
+                    .example
+                    .as_ref()
+                    .map(|e| format!("e.g. \"{}\"", short(e, 40)))
+                    .unwrap_or_default(),
             },
         };
         let src = match c.source_col {
@@ -2535,9 +3456,15 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
                     .original_header
                     .iter()
                     .take(3)
-                    .map(|(text, (r, cc))| format!("{} \"{}\"", hh_core::a1(*r, *cc), short(text, 30)))
+                    .map(|(text, (r, cc))| {
+                        format!("{} \"{}\"", hh_core::a1(*r, *cc), short(text, 30))
+                    })
                     .collect();
-                if hdr.is_empty() { letter(col) } else { format!("{} ← {}", letter(col), hdr.join(" / ")) }
+                if hdr.is_empty() {
+                    letter(col)
+                } else {
+                    format!("{} ← {}", letter(col), hdr.join(" / "))
+                }
             }
             None => c.role.as_str().to_string(),
         };
@@ -2557,10 +3484,19 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
         ));
     }
     if !t.notes.is_empty() {
-        let n: Vec<String> =
-            t.notes.iter().take(6).map(|(s, (r, c))| format!("{}: \"{}\"", hh_core::a1(*r, *c), short(s, 80))).collect();
+        let n: Vec<String> = t
+            .notes
+            .iter()
+            .take(6)
+            .map(|(s, (r, c))| format!("{}: \"{}\"", hh_core::a1(*r, *c), short(s, 80)))
+            .collect();
         let mut line = format!("notes: {}", n.join(" | "));
-        if t.notes.len() > 6 { line.push_str(&format!(" | +{} notes (cells reads source notes)", t.notes.len() - 6)); }
+        if t.notes.len() > 6 {
+            line.push_str(&format!(
+                " | +{} notes (cells reads source notes)",
+                t.notes.len() - 6
+            ));
+        }
         lines.push(line);
     }
     if !t.warnings.is_empty() {
@@ -2572,37 +3508,74 @@ pub fn describe_table(norm: &Normalized, t: &Table) -> String {
     if let Some(src) = t.columns.iter().position(|c| c.role == ColRole::SrcRow) {
         show.push(src);
     }
-    let rows: Vec<usize> = (0..t.rows()).filter(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data)).take(5).collect();
-    lines.push(format!("first {} rows{}:", rows.len(), if cols.len() > 12 { " (first 12 columns)" } else { "" }));
-    lines.push(csv_row(&show.iter().map(|&i| short(&names[i], 80)).collect::<Vec<_>>()));
+    let rows: Vec<usize> = (0..t.rows())
+        .filter(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data))
+        .take(5)
+        .collect();
+    lines.push(format!(
+        "first {} rows{}:",
+        rows.len(),
+        if cols.len() > 12 {
+            " (first 12 columns)"
+        } else {
+            ""
+        }
+    ));
+    lines.push(csv_row(
+        &show
+            .iter()
+            .map(|&i| short(&names[i], 80))
+            .collect::<Vec<_>>(),
+    ));
     for r in rows {
         let vals: Vec<String> = show
             .iter()
             .map(|&i| {
                 let c = &t.columns[i];
-                short(&c.values.get(r).map(|v| out_text(v, c.dtype)).unwrap_or_default(), 60)
+                short(
+                    &c.values
+                        .get(r)
+                        .map(|v| out_text(v, c.dtype))
+                        .unwrap_or_default(),
+                    60,
+                )
             })
             .collect();
         lines.push(csv_row(&vals));
     }
-    cut(lines.join("\n"), MAX_CHARS, |n| format!("{n} more lines"), "query on the table for specific columns")
+    cut(
+        lines.join("\n"),
+        MAX_CHARS,
+        |n| format!("{n} more lines"),
+        "query on the table for specific columns",
+    )
 }
 
 // ------------------------------------------------------------------------------------------------
 // totals
 
 /// The totals check: counts per status, then up to 50 items, mismatches first.
-pub fn totals(norm: &Normalized, table: Option<&Table>, status: Option<&str>) -> Result<String, String> {
+pub fn totals(
+    norm: &Normalized,
+    table: Option<&Table>,
+    status: Option<&str>,
+) -> Result<String, String> {
     if let Some(s) = status
         && !["ok", "mismatch", "unknown"].contains(&s)
     {
-        return Err(format!("status must be ok, mismatch or unknown (got {s:?})"));
+        return Err(format!(
+            "status must be ok, mismatch or unknown (got {s:?})"
+        ));
     }
     let items: Vec<&hh_core::normalize::TotalItem> = norm
         .totals
         .iter()
         .filter(|x| table.is_none_or(|t| x.table == Some(t.n)))
-        .filter(|x| status.is_none_or(|s| (s == "unknown" && x.status != "ok" && x.status != "mismatch") || x.status == s))
+        .filter(|x| {
+            status.is_none_or(|s| {
+                (s == "unknown" && x.status != "ok" && x.status != "mismatch") || x.status == s
+            })
+        })
         .collect();
     let (ok, bad, unk) = status_counts(items.iter().copied());
     let scope = match (table, status) {
@@ -2611,13 +3584,18 @@ pub fn totals(norm: &Normalized, table: Option<&Table>, status: Option<&str>) ->
         (None, Some(s)) => format!(" (status {s})"),
         (None, None) => String::new(),
     };
-    let mut lines = vec![format!("TOTALS{scope}: {ok} ok, {bad} mismatch, {unk} unknown")];
+    let mut lines = vec![format!(
+        "TOTALS{scope}: {ok} ok, {bad} mismatch, {unk} unknown"
+    )];
     if items.is_empty() {
         lines.push("no totals found".into());
         return Ok(lines.join("\n"));
     }
     let mut reasons: BTreeMap<&str, usize> = BTreeMap::new();
-    for x in items.iter().filter(|x| x.status != "ok" && x.status != "mismatch") {
+    for x in items
+        .iter()
+        .filter(|x| x.status != "ok" && x.status != "mismatch")
+    {
         *reasons.entry(x.reason.as_str()).or_default() += x.count;
     }
     if !reasons.is_empty() {
@@ -2642,7 +3620,11 @@ pub fn totals(norm: &Normalized, table: Option<&Table>, status: Option<&str>) ->
     lines.push("status,table,cell,label,level,value,recomputed,sources,reason".into());
     for x in sorted.iter().take(TOTAL_ITEMS) {
         let cell = sheet_ref(&x.sheet, &x.cell_a1());
-        let cell = if x.count > 1 { format!("{cell} ({} totals)", x.count) } else { cell };
+        let cell = if x.count > 1 {
+            format!("{cell} ({} totals)", x.count)
+        } else {
+            cell
+        };
         lines.push(csv_row(&[
             x.status.to_string(),
             x.table.map(|n| format!("T{n}")).unwrap_or_default(),
@@ -2661,7 +3643,12 @@ pub fn totals(norm: &Normalized, table: Option<&Table>, status: Option<&str>) ->
             sorted.len() - TOTAL_ITEMS
         ));
     }
-    Ok(cut(lines.join("\n"), MAX_CHARS, |n| format!("{n} more lines"), "totals with table=T<n> or a status"))
+    Ok(cut(
+        lines.join("\n"),
+        MAX_CHARS,
+        |n| format!("{n} more lines"),
+        "totals with table=T<n> or a status",
+    ))
 }
 
 /// B48: formula cells saved without a value (the file was written by a tool that does not
@@ -2680,8 +3667,8 @@ pub fn formulas_line(norm: &Normalized) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hh_core::normalize::{SheetInfo, Transforms};
     use hh_core::Rect;
+    use hh_core::normalize::{SheetInfo, Transforms};
 
     fn col(name: &str, role: ColRole, dtype: Dtype, values: Vec<Out>) -> Column {
         Column {
@@ -2705,17 +3692,49 @@ mod tests {
         let rows = 5;
         let tables = (1..=n)
             .map(|k| {
-                let mut columns = vec![col("Region", ColRole::Data, Dtype::Text, (0..rows).map(|i| Out::Text(if i == rows - 1 { "Total".into() } else { format!("r{i}") })).collect())];
+                let mut columns = vec![col(
+                    "Region",
+                    ColRole::Data,
+                    Dtype::Text,
+                    (0..rows)
+                        .map(|i| {
+                            Out::Text(if i == rows - 1 {
+                                "Total".into()
+                            } else {
+                                format!("r{i}")
+                            })
+                        })
+                        .collect(),
+                )];
                 for w in 0..width + if same { 0 } else { k } {
-                    let name = if same { format!("{}", 2001 + w) } else { format!("Measure {k}-{w} long header text") };
-                    columns.push(col(&name, ColRole::Data, Dtype::Number, (0..rows).map(|i| Out::Num((i * w) as f64 + 0.25)).collect()));
+                    let name = if same {
+                        format!("{}", 2001 + w)
+                    } else {
+                        format!("Measure {k}-{w} long header text")
+                    };
+                    columns.push(col(
+                        &name,
+                        ColRole::Data,
+                        Dtype::Number,
+                        (0..rows).map(|i| Out::Num((i * w) as f64 + 0.25)).collect(),
+                    ));
                 }
-                columns.push(col("_src_row", ColRole::SrcRow, Dtype::Integer, (0..rows).map(|i| Out::Num(i as f64 + 2.0)).collect()));
+                columns.push(col(
+                    "_src_row",
+                    ColRole::SrcRow,
+                    Dtype::Integer,
+                    (0..rows).map(|i| Out::Num(i as f64 + 2.0)).collect(),
+                ));
                 Table {
                     n: k,
                     sheet: format!("T{k}_s"),
                     source_sheet: format!("Sheet {k}"),
-                    rect: Rect { top: 0, left: 0, bottom: rows as u32, right: width as u32 },
+                    rect: Rect {
+                        top: 0,
+                        left: 0,
+                        bottom: rows as u32,
+                        right: width as u32,
+                    },
                     header_top: 0,
                     header_rows: 1,
                     title: Some((format!("Table {k} title"), (0, 0))),
@@ -2723,14 +3742,33 @@ mod tests {
                     confidence: 0.9,
                     columns,
                     src_rows: (1..=rows as u32).collect(),
-                    row_types: (0..rows).map(|i| if i == rows - 1 { RowType::Total } else { RowType::Data }).collect(),
+                    row_types: (0..rows)
+                        .map(|i| {
+                            if i == rows - 1 {
+                                RowType::Total
+                            } else {
+                                RowType::Data
+                            }
+                        })
+                        .collect(),
                     transforms: Transforms::default(),
                     warnings: vec![],
                 }
             })
             .collect();
-        let sheets = (1..=n).map(|k| SheetInfo { name: format!("Sheet {k}"), tables: vec![k], cells: 10, ..Default::default() }).collect();
-        Normalized { sheets, tables, ..Default::default() }
+        let sheets = (1..=n)
+            .map(|k| SheetInfo {
+                name: format!("Sheet {k}"),
+                tables: vec![k],
+                cells: 10,
+                ..Default::default()
+            })
+            .collect();
+        Normalized {
+            sheets,
+            tables,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -2738,12 +3776,27 @@ mod tests {
         let mut n = book(4, 3, true);
         for (k, t) in n.tables.iter_mut().enumerate() {
             t.source_sheet = "Experiment".into();
-            t.notes.push((if k < 2 { "Time = 0 min" } else { "Time = 75 min" }.into(), (if k < 2 { 0 } else { 20 }, 0)));
+            t.notes.push((
+                if k < 2 {
+                    "Time = 0 min"
+                } else {
+                    "Time = 75 min"
+                }
+                .into(),
+                (if k < 2 { 0 } else { 20 }, 0),
+            ));
         }
         let c = catalog(&n, "experiment.xlsx", MAX_CHARS);
-        assert!(c.contains("CONTEXT T1,T2: Time = 0 min") && c.contains("CONTEXT T3,T4: Time = 75 min"), "{c}");
+        assert!(
+            c.contains("CONTEXT T1,T2: Time = 0 min") && c.contains("CONTEXT T3,T4: Time = 75 min"),
+            "{c}"
+        );
         assert_eq!(c.matches("Time = 75 min").count(), 1, "{c}");
-        assert!(shared_context_groups(&n).iter().any(|(text, ids)| *text == "Time = 75 min" && *ids == vec![3, 4]));
+        assert!(
+            shared_context_groups(&n)
+                .iter()
+                .any(|(text, ids)| *text == "Time = 75 min" && *ids == vec![3, 4])
+        );
         // A one-off calculation note is not a shared section caption.
         n.tables[0].notes.push(("x = y + z".into(), (5, 0)));
         assert!(!catalog(&n, "experiment.xlsx", MAX_CHARS).contains("x = y + z"));
@@ -2760,20 +3813,31 @@ mod tests {
         assert!(c.contains("+6 tables (cells reads source captions)"), "{c}");
         for t in &mut n.tables {
             t.notes.clear();
-            for row in 0..10 { t.notes.push((format!("Time = {row} min"), (row, 0))); }
+            for row in 0..10 {
+                t.notes.push((format!("Time = {row} min"), (row, 0)));
+            }
         }
         let c = shared_context(&n).join("\n");
-        assert!(c.contains("CONTEXT +2 sections (cells reads source captions)"), "{c}");
+        assert!(
+            c.contains("CONTEXT +2 sections (cells reads source captions)"),
+            "{c}"
+        );
     }
 
     #[test]
     fn small_catalog_is_full() {
         let c = catalog(&book(2, 3, true), "x.xlsx", MAX_CHARS);
         assert!(c.starts_with("FILE x.xlsx · 2 sheets · "), "{c}");
-        assert!(c.contains("TIME 2001–2003 (year, from column headers in T1, T2)"), "{c}");
+        assert!(
+            c.contains("TIME 2001–2003 (year, from column headers in T1, T2)"),
+            "{c}"
+        );
         // B104: the total-row labels are on the `total rows:` line, not on the head line too.
         assert!(c.contains("T1  'Table 1 title' ← 'Sheet 1'!A1:D6 · 4 rows (+1 total row only in T1_all) · time 2001–2003 (year)"), "{c}");
-        assert!(c.contains("columns (4): Region \"2001\"[0.25..0.25]"), "{c}");
+        assert!(
+            c.contains("columns (4): Region \"2001\"[0.25..0.25]"),
+            "{c}"
+        );
         assert!(c.contains("T2  'Table 2 title' ← 'Sheet 2'!A1:D6 · 4 rows (+1 total row only in T2_all) · time 2001–2003 (year) · same columns as T1"), "{c}");
         // Small tables: all rows inline (total rows marked), so the values to filter on need no
         // extra line.
@@ -2829,7 +3893,10 @@ mod tests {
         assert!(!c.contains("more"), "{c}");
         // Year columns: one run, nothing hidden.
         let c = catalog(&book(1, 15, true), "x.xlsx", MAX_CHARS);
-        assert!(c.contains("columns (16): Region \"2001\"..\"2015\"[15 cols]"), "{c}");
+        assert!(
+            c.contains("columns (16): Region \"2001\"..\"2015\"[15 cols]"),
+            "{c}"
+        );
         // B71: wider than 40 and long: grouped by name prefix, every member named.
         let c = catalog(&book(1, 90, false), "x.xlsx", MAX_CHARS);
         assert!(
@@ -2841,9 +3908,26 @@ mod tests {
         let mut n = book(1, 1, false);
         let t = &mut n.tables[0];
         let src = t.columns.pop().unwrap();
-        for f in ["biofuel", "coal", "gas", "hydro", "nuclear", "oil", "solar", "wind", "fossil"] {
-            for m in ["cons_change_pct", "cons_change_twh", "consumption", "elec_per_capita", "electricity", "share_elec", "share_energy", "energy_per_capita", "production"] {
-                t.columns.push(col(&format!("{f}_{m}"), ColRole::Data, Dtype::Number, (0..5).map(|i| Out::Num(i as f64 + 0.5)).collect()));
+        for f in [
+            "biofuel", "coal", "gas", "hydro", "nuclear", "oil", "solar", "wind", "fossil",
+        ] {
+            for m in [
+                "cons_change_pct",
+                "cons_change_twh",
+                "consumption",
+                "elec_per_capita",
+                "electricity",
+                "share_elec",
+                "share_energy",
+                "energy_per_capita",
+                "production",
+            ] {
+                t.columns.push(col(
+                    &format!("{f}_{m}"),
+                    ColRole::Data,
+                    Dtype::Number,
+                    (0..5).map(|i| Out::Num(i as f64 + 0.5)).collect(),
+                ));
             }
         }
         t.columns.push(src);
@@ -2855,10 +3939,22 @@ mod tests {
     #[test]
     fn period_names() {
         assert_eq!(name_period("2019"), Some((0, 2019, String::new())));
-        assert_eq!(name_period("Thu / 2002-01-31").map(|p| p.2), Some(String::new()));
-        assert_eq!(name_period("Thu / 2002-01-31").unwrap().1 - name_period("Wed / 2002-01-30").unwrap().1, 1);
-        assert_eq!(name_period("Thu / 2002-03-01").unwrap().1 - name_period("Wed / 2002-02-28").unwrap().1, 1);
-        assert_eq!(name_period("Sales 2024-03"), Some((1, 2024 * 12 + 3, "sales".into())));
+        assert_eq!(
+            name_period("Thu / 2002-01-31").map(|p| p.2),
+            Some(String::new())
+        );
+        assert_eq!(
+            name_period("Thu / 2002-01-31").unwrap().1 - name_period("Wed / 2002-01-30").unwrap().1,
+            1
+        );
+        assert_eq!(
+            name_period("Thu / 2002-03-01").unwrap().1 - name_period("Wed / 2002-02-28").unwrap().1,
+            1
+        );
+        assert_eq!(
+            name_period("Sales 2024-03"),
+            Some((1, 2024 * 12 + 3, "sales".into()))
+        );
         assert_eq!(name_period("MTD Avg / 2002-02-05").unwrap().2, "mtd avg");
         assert_eq!(name_period("12345"), None);
         assert_eq!(name_period("2020/ 2025"), None);
@@ -2869,17 +3965,46 @@ mod tests {
     fn stacked() -> Normalized {
         let mut n = book(1, 4, true);
         let t = &mut n.tables[0];
-        let groups =
-            ["Anzahl Bezieher:innen", "Anzahl Bezieher:innen", "Durchschnittshöhe in Euro", "Durchschnittshöhe in Euro", "Richtsätze in Euro"];
-        let status = ["Alleinstehend", "Verheiratet", "Alleinstehend", "Verheiratet", "Alleinstehend"];
+        let groups = [
+            "Anzahl Bezieher:innen",
+            "Anzahl Bezieher:innen",
+            "Durchschnittshöhe in Euro",
+            "Durchschnittshöhe in Euro",
+            "Richtsätze in Euro",
+        ];
+        let status = [
+            "Alleinstehend",
+            "Verheiratet",
+            "Alleinstehend",
+            "Verheiratet",
+            "Alleinstehend",
+        ];
         let size = [196_489.0, 38_182.0, 264.3, 372.97, 793.4];
         let mut cols = vec![
-            col("group", ColRole::Group, Dtype::Text, groups.iter().map(|s| Out::Text(s.to_string())).collect()),
-            col("Status", ColRole::Data, Dtype::Text, status.iter().map(|s| Out::Text(s.to_string())).collect()),
+            col(
+                "group",
+                ColRole::Group,
+                Dtype::Text,
+                groups.iter().map(|s| Out::Text(s.to_string())).collect(),
+            ),
+            col(
+                "Status",
+                ColRole::Data,
+                Dtype::Text,
+                status.iter().map(|s| Out::Text(s.to_string())).collect(),
+            ),
         ];
         for w in 0..4 {
-            let vals = size.iter().map(|v| Out::Num(v * (1.0 + w as f64 / 50.0))).collect();
-            cols.push(col(&format!("{}", 2011 + w), ColRole::Data, Dtype::Number, vals));
+            let vals = size
+                .iter()
+                .map(|v| Out::Num(v * (1.0 + w as f64 / 50.0)))
+                .collect();
+            cols.push(col(
+                &format!("{}", 2011 + w),
+                ColRole::Data,
+                Dtype::Number,
+                vals,
+            ));
         }
         cols.push(t.columns.last().unwrap().clone());
         t.columns = cols;
@@ -2892,7 +4017,10 @@ mod tests {
         let n = stacked();
         let c = catalog(&n, "x.xlsx", MAX_CHARS);
         // 5 rows × 6 columns: inlined, the measures are visible in the rows.
-        assert!(c.contains("rows mix measures by \"group\" — filter before aggregating"), "{c}");
+        assert!(
+            c.contains("rows mix measures by \"group\" — filter before aggregating"),
+            "{c}"
+        );
         assert!(c.contains("all 5 rows (CSV)"), "{c}");
         // Too wide to inline: the values are listed.
         let mut wide = n.clone();
@@ -2908,7 +4036,10 @@ mod tests {
             c.contains("\n    \"group\" values: \"Anzahl Bezieher:innen\" | \"Durchschnittshöhe in Euro\" | \"Richtsätze in Euro\"\n"),
             "{c}"
         );
-        assert!(c.contains("\n    Status values: \"Alleinstehend\" | \"Verheiratet\"\n"), "{c}");
+        assert!(
+            c.contains("\n    Status values: \"Alleinstehend\" | \"Verheiratet\"\n"),
+            "{c}"
+        );
         assert!(c.contains("rows mix measures by \"group\""), "{c}");
         let d = describe_table(&wide, &wide.tables[0]);
         assert!(d.contains("rows mix measures by \"group\""), "{d}");
@@ -2922,7 +4053,11 @@ mod tests {
         // The first section without a label (it stayed in the header): a block of its own.
         let mut unnamed = n.clone();
         for (k, v) in unnamed.tables[0].columns[0].values.iter_mut().enumerate() {
-            *v = if k < 2 { Out::Null } else { Out::Text("B".into()) };
+            *v = if k < 2 {
+                Out::Null
+            } else {
+                Out::Text("B".into())
+            };
         }
         assert!(catalog(&unnamed, "x.xlsx", MAX_CHARS).contains("rows mix measures by \"group\""));
         // Regions of similar size: one measure.
@@ -2957,11 +4092,18 @@ mod tests {
         let mut n = book(1, 1, false);
         let t = &mut n.tables[0];
         // 2024-01-01 .. 2024-05-01
-        let months: Vec<Out> = [0.0, 31.0, 60.0, 91.0, 121.0].iter().map(|d| Out::Date(45292.0 + d)).collect();
-        t.columns.insert(0, col("Datum", ColRole::Data, Dtype::Date, months));
+        let months: Vec<Out> = [0.0, 31.0, 60.0, 91.0, 121.0]
+            .iter()
+            .map(|d| Out::Date(45292.0 + d))
+            .collect();
+        t.columns
+            .insert(0, col("Datum", ColRole::Data, Dtype::Date, months));
         t.row_types = vec![RowType::Data; 5];
         let wb = time_coverage(&n).unwrap();
-        assert_eq!((wb.from.as_str(), wb.to.as_str(), wb.granularity), ("2024-01", "2024-05", "month"));
+        assert_eq!(
+            (wb.from.as_str(), wb.to.as_str(), wb.granularity),
+            ("2024-01", "2024-05", "month")
+        );
         let c = catalog(&n, "report_2019.xlsx", MAX_CHARS);
         assert!(
             c.contains("TIME 2024-01–2024-05 (month, from columns T1.Datum; titles/notes/sheet or file names also mention 2019)"),
@@ -3007,10 +4149,25 @@ mod tests {
         // source row 6 is the removed total row.
         n.totals = vec![total_item(1, 2, "Insgesamt"), total_item(1, 5, "Gesamt")];
         let info = row_info(&n, &n.tables[0]);
-        assert_eq!(info.totals, hh_core::normalize::table_totals(&n.tables[0], &n.totals));
+        assert_eq!(
+            info.totals,
+            hh_core::normalize::table_totals(&n.tables[0], &n.totals)
+        );
         assert_eq!(info.totals.unknown, 2);
-        assert_eq!(info.kept_totals.iter().map(|r| (r.label.as_str(), r.row)).collect::<Vec<_>>(), [("Insgesamt", 3)]);
-        assert_eq!(info.total_rows.iter().map(|r| (r.label.as_str(), r.row)).collect::<Vec<_>>(), [("Gesamt", 6)]);
+        assert_eq!(
+            info.kept_totals
+                .iter()
+                .map(|r| (r.label.as_str(), r.row))
+                .collect::<Vec<_>>(),
+            [("Insgesamt", 3)]
+        );
+        assert_eq!(
+            info.total_rows
+                .iter()
+                .map(|r| (r.label.as_str(), r.row))
+                .collect::<Vec<_>>(),
+            [("Gesamt", 6)]
+        );
         let c = catalog(&n, "x.xlsx", MAX_CHARS);
         // The total-rows line has no labels here (no label column), so the head line keeps them.
         assert!(
@@ -3020,7 +4177,10 @@ mod tests {
         // B104: the per-table check counts only when one failed (the TOTALS line has them).
         assert!(!c.contains("totals: 0 ok"), "{c}");
         let d = describe_table(&n, &n.tables[0]);
-        assert!(d.contains("total rows that stay in T1 (exclude before summing): 'Insgesamt'@3"), "{d}");
+        assert!(
+            d.contains("total rows that stay in T1 (exclude before summing): 'Insgesamt'@3"),
+            "{d}"
+        );
     }
 
     #[test]
@@ -3034,7 +4194,10 @@ mod tests {
         let c = catalog(&book(400, 40, false), "x.xlsx", MAX_CHARS);
         assert!(c.len() <= MAX_CHARS, "{}", c.len());
         let last = c.lines().last().unwrap();
-        assert!(last.starts_with("… cut: ") && last.contains("more tables") && last.contains("ask for"), "{last}");
+        assert!(
+            last.starts_with("… cut: ") && last.contains("more tables") && last.contains("ask for"),
+            "{last}"
+        );
         assert!(c.contains("SQL views T1..T400"));
         // A smaller budget is honoured too.
         assert!(catalog(&book(400, 40, false), "x.xlsx", 3000).len() <= 3000);
@@ -3045,13 +4208,19 @@ mod tests {
         let n = book(1, 70, false);
         let d = describe_table(&n, &n.tables[0]);
         assert!(d.len() <= MAX_CHARS);
-        assert!(d.contains("total rows (only in T1_all, _row_type, unless marked): total 'Total'@6"), "{d}");
+        assert!(
+            d.contains("total rows (only in T1_all, _row_type, unless marked): total 'Total'@6"),
+            "{d}"
+        );
         assert!(d.contains("… 12 more columns: "), "{d}");
         assert!(d.contains("first 4 rows (first 12 columns):"), "{d}");
         assert!(find_table(&n, "t1").is_ok() && find_table(&n, "T1_all").is_ok());
         assert!(find_table(&n, "T7").unwrap_err().contains("tables are T1"));
         assert!(totals(&n, None, Some("weird")).is_err());
-        assert_eq!(totals(&n, None, None).unwrap(), "TOTALS: 0 ok, 0 mismatch, 0 unknown\nno totals found");
+        assert_eq!(
+            totals(&n, None, None).unwrap(),
+            "TOTALS: 0 ok, 0 mismatch, 0 unknown\nno totals found"
+        );
     }
 
     #[test]
@@ -3061,8 +4230,22 @@ mod tests {
         // says otherwise).
         let mut n = book(1, 3, true);
         let t = &mut n.tables[0];
-        let labels = ["a", "Subtotal Fixed", "b", "Subtotal Variable", "Total O&M", "Total Expenses"];
-        let types = [RowType::Data, RowType::Subtotal, RowType::Data, RowType::Subtotal, RowType::Total, RowType::Total];
+        let labels = [
+            "a",
+            "Subtotal Fixed",
+            "b",
+            "Subtotal Variable",
+            "Total O&M",
+            "Total Expenses",
+        ];
+        let types = [
+            RowType::Data,
+            RowType::Subtotal,
+            RowType::Data,
+            RowType::Subtotal,
+            RowType::Total,
+            RowType::Total,
+        ];
         for c in &mut t.columns {
             let v = c.values[0].clone();
             c.values = vec![v; 6];
@@ -3070,12 +4253,14 @@ mod tests {
         t.columns[0].values = labels.iter().map(|s| Out::Text(s.to_string())).collect();
         t.src_rows = (1..=6).collect();
         t.row_types = types.to_vec();
-        let item = |row: u32, label: &str, level: &'static str, sources: &[&str]| hh_core::normalize::TotalItem {
-            level,
-            status: "ok",
-            kept_in_data: false,
-            sources: sources.iter().map(|s| s.to_string()).collect(),
-            ..total_item(1, row, label)
+        let item = |row: u32, label: &str, level: &'static str, sources: &[&str]| {
+            hh_core::normalize::TotalItem {
+                level,
+                status: "ok",
+                kept_in_data: false,
+                sources: sources.iter().map(|s| s.to_string()).collect(),
+                ..total_item(1, row, label)
+            }
         };
         n.totals = vec![
             item(2, "Subtotal Fixed", "subtotal", &["B2:B2"]),
@@ -3098,19 +4283,38 @@ mod tests {
         // B82: SQL stores booleans as INTEGER 1 / 0; the catalog says so and shows 1, not "TRUE".
         let mut n = book(1, 1, true);
         let t = &mut n.tables[0];
-        t.columns.insert(1, col("Returned", ColRole::Data, Dtype::Bool, (0..5).map(|i| Out::Bool(i % 2 == 0)).collect()));
+        t.columns.insert(
+            1,
+            col(
+                "Returned",
+                ColRole::Data,
+                Dtype::Bool,
+                (0..5).map(|i| Out::Bool(i % 2 == 0)).collect(),
+            ),
+        );
         let c = catalog(&n, "x.xlsx", MAX_CHARS);
-        assert!(c.contains("Returned[bool 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')]"), "{c}");
+        assert!(
+            c.contains(
+                "Returned[bool 1/0 in SQL (TRUE/yes = 1, FALSE/no = 0; filter = 1, not 'TRUE')]"
+            ),
+            "{c}"
+        );
         assert!(c.contains("\n    r0,1,0.25,data\n"), "{c}");
         assert!(!c.contains("TRUE\""), "{c}");
         let d = describe_table(&n, &n.tables[0]);
-        assert!(d.contains("  Returned | bool · dim |  | 0 | 2 | 1/0 in SQL"), "{d}");
+        assert!(
+            d.contains("  Returned | bool · dim |  | 0 | 2 | 1/0 in SQL"),
+            "{d}"
+        );
     }
 
     #[test]
     fn sql_names_are_unique_without_case() {
         let mut n = book(1, 1, true);
         n.tables[0].columns[1].name = "region".into();
-        assert_eq!(sql_names(&n.tables[0]), ["Region", "region (2)", "_src_row"]);
+        assert_eq!(
+            sql_names(&n.tables[0]),
+            ["Region", "region (2)", "_src_row"]
+        );
     }
 }

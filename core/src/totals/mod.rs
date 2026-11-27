@@ -17,14 +17,14 @@ pub mod verify;
 
 pub use deps::DependencyIndex;
 pub use detect::{
-    detect, detect_rows, detect_with, detection, incidental_rows, keyword_rows, labelled_rows, model_records, Detection,
-    Direction,
-    Evidence, IncidentalRows, NonSumCheck, NonSumRow, TotalCandidate, TotalLevel, TotalOrigin,
+    Detection, Direction, Evidence, IncidentalRows, NonSumCheck, NonSumRow, TotalCandidate,
+    TotalLevel, TotalOrigin, detect, detect_rows, detect_with, detection, incidental_rows,
+    keyword_rows, labelled_rows, model_records,
 };
 pub use features::compute;
-pub use formula::{parse, FormulaKind, ParsedFormula, Ref, RefKind};
+pub use formula::{FormulaKind, ParsedFormula, Ref, RefKind, parse};
 pub use keywords::{
-    ambiguous_keyword, incidental_keyword, nonsum_keyword, total_keyword, total_keyword_base, KeywordLevel, NonSumKind,
-    NonSumLabel,
+    KeywordLevel, NonSumKind, NonSumLabel, ambiguous_keyword, incidental_keyword, nonsum_keyword,
+    total_keyword, total_keyword_base,
 };
-pub use verify::{numeric_text, verify, CheckReason, TotalCheck};
+pub use verify::{CheckReason, TotalCheck, numeric_text, verify};

@@ -25,7 +25,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, Cursor, Read};
 use std::path::Path;
 
-use super::{err, Error};
+use super::{Error, err};
 use crate::model::{Cell, Sheet, Value, Workbook};
 
 /// Bytes read up front for the encoding check and the delimiter sniff.
@@ -45,15 +45,28 @@ enum Encoding {
 /// `max_cells`: reading stops with a limit error past this many cells (checked while reading,
 /// so a huge file is refused before it fills memory).
 pub(super) fn open(path: &Path, max_cells: u64) -> Result<Workbook, Error> {
-    let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let tsv = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tsv"));
+    let name = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let tsv = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("tsv"));
     let mut head = Vec::new();
-    File::open(path).map_err(err)?.take(HEAD as u64).read_to_end(&mut head).map_err(err)?;
+    File::open(path)
+        .map_err(err)?
+        .take(HEAD as u64)
+        .read_to_end(&mut head)
+        .map_err(err)?;
     let cells = if utf16_bom(&head).is_some() {
         // Rare (Excel's "Unicode text"); decoded in memory as a whole.
         read_bytes(&std::fs::read(path).map_err(err)?, tsv, max_cells)?
     } else {
-        let bom = if head.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
+        let bom = if head.starts_with(b"\xEF\xBB\xBF") {
+            3
+        } else {
+            0
+        };
         let open = || -> io::Result<BufReader<File>> {
             let mut r = BufReader::with_capacity(HEAD, File::open(path)?);
             let skip = bom.min(r.fill_buf()?.len());
@@ -68,33 +81,75 @@ pub(super) fn open(path: &Path, max_cells: u64) -> Result<Workbook, Error> {
 /// [`open`] on bytes in memory; `name` (a file name or object key) gives the sheet name and
 /// `.tsv`, as a path does. The same steps as for a file: the first [`HEAD`] bytes decide the
 /// encoding and the delimiter.
-pub(super) fn open_bytes(bytes: &[u8], name: Option<&Path>, max_cells: u64) -> Result<Workbook, Error> {
-    let stem = name.and_then(Path::file_stem).map(|s| s.to_string_lossy().into_owned());
-    let tsv = name.and_then(Path::extension).is_some_and(|e| e.eq_ignore_ascii_case("tsv"));
+pub(super) fn open_bytes(
+    bytes: &[u8],
+    name: Option<&Path>,
+    max_cells: u64,
+) -> Result<Workbook, Error> {
+    let stem = name
+        .and_then(Path::file_stem)
+        .map(|s| s.to_string_lossy().into_owned());
+    let tsv = name
+        .and_then(Path::extension)
+        .is_some_and(|e| e.eq_ignore_ascii_case("tsv"));
     let head = &bytes[..bytes.len().min(HEAD)];
     let cells = if utf16_bom(head).is_some() {
         read_bytes(bytes, tsv, max_cells)?
     } else {
-        let bom = if head.starts_with(b"\xEF\xBB\xBF") { 3 } else { 0 };
-        read_cells(|| Ok(Cursor::new(&bytes[bom..])), &head[bom..], tsv, max_cells)?
+        let bom = if head.starts_with(b"\xEF\xBB\xBF") {
+            3
+        } else {
+            0
+        };
+        read_cells(
+            || Ok(Cursor::new(&bytes[bom..])),
+            &head[bom..],
+            tsv,
+            max_cells,
+        )?
     };
     Ok(one_sheet(stem.unwrap_or_else(|| "Sheet1".into()), cells))
 }
 
 fn one_sheet(name: String, cells: Vec<Cell>) -> Workbook {
-    Workbook { sheets: vec![Sheet { name, cells, merges: Vec::new(), formats: Vec::new() }] }
+    Workbook {
+        sheets: vec![Sheet {
+            name,
+            cells,
+            merges: Vec::new(),
+            formats: Vec::new(),
+        }],
+    }
 }
 
 /// [`open`] on bytes in memory, without the sheet around the cells.
 fn read_bytes(bytes: &[u8], tsv: bool, max_cells: u64) -> Result<Vec<Cell>, Error> {
     if let Some(le) = utf16_bom(bytes) {
-        let unit = |c: &[u8]| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) };
+        let unit = |c: &[u8]| {
+            if le {
+                u16::from_le_bytes([c[0], c[1]])
+            } else {
+                u16::from_be_bytes([c[0], c[1]])
+            }
+        };
         let units = bytes[2..].chunks_exact(2).map(unit);
-        let text: String = char::decode_utf16(units).map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER)).collect();
-        return read_cells(|| Ok(Cursor::new(text.as_bytes())), &text.as_bytes()[..text.len().min(HEAD)], tsv, max_cells);
+        let text: String = char::decode_utf16(units)
+            .map(|c| c.unwrap_or(char::REPLACEMENT_CHARACTER))
+            .collect();
+        return read_cells(
+            || Ok(Cursor::new(text.as_bytes())),
+            &text.as_bytes()[..text.len().min(HEAD)],
+            tsv,
+            max_cells,
+        );
     }
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    read_cells(|| Ok(Cursor::new(bytes)), &bytes[..bytes.len().min(HEAD)], tsv, max_cells)
+    read_cells(
+        || Ok(Cursor::new(bytes)),
+        &bytes[..bytes.len().min(HEAD)],
+        tsv,
+        max_cells,
+    )
 }
 
 /// `Some(little endian)` for a UTF-16 byte order mark.
@@ -108,9 +163,16 @@ fn utf16_bom(b: &[u8]) -> Option<bool> {
 
 /// Cells of the whole input. `open` gives a fresh reader positioned after any BOM (called twice
 /// when the input turns out not to be UTF-8); `head` is its first bytes.
-fn read_cells<R: BufRead>(mut open: impl FnMut() -> io::Result<R>, head: &[u8], tsv: bool, max_cells: u64) -> Result<Vec<Cell>, Error> {
+fn read_cells<R: BufRead>(
+    mut open: impl FnMut() -> io::Result<R>,
+    head: &[u8],
+    tsv: bool,
+    max_cells: u64,
+) -> Result<Vec<Cell>, Error> {
     if head.contains(&0) {
-        return Err(Error("not a spreadsheet or delimited text file (binary content)".into()));
+        return Err(Error(
+            "not a spreadsheet or delimited text file (binary content)".into(),
+        ));
     }
     let delim = if tsv { b'\t' } else { sniff_delimiter(head) };
     match collect(open().map_err(err)?, delim, Encoding::Utf8, max_cells)? {
@@ -123,7 +185,12 @@ fn read_cells<R: BufRead>(mut open: impl FnMut() -> io::Result<R>, head: &[u8], 
 }
 
 /// `None` when reading as UTF-8 and a field is not valid UTF-8.
-fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding, max_cells: u64) -> Result<Option<Vec<Cell>>, Error> {
+fn collect<R: BufRead>(
+    r: R,
+    delim: u8,
+    enc: Encoding,
+    max_cells: u64,
+) -> Result<Option<Vec<Cell>>, Error> {
     let mut parser = Parser::new(r, delim);
     let mut rec = Record::default();
     let mut cells = Vec::new();
@@ -140,7 +207,12 @@ fn collect<R: BufRead>(r: R, delim: u8, enc: Encoding, max_cells: u64) -> Result
                 Encoding::Windows1252 => typed(bytes.iter().map(|&b| windows_1252(b)).collect()),
             };
             if let Some(value) = value {
-                cells.push(Cell { row, col: col as u32, value: Some(value), formula: None });
+                cells.push(Cell {
+                    row,
+                    col: col as u32,
+                    value: Some(value),
+                    formula: None,
+                });
             }
         }
         if cells.len() as u64 > max_cells {
@@ -219,7 +291,13 @@ fn plain_number(s: &str) -> Option<f64> {
         return None;
     }
     let mantissa = &t[int_start..int_start + int_len + usize::from(frac_len > 0) + frac_len];
-    if mantissa.bytes().filter(u8::is_ascii_digit).skip_while(|&d| d == b'0').count() > 15 {
+    if mantissa
+        .bytes()
+        .filter(u8::is_ascii_digit)
+        .skip_while(|&d| d == b'0')
+        .count()
+        > 15
+    {
         return None;
     }
     t.parse::<f64>().ok().filter(|x| x.is_finite())
@@ -246,7 +324,12 @@ fn sniff_delimiter(head: &[u8]) -> u8 {
         }
         // Quotes out of place: quoted fields split by the wrong delimiter (`"Payroll staff;⏎AO/AA;⏎
         // Headcount"` read with `;`, B53).
-        let consistent = counts.values().copied().max().unwrap_or(0).saturating_sub(2 * parser.stray);
+        let consistent = counts
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .saturating_sub(2 * parser.stray);
         if consistent > best.1 {
             best = (delim, consistent);
         }
@@ -298,7 +381,12 @@ enum State {
 
 impl<R: BufRead> Parser<R> {
     fn new(r: R, delim: u8) -> Self {
-        Parser { r, delim, skip_lf: false, stray: 0 }
+        Parser {
+            r,
+            delim,
+            skip_lf: false,
+            stray: 0,
+        }
     }
 
     /// Reads the next record into `rec`. `false` at the end of the input.
@@ -340,7 +428,10 @@ impl<R: BufRead> Parser<R> {
                         continue;
                     }
                     State::FieldStart | State::Unquoted => {
-                        let run = chunk[i..].iter().position(|&b| b == self.delim || b == b'\n' || b == b'\r' || b == b'"').unwrap_or(chunk.len() - i);
+                        let run = chunk[i..]
+                            .iter()
+                            .position(|&b| b == self.delim || b == b'\n' || b == b'\r' || b == b'"')
+                            .unwrap_or(chunk.len() - i);
                         if run > 0 {
                             rec.buf.extend_from_slice(&chunk[i..i + run]);
                             state = State::Unquoted;
@@ -358,7 +449,9 @@ impl<R: BufRead> Parser<R> {
                         state = State::Quoted;
                         continue;
                     }
-                    State::QuoteInQuoted if b != self.delim && b != b'\n' && b != b'\r' => self.stray += 1,
+                    State::QuoteInQuoted if b != self.delim && b != b'\n' && b != b'\r' => {
+                        self.stray += 1
+                    }
                     _ => {}
                 }
                 if b == self.delim {
@@ -392,9 +485,11 @@ fn windows_1250(b: u8) -> char {
     const HIGH: [char; 128] = [
         '€', '\u{81}', '\u{201A}', '\u{83}', '\u{201E}', '…', '†', '‡', //
         '\u{88}', '‰', 'Š', '\u{2039}', 'Ś', 'Ť', 'Ž', 'Ź', //
-        '\u{90}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '•', '\u{2013}', '\u{2014}', //
+        '\u{90}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '•', '\u{2013}',
+        '\u{2014}', //
         '\u{98}', '™', 'š', '\u{203A}', 'ś', 'ť', 'ž', 'ź', //
-        '\u{A0}', 'ˇ', '˘', 'Ł', '¤', 'Ą', '¦', '§', '¨', '©', 'Ş', '«', '¬', '\u{AD}', '®', 'Ż', //
+        '\u{A0}', 'ˇ', '˘', 'Ł', '¤', 'Ą', '¦', '§', '¨', '©', 'Ş', '«', '¬', '\u{AD}', '®',
+        'Ż', //
         '°', '±', '˛', 'ł', '´', 'µ', '¶', '·', '¸', 'ą', 'ş', '»', 'Ľ', '˝', 'ľ', 'ż', //
         'Ŕ', 'Á', 'Â', 'Ă', 'Ä', 'Ĺ', 'Ć', 'Ç', 'Č', 'É', 'Ę', 'Ë', 'Ě', 'Í', 'Î', 'Ď', //
         'Đ', 'Ń', 'Ň', 'Ó', 'Ô', 'Ő', 'Ö', '×', 'Ř', 'Ů', 'Ú', 'Ű', 'Ü', 'Ý', 'Ţ', 'ß', //
@@ -448,7 +543,11 @@ fn single_byte_encoding<R: BufRead>(mut r: R) -> io::Result<Encoding> {
     step(prev, cur, b' ');
     // Mostly runs of high bytes: a multi-byte encoding (Shift-JIS, …), not Latin letters.
     let latin = alone * 2 >= high;
-    Ok(if latin && score > 0 { Encoding::Windows1250 } else { Encoding::Windows1252 })
+    Ok(if latin && score > 0 {
+        Encoding::Windows1250
+    } else {
+        Encoding::Windows1252
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -464,12 +563,13 @@ enum Sound {
 /// The sound of a byte as a letter, where Windows-1250 and Windows-1252 agree on it.
 fn sound(b: u8) -> Sound {
     match b {
-        b'a' | b'e' | b'i' | b'o' | b'u' | b'y' | b'A' | b'E' | b'I' | b'O' | b'U' | b'Y' => Sound::Vowel,
+        b'a' | b'e' | b'i' | b'o' | b'u' | b'y' | b'A' | b'E' | b'I' | b'O' | b'U' | b'Y' => {
+            Sound::Vowel
+        }
         _ if b.is_ascii_alphabetic() => Sound::Consonant,
         0x8A | 0x8E | 0x9A | 0x9E | 0xDF => Sound::Consonant, // Š Ž š ž ß
-        0x8C | 0x8D | 0x8F | 0x9C | 0x9D | 0x9F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xB3 | 0xB9 | 0xBA | 0xBC | 0xBE | 0xBF | 0xFF => {
-            Sound::Either
-        }
+        0x8C | 0x8D | 0x8F | 0x9C | 0x9D | 0x9F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xB3 | 0xB9
+        | 0xBA | 0xBC | 0xBE | 0xBF | 0xFF => Sound::Either,
         0xD7 | 0xF7 => Sound::Gap, // × ÷
         0xC0..=0xFE => match b & !0x20 {
             0xC0 | 0xC5 | 0xC6 | 0xC8 | 0xCF | 0xD2 | 0xD8 => Sound::Either,
@@ -488,7 +588,8 @@ fn vote_1250(prev: u8, b: u8, next: u8) -> i64 {
     let upper = matches!(b, 0x8C | 0x8D | 0x8F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xBC);
     match b {
         // Consonant in 1250, vowel in 1252.
-        0xC0 | 0xC5 | 0xC6 | 0xC8 | 0xCF | 0xD2 | 0xD8 | 0xE0 | 0xE5 | 0xE6 | 0xE8 | 0xEF | 0xF2 | 0xF8 => match (p, n) {
+        0xC0 | 0xC5 | 0xC6 | 0xC8 | 0xCF | 0xD2 | 0xD8 | 0xE0 | 0xE5 | 0xE6 | 0xE8 | 0xEF
+        | 0xF2 | 0xF8 => match (p, n) {
             (Gap, Gap) | (Consonant, Consonant | Gap) | (Gap, Consonant) => -1,
             (Vowel | Gap, Vowel | Gap) => 1,
             _ => 0,
@@ -496,8 +597,11 @@ fn vote_1250(prev: u8, b: u8, next: u8) -> i64 {
         // đ/Đ: ð is Icelandic only.
         0xD0 | 0xF0 if letter(p) || letter(n) => 1,
         // A letter in 1250 (Ś Ť Ź ś ť ź Ł Ą Ş Ż ł ą ş Ľ ľ ż), a symbol or a rare letter in 1252.
-        0x8C | 0x8D | 0x8F | 0x9C | 0x9D | 0x9F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xB3 | 0xB9 | 0xBA | 0xBC | 0xBE | 0xBF
-            if letter(p) && letter(n) && (upper || prev.is_ascii_lowercase() || next.is_ascii_lowercase()) =>
+        0x8C | 0x8D | 0x8F | 0x9C | 0x9D | 0x9F | 0xA3 | 0xA5 | 0xAA | 0xAF | 0xB3 | 0xB9
+        | 0xBA | 0xBC | 0xBE | 0xBF
+            if letter(p)
+                && letter(n)
+                && (upper || prev.is_ascii_lowercase() || next.is_ascii_lowercase()) =>
         {
             2
         }
@@ -511,7 +615,8 @@ fn windows_1252(b: u8) -> char {
     const C1: [char; 32] = [
         '€', '\u{81}', '\u{201A}', 'ƒ', '\u{201E}', '…', '†', '‡', //
         '\u{2C6}', '‰', 'Š', '\u{2039}', 'Œ', '\u{8D}', 'Ž', '\u{8F}', //
-        '\u{90}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '•', '\u{2013}', '\u{2014}', //
+        '\u{90}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}', '•', '\u{2013}',
+        '\u{2014}', //
         '\u{2DC}', '™', 'š', '\u{203A}', 'œ', '\u{9D}', 'ž', 'Ÿ',
     ];
     match b {
@@ -525,66 +630,68 @@ mod tests {
     use super::*;
 
     /// The parser before B136 (one byte at a time), the reference for the run-copying one.
-        fn next_record_reference<R: BufRead>(p: &mut Parser<R>, rec: &mut Record) -> io::Result<bool> {
-            rec.buf.clear();
-            rec.ends.clear();
-            let mut state = State::FieldStart;
-            let mut started = false;
-            loop {
-                let chunk = p.r.fill_buf()?;
-                if chunk.is_empty() {
-                    if started {
-                        rec.ends.push(rec.buf.len());
-                    }
-                    return Ok(started);
+    fn next_record_reference<R: BufRead>(p: &mut Parser<R>, rec: &mut Record) -> io::Result<bool> {
+        rec.buf.clear();
+        rec.ends.clear();
+        let mut state = State::FieldStart;
+        let mut started = false;
+        loop {
+            let chunk = p.r.fill_buf()?;
+            if chunk.is_empty() {
+                if started {
+                    rec.ends.push(rec.buf.len());
                 }
-                if std::mem::take(&mut p.skip_lf) && chunk[0] == b'\n' {
-                    p.r.consume(1);
-                    continue;
-                }
-                started = true;
-                let mut end = None;
-                for (i, &b) in chunk.iter().enumerate() {
-                    match state {
-                        State::Quoted => {
-                            if b == b'"' {
-                                state = State::QuoteInQuoted;
-                            } else {
-                                rec.buf.push(b);
-                            }
-                            continue;
+                return Ok(started);
+            }
+            if std::mem::take(&mut p.skip_lf) && chunk[0] == b'\n' {
+                p.r.consume(1);
+                continue;
+            }
+            started = true;
+            let mut end = None;
+            for (i, &b) in chunk.iter().enumerate() {
+                match state {
+                    State::Quoted => {
+                        if b == b'"' {
+                            state = State::QuoteInQuoted;
+                        } else {
+                            rec.buf.push(b);
                         }
-                        State::QuoteInQuoted if b == b'"' => {
-                            rec.buf.push(b'"');
-                            state = State::Quoted;
-                            continue;
-                        }
-                        State::QuoteInQuoted if b != p.delim && b != b'\n' && b != b'\r' => p.stray += 1,
-                        _ => {}
+                        continue;
                     }
-                    if b == p.delim {
-                        rec.ends.push(rec.buf.len());
-                        state = State::FieldStart;
-                    } else if b == b'\n' || b == b'\r' {
-                        rec.ends.push(rec.buf.len());
-                        p.skip_lf = b == b'\r';
-                        end = Some(i + 1);
-                        break;
-                    } else if b == b'"' && state == State::FieldStart {
+                    State::QuoteInQuoted if b == b'"' => {
+                        rec.buf.push(b'"');
                         state = State::Quoted;
-                    } else {
-                        p.stray += usize::from(b == b'"');
-                        rec.buf.push(b);
-                        state = State::Unquoted;
+                        continue;
                     }
+                    State::QuoteInQuoted if b != p.delim && b != b'\n' && b != b'\r' => {
+                        p.stray += 1
+                    }
+                    _ => {}
                 }
-                let used = end.unwrap_or(chunk.len());
-                p.r.consume(used);
-                if end.is_some() {
-                    return Ok(true);
+                if b == p.delim {
+                    rec.ends.push(rec.buf.len());
+                    state = State::FieldStart;
+                } else if b == b'\n' || b == b'\r' {
+                    rec.ends.push(rec.buf.len());
+                    p.skip_lf = b == b'\r';
+                    end = Some(i + 1);
+                    break;
+                } else if b == b'"' && state == State::FieldStart {
+                    state = State::Quoted;
+                } else {
+                    p.stray += usize::from(b == b'"');
+                    rec.buf.push(b);
+                    state = State::Unquoted;
                 }
             }
+            let used = end.unwrap_or(chunk.len());
+            p.r.consume(used);
+            if end.is_some() {
+                return Ok(true);
+            }
         }
+    }
 
     /// Same records, field ends and stray-quote counts as the byte-at-a-time parser, on random
     /// inputs over the special bytes, read through tiny buffers so that runs cross chunk ends.
@@ -600,17 +707,29 @@ mod tests {
         };
         for case in 0..4000 {
             let len = (next() % 80) as usize;
-            let input: Vec<u8> = (0..len).map(|_| alphabet[(next() % alphabet.len() as u64) as usize]).collect();
+            let input: Vec<u8> = (0..len)
+                .map(|_| alphabet[(next() % alphabet.len() as u64) as usize])
+                .collect();
             let cap = 1 + (next() % 9) as usize;
             for delim in [b',', b';', b'\t', b'|'] {
-                let mut a = Parser::new(std::io::BufReader::with_capacity(cap, input.as_slice()), delim);
-                let mut b = Parser::new(std::io::BufReader::with_capacity(cap, input.as_slice()), delim);
+                let mut a = Parser::new(
+                    std::io::BufReader::with_capacity(cap, input.as_slice()),
+                    delim,
+                );
+                let mut b = Parser::new(
+                    std::io::BufReader::with_capacity(cap, input.as_slice()),
+                    delim,
+                );
                 let (mut ra, mut rb) = (Record::default(), Record::default());
                 loop {
                     let ga = a.next_record(&mut ra).unwrap();
                     let gb = next_record_reference(&mut b, &mut rb).unwrap();
                     assert_eq!(ga, gb, "case {case}");
-                    assert_eq!((&ra.buf, &ra.ends, a.stray, a.skip_lf), (&rb.buf, &rb.ends, b.stray, b.skip_lf), "case {case}: {input:?}");
+                    assert_eq!(
+                        (&ra.buf, &ra.ends, a.stray, a.skip_lf),
+                        (&rb.buf, &rb.ends, b.stray, b.skip_lf),
+                        "case {case}: {input:?}"
+                    );
                     if !ga {
                         break;
                     }
@@ -644,15 +763,24 @@ mod tests {
     #[test]
     fn sniffs_the_delimiter() {
         assert_eq!(sniff_delimiter(b"a,b,c\n1,2,3\n4,5,6\n"), b',');
-        assert_eq!(sniff_delimiter(b"Name;Amount\nBeograd;1.234,56\nNis;2.000,00\n"), b';');
+        assert_eq!(
+            sniff_delimiter(b"Name;Amount\nBeograd;1.234,56\nNis;2.000,00\n"),
+            b';'
+        );
         assert_eq!(sniff_delimiter(b"a\tb, c\n1\t2,5\n"), b'\t');
         assert_eq!(sniff_delimiter(b"a|b|c\n1|2|3\n"), b'|');
         // Commas inside quotes do not count; the semicolons split every line evenly.
-        assert_eq!(sniff_delimiter(b"\"Smith, J\";\"x,y,z\"\n\"Doe, A\";\"p\"\n"), b';');
+        assert_eq!(
+            sniff_delimiter(b"\"Smith, J\";\"x,y,z\"\n\"Doe, A\";\"p\"\n"),
+            b';'
+        );
         // Commas outside quotes, semicolons only inside them.
         assert_eq!(sniff_delimiter(b"\"a;b\",1\n\"c;d;e\",2\n\"f\",3\n"), b',');
         // A title line with no delimiter does not change the vote.
-        assert_eq!(sniff_delimiter(b"Report 2024\n\nx;y;z\n1;2;3\n4;5;6\n"), b';');
+        assert_eq!(
+            sniff_delimiter(b"Report 2024\n\nx;y;z\n1;2;3\n4;5;6\n"),
+            b';'
+        );
         // Quoted headers with `;` and line breaks inside, one record (B53).
         assert_eq!(
             sniff_delimiter(b"Year,\"Payroll staff;\nAO/AA;\nHeadcount\",\"Payroll staff;\nEO;\nHeadcount\"\n2026,12,159\n"),
@@ -675,17 +803,29 @@ mod tests {
 
     #[test]
     fn quotes_escapes_and_embedded_newlines() {
-        let cells = read(b"name,note\r\n\"Smith, J\",\"say \"\"hi\"\"\"\r\n\"multi\r\nline\",x\r\n");
+        let cells =
+            read(b"name,note\r\n\"Smith, J\",\"say \"\"hi\"\"\"\r\n\"multi\r\nline\",x\r\n");
         assert_eq!(
             rows(&cells),
-            [vec![t("name"), t("note")], vec![t("Smith, J"), t("say \"hi\"")], vec![t("multi\r\nline"), t("x")]]
+            [
+                vec![t("name"), t("note")],
+                vec![t("Smith, J"), t("say \"hi\"")],
+                vec![t("multi\r\nline"), t("x")]
+            ]
         );
         // A quote inside an unquoted field is literal; text after a closing quote is kept.
         let cells = read(b"a\"b,\"c\"d,e\n");
         assert_eq!(rows(&cells), [[t("a\"b"), t("cd"), t("e")]]);
         // Lone CR line ends; an unclosed quote runs to the end.
         let cells = read(b"a,b\r1,2\r\"open,3\n4");
-        assert_eq!(rows(&cells), [vec![t("a"), t("b")], vec![n(1.0), n(2.0)], vec![t("open,3\n4"), None]]);
+        assert_eq!(
+            rows(&cells),
+            [
+                vec![t("a"), t("b")],
+                vec![n(1.0), n(2.0)],
+                vec![t("open,3\n4"), None]
+            ]
+        );
     }
 
     #[test]
@@ -702,7 +842,19 @@ mod tests {
             ]
         );
         let positions: Vec<(u32, u32)> = cells.iter().map(|c| (c.row, c.col)).collect();
-        assert_eq!(positions, [(0, 0), (0, 1), (0, 2), (2, 0), (2, 2), (2, 3), (3, 0), (4, 2)]);
+        assert_eq!(
+            positions,
+            [
+                (0, 0),
+                (0, 1),
+                (0, 2),
+                (2, 0),
+                (2, 2),
+                (2, 3),
+                (3, 0),
+                (4, 2)
+            ]
+        );
         assert!(read(b"").is_empty());
     }
 
@@ -714,7 +866,11 @@ mod tests {
         let cells = read(b"Caf\xe9;Prix\nCr\xe8me br\xfbl\xe9e;3,50 \x80\n\x93quoted\x94;1\n");
         assert_eq!(
             rows(&cells),
-            [[t("Café"), t("Prix")], [t("Crème brûlée"), t("3,50 €")], [t("\u{201C}quoted\u{201D}"), n(1.0)]]
+            [
+                [t("Café"), t("Prix")],
+                [t("Crème brûlée"), t("3,50 €")],
+                [t("\u{201C}quoted\u{201D}"), n(1.0)]
+            ]
         );
         let le = "a\tb\n1\t€\n".encode_utf16().flat_map(u16::to_le_bytes);
         let utf16: Vec<u8> = [0xFF, 0xFE].into_iter().chain(le).collect();
@@ -737,7 +893,14 @@ mod tests {
         );
         // Polish and Czech letters that are symbols in Windows-1252.
         let cells = read(b"Miasto;Kwota\nWa\xb3brzych;1\nm\xb9ka \xbfona;2\nP\xf8\xedbram;3\n");
-        assert_eq!(rows(&cells)[1..], [[t("Wałbrzych"), n(1.0)], [t("mąka żona"), n(2.0)], [t("Příbram"), n(3.0)]]);
+        assert_eq!(
+            rows(&cells)[1..],
+            [
+                [t("Wałbrzych"), n(1.0)],
+                [t("mąka żona"), n(2.0)],
+                [t("Příbram"), n(3.0)]
+            ]
+        );
         // Western files stay Windows-1252: French, German, Spanish, Italian, Danish.
         let cells = read(b"Nom;Prix\nCr\xe8me br\xfbl\xe9e;1\nTr\xe8s \xe0 la mode;2\nGr\xf6\xdfe;3\nNi\xf1o a\xf1o;4\ncaff\xe8;5\nK\xf8benhavn S\xf8ren;6\n");
         assert_eq!(
@@ -753,10 +916,20 @@ mod tests {
         );
         // Units and prices keep their 1252 symbols.
         let cells = read(b"Fl\xe4che;Preis\n12 m\xb2;\xa35\n1 m\xb3;\xbd\nLAING O\xbfROURKE;1\n");
-        assert_eq!(rows(&cells)[1..], [[t("12 m²"), t("£5")], [t("1 m³"), t("½")], [t("LAING O¿ROURKE"), n(1.0)]]);
+        assert_eq!(
+            rows(&cells)[1..],
+            [
+                [t("12 m²"), t("£5")],
+                [t("1 m³"), t("½")],
+                [t("LAING O¿ROURKE"), n(1.0)]
+            ]
+        );
         // Shift-JIS (runs of high bytes) is not a Latin code page: left as Windows-1252.
         let sjis = b"\x93\xc1\x92\xe8\x94\xed\x8d\xd0\x92\x6e\x95\xfb;1\n";
-        assert_eq!(single_byte_encoding(&sjis[..]).unwrap(), Encoding::Windows1252);
+        assert_eq!(
+            single_byte_encoding(&sjis[..]).unwrap(),
+            Encoding::Windows1252
+        );
     }
 
     #[test]
@@ -778,14 +951,43 @@ mod tests {
             assert_eq!(plain_number(s), Some(x), "{s}");
         }
         for s in [
-            "007", "-01", "00.5", "1.200,50", "1,200.50", "1,5", "1.200", "-12.500", "1 200", ".5", "5.", "1e", "1e+",
-            "12%", "$5", "1-2", "2024-01-31", "31.12.2024", "inf", "NaN", "1.2.3", "--1", "+", "", "1234567890123456",
+            "007",
+            "-01",
+            "00.5",
+            "1.200,50",
+            "1,200.50",
+            "1,5",
+            "1.200",
+            "-12.500",
+            "1 200",
+            ".5",
+            "5.",
+            "1e",
+            "1e+",
+            "12%",
+            "$5",
+            "1-2",
+            "2024-01-31",
+            "31.12.2024",
+            "inf",
+            "NaN",
+            "1.2.3",
+            "--1",
+            "+",
+            "",
+            "1234567890123456",
             "0.1234567890123456",
         ] {
             assert_eq!(plain_number(s), None, "{s}");
         }
-        assert_eq!(rows(&read(b"007,1.200,50,-3.5e2\n")), [[t("007"), t("1.200"), n(50.0), n(-350.0)]]);
-        assert_eq!(rows(&read(b"007;1.200,50;-3.5e2\n")), [[t("007"), t("1.200,50"), n(-350.0)]]);
+        assert_eq!(
+            rows(&read(b"007,1.200,50,-3.5e2\n")),
+            [[t("007"), t("1.200"), n(50.0), n(-350.0)]]
+        );
+        assert_eq!(
+            rows(&read(b"007;1.200,50;-3.5e2\n")),
+            [[t("007"), t("1.200,50"), n(-350.0)]]
+        );
     }
 
     #[test]
@@ -796,7 +998,11 @@ mod tests {
         let mut rec = Record::default();
         let mut got = Vec::new();
         while p.next_record(&mut rec).unwrap() {
-            got.push(rec.fields().map(|f| String::from_utf8(f.to_vec()).unwrap()).collect::<Vec<_>>());
+            got.push(
+                rec.fields()
+                    .map(|f| String::from_utf8(f.to_vec()).unwrap())
+                    .collect::<Vec<_>>(),
+            );
         }
         assert_eq!(got, [vec!["a", "b\"c"], vec!["x\ny", "2"], vec!["3", "4"]]);
     }

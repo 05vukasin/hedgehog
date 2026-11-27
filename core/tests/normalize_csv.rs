@@ -3,8 +3,8 @@
 
 use std::path::PathBuf;
 
-use hh_core::normalize::{normalize_file, Options};
-use hh_core::{open, Sheet, Value, Workbook};
+use hh_core::normalize::{Options, normalize_file};
+use hh_core::{Sheet, Value, Workbook, open};
 
 fn tmp_dir(name: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("hh_norm_csv_{}_{name}", std::process::id()));
@@ -26,7 +26,10 @@ Izvor: interna evidencija, iznosi u RSD;;;\r
 ";
 
 fn sheet<'a>(wb: &'a Workbook, name: &str) -> &'a Sheet {
-    wb.sheets.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("no sheet {name}: {:?}", names(wb)))
+    wb.sheets
+        .iter()
+        .find(|s| s.name == name)
+        .unwrap_or_else(|| panic!("no sheet {name}: {:?}", names(wb)))
 }
 
 fn names(wb: &Workbook) -> Vec<String> {
@@ -34,7 +37,10 @@ fn names(wb: &Workbook) -> Vec<String> {
 }
 
 fn get(s: &Sheet, row: u32, col: u32) -> Option<&Value> {
-    s.cells.iter().find(|c| c.row == row && c.col == col).and_then(|c| c.value.as_ref())
+    s.cells
+        .iter()
+        .find(|c| c.row == row && c.col == col)
+        .and_then(|c| c.value.as_ref())
 }
 
 fn row_vals(s: &Sheet, row: u32) -> Vec<Option<Value>> {
@@ -68,39 +74,112 @@ fn messy_csv_round_trip() {
     let wb = open(&src).unwrap();
     assert_eq!(names(&wb), ["prodaja"]);
     let s = &wb.sheets[0];
-    assert_eq!(row_vals(s, 3), [text("Beograd"), text("1.234,56"), text("31.12.2024."), text("007")]);
-    assert_eq!(row_vals(s, 5)[..2], [text("Novi Sad; centar"), text("987,10")]);
+    assert_eq!(
+        row_vals(s, 3),
+        [
+            text("Beograd"),
+            text("1.234,56"),
+            text("31.12.2024."),
+            text("007")
+        ]
+    );
+    assert_eq!(
+        row_vals(s, 5)[..2],
+        [text("Novi Sad; centar"), text("987,10")]
+    );
     assert_eq!(row_vals(s, 6)[..2], [text("Kragujevac"), num(250.0)]);
 
     let out = normalize_file(&src, dir.join("out"), &Options::default()).unwrap();
     assert_eq!(out.xlsx_path, dir.join("out/prodaja.normalized.xlsx"));
     let wb = open(&out.xlsx_path).unwrap();
-    assert_eq!(names(&wb), ["README", "T1_prodaja_po_gradovima_2024", "Totals", "Notes"]);
+    assert_eq!(
+        names(&wb),
+        ["README", "T1_prodaja_po_gradovima_2024", "Totals", "Notes"]
+    );
 
     // European numbers and dates parsed, leading-zero codes kept as text, total row removed.
     let t1 = sheet(&wb, "T1_prodaja_po_gradovima_2024");
-    assert_eq!(row_vals(t1, 0), [text("Grad"), text("Iznos"), text("Datum"), text("Kod"), text("_src_row")]);
+    assert_eq!(
+        row_vals(t1, 0),
+        [
+            text("Grad"),
+            text("Iznos"),
+            text("Datum"),
+            text("Kod"),
+            text("_src_row")
+        ]
+    );
     assert_eq!(row_count(t1), 5, "4 data rows, total removed");
-    assert_eq!(row_vals(t1, 1), [text("Beograd"), num(1234.56), date(2024, 12, 31), text("007"), num(4.0)]);
-    assert_eq!(row_vals(t1, 3), [text("Novi Sad; centar"), num(987.1), date(2025, 2, 1), text("101"), num(6.0)]);
-    assert_eq!(row_vals(t1, 4), [text("Kragujevac"), num(250.0), date(2025, 2, 3), text("044"), num(7.0)]);
+    assert_eq!(
+        row_vals(t1, 1),
+        [
+            text("Beograd"),
+            num(1234.56),
+            date(2024, 12, 31),
+            text("007"),
+            num(4.0)
+        ]
+    );
+    assert_eq!(
+        row_vals(t1, 3),
+        [
+            text("Novi Sad; centar"),
+            num(987.1),
+            date(2025, 2, 1),
+            text("101"),
+            num(6.0)
+        ]
+    );
+    assert_eq!(
+        row_vals(t1, 4),
+        [
+            text("Kragujevac"),
+            num(250.0),
+            date(2025, 2, 3),
+            text("044"),
+            num(7.0)
+        ]
+    );
 
     // The total row checks out against the data above it.
     // Title, the removed total and the source note are all kept in Notes. The total holds
     // text (`4.471,66`), so it is not checked against the sum: the Totals check reads stored
     // numbers only, as for numbers stored as text in a workbook.
     let notes = sheet(&wb, "Notes");
-    let kinds: Vec<Vec<Option<Value>>> = (1..row_count(notes)).map(|r| row_vals(notes, r)[..5].to_vec()).collect();
+    let kinds: Vec<Vec<Option<Value>>> = (1..row_count(notes))
+        .map(|r| row_vals(notes, r)[..5].to_vec())
+        .collect();
     assert_eq!(
         kinds,
         [
-            [text("prodaja"), text("A1"), text("title"), text("T1"), text("Prodaja po gradovima 2024")],
-            [text("prodaja"), text("B8"), text("total_row"), text("T1"), text("4.471,66")],
-            [text("prodaja"), text("A10"), text("note"), text("T1"), text("Izvor: interna evidencija, iznosi u RSD")],
+            [
+                text("prodaja"),
+                text("A1"),
+                text("title"),
+                text("T1"),
+                text("Prodaja po gradovima 2024")
+            ],
+            [
+                text("prodaja"),
+                text("B8"),
+                text("total_row"),
+                text("T1"),
+                text("4.471,66")
+            ],
+            [
+                text("prodaja"),
+                text("A10"),
+                text("note"),
+                text("T1"),
+                text("Izvor: interna evidencija, iznosi u RSD")
+            ],
         ]
     );
     assert_eq!(row_count(sheet(&wb, "Totals")), 1);
-    assert_eq!(out.cells.total, out.cells.in_tables + out.cells.in_totals + out.cells.in_notes);
+    assert_eq!(
+        out.cells.total,
+        out.cells.in_tables + out.cells.in_totals + out.cells.in_notes
+    );
 
     let m = &out.manifest_json;
     for needle in [
@@ -127,8 +206,19 @@ fn windows_1252_tsv() {
     let out = normalize_file(&src, &dir, &Options::default()).unwrap();
     let wb = open(&out.xlsx_path).unwrap();
     let t = &wb.sheets[1];
-    assert_eq!(row_vals(t, 0), [text("Produit"), text("Prix"), text("Part"), text("_src_row")]);
-    assert_eq!(row_vals(t, 2), [text("Crème brûlée"), num(4.2), num(0.075), num(3.0)]);
+    assert_eq!(
+        row_vals(t, 0),
+        [
+            text("Produit"),
+            text("Prix"),
+            text("Part"),
+            text("_src_row")
+        ]
+    );
+    assert_eq!(
+        row_vals(t, 2),
+        [text("Crème brûlée"), num(4.2), num(0.075), num(3.0)]
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -151,10 +241,26 @@ fn statistical_markers_csv() {
     let out = normalize_file(&src, &dir, &Options::default()).unwrap();
     let wb = open(&out.xlsx_path).unwrap();
     let t = &wb.sheets[1];
-    assert_eq!(row_vals(t, 2), [text("B"), num(40.805), num(4405.0), num(45.0), text("<5"), num(3.0)]);
-    assert_eq!(row_vals(t, 3)[..5], [text("C"), num(8.4), num(2411.0), num(20560.32), num(15.0)]);
+    assert_eq!(
+        row_vals(t, 2),
+        [
+            text("B"),
+            num(40.805),
+            num(4405.0),
+            num(45.0),
+            text("<5"),
+            num(3.0)
+        ]
+    );
+    assert_eq!(
+        row_vals(t, 3)[..5],
+        [text("C"), num(8.4), num(2411.0), num(20560.32), num(15.0)]
+    );
     assert_eq!(row_vals(t, 4)[3..5], [num(12.0), text("c")]);
-    assert_eq!(row_vals(t, 5)[1..5], [num(20.1), num(1250.0), num(7.0), None]);
+    assert_eq!(
+        row_vals(t, 5)[1..5],
+        [num(20.1), num(1250.0), num(7.0), None]
+    );
     let m = &out.manifest_json;
     let compact: String = m.split_whitespace().collect();
     for needle in [
@@ -167,7 +273,14 @@ fn statistical_markers_csv() {
         assert!(compact.contains(needle), "manifest lacks {needle}\n{m}");
     }
     let small = compact.split("\"name\":\"Small\"").nth(1).unwrap();
-    assert!(small.split("\"name\"").next().unwrap().contains("\"dtype\":\"integer\""), "{m}");
+    assert!(
+        small
+            .split("\"name\"")
+            .next()
+            .unwrap()
+            .contains("\"dtype\":\"integer\""),
+        "{m}"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -190,9 +303,20 @@ fn label_footnotes_and_unit_exponents_csv() {
     let out = normalize_file(&src, &dir, &Options::default()).unwrap();
     let wb = open(&out.xlsx_path).unwrap();
     let t = &wb.sheets[1];
-    assert_eq!(row_vals(t, 0)[..3], [text("Region"), text("Fläche km²"), text("Wasser Mio. m³")]);
+    assert_eq!(
+        row_vals(t, 0)[..3],
+        [text("Region"), text("Fläche km²"), text("Wasser Mio. m³")]
+    );
     let labels: Vec<_> = (1..=7).map(|r| get(t, r, 0).cloned()).collect();
-    let want = ["Alpha", "Beta", "Gamma", "Delta", "Area 51", "CO₂ zone", "Epsilon"];
+    let want = [
+        "Alpha",
+        "Beta",
+        "Gamma",
+        "Delta",
+        "Area 51",
+        "CO₂ zone",
+        "Epsilon",
+    ];
     assert_eq!(labels, want.map(text));
     let compact: String = out.manifest_json.split_whitespace().collect();
     for needle in [
@@ -200,7 +324,11 @@ fn label_footnotes_and_unit_exponents_csv() {
         "{\"mark\":\"²\",\"count\":1,\"cells\":[\"A5\"]}",
         "\"footnote_marks_stripped\":2",
     ] {
-        assert!(compact.contains(needle), "manifest lacks {needle}\n{}", out.manifest_json);
+        assert!(
+            compact.contains(needle),
+            "manifest lacks {needle}\n{}",
+            out.manifest_json
+        );
     }
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -226,14 +354,27 @@ fn units_rules_and_comments_csv() {
     let out = normalize_file(&src, &dir, &Options::default()).unwrap();
     let wb = open(&out.xlsx_path).unwrap();
     let t = &wb.sheets[1];
-    assert_eq!(row_vals(t, 0)[..3], [text("Plant"), text("Output / Mrd. EUR"), text("Share / %")]);
+    assert_eq!(
+        row_vals(t, 0)[..3],
+        [text("Plant"), text("Output / Mrd. EUR"), text("Share / %")]
+    );
     assert_eq!(row_vals(t, 2)[..3], [text("Birch"), num(8.0), num(32.0)]);
     assert_eq!(row_vals(t, 4)[..3], [text("Dune"), num(5.0), num(20.0)]);
     assert!(get(t, 5, 0).is_none(), "only the four plants are data");
     let compact: String = out.manifest_json.split_whitespace().collect();
-    assert!(compact.contains("\"ok\":2"), "both totals verify: {}", out.manifest_json);
+    assert!(
+        compact.contains("\"ok\":2"),
+        "both totals verify: {}",
+        out.manifest_json
+    );
     let notes = sheet(&wb, "Notes");
-    assert!(notes.cells.iter().any(|c| c.value == text("check!")), "the comment is a note");
-    assert!(!t.cells.iter().any(|c| c.value == text("check!")), "and not table data");
+    assert!(
+        notes.cells.iter().any(|c| c.value == text("check!")),
+        "the comment is a note"
+    );
+    assert!(
+        !t.cells.iter().any(|c| c.value == text("check!")),
+        "and not table data"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }

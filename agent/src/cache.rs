@@ -23,10 +23,11 @@ use std::time::{Instant, SystemTime};
 
 use hh_core::model::Rect;
 use hh_core::normalize::{
-    sha256, CellCounts, ColRole, Column, Dtype, NoteItem, Normalized, Out, RowType, SheetInfo, Table, TotalItem, Transforms, T,
+    CellCounts, ColRole, Column, Dtype, Normalized, NoteItem, Out, RowType, SheetInfo, T, Table,
+    TotalItem, Transforms, sha256,
 };
 use hh_core::values::{DateOrder, DecimalSep};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Hash of the sources that decide a normalized file and its catalog (set by `build.rs`).
 pub const BUILD_ID: &str = env!("HH_BUILD_ID");
@@ -62,24 +63,38 @@ impl Entry {
     }
     /// Seconds the first normalization took.
     pub fn seconds(&self) -> f64 {
-        self.meta.get("seconds").and_then(Value::as_f64).unwrap_or(0.0)
+        self.meta
+            .get("seconds")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
     }
     /// The catalog stored for a display name.
     pub fn catalog(&self, name: &str) -> Option<String> {
-        self.meta.pointer("/catalogs").and_then(|c| c.get(name)).and_then(Value::as_str).map(str::to_string)
+        self.meta
+            .pointer("/catalogs")
+            .and_then(|c| c.get(name))
+            .and_then(Value::as_str)
+            .map(str::to_string)
     }
 }
 
 /// The user cache folder of this platform (without `hedgehog`).
 fn user_cache_base() -> Option<PathBuf> {
-    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let env = |k: &str| {
+        std::env::var_os(k)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
     if cfg!(windows) {
         return env("LOCALAPPDATA").map(|p| p.join("hedgehog").join("cache"));
     }
     if cfg!(target_os = "macos") {
         return env("HOME").map(|h| h.join("Library/Caches/hedgehog"));
     }
-    env("XDG_CACHE_HOME").filter(|p| p.is_absolute()).or_else(|| env("HOME").map(|h| h.join(".cache"))).map(|p| p.join("hedgehog"))
+    env("XDG_CACHE_HOME")
+        .filter(|p| p.is_absolute())
+        .or_else(|| env("HOME").map(|h| h.join(".cache")))
+        .map(|p| p.join("hedgehog"))
 }
 
 impl Cache {
@@ -92,9 +107,18 @@ impl Cache {
                 return None;
             }
         }
-        let dir = std::env::var_os("HEDGEHOG_CACHE_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).or_else(user_cache_base)?;
-        let max_mb = std::env::var("HEDGEHOG_CACHE_MAX_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(DEFAULT_MAX_MB);
-        Some(Cache { dir, max_bytes: max_mb << 20 })
+        let dir = std::env::var_os("HEDGEHOG_CACHE_DIR")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(user_cache_base)?;
+        let max_mb = std::env::var("HEDGEHOG_CACHE_MAX_MB")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .unwrap_or(DEFAULT_MAX_MB);
+        Some(Cache {
+            dir,
+            max_bytes: max_mb << 20,
+        })
     }
 
     fn root(&self) -> PathBuf {
@@ -114,7 +138,9 @@ impl Cache {
     }
 
     fn read_hashes(&self) -> Vec<(String, u64, u128, String)> {
-        let Ok(s) = fs::read_to_string(self.hashes_path()) else { return Vec::new() };
+        let Ok(s) = fs::read_to_string(self.hashes_path()) else {
+            return Vec::new();
+        };
         s.lines()
             .filter_map(|l| {
                 let mut it = l.splitn(4, '\t');
@@ -122,7 +148,8 @@ impl Cache {
                 let mtime = it.next()?.parse().ok()?;
                 let sha = it.next()?;
                 let path = it.next()?;
-                (sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit())).then(|| (path.to_string(), size, mtime, sha.to_string()))
+                (sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit()))
+                    .then(|| (path.to_string(), size, mtime, sha.to_string()))
             })
             .collect()
     }
@@ -131,12 +158,17 @@ impl Cache {
     pub fn known_hash(&self, path: &Path, size: u64, mtime: Option<SystemTime>) -> Option<String> {
         let m = nanos(mtime?)?;
         let p = path.to_string_lossy();
-        self.read_hashes().into_iter().find(|(q, s, t, _)| *q == p && *s == size && *t == m).map(|x| x.3)
+        self.read_hashes()
+            .into_iter()
+            .find(|(q, s, t, _)| *q == p && *s == size && *t == m)
+            .map(|x| x.3)
     }
 
     /// Records a file's sha256 (best effort).
     pub fn remember_hash(&self, path: &Path, size: u64, mtime: Option<SystemTime>, sha: &str) {
-        let (Some(m), Some(p)) = (mtime.and_then(nanos), path.to_str()) else { return };
+        let (Some(m), Some(p)) = (mtime.and_then(nanos), path.to_str()) else {
+            return;
+        };
         if p.contains(['\t', '\n', '\r']) {
             return;
         }
@@ -147,8 +179,13 @@ impl Cache {
         if all.len() > MAX_HASHES {
             all.drain(..all.len() - MAX_HASHES);
         }
-        let text: String = all.iter().map(|(q, s, t, h)| format!("{s}\t{t}\t{h}\t{q}\n")).collect();
-        let _ = self.ensure_root().and_then(|root| write_atomic(&root, &self.hashes_path(), text.as_bytes()));
+        let text: String = all
+            .iter()
+            .map(|(q, s, t, h)| format!("{s}\t{t}\t{h}\t{q}\n"))
+            .collect();
+        let _ = self
+            .ensure_root()
+            .and_then(|root| write_atomic(&root, &self.hashes_path(), text.as_bytes()));
     }
 
     fn ensure_root(&self) -> io::Result<PathBuf> {
@@ -162,9 +199,13 @@ impl Cache {
     /// The valid entry for `key`, marked as just used. An entry that does not validate is removed.
     pub fn get(&self, key: &str) -> Option<Entry> {
         let dir = self.root().join(key);
-        let meta: Option<Value> = fs::read(dir.join("meta.json")).ok().and_then(|b| serde_json::from_slice(&b).ok());
+        let meta: Option<Value> = fs::read(dir.join("meta.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
         let valid = meta.as_ref().is_some_and(|m| {
-            let size = |f: &str, k: &str| fs::metadata(dir.join(f)).ok().map(|x| x.len()) == m.get(k).and_then(Value::as_u64);
+            let size = |f: &str, k: &str| {
+                fs::metadata(dir.join(f)).ok().map(|x| x.len()) == m.get(k).and_then(Value::as_u64)
+            };
             m.get("format").and_then(Value::as_u64) == Some(FORMAT)
                 && m.get("key").and_then(Value::as_str) == Some(key)
                 && size("db.sqlite", "db_bytes")
@@ -205,12 +246,19 @@ impl Cache {
         catalog: impl FnOnce() -> Option<String>,
     ) -> Result<(Entry, crate::sql::Plan), String> {
         let t0 = Instant::now();
-        let root = self.ensure_root().map_err(|e| format!("cache folder {}: {e}", self.root().display()))?;
-        let tmp = root.join(format!(".tmp-{key}-{}-{}", std::process::id(), nanos(SystemTime::now()).unwrap_or(0)));
+        let root = self
+            .ensure_root()
+            .map_err(|e| format!("cache folder {}: {e}", self.root().display()))?;
+        let tmp = root.join(format!(
+            ".tmp-{key}-{}-{}",
+            std::process::id(),
+            nanos(SystemTime::now()).unwrap_or(0)
+        ));
         let res = (|| -> Result<(Entry, crate::sql::Plan), String> {
             create_private_dir_all(&tmp).map_err(|e| e.to_string())?;
             let db = tmp.join("db.sqlite");
-            let plan = crate::sql::Db::write_file(norm, &db).map_err(|e| format!("cache database: {e}"))?;
+            let plan = crate::sql::Db::write_file(norm, &db)
+                .map_err(|e| format!("cache database: {e}"))?;
             set_private(&db);
             trace("cache: database", t0);
             let nb = tmp.join("norm.bin");
@@ -230,7 +278,11 @@ impl Cache {
                 "norm_bytes": fs::metadata(&nb).map_err(|e| e.to_string())?.len(),
                 "catalogs": catalogs,
             });
-            write_private(&tmp.join("meta.json"), &serde_json::to_vec(&meta).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            write_private(
+                &tmp.join("meta.json"),
+                &serde_json::to_vec(&meta).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
             let dir = root.join(key);
             if fs::rename(&tmp, &dir).is_err() {
                 // Another process was faster (or a broken entry is in the way).
@@ -253,7 +305,13 @@ impl Cache {
     /// Adds the catalog of another display name to an entry (best effort).
     pub fn add_catalog(&self, entry: &mut Entry, name: &str, catalog: &str) {
         let _lock = LOCK.lock();
-        let Some(cats) = entry.meta.get_mut("catalogs").and_then(Value::as_object_mut) else { return };
+        let Some(cats) = entry
+            .meta
+            .get_mut("catalogs")
+            .and_then(Value::as_object_mut)
+        else {
+            return;
+        };
         if cats.len() >= MAX_CATALOGS {
             cats.clear();
         }
@@ -267,7 +325,9 @@ impl Cache {
     /// folders left by crashed writers. `keep` is never removed.
     pub fn trim(&self, keep: Option<&Path>) {
         let _lock = LOCK.lock();
-        let Ok(rd) = fs::read_dir(self.root()) else { return };
+        let Ok(rd) = fs::read_dir(self.root()) else {
+            return;
+        };
         let mut entries: Vec<(SystemTime, u64, PathBuf)> = Vec::new();
         let now = SystemTime::now();
         for e in rd.flatten() {
@@ -277,14 +337,27 @@ impl Cache {
             }
             let name = e.file_name().to_string_lossy().into_owned();
             if name.starts_with(".tmp-") {
-                let old = e.metadata().and_then(|m| m.modified()).ok().and_then(|m| now.duration_since(m).ok());
+                let old = e
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|m| now.duration_since(m).ok());
                 if old.is_some_and(|d| d.as_secs() > 6 * 3600) {
                     let _ = fs::remove_dir_all(&p);
                 }
                 continue;
             }
-            let used = fs::metadata(p.join("meta.json")).and_then(|m| m.modified()).unwrap_or(SystemTime::UNIX_EPOCH);
-            let size: u64 = fs::read_dir(&p).map(|r| r.flatten().filter_map(|f| f.metadata().ok()).map(|m| m.len()).sum()).unwrap_or(0);
+            let used = fs::metadata(p.join("meta.json"))
+                .and_then(|m| m.modified())
+                .unwrap_or(SystemTime::UNIX_EPOCH);
+            let size: u64 = fs::read_dir(&p)
+                .map(|r| {
+                    r.flatten()
+                        .filter_map(|f| f.metadata().ok())
+                        .map(|m| m.len())
+                        .sum()
+                })
+                .unwrap_or(0);
             entries.push((used, size, p));
         }
         let mut total: u64 = entries.iter().map(|e| e.1).sum();
@@ -308,7 +381,9 @@ impl Cache {
 static LOCK: Mutex<()> = Mutex::new(());
 
 fn nanos(t: SystemTime) -> Option<u128> {
-    t.duration_since(SystemTime::UNIX_EPOCH).ok().map(|d| d.as_nanos())
+    t.duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_nanos())
 }
 
 fn touch(p: &Path) {
@@ -351,7 +426,11 @@ fn write_private(p: &Path, bytes: &[u8]) -> io::Result<()> {
 
 /// Writes `p` through a temporary file in `dir` and a rename.
 fn write_atomic(dir: &Path, p: &Path, bytes: &[u8]) -> io::Result<()> {
-    let tmp = dir.join(format!(".w-{}-{}", std::process::id(), nanos(SystemTime::now()).unwrap_or(0)));
+    let tmp = dir.join(format!(
+        ".w-{}-{}",
+        std::process::id(),
+        nanos(SystemTime::now()).unwrap_or(0)
+    ));
     let r = write_private(&tmp, bytes).and_then(|_| fs::rename(&tmp, p));
     if r.is_err() {
         let _ = fs::remove_file(&tmp);
@@ -368,13 +447,18 @@ pub(crate) fn trace(stage: &str, since: Instant) {
 
 pub(crate) fn tracing() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0"))
+    *ON.get_or_init(|| {
+        std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0")
+    })
 }
 
 /// [`trace`] with a measured duration (sub-steps such as `sql.rows`, `cat.facts`).
 pub(crate) fn trace_ms(stage: &str, took: std::time::Duration) {
     if tracing() {
-        eprintln!("[trace] {stage:<24} {:>9.1} ms", took.as_secs_f64() * 1000.0);
+        eprintln!(
+            "[trace] {stage:<24} {:>9.1} ms",
+            took.as_secs_f64() * 1000.0
+        );
     }
 }
 
@@ -405,7 +489,11 @@ impl<O: Write> W<O> {
         self.usize(s.len())?;
         self.0.write_all(s.as_bytes())
     }
-    fn opt<V>(&mut self, v: &Option<V>, f: impl FnOnce(&mut Self, &V) -> io::Result<()>) -> io::Result<()> {
+    fn opt<V>(
+        &mut self,
+        v: &Option<V>,
+        f: impl FnOnce(&mut Self, &V) -> io::Result<()>,
+    ) -> io::Result<()> {
         match v {
             None => self.u8(0),
             Some(x) => {
@@ -414,7 +502,11 @@ impl<O: Write> W<O> {
             }
         }
     }
-    fn vec<V>(&mut self, v: &[V], mut f: impl FnMut(&mut Self, &V) -> io::Result<()>) -> io::Result<()> {
+    fn vec<V>(
+        &mut self,
+        v: &[V],
+        mut f: impl FnMut(&mut Self, &V) -> io::Result<()>,
+    ) -> io::Result<()> {
         self.usize(v.len())?;
         v.iter().try_for_each(|x| f(self, x))
     }
@@ -427,7 +519,9 @@ impl<O: Write> W<O> {
         self.pos(&x.1)
     }
     fn rect(&mut self, r: &Rect) -> io::Result<()> {
-        [r.top, r.left, r.bottom, r.right].iter().try_for_each(|v| self.u32(*v))
+        [r.top, r.left, r.bottom, r.right]
+            .iter()
+            .try_for_each(|v| self.u32(*v))
     }
 }
 
@@ -441,7 +535,9 @@ pub fn write_norm(n: &Normalized, path: &Path) -> io::Result<()> {
         w.usize(s.cells)?;
         w.usize(s.formulas)?;
         w.usize(s.formulas_without_value)?;
-        w.opt(&s.formula_without_value_at, |w, (r, c)| w.u32(*r).and_then(|_| w.u32(*c)))?;
+        w.opt(&s.formula_without_value_at, |w, (r, c)| {
+            w.u32(*r).and_then(|_| w.u32(*c))
+        })?;
         w.usize(s.merges)?;
         w.vec(&s.tables, |w, t| w.usize(*t))
     })?;
@@ -521,7 +617,12 @@ pub fn write_norm(n: &Normalized, path: &Path) -> io::Result<()> {
         w.str(&x.text)?;
         w.opt(&x.formula, |w, s| w.str(s))
     })?;
-    for v in [n.cells.total, n.cells.in_tables, n.cells.in_totals, n.cells.in_notes] {
+    for v in [
+        n.cells.total,
+        n.cells.in_tables,
+        n.cells.in_totals,
+        n.cells.in_notes,
+    ] {
         w.usize(v)?;
     }
     w.vec(&n.warnings, |w, s| w.str(s))?;
@@ -585,7 +686,9 @@ impl R<'_> {
     }
     fn str(&mut self) -> io::Result<String> {
         let n = self.usize()?;
-        std::str::from_utf8(self.take(n)?).map(str::to_string).map_err(|_| bad("text"))
+        std::str::from_utf8(self.take(n)?)
+            .map(str::to_string)
+            .map_err(|_| bad("text"))
     }
     fn opt<V>(&mut self, f: impl FnOnce(&mut Self) -> io::Result<V>) -> io::Result<Option<V>> {
         match self.u8()? {
@@ -594,7 +697,11 @@ impl R<'_> {
             _ => Err(bad("option")),
         }
     }
-    fn vec<V>(&mut self, min: usize, mut f: impl FnMut(&mut Self) -> io::Result<V>) -> io::Result<Vec<V>> {
+    fn vec<V>(
+        &mut self,
+        min: usize,
+        mut f: impl FnMut(&mut Self) -> io::Result<V>,
+    ) -> io::Result<Vec<V>> {
         let n = self.len(min)?;
         let mut v = Vec::with_capacity(n);
         for _ in 0..n {
@@ -609,7 +716,12 @@ impl R<'_> {
         Ok((self.str()?, self.pos()?))
     }
     fn rect(&mut self) -> io::Result<Rect> {
-        Ok(Rect { top: self.u32()?, left: self.u32()?, bottom: self.u32()?, right: self.u32()? })
+        Ok(Rect {
+            top: self.u32()?,
+            left: self.u32()?,
+            bottom: self.u32()?,
+            right: self.u32()?,
+        })
     }
     /// One of the fixed words of a total or note item.
     fn word(&mut self) -> io::Result<&'static str> {
@@ -622,8 +734,22 @@ impl R<'_> {
 /// an unknown one (from a newer core) is leaked once and reused.
 fn intern(s: String) -> &'static str {
     const KNOWN: &[&str] = &[
-        "total", "subtotal", "grand_total", "vertical", "horizontal", "formula", "typed", "layout", "ok", "mismatch",
-        "unknown", "title", "note", "repeated_header", "total_row", "other",
+        "total",
+        "subtotal",
+        "grand_total",
+        "vertical",
+        "horizontal",
+        "formula",
+        "typed",
+        "layout",
+        "ok",
+        "mismatch",
+        "unknown",
+        "title",
+        "note",
+        "repeated_header",
+        "total_row",
+        "other",
     ];
     if let Some(k) = KNOWN.iter().find(|k| **k == s) {
         return k;
@@ -638,10 +764,30 @@ fn intern(s: String) -> &'static str {
     k
 }
 
-const ROLES: [ColRole; 4] = [ColRole::Data, ColRole::Group, ColRole::SrcRow, ColRole::RowType];
-const DTYPES: [Dtype; 9] =
-    [Dtype::Integer, Dtype::Number, Dtype::Percent, Dtype::Currency, Dtype::Date, Dtype::Datetime, Dtype::Text, Dtype::Bool, Dtype::Empty];
-const ROW_TYPES: [RowType; 5] = [RowType::Data, RowType::Subtotal, RowType::Total, RowType::Average, RowType::OfWhich];
+const ROLES: [ColRole; 4] = [
+    ColRole::Data,
+    ColRole::Group,
+    ColRole::SrcRow,
+    ColRole::RowType,
+];
+const DTYPES: [Dtype; 9] = [
+    Dtype::Integer,
+    Dtype::Number,
+    Dtype::Percent,
+    Dtype::Currency,
+    Dtype::Date,
+    Dtype::Datetime,
+    Dtype::Text,
+    Dtype::Bool,
+    Dtype::Empty,
+];
+const ROW_TYPES: [RowType; 5] = [
+    RowType::Data,
+    RowType::Subtotal,
+    RowType::Total,
+    RowType::Average,
+    RowType::OfWhich,
+];
 const DECIMALS: [DecimalSep; 2] = [DecimalSep::Dot, DecimalSep::Comma];
 const DATE_ORDERS: [DateOrder; 2] = [DateOrder::DayMonth, DateOrder::MonthDay];
 
@@ -766,12 +912,24 @@ pub fn read_norm(path: &Path) -> io::Result<Normalized> {
             formula: r.opt(|r| r.str())?,
         })
     })?;
-    let cells = CellCounts { total: r.usize()?, in_tables: r.usize()?, in_totals: r.usize()?, in_notes: r.usize()? };
+    let cells = CellCounts {
+        total: r.usize()?,
+        in_tables: r.usize()?,
+        in_totals: r.usize()?,
+        in_notes: r.usize()?,
+    };
     let warnings = r.vec(8, |r| r.str())?;
     if &r.bytes::<8>()? != NORM_MAGIC || !r.buf.is_empty() {
         return Err(bad("end"));
     }
-    Ok(Normalized { sheets, tables, totals, notes, cells, warnings })
+    Ok(Normalized {
+        sheets,
+        tables,
+        totals,
+        notes,
+        cells,
+        warnings,
+    })
 }
 
 #[cfg(test)]
@@ -800,7 +958,15 @@ mod tests {
             formula: Some("SUM(B2:B3)".into()),
             kept_in_data: true,
         });
-        n.notes.push(NoteItem { sheet: "S".into(), row: 1, col: 2, kind: "note", table: None, text: "ünï".into(), formula: None });
+        n.notes.push(NoteItem {
+            sheet: "S".into(),
+            row: 1,
+            col: 2,
+            kind: "note",
+            table: None,
+            text: "ünï".into(),
+            formula: None,
+        });
         n.warnings.push("w".into());
         n
     }
@@ -840,7 +1006,10 @@ mod tests {
     #[test]
     fn entries_hashes_and_trim() {
         let d = tmp("entries");
-        let c = Cache { dir: d.join("c"), max_bytes: 1 << 30 };
+        let c = Cache {
+            dir: d.join("c"),
+            max_bytes: 1 << 30,
+        };
         let n = sample();
         let k1 = Cache::key(&"a".repeat(64), "keep_totals");
         assert_ne!(k1, Cache::key(&"a".repeat(64), "rules_only"));
@@ -852,7 +1021,10 @@ mod tests {
         assert_eq!(got.seconds(), 1.5);
         assert_eq!(read_norm(&got.norm_path()).unwrap().tables, n.tables);
         c.add_catalog(&mut e, "y.xlsx", "catalog of y");
-        assert_eq!(c.get(&k1).unwrap().catalog("y.xlsx").as_deref(), Some("catalog of y"));
+        assert_eq!(
+            c.get(&k1).unwrap().catalog("y.xlsx").as_deref(),
+            Some("catalog of y")
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -873,10 +1045,16 @@ mod tests {
         let m = fs::metadata(&f).unwrap();
         assert_eq!(c.known_hash(&f, m.len(), m.modified().ok()), None);
         c.remember_hash(&f, m.len(), m.modified().ok(), &"b".repeat(64));
-        assert_eq!(c.known_hash(&f, m.len(), m.modified().ok()), Some("b".repeat(64)));
+        assert_eq!(
+            c.known_hash(&f, m.len(), m.modified().ok()),
+            Some("b".repeat(64))
+        );
         assert_eq!(c.known_hash(&f, m.len() + 1, m.modified().ok()), None);
         // Size cap: the older entry goes first, the one just written stays.
-        let small = Cache { dir: c.dir.clone(), max_bytes: 1 };
+        let small = Cache {
+            dir: c.dir.clone(),
+            max_bytes: 1,
+        };
         let ka = Cache::key(&"c".repeat(64), "o");
         let kb = Cache::key(&"d".repeat(64), "o");
         small.put(&ka, &n, 0.1, "a", None).unwrap();

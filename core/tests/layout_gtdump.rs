@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use hh_core::eval::{data_root, deco, split::Split, synthetic};
-use hh_core::{a1, layout, open, Grid, Rect, Role, Value};
+use hh_core::{Grid, Rect, Role, Value, a1, layout, open};
 
 fn tag(r: Role) -> &'static str {
     match r {
@@ -53,7 +53,10 @@ fn gtdump() {
         Some((f(a)?, f(b)?))
     });
     let tables = std::env::var("HH_GT_TABLES").is_ok();
-    let limit: usize = std::env::var("HH_GT_LIMIT").ok().and_then(|s| s.parse().ok()).unwrap_or(60);
+    let limit: usize = std::env::var("HH_GT_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(60);
     let corpus = match std::env::var("HH_GT_CORPUS").as_deref() {
         Ok("synthetic") => synthetic::load(&data_root().join("synthetic").join("v0")),
         _ => deco::load(&data_root()),
@@ -61,19 +64,28 @@ fn gtdump() {
     .unwrap();
     let mut printed = 0;
     for file in corpus.files.iter().filter(|f| Split::Dev.contains(&f.id)) {
-        if file_filter.as_ref().is_some_and(|s| !file.id.contains(s.as_str())) {
+        if file_filter
+            .as_ref()
+            .is_some_and(|s| !file.id.contains(s.as_str()))
+        {
             continue;
         }
         let Ok(wb) = open(&file.path) else { continue };
         for gs in &file.sheets {
-            let Some(sheet) = wb.sheets.iter().find(|s| s.name == gs.name) else { continue };
+            let Some(sheet) = wb.sheets.iter().find(|s| s.name == gs.name) else {
+                continue;
+            };
             let grid = Grid::new(sheet);
             let l = layout::analyze(&grid);
-            let gt: HashMap<(u32, u32), Role> = gs.cells.iter().map(|c| ((c.row, c.col), c.role)).collect();
+            let gt: HashMap<(u32, u32), Role> =
+                gs.cells.iter().map(|c| ((c.row, c.col), c.role)).collect();
             if tables {
                 let pred: Vec<Rect> = l.tables.iter().map(|t| t.rect).collect();
                 let ok = gs.tables.len() == pred.len()
-                    && gs.tables.iter().all(|g| pred.iter().any(|p| iou(g, p) >= 0.5));
+                    && gs
+                        .tables
+                        .iter()
+                        .all(|g| pred.iter().any(|p| iou(g, p) >= 0.5));
                 if !ok {
                     let g: Vec<String> = gs.tables.iter().map(rs).collect();
                     let p: Vec<String> = pred.iter().map(rs).collect();
@@ -84,7 +96,10 @@ fn gtdump() {
             let mut want_rows: Vec<u32> = Vec::new();
             if let Some((g, p)) = conf {
                 for (i, c) in sheet.cells.iter().enumerate() {
-                    if gt.get(&(c.row, c.col)) == Some(&g) && l.roles[i] == p && want_rows.last() != Some(&c.row) {
+                    if gt.get(&(c.row, c.col)) == Some(&g)
+                        && l.roles[i] == p
+                        && want_rows.last() != Some(&c.row)
+                    {
                         want_rows.push(c.row);
                     }
                 }
@@ -96,7 +111,10 @@ fn gtdump() {
             }
             println!("== {} | {}", file.id, gs.name);
             println!("   gt  {:?}", gs.tables.iter().map(rs).collect::<Vec<_>>());
-            println!("   pred{:?}", l.tables.iter().map(|t| rs(&t.rect)).collect::<Vec<_>>());
+            println!(
+                "   pred{:?}",
+                l.tables.iter().map(|t| rs(&t.rect)).collect::<Vec<_>>()
+            );
             let mut line = String::new();
             let mut row = u32::MAX;
             let show = |r: u32| conf.is_none() || want_rows.iter().any(|&w| w.abs_diff(r) <= 1);
@@ -114,9 +132,19 @@ fn gtdump() {
                 }
                 let g = gt.get(&(c.row, c.col)).map_or("-", |r| tag(*r));
                 let p = tag(l.roles[i]);
-                let mark = if g == p { g.to_string() } else { format!("{g}/{p}") };
+                let mark = if g == p {
+                    g.to_string()
+                } else {
+                    format!("{g}/{p}")
+                };
                 let f = if c.formula.is_some() { "=" } else { "" };
-                line.push_str(&format!(" {}[{}]{}{}", a1(c.row, c.col), mark, f, short(&c.value)));
+                line.push_str(&format!(
+                    " {}[{}]{}{}",
+                    a1(c.row, c.col),
+                    mark,
+                    f,
+                    short(&c.value)
+                ));
             }
             if !line.is_empty() {
                 println!("{line}");

@@ -15,8 +15,8 @@
 
 use std::collections::BTreeMap;
 
-use super::metrics::{Confusion, FileMacro, Prf, N_ROLES, TABLE_CRITERIA};
-use super::run::{Report, N_CRIT};
+use super::metrics::{Confusion, FileMacro, N_ROLES, Prf, TABLE_CRITERIA};
+use super::run::{N_CRIT, Report};
 use crate::analysis::Role;
 
 /// The shared four-role space.
@@ -67,7 +67,9 @@ pub struct SourceScore {
 }
 
 fn source_of(file_id: &str, corpus: &str) -> String {
-    file_id.split_once('/').map_or(corpus.to_string(), |(s, _)| s.to_string())
+    file_id
+        .split_once('/')
+        .map_or(corpus.to_string(), |(s, _)| s.to_string())
 }
 
 struct Acc {
@@ -121,7 +123,11 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
                 x.full_fm.add_sheet(c);
                 x.coarse_fm.add_sheet(&cc);
                 for (k, &tp) in sheets[i].table_tp.iter().enumerate() {
-                    x.tables[k].add(Prf::from_matches(tp, sheets[i].gt_tables, sheets[i].pred_tables));
+                    x.tables[k].add(Prf::from_matches(
+                        tp,
+                        sheets[i].gt_tables,
+                        sheets[i].pred_tables,
+                    ));
                 }
                 x.header.0 += sheets[i].header_n;
                 x.header.1 += sheets[i].header_ok;
@@ -138,12 +144,24 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
         files: a.files,
         sheets: a.sheets,
         cells: a.full.total(),
-        full: (!coarse_only).then(|| (a.full.macro_f1().unwrap_or(0.0), a.full_fm.macro_f1().unwrap_or(0.0))),
-        coarse: (a.coarse.macro_f1().unwrap_or(0.0), a.coarse_fm.macro_f1().unwrap_or(0.0)),
+        full: (!coarse_only).then(|| {
+            (
+                a.full.macro_f1().unwrap_or(0.0),
+                a.full_fm.macro_f1().unwrap_or(0.0),
+            )
+        }),
+        coarse: (
+            a.coarse.macro_f1().unwrap_or(0.0),
+            a.coarse_fm.macro_f1().unwrap_or(0.0),
+        ),
         accuracy: a.full.correct() as f64 / a.full.total().max(1) as f64,
         coarse_per_role: a.coarse.class_f1(),
         coarse_confusion: a.coarse.clone(),
-        full_per_role: if coarse_only { [None; N_ROLES] } else { a.full.class_f1() },
+        full_per_role: if coarse_only {
+            [None; N_ROLES]
+        } else {
+            a.full.class_f1()
+        },
         tables: report.has_tables.then_some(a.tables),
         header_depth: a.header,
     };
@@ -156,7 +174,15 @@ pub fn by_source(report: &Report, coarse_only: bool) -> Vec<SourceScore> {
 pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
     let mut s = format!(
         "{corpus} · {analyzer}\n  {:<24} {:>5} {:>6} {:>9}  {:>11} {:>11}  {:>11} {:>11}  {:>6}\n",
-        "source", "files", "sheets", "cells", "full pooled", "full file", "coarse pool", "coarse file", "acc"
+        "source",
+        "files",
+        "sheets",
+        "cells",
+        "full pooled",
+        "full file",
+        "coarse pool",
+        "coarse file",
+        "acc"
     );
     for r in rows {
         let roles: Vec<String> = Role::ALL
@@ -164,7 +190,9 @@ pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
             .zip(r.coarse_per_role)
             .filter_map(|(role, f)| f.map(|f| format!("{} {:.1}", role.as_str(), 100.0 * f)))
             .collect();
-        let (fp, ff) = r.full.map_or(("—".into(), "—".into()), |(a, b)| (format!("{:.1}", 100.0 * a), format!("{:.1}", 100.0 * b)));
+        let (fp, ff) = r.full.map_or(("—".into(), "—".into()), |(a, b)| {
+            (format!("{:.1}", 100.0 * a), format!("{:.1}", 100.0 * b))
+        });
         s.push_str(&format!(
             "  {:<24} {:>5} {:>6} {:>9}  {:>11} {:>11}  {:>11.1} {:>11.1}  {:>6.1}\n",
             r.source,
@@ -197,11 +225,21 @@ pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
                     ));
                 }
             }
-            s.push_str("  coarse confusion (rows = truth, cols = predicted; title header data other):\n");
-            let keep = [Role::Title, Role::Header, Role::Data, Role::Other].map(super::metrics::role_index);
+            s.push_str(
+                "  coarse confusion (rows = truth, cols = predicted; title header data other):\n",
+            );
+            let keep = [Role::Title, Role::Header, Role::Data, Role::Other]
+                .map(super::metrics::role_index);
             for &g in &keep {
-                let line: Vec<String> = keep.iter().map(|&p| format!("{:>9}", r.coarse_confusion.counts[g][p])).collect();
-                s.push_str(&format!("    {:<7}{}\n", Role::ALL[g].as_str(), line.join("")));
+                let line: Vec<String> = keep
+                    .iter()
+                    .map(|&p| format!("{:>9}", r.coarse_confusion.counts[g][p]))
+                    .collect();
+                s.push_str(&format!(
+                    "    {:<7}{}\n",
+                    Role::ALL[g].as_str(),
+                    line.join("")
+                ));
             }
         }
     }
@@ -209,8 +247,17 @@ pub fn table(corpus: &str, analyzer: &str, rows: &[SourceScore]) -> String {
         s.push_str("  table F1 per source (IoU>=0.5 / 0.8 / 1.0):\n");
         for r in rows.iter().filter(|r| r.source != "ALL") {
             if let Some(t) = &r.tables {
-                let f = |k: usize| t[k].f1().map_or("—".into(), |f| format!("{:.1}", 100.0 * f));
-                s.push_str(&format!("    {:<24} {:>5} {:>5} {:>5}\n", r.source, f(0), f(1), f(2)));
+                let f = |k: usize| {
+                    t[k].f1()
+                        .map_or("—".into(), |f| format!("{:.1}", 100.0 * f))
+                };
+                s.push_str(&format!(
+                    "    {:<24} {:>5} {:>5} {:>5}\n",
+                    r.source,
+                    f(0),
+                    f(1),
+                    f(2)
+                ));
             }
         }
     }

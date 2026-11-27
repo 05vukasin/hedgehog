@@ -187,7 +187,11 @@ impl Column {
 /// `parent`, `<label>_parent` or a further ancestor `<label>_parent_<n>` (n >= 2).
 fn is_parent_name(name: &str) -> bool {
     let stem = match name.rsplit_once('_') {
-        Some((stem, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && n != "0" && n != "1" => stem,
+        Some((stem, n))
+            if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) && n != "0" && n != "1" =>
+        {
+            stem
+        }
         _ => name,
     };
     stem == "parent" || stem.ends_with("_parent")
@@ -392,7 +396,11 @@ impl TotalItem {
     /// `B13`, or `AB6:AB10494` for a run.
     pub fn cell_a1(&self) -> String {
         if self.row_end > self.row {
-            format!("{}:{}", crate::model::a1(self.row, self.col), crate::model::a1(self.row_end, self.col))
+            format!(
+                "{}:{}",
+                crate::model::a1(self.row, self.col),
+                crate::model::a1(self.row_end, self.col)
+            )
         } else {
             crate::model::a1(self.row, self.col)
         }
@@ -525,16 +533,23 @@ pub fn header_period(name: &str) -> Option<(String, &'static str)> {
 
 /// Time coverage of the workbook (the manifest's top-level `time_coverage`).
 pub fn workbook_time_coverage(norm: &Normalized) -> Option<TimeCoverage> {
-    let with_cov: Vec<(String, coverage::Coverage)> =
-        norm.tables.iter().filter_map(|t| coverage::table(t).map(|c| (t.id(), c))).collect();
+    let with_cov: Vec<(String, coverage::Coverage)> = norm
+        .tables
+        .iter()
+        .filter_map(|t| coverage::table(t).map(|c| (t.id(), c)))
+        .collect();
     coverage::workbook(&with_cov).map(|c| c.public())
 }
 
 /// Time coverage of every table and of the workbook in one pass (each table's columns read once).
 pub fn time_coverages(norm: &Normalized) -> (Vec<Option<TimeCoverage>>, Option<TimeCoverage>) {
     let per: Vec<Option<coverage::Coverage>> = norm.tables.iter().map(coverage::table).collect();
-    let with_cov: Vec<(String, coverage::Coverage)> =
-        norm.tables.iter().zip(&per).filter_map(|(t, c)| c.clone().map(|c| (t.id(), c))).collect();
+    let with_cov: Vec<(String, coverage::Coverage)> = norm
+        .tables
+        .iter()
+        .zip(&per)
+        .filter_map(|(t, c)| c.clone().map(|c| (t.id(), c)))
+        .collect();
     let wb = coverage::workbook(&with_cov).map(|c| c.public());
     (per.into_iter().map(|c| c.map(|c| c.public())).collect(), wb)
 }
@@ -569,7 +584,14 @@ pub struct TableTotals {
 
 /// First and last 0-based row of an A1 cell or range (`D10`, `D14:D25`).
 fn a1_rows(s: &str) -> Option<(u32, u32)> {
-    let row = |c: &str| c.trim_start_matches(|ch: char| ch.is_ascii_alphabetic() || ch == '$').trim_start_matches('$').parse::<u32>().ok().filter(|&r| r > 0).map(|r| r - 1);
+    let row = |c: &str| {
+        c.trim_start_matches(|ch: char| ch.is_ascii_alphabetic() || ch == '$')
+            .trim_start_matches('$')
+            .parse::<u32>()
+            .ok()
+            .filter(|&r| r > 0)
+            .map(|r| r - 1)
+    };
     let (a, b) = s.split_once(':').unwrap_or((s, s));
     Some((row(a)?, row(b)?))
 }
@@ -577,7 +599,8 @@ fn a1_rows(s: &str) -> Option<(u32, u32)> {
 /// The totals of table `t` among `totals` (usually [`Normalized::totals`]).
 pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
     let mut out = TableTotals::default();
-    let mut rows: std::collections::BTreeMap<u32, TableTotalRow> = std::collections::BTreeMap::new();
+    let mut rows: std::collections::BTreeMap<u32, TableTotalRow> =
+        std::collections::BTreeMap::new();
     for x in totals.iter().filter(|x| x.table == Some(t.n)) {
         match x.status {
             "ok" => out.ok += x.count,
@@ -586,13 +609,22 @@ pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
         }
         if x.direction == "vertical" {
             let first = !rows.contains_key(&x.row);
-            let e = rows.entry(x.row).or_insert(TableTotalRow { row: x.row + 1, label: None, level: x.level, kept_in_data: false, period: None, sources_outside: Vec::new() });
+            let e = rows.entry(x.row).or_insert(TableTotalRow {
+                row: x.row + 1,
+                label: None,
+                level: x.level,
+                kept_in_data: false,
+                period: None,
+                sources_outside: Vec::new(),
+            });
             if e.label.is_none() {
                 e.label = x.label.clone();
             }
             e.kept_in_data |= x.kept_in_data;
             for s in x.sources.iter().filter(|_| first) {
-                if a1_rows(s).is_some_and(|(a, b)| a < t.rect.top || b > t.rect.bottom) && !e.sources_outside.contains(s) {
+                if a1_rows(s).is_some_and(|(a, b)| a < t.rect.top || b > t.rect.bottom)
+                    && !e.sources_outside.contains(s)
+                {
                     e.sources_outside.push(s.clone());
                 }
             }
@@ -600,10 +632,18 @@ pub fn table_totals(t: &Table, totals: &[TotalItem]) -> TableTotals {
     }
     out.count = out.ok + out.mismatch + out.unknown;
     out.rows = rows.into_values().collect();
-    if let Some(pc) = t.columns.iter().find(|c| c.derived_kind() == Some("period"))
+    if let Some(pc) = t
+        .columns
+        .iter()
+        .find(|c| c.derived_kind() == Some("period"))
         && out.rows.iter().any(|r| r.kept_in_data)
     {
-        let at: std::collections::HashMap<u32, usize> = t.src_rows.iter().enumerate().map(|(i, &r)| (r + 1, i)).collect();
+        let at: std::collections::HashMap<u32, usize> = t
+            .src_rows
+            .iter()
+            .enumerate()
+            .map(|(i, &r)| (r + 1, i))
+            .collect();
         for r in out.rows.iter_mut().filter(|r| r.kept_in_data) {
             if let Some(Out::Text(p)) = at.get(&r.row).and_then(|&i| pc.values.get(i)) {
                 r.period = Some(p.clone());
@@ -688,23 +728,35 @@ fn key_value_tables_last(out: &mut Normalized) {
     if !out.tables.iter().any(Table::is_key_value) {
         return;
     }
-    let mut order: Vec<usize> = (0..out.tables.len()).filter(|&k| !out.tables[k].is_key_value()).collect();
+    let mut order: Vec<usize> = (0..out.tables.len())
+        .filter(|&k| !out.tables[k].is_key_value())
+        .collect();
     order.extend((0..out.tables.len()).filter(|&k| out.tables[k].is_key_value()));
     // Old table number → new.
     let mut new_n = vec![0usize; out.tables.len() + 1];
     for (k, &old) in order.iter().enumerate() {
         new_n[out.tables[old].n] = k + 1;
     }
-    let mut tables: Vec<Option<Table>> = std::mem::take(&mut out.tables).into_iter().map(Some).collect();
+    let mut tables: Vec<Option<Table>> = std::mem::take(&mut out.tables)
+        .into_iter()
+        .map(Some)
+        .collect();
     for &old in &order {
         let mut t = tables[old].take().expect("each table once");
         let n = new_n[t.n];
         if n != t.n {
             // The output name again, as `process_sheet` makes it (the prefix's length changed).
             let prefix = format!("T{n}_");
-            let base = t.title.as_ref().map(|x| extract::slug(&x.0, 31 - prefix.len())).filter(|s| !s.is_empty());
+            let base = t
+                .title
+                .as_ref()
+                .map(|x| extract::slug(&x.0, 31 - prefix.len()))
+                .filter(|s| !s.is_empty());
             let base = base
-                .or_else(|| Some(extract::slug(&t.source_sheet, 31 - prefix.len())).filter(|s| !s.is_empty()))
+                .or_else(|| {
+                    Some(extract::slug(&t.source_sheet, 31 - prefix.len()))
+                        .filter(|s| !s.is_empty())
+                })
                 .unwrap_or_else(|| "table".to_string());
             t.sheet = format!("{prefix}{base}");
         }
@@ -734,7 +786,9 @@ fn key_value_tables_last(out: &mut Normalized) {
 pub fn try_normalize_workbook(wb: &Workbook, opts: &Options) -> Result<Normalized, Error> {
     let norm = normalize_workbook(wb, opts);
     if past(opts.deadline) {
-        return Err(Error("file refused: normalizing took longer than the time limit".into()));
+        return Err(Error(
+            "file refused: normalizing took longer than the time limit".into(),
+        ));
     }
     Ok(norm)
 }
@@ -750,13 +804,20 @@ const PARALLEL_SHEETS_MAX_CELLS: usize = 300_000;
 
 /// A sheet's layout; when the model was skipped for its size, a warning; and the sheet's total
 /// detection if the layout already ran it (so the extraction does not run it again).
-pub(super) type SheetAnalysis = (crate::analysis::SheetLayout, Option<String>, Option<crate::totals::Detection>);
+pub(super) type SheetAnalysis = (
+    crate::analysis::SheetLayout,
+    Option<String>,
+    Option<crate::totals::Detection>,
+);
 
 /// Cell roles and tables of one sheet: the rules plus the learned row model for a sheet within
 /// [`Options::model_max_cells`], the rules alone otherwise (or with `rules_only`). The second
 /// value is a warning for a sheet above the model limit. A total detection the layout runs stays
 /// in `grid`.
-fn sheet_layout(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::SheetLayout, Option<String>) {
+fn sheet_layout(
+    grid: &crate::grid::Grid,
+    opts: &Options,
+) -> (crate::analysis::SheetLayout, Option<String>) {
     if grid.sheet.cells.len() < PREFETCH_TOTALS_MIN_CELLS || !crate::threads::parallel() {
         return sheet_layout_inner(grid, opts);
     }
@@ -789,7 +850,10 @@ pub(crate) fn release_free_memory() {
 /// Sheets with at least this many cells detect their totals beside the layout ([`sheet_layout`]).
 const PREFETCH_TOTALS_MIN_CELLS: usize = 100_000;
 
-fn sheet_layout_inner(grid: &crate::grid::Grid, opts: &Options) -> (crate::analysis::SheetLayout, Option<String>) {
+fn sheet_layout_inner(
+    grid: &crate::grid::Grid,
+    opts: &Options,
+) -> (crate::analysis::SheetLayout, Option<String>) {
     let limit = opts.model_max_cells.unwrap_or(DEFAULT_MODEL_MAX_CELLS);
     let model = crate::learned::embedded().filter(|_| !opts.rules_only);
     let sheet = grid.sheet;
@@ -798,7 +862,10 @@ fn sheet_layout_inner(grid: &crate::grid::Grid, opts: &Options) -> (crate::analy
         Some(m) if n <= limit => (crate::learned::analyze(grid, m), None),
         Some(_) => (
             crate::layout::analyze(grid),
-            Some(format!("{}: {n} cells, more than the model limit of {limit}; cell roles from the rules alone", sheet.name)),
+            Some(format!(
+                "{}: {n} cells, more than the model limit of {limit}; cell roles from the rules alone",
+                sheet.name
+            )),
         ),
         None => (crate::layout::analyze(grid), None),
     }
@@ -817,10 +884,19 @@ fn layouts(wb: &Workbook, opts: &Options) -> Option<Vec<SheetAnalysis>> {
         let (lay, warning) = sheet_layout(&grid, opts);
         (lay, warning, grid.into_totals())
     };
-    let model_cells: usize = wb.sheets.iter().map(|s| s.cells.len()).filter(|&n| n <= limit).sum();
+    let model_cells: usize = wb
+        .sheets
+        .iter()
+        .map(|s| s.cells.len())
+        .filter(|&n| n <= limit)
+        .sum();
     let threads = opts
         .threads
-        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()).min(4))
+        .unwrap_or_else(|| {
+            std::thread::available_parallelism()
+                .map_or(1, |n| n.get())
+                .min(4)
+        })
         .min(wb.sheets.len());
     if model.is_none() || threads <= 1 || model_cells > PARALLEL_SHEETS_MAX_CELLS {
         return None;
@@ -841,17 +917,29 @@ fn layouts(wb: &Workbook, opts: &Options) -> Option<Vec<SheetAnalysis>> {
                 })
             })
             .collect();
-        workers.into_iter().map(|w| w.join().unwrap_or_else(|e| std::panic::resume_unwind(e))).collect()
+        workers
+            .into_iter()
+            .map(|w| w.join().unwrap_or_else(|e| std::panic::resume_unwind(e)))
+            .collect()
     });
     for (i, r) in done.into_iter().flatten() {
         slots[i] = Some(r);
     }
-    Some(slots.into_iter().map(|s| s.expect("every sheet analyzed")).collect())
+    Some(
+        slots
+            .into_iter()
+            .map(|s| s.expect("every sheet analyzed"))
+            .collect(),
+    )
 }
 
 /// Reads `path`, writes `<stem>.normalized.xlsx`, `<stem>.manifest.json` (and CSVs with
 /// `opts.csv`) into `out_dir` (created if missing). The source file is never modified.
-pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &Options) -> Result<Output, Error> {
+pub fn normalize_file(
+    path: impl AsRef<Path>,
+    out_dir: impl AsRef<Path>,
+    opts: &Options,
+) -> Result<Output, Error> {
     let path = path.as_ref();
     let out_dir = out_dir.as_ref();
     let bytes = std::fs::read(path).map_err(|e| Error(format!("{}: {e}", path.display())))?;
@@ -861,14 +949,21 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
     let t0 = std::time::Instant::now();
     let mut read = crate::reader::ReadOptions::default();
     read.limits.deadline = opts.deadline;
-    let wb = crate::reader::open_with(path, read).map_err(|e| Error(format!("{}: {e}", path.display())))?;
+    let wb = crate::reader::open_with(path, read)
+        .map_err(|e| Error(format!("{}: {e}", path.display())))?;
     trace("open", t0);
     let norm = try_normalize_workbook(&wb, opts)?;
     trace("analyze", t0);
     drop(wb);
     std::fs::create_dir_all(out_dir).map_err(|e| Error(format!("{}: {e}", out_dir.display())))?;
-    let file_name = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
-    let stem = path.file_stem().map(|f| f.to_string_lossy().into_owned()).unwrap_or_else(|| "workbook".into());
+    let file_name = path
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let stem = path
+        .file_stem()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "workbook".into());
     let xlsx_name = format!("{stem}.normalized.xlsx");
     let manifest_name = format!("{stem}.manifest.json");
     let xlsx_path = out_dir.join(&xlsx_name);
@@ -876,7 +971,12 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
     if same_file(path, &xlsx_path) || same_file(path, &manifest_path) {
         return Err(Error("output would overwrite the source file".into()));
     }
-    let src = manifest::Source { path: path.display().to_string(), file_name, sha256: sha, size };
+    let src = manifest::Source {
+        path: path.display().to_string(),
+        file_name,
+        sha256: sha,
+        size,
+    };
     write::xlsx(&norm, &src, &xlsx_name, &manifest_name, &xlsx_path)?;
     trace("write_xlsx", t0);
     let mut csv_paths = Vec::new();
@@ -887,10 +987,19 @@ pub fn normalize_file(path: impl AsRef<Path>, out_dir: impl AsRef<Path>, opts: &
             csv_paths.push(p);
         }
     }
-    let csv_names: Vec<String> =
-        csv_paths.iter().map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned()).collect();
-    let manifest_json = manifest::build(&norm, &src, opts, &xlsx_name, &manifest_name, &csv_names).pretty();
-    std::fs::write(&manifest_path, &manifest_json).map_err(|e| Error(format!("{}: {e}", manifest_path.display())))?;
+    let csv_names: Vec<String> = csv_paths
+        .iter()
+        .map(|p| {
+            p.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let manifest_json =
+        manifest::build(&norm, &src, opts, &xlsx_name, &manifest_name, &csv_names).pretty();
+    std::fs::write(&manifest_path, &manifest_json)
+        .map_err(|e| Error(format!("{}: {e}", manifest_path.display())))?;
     let mut transforms = Transforms::default();
     for t in &norm.tables {
         transforms.merge(&t.transforms);
@@ -925,7 +1034,9 @@ pub(crate) fn trace(stage: &str, since: std::time::Instant) {
 pub(crate) fn tracing() -> bool {
     use std::sync::OnceLock;
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0"))
+    *ON.get_or_init(|| {
+        std::env::var_os("HEDGEHOG_TRACE").is_some_and(|v| !v.is_empty() && v != "0")
+    })
 }
 
 /// [`trace`] with a measured duration: sub-steps (`layout.blocks`, `M.values`, …) are indented under
@@ -937,8 +1048,15 @@ pub(crate) fn trace_ms(stage: &str, took: std::time::Duration) {
     }
     let peak = std::fs::read_to_string("/proc/self/status")
         .ok()
-        .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM:")).map(|l| l[6..].trim().to_string()))
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("VmHWM:"))
+                .map(|l| l[6..].trim().to_string())
+        })
         .unwrap_or_default();
     let indent = if stage.contains('.') { "  " } else { "" };
-    eprintln!("[trace] {indent}{stage:<16} {:>9.1} ms  peak {peak}", took.as_secs_f64() * 1000.0);
+    eprintln!(
+        "[trace] {indent}{stage:<16} {:>9.1} ms  peak {peak}",
+        took.as_secs_f64() * 1000.0
+    );
 }

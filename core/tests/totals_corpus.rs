@@ -5,11 +5,11 @@
 //! Files are untrusted and only read through `hh_core::open`.
 
 use std::collections::BTreeMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::Instant;
 
-use hh_core::totals::{self, detect_with, verify, DependencyIndex, FormulaKind};
-use hh_core::{a1, open, Features, Grid, Value};
+use hh_core::totals::{self, DependencyIndex, FormulaKind, detect_with, verify};
+use hh_core::{Features, Grid, Value, a1, open};
 
 const DEFAULT_DIR: &str = "/home/vukasin/projects/excell-lib-project/testdata/irregular/enron";
 
@@ -38,7 +38,9 @@ struct Stats {
 }
 
 fn label_text(sheet: &hh_core::Sheet, pos: Option<(u32, u32)>) -> String {
-    let Some((r, c)) = pos else { return String::new() };
+    let Some((r, c)) = pos else {
+        return String::new();
+    };
     sheet
         .cells
         .iter()
@@ -54,15 +56,26 @@ fn label_text(sheet: &hh_core::Sheet, pos: Option<(u32, u32)>) -> String {
 #[ignore]
 fn corpus_totals() {
     let dir = std::env::var("HEDGEHOG_ENRON").unwrap_or_else(|_| DEFAULT_DIR.to_string());
-    let n: usize = std::env::var("TOTALS_SAMPLE").ok().and_then(|s| s.parse().ok()).unwrap_or(500);
-    let mut seed: u64 = std::env::var("TOTALS_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(42);
+    let n: usize = std::env::var("TOTALS_SAMPLE")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(500);
+    let mut seed: u64 = std::env::var("TOTALS_SEED")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(42);
     let mut files: Vec<_> = std::fs::read_dir(&dir)
         .expect("corpus dir")
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| {
-            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-            matches!(ext.as_str(), "xlsx" | "xlsm" | "xls") && p.metadata().map(|m| m.len() < 30_000_000).unwrap_or(false)
+            let ext = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            matches!(ext.as_str(), "xlsx" | "xlsm" | "xls")
+                && p.metadata().map(|m| m.len() < 30_000_000).unwrap_or(false)
         })
         .collect();
     files.sort();
@@ -104,14 +117,23 @@ fn corpus_totals() {
                     st.totals += 1;
                     *st.by_origin.entry(format!("{:?}", c.origin)).or_default() += 1;
                     *st.by_level.entry(format!("{:?}", c.level)).or_default() += 1;
-                    *st.by_direction.entry(format!("{:?}", c.direction)).or_default() += 1;
+                    *st.by_direction
+                        .entry(format!("{:?}", c.direction))
+                        .or_default() += 1;
                     let chk = verify(&grid, c);
                     let kind = match (c.origin, c.direction) {
-                        (hh_core::totals::TotalOrigin::Typed, hh_core::totals::Direction::Vertical) => 0,
+                        (
+                            hh_core::totals::TotalOrigin::Typed,
+                            hh_core::totals::Direction::Vertical,
+                        ) => 0,
                         (hh_core::totals::TotalOrigin::Typed, _) => 1,
                         _ => 2,
                     };
-                    let res = match chk.ok { Some(true) => 0, Some(false) => 1, None => 2 };
+                    let res = match chk.ok {
+                        Some(true) => 0,
+                        Some(false) => 1,
+                        None => 2,
+                    };
                     st.per_file.entry(name.clone()).or_default()[kind][res] += 1;
                     *st.reasons.entry(format!("{:?}", chk.reason)).or_default() += 1;
                     match chk.ok {
@@ -119,8 +141,21 @@ fn corpus_totals() {
                         Some(false) => {
                             st.wrong += 1;
                             let typed = c.origin == hh_core::totals::TotalOrigin::Typed;
-                            if st.examples.iter().filter(|e| e.contains("| Typed ") == typed).count() < 20 && !st.examples.iter().any(|e| e.starts_with(&format!("{name} | {} |", sheet.name))) {
-                                let formula = grid.cell(c.row, c.col).and_then(|x| x.formula.clone()).unwrap_or_default();
+                            if st
+                                .examples
+                                .iter()
+                                .filter(|e| e.contains("| Typed ") == typed)
+                                .count()
+                                < 20
+                                && !st
+                                    .examples
+                                    .iter()
+                                    .any(|e| e.starts_with(&format!("{name} | {} |", sheet.name)))
+                            {
+                                let formula = grid
+                                    .cell(c.row, c.col)
+                                    .and_then(|x| x.formula.clone())
+                                    .unwrap_or_default();
                                 st.examples.push(format!(
                                     "{name} | {} | {} | {:?} {:?} | label {:?} | expected {:?} actual {:?} | {:?} | {}",
                                     sheet.name,
@@ -148,15 +183,31 @@ fn corpus_totals() {
         }
     }
     let secs = start.elapsed().as_secs_f64();
-    let pct = |a: usize, b: usize| if b == 0 { 0.0 } else { 100.0 * a as f64 / b as f64 };
+    let pct = |a: usize, b: usize| {
+        if b == 0 {
+            0.0
+        } else {
+            100.0 * a as f64 / b as f64
+        }
+    };
     println!("== totals corpus check: {dir}");
-    println!("files {} (open failed {}), sheets {}, our panics {}, {:.1}s", st.files, st.open_failed, st.sheets, st.our_panics, secs);
+    println!(
+        "files {} (open failed {}), sheets {}, our panics {}, {:.1}s",
+        st.files, st.open_failed, st.sheets, st.our_panics, secs
+    );
     println!(
         "formulas {}: with refs {:.1}%, with error literal {:.1}%, recognised aggregate/ref {:.1}%",
         st.formulas,
         pct(st.formulas_with_refs, st.formulas),
         pct(st.formulas_with_error, st.formulas),
-        pct(st.formulas - st.kinds.get(&format!("{:?}", FormulaKind::Other)).copied().unwrap_or(0), st.formulas)
+        pct(
+            st.formulas
+                - st.kinds
+                    .get(&format!("{:?}", FormulaKind::Other))
+                    .copied()
+                    .unwrap_or(0),
+            st.formulas
+        )
     );
     println!("formula kinds {:?}", st.kinds);
     println!(
@@ -166,7 +217,10 @@ fn corpus_totals() {
         pct(st.sheets_with_totals, st.sheets),
         st.totals as f64 / st.sheets_with_totals.max(1) as f64
     );
-    println!("origin {:?} level {:?} direction {:?}", st.by_origin, st.by_level, st.by_direction);
+    println!(
+        "origin {:?} level {:?} direction {:?}",
+        st.by_origin, st.by_level, st.by_direction
+    );
     println!(
         "verified ok {} ({:.1}%), wrong {} ({:.1}%), unknown {} ({:.1}%)",
         st.ok,
@@ -179,7 +233,9 @@ fn corpus_totals() {
     println!("reasons {:?}", st.reasons);
     let mut top: Vec<_> = st.per_file.iter().collect();
     top.sort_by_key(|(_, v)| std::cmp::Reverse(v.iter().map(|k| k[1]).sum::<usize>()));
-    println!("-- files with most mismatches ([typed-vertical, typed-horizontal, formula] x [ok, wrong, unknown]):");
+    println!(
+        "-- files with most mismatches ([typed-vertical, typed-horizontal, formula] x [ok, wrong, unknown]):"
+    );
     for (f, v) in top.iter().take(15) {
         println!("{f}: {v:?}");
     }
@@ -191,7 +247,9 @@ fn corpus_totals() {
             }
         }
     }
-    println!("by kind [typed-vertical, typed-horizontal, formula] x [ok, wrong, unknown]: {kinds:?}");
+    println!(
+        "by kind [typed-vertical, typed-horizontal, formula] x [ok, wrong, unknown]: {kinds:?}"
+    );
     println!("-- mismatch examples:");
     for e in &st.examples {
         println!("{e}");
@@ -204,7 +262,9 @@ fn corpus_totals() {
 #[test]
 #[ignore]
 fn dump_region() {
-    let Ok(spec) = std::env::var("TOTALS_DUMP") else { return };
+    let Ok(spec) = std::env::var("TOTALS_DUMP") else {
+        return;
+    };
     let p: Vec<&str> = spec.split('|').collect();
     let wb = open(p[0]).unwrap();
     let sheet = wb.sheets.iter().find(|s| s.name == p[1]).unwrap();
@@ -218,7 +278,17 @@ fn dump_region() {
     let grid = Grid::new(sheet);
     for t in hh_core::totals::detect(&grid) {
         if (r0..=r1).contains(&t.row) && (c0..=c1).contains(&t.col) {
-            println!("TOTAL {} {:?} {:?} {:?} ranges {:?} excl {:?} ev {:?} -> {:?}", a1(t.row, t.col), t.origin, t.level, t.direction, t.ranges, t.exclude, t.evidence, verify(&grid, &t));
+            println!(
+                "TOTAL {} {:?} {:?} {:?} ranges {:?} excl {:?} ev {:?} -> {:?}",
+                a1(t.row, t.col),
+                t.origin,
+                t.level,
+                t.direction,
+                t.ranges,
+                t.exclude,
+                t.evidence,
+                verify(&grid, &t)
+            );
         }
     }
 }

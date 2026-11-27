@@ -146,7 +146,8 @@ fn join_hyphenation(s: &str, known: &dyn Fn(&str) -> bool, english: bool) -> Str
                         && left.chars().next().is_some_and(char::is_uppercase);
                     // A word written joined elsewhere is joined, except an English compound of a
                     // compound prefix ("post-secondary" beside "postsecondary": both spellings).
-                    let known_join = known(&format!("{left}{right}").to_lowercase()) && !(english && compound);
+                    let known_join =
+                        known(&format!("{left}{right}").to_lowercase()) && !(english && compound);
                     if month || suffix || soft_wrap || known_join {
                         i = j;
                         continue;
@@ -180,7 +181,9 @@ fn word_after(chars: &[char], start: usize) -> String {
 /// space, or glued to a year (`20221)` → `2022`).
 fn strip_footnote(s: &str) -> String {
     if s.ends_with(is_footnote_mark_char) {
-        return split_footnote_mark(s).map_or(s, |(body, _)| body).to_string();
+        return split_footnote_mark(s)
+            .map_or(s, |(body, _)| body)
+            .to_string();
     }
     let Some(body) = s.strip_suffix(')') else {
         return s.to_string();
@@ -525,24 +528,42 @@ mod tests {
         // On an English sheet in-word hyphens are compounds (public benchmark, HiTab statcan/102 B4).
         let en = |s: &str| clean_header_with(s, &|_| false, true);
         assert_eq!(en("French-language workers"), "French-language workers");
-        assert_eq!(en("Family-sponsored immigrants"), "Family-sponsored immigrants");
+        assert_eq!(
+            en("Family-sponsored immigrants"),
+            "Family-sponsored immigrants"
+        );
         assert_eq!(en("Low-income"), "Low-income");
         assert_eq!(en("Accommod-ation & food"), "Accommodation & food");
         assert_eq!(en("Sep-tember"), "September");
         assert_eq!(en("Kalender-\nfaktoren"), "Kalenderfaktoren");
         // A word written joined elsewhere on the sheet is joined in any language.
         let known = |w: &str| w == "riscaldamento";
-        assert_eq!(clean_header_with("Riscal-damento", &known, true), "Riscaldamento");
-        assert_eq!(clean_header_with("French-language", &known, true), "French-language");
+        assert_eq!(
+            clean_header_with("Riscal-damento", &known, true),
+            "Riscaldamento"
+        );
+        assert_eq!(
+            clean_header_with("French-language", &known, true),
+            "French-language"
+        );
         // English: a compound of a compound prefix keeps its hyphen also when the sheet writes it
         // joined elsewhere (HiTab statcan/2201), and a hyphen before a space is a compound unless
         // the halves are a word and its suffix (statcan/902).
         let ps = |w: &str| w == "postsecondary";
-        assert_eq!(clean_header_with("Non-university post-secondary graduates", &ps, true), "Non-university post-secondary graduates");
-        assert_eq!(en("Change in age- group composition"), "Change in age-group composition");
+        assert_eq!(
+            clean_header_with("Non-university post-secondary graduates", &ps, true),
+            "Non-university post-secondary graduates"
+        );
+        assert_eq!(
+            en("Change in age- group composition"),
+            "Change in age-group composition"
+        );
         assert_eq!(en("Accommod- ation"), "Accommodation");
         assert_eq!(en("employ-\nment"), "employment");
-        assert_eq!(clean_header("Benützungs- gebühren nach FAG"), "Benützungsgebühren nach FAG");
+        assert_eq!(
+            clean_header("Benützungs- gebühren nach FAG"),
+            "Benützungsgebühren nach FAG"
+        );
     }
 
     #[test]

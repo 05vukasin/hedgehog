@@ -18,18 +18,30 @@ pub fn write(dir: &Path) -> Result<(), String> {
     let bold = Format::new().set_bold().set_align(FormatAlign::Center);
     let date = Format::new().set_num_format("dd.mm.yyyy");
     let money = Format::new().set_num_format("#,##0.00 \"€\"");
-    ws.merge_range(0, 0, 0, 3, "Budget 2023 (in EUR)", &bold).map_err(e)?;
+    ws.merge_range(0, 0, 0, 3, "Budget 2023 (in EUR)", &bold)
+        .map_err(e)?;
     for (c, h) in ["City", "Date", "Amount", "Share"].iter().enumerate() {
-        ws.write_string_with_format(2, c as u16, *h, &bold).map_err(e)?;
+        ws.write_string_with_format(2, c as u16, *h, &bold)
+            .map_err(e)?;
     }
     for r in 0..6u32 {
-        ws.write_string(3 + r, 0, ["Beograd", "Niš", "Novi Sad", "Zürich", "Wien", "Paris"][r as usize]).map_err(e)?;
-        ws.write_number_with_format(3 + r, 1, 44_927.0 + r as f64 * 31.0, &date).map_err(e)?;
-        ws.write_number_with_format(3 + r, 2, 1000.5 * (r + 1) as f64, &money).map_err(e)?;
-        ws.write_formula(3 + r, 3, Formula::new(format!("C{}/C10", 4 + r))).map_err(e)?;
+        ws.write_string(
+            3 + r,
+            0,
+            ["Beograd", "Niš", "Novi Sad", "Zürich", "Wien", "Paris"][r as usize],
+        )
+        .map_err(e)?;
+        ws.write_number_with_format(3 + r, 1, 44_927.0 + r as f64 * 31.0, &date)
+            .map_err(e)?;
+        ws.write_number_with_format(3 + r, 2, 1000.5 * (r + 1) as f64, &money)
+            .map_err(e)?;
+        ws.write_formula(3 + r, 3, Formula::new(format!("C{}/C10", 4 + r)))
+            .map_err(e)?;
     }
-    ws.write_string_with_format(9, 0, "Total", &bold).map_err(e)?;
-    ws.write_formula(9, 2, Formula::new("SUM(C4:C9)").set_result("21010.5")).map_err(e)?;
+    ws.write_string_with_format(9, 0, "Total", &bold)
+        .map_err(e)?;
+    ws.write_formula(9, 2, Formula::new("SUM(C4:C9)").set_result("21010.5"))
+        .map_err(e)?;
     let ws2 = wb.add_worksheet().set_name("Notes & more").map_err(e)?;
     ws2.write_string(0, 0, "Source: test").map_err(e)?;
     ws2.write_number(5, 5, 1.0).map_err(e)?;
@@ -48,7 +60,8 @@ pub fn write(dir: &Path) -> Result<(), String> {
         for i in 0..n {
             ws.write_string(r + 2 + i, 0, format!("R{i}")).map_err(e)?;
             ws.write_number(r + 2 + i, 1, (i * 7) as f64).map_err(e)?;
-            ws.write_number(r + 2 + i, 2, (i * 11) as f64 + 0.25).map_err(e)?;
+            ws.write_number(r + 2 + i, 2, (i * 11) as f64 + 0.25)
+                .map_err(e)?;
         }
         ws.write_string(r + 2 + n, 0, "Ukupno").map_err(e)?;
         r += n + 5;
@@ -64,14 +77,24 @@ pub fn write(dir: &Path) -> Result<(), String> {
     wb.save(dir.join("xlsx/gen_one.xlsx")).map_err(e)?;
 
     let csvs: &[(&str, &str)] = &[
-        ("comma.csv", "City,Amount,Date\nBeograd,1200.5,2023-01-31\nNiš,\"1,000\",2023-02-28\nTotal,2200.5,\n"),
-        ("semicolon.csv", "sep=;\nGrad;Iznos;Datum\nBeograd;1.200,50;31.12.2023\nNiš;-0,5;01.01.2024\nUkupno;1.200,00;\n"),
+        (
+            "comma.csv",
+            "City,Amount,Date\nBeograd,1200.5,2023-01-31\nNiš,\"1,000\",2023-02-28\nTotal,2200.5,\n",
+        ),
+        (
+            "semicolon.csv",
+            "sep=;\nGrad;Iznos;Datum\nBeograd;1.200,50;31.12.2023\nNiš;-0,5;01.01.2024\nUkupno;1.200,00;\n",
+        ),
         ("tab.tsv", "a\tb\tc\n1\t2\t3\n\"x\ty\"\t\t\n"),
-        ("quoted.csv", "\u{feff}\"h1\",\"h \"\"2\"\"\"\n\"multi\nline\",2\n"),
+        (
+            "quoted.csv",
+            "\u{feff}\"h1\",\"h \"\"2\"\"\"\n\"multi\nline\",2\n",
+        ),
         ("ragged.csv", "a,b\n1\n1,2,3,4\n\n,,\n"),
     ];
     for (name, body) in csvs {
-        std::fs::write(dir.join("csv").join(name.replace(".tsv", ".csv")), body).map_err(|e| e.to_string())?;
+        std::fs::write(dir.join("csv").join(name.replace(".tsv", ".csv")), body)
+            .map_err(|e| e.to_string())?;
     }
     // UTF-16 LE with BOM (Excel's "Unicode text").
     let mut u16le = vec![0xff, 0xfe];
@@ -86,7 +109,11 @@ pub fn write(dir: &Path) -> Result<(), String> {
 
 /// One BIFF12 record: variable-length type and size, then the data.
 fn rec12(typ: u16, data: &[u8]) -> Vec<u8> {
-    let mut r = if typ < 0x80 { vec![typ as u8] } else { vec![(typ & 0x7F) as u8 | 0x80, (typ >> 7) as u8] };
+    let mut r = if typ < 0x80 {
+        vec![typ as u8]
+    } else {
+        vec![(typ & 0x7F) as u8 | 0x80, (typ >> 7) as u8]
+    };
     let mut n = data.len();
     loop {
         let b = (n & 0x7F) as u8;
@@ -117,15 +144,28 @@ fn xlsb() -> Vec<u8> {
     let mut sh = [0u32.to_le_bytes(), 1u32.to_le_bytes()].concat();
     sh.extend(wide("rId1"));
     sh.extend(wide("Data"));
-    let workbook = [rec12(0x83, &[]), rec12(0x8F, &[]), rec12(0x9C, &sh), rec12(0x90, &[]), rec12(0x84, &[])].concat();
-    let mut sst = vec![rec12(0x9F, &[&2u32.to_le_bytes()[..], &2u32.to_le_bytes()].concat())];
+    let workbook = [
+        rec12(0x83, &[]),
+        rec12(0x8F, &[]),
+        rec12(0x9C, &sh),
+        rec12(0x90, &[]),
+        rec12(0x84, &[]),
+    ]
+    .concat();
+    let mut sst = vec![rec12(
+        0x9F,
+        &[&2u32.to_le_bytes()[..], &2u32.to_le_bytes()].concat(),
+    )];
     for s in ["Total", "Region"] {
         sst.push(rec12(0x13, &[&[0u8][..], &wide(s)].concat()));
     }
     sst.push(rec12(0xA0, &[]));
     let cell = |col: u32, rest: &[u8]| [&col.to_le_bytes()[..], &[0, 0, 0, 0], rest].concat();
     let row = |r: u32| rec12(0x0000, &[&r.to_le_bytes()[..], &[0; 13]].concat());
-    let dims: Vec<u8> = [0u32, 2, 0, 2].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let dims: Vec<u8> = [0u32, 2, 0, 2]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
     let fmla = |cached: f64, rgce: &[u8]| {
         let mut f = cached.to_le_bytes().to_vec();
         f.extend([0, 0]);
@@ -170,7 +210,8 @@ fn xlsb() -> Vec<u8> {
         ("xl/worksheets/sheet1.bin", sheet),
     ];
     let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let o = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     for (n, d) in parts {
         w.start_file(n, o).expect("zip entry");
         w.write_all(&d).expect("zip write");

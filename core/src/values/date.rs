@@ -62,7 +62,8 @@ pub struct ParsedDate {
 impl ParsedDate {
     /// Excel serial (1900 system) of the start of the period, plus time as a day fraction.
     pub fn serial(&self) -> f64 {
-        ymd_to_serial(self.year, self.month, self.day) + self.time.map_or(0.0, |t| t as f64 / 86400.0)
+        ymd_to_serial(self.year, self.month, self.day)
+            + self.time.map_or(0.0, |t| t as f64 / 86400.0)
     }
 }
 
@@ -174,7 +175,10 @@ fn tokenize(s: &str) -> Option<Vec<Tok>> {
             if digits.len() > 4 {
                 return None;
             }
-            toks.push(Tok::Num { v: digits.parse().ok()?, len: digits.len() as u8 });
+            toks.push(Tok::Num {
+                v: digits.parse().ok()?,
+                len: digits.len() as u8,
+            });
         } else if c.is_alphabetic() {
             let mut end = i + c.len_utf8();
             while let Some(&(j, d)) = chars.peek() {
@@ -214,29 +218,34 @@ fn month_word(w: &str) -> Option<u8> {
     // (`März` → `marz`, `février` → `fevrier`, `août` → `aout`). Omitted on purpose:
     // `listopad(a)`, which is November in Polish/Czech but October in Croatian.
     Some(match w {
-        "january" | "jan" | "januar" | "januara" | "januari" | "janner" | "janv" | "janvier" | "enero" | "ene"
-        | "gennaio" | "gen" | "janeiro" | "styczen" | "stycznia" | "sty" | "sijecanj" | "sijecnja" => 1,
-        "february" | "feb" | "febr" | "februar" | "februara" | "februari" | "feber" | "fevrier" | "fevr" | "fev"
-        | "febrero" | "febbraio" | "fevereiro" | "luty" | "lutego" | "lut" | "veljaca" | "veljace" => 2,
-        "march" | "mar" | "mart" | "marta" | "marz" | "mars" | "marzo" | "maart" | "mrt" | "marco" | "marzec"
-        | "marca" | "marec" | "ozujak" | "ozujka" => 3,
-        "april" | "apr" | "aprila" | "aprill" | "avril" | "avr" | "abril" | "abr" | "aprile" | "kwiecien"
-        | "kwietnia" | "kwi" | "travanj" | "travnja" => 4,
-        "may" | "maj" | "maja" | "mai" | "mayo" | "maggio" | "mag" | "mei" | "maio" | "svibanj" | "svibnja" => 5,
-        "june" | "jun" | "juni" | "juna" | "junij" | "junija" | "juin" | "junio" | "giugno" | "giu" | "junho"
-        | "czerwiec" | "czerwca" | "cze" | "lipanj" | "lipnja" => 6,
-        "july" | "jul" | "juli" | "jula" | "julij" | "julija" | "juillet" | "juil" | "julio" | "luglio" | "lug"
-        | "julho" | "lipiec" | "lipca" | "lip" | "srpanj" | "srpnja" => 7,
-        "august" | "aug" | "avgust" | "avg" | "avgusta" | "aout" | "agosto" | "ago" | "augustus" | "sierpien"
-        | "sierpnia" | "sie" | "kolovoz" | "kolovoza" => 8,
-        "september" | "sep" | "sept" | "septembar" | "septembra" | "septemvri" | "septembre" | "septiembre"
-        | "setiembre" | "set" | "settembre" | "setembro" | "wrzesien" | "wrzesnia" | "wrz" | "rujan" | "rujna" => 9,
-        "october" | "oct" | "okt" | "oktobar" | "oktobra" | "oktober" | "octobre" | "octubre" | "ottobre" | "ott"
-        | "outubro" | "out" | "pazdziernik" | "pazdziernika" | "paz" => 10,
-        "november" | "nov" | "novembar" | "novembra" | "novembre" | "noviembre" | "novembro" | "lis" | "studeni"
-        | "studenoga" | "studenog" => 11,
-        "december" | "dec" | "decembar" | "decembra" | "dezember" | "dez" | "decembre" | "diciembre" | "dic"
-        | "dicembre" | "dezembro" | "grudzien" | "grudnia" | "gru" | "prosinac" | "prosinca" => 12,
+        "january" | "jan" | "januar" | "januara" | "januari" | "janner" | "janv" | "janvier"
+        | "enero" | "ene" | "gennaio" | "gen" | "janeiro" | "styczen" | "stycznia" | "sty"
+        | "sijecanj" | "sijecnja" => 1,
+        "february" | "feb" | "febr" | "februar" | "februara" | "februari" | "feber" | "fevrier"
+        | "fevr" | "fev" | "febrero" | "febbraio" | "fevereiro" | "luty" | "lutego" | "lut"
+        | "veljaca" | "veljace" => 2,
+        "march" | "mar" | "mart" | "marta" | "marz" | "mars" | "marzo" | "maart" | "mrt"
+        | "marco" | "marzec" | "marca" | "marec" | "ozujak" | "ozujka" => 3,
+        "april" | "apr" | "aprila" | "aprill" | "avril" | "avr" | "abril" | "abr" | "aprile"
+        | "kwiecien" | "kwietnia" | "kwi" | "travanj" | "travnja" => 4,
+        "may" | "maj" | "maja" | "mai" | "mayo" | "maggio" | "mag" | "mei" | "maio" | "svibanj"
+        | "svibnja" => 5,
+        "june" | "jun" | "juni" | "juna" | "junij" | "junija" | "juin" | "junio" | "giugno"
+        | "giu" | "junho" | "czerwiec" | "czerwca" | "cze" | "lipanj" | "lipnja" => 6,
+        "july" | "jul" | "juli" | "jula" | "julij" | "julija" | "juillet" | "juil" | "julio"
+        | "luglio" | "lug" | "julho" | "lipiec" | "lipca" | "lip" | "srpanj" | "srpnja" => 7,
+        "august" | "aug" | "avgust" | "avg" | "avgusta" | "aout" | "agosto" | "ago"
+        | "augustus" | "sierpien" | "sierpnia" | "sie" | "kolovoz" | "kolovoza" => 8,
+        "september" | "sep" | "sept" | "septembar" | "septembra" | "septemvri" | "septembre"
+        | "septiembre" | "setiembre" | "set" | "settembre" | "setembro" | "wrzesien"
+        | "wrzesnia" | "wrz" | "rujan" | "rujna" => 9,
+        "october" | "oct" | "okt" | "oktobar" | "oktobra" | "oktober" | "octobre" | "octubre"
+        | "ottobre" | "ott" | "outubro" | "out" | "pazdziernik" | "pazdziernika" | "paz" => 10,
+        "november" | "nov" | "novembar" | "novembra" | "novembre" | "noviembre" | "novembro"
+        | "lis" | "studeni" | "studenoga" | "studenog" => 11,
+        "december" | "dec" | "decembar" | "decembra" | "dezember" | "dez" | "decembre"
+        | "diciembre" | "dic" | "dicembre" | "dezembro" | "grudzien" | "grudnia" | "gru"
+        | "prosinac" | "prosinca" => 12,
         _ => return None,
     })
 }
@@ -244,7 +253,25 @@ fn month_word(w: &str) -> Option<u8> {
 /// Month abbreviations of other languages that are English words or abbreviations: `avg`
 /// (average), `set`, `out`, `gen`, `mag`, `lip`, `lis`, `sie`, `ago`, `dic`, `paz`, `gru`, `lut`.
 fn word_like_month(w: &str) -> bool {
-    matches!(w, "avg" | "set" | "out" | "gen" | "mag" | "lip" | "lis" | "sie" | "ago" | "dic" | "paz" | "gru" | "lut" | "lug" | "giu" | "ene")
+    matches!(
+        w,
+        "avg"
+            | "set"
+            | "out"
+            | "gen"
+            | "mag"
+            | "lip"
+            | "lis"
+            | "sie"
+            | "ago"
+            | "dic"
+            | "paz"
+            | "gru"
+            | "lut"
+            | "lug"
+            | "giu"
+            | "ene"
+    )
 }
 
 /// Month number of a month name or abbreviation in any of the parser's languages (`März`,
@@ -285,28 +312,50 @@ fn weekday_word(w: &str) -> bool {
 /// Words that sit between date parts and carry nothing: "31 de diciembre de 2024",
 /// "the 31st of December", "den 31. Dezember", "il 31 dicembre", "le 1er janvier".
 fn filler_word(w: &str) -> bool {
-    matches!(w, "de" | "del" | "of" | "the" | "le" | "el" | "den" | "am" | "il" | "lo")
+    matches!(
+        w,
+        "de" | "del" | "of" | "the" | "le" | "el" | "den" | "am" | "il" | "lo"
+    )
 }
 
 /// Ordinal suffixes glued to a day or quarter number: 31st, 2nd, 3rd, 4th, 1er, 2e, 2eme, 1º.
 fn ordinal_suffix(w: &str) -> bool {
-    matches!(w, "st" | "nd" | "rd" | "th" | "er" | "re" | "e" | "eme" | "o" | "a" | "º" | "ª")
+    matches!(
+        w,
+        "st" | "nd" | "rd" | "th" | "er" | "re" | "e" | "eme" | "o" | "a" | "º" | "ª"
+    )
 }
 
 fn quarter_word(w: &str) -> bool {
     matches!(
         w,
-        "q" | "kv" | "kvartal" | "kvartala" | "quarter" | "qtr" | "qrt" | "tromesecje" | "tromesecja" | "quartal"
-            | "trimestre" | "trim" | "t" | "kwartaal" | "kwartal"
+        "q" | "kv"
+            | "kvartal"
+            | "kvartala"
+            | "quarter"
+            | "qtr"
+            | "qrt"
+            | "tromesecje"
+            | "tromesecja"
+            | "quartal"
+            | "trimestre"
+            | "trim"
+            | "t"
+            | "kwartaal"
+            | "kwartal"
     )
 }
 
 fn roman_or_ordinal(w: &str) -> Option<u8> {
     Some(match w {
-        "i" | "first" | "prvi" | "prvo" | "erstes" | "premier" | "primer" | "primero" | "primo" | "eerste" | "pierwszy" => 1,
-        "ii" | "second" | "drugi" | "drugo" | "zweites" | "deuxieme" | "segundo" | "secondo" | "tweede" => 2,
-        "iii" | "third" | "treci" | "trece" | "drittes" | "troisieme" | "tercer" | "tercero" | "terzo" | "derde" | "trzeci" => 3,
-        "iv" | "fourth" | "cetvrti" | "cetvrto" | "viertes" | "quatrieme" | "cuarto" | "quarto" | "vierde" | "czwarty" => 4,
+        "i" | "first" | "prvi" | "prvo" | "erstes" | "premier" | "primer" | "primero" | "primo"
+        | "eerste" | "pierwszy" => 1,
+        "ii" | "second" | "drugi" | "drugo" | "zweites" | "deuxieme" | "segundo" | "secondo"
+        | "tweede" => 2,
+        "iii" | "third" | "treci" | "trece" | "drittes" | "troisieme" | "tercer" | "tercero"
+        | "terzo" | "derde" | "trzeci" => 3,
+        "iv" | "fourth" | "cetvrti" | "cetvrto" | "viertes" | "quatrieme" | "cuarto" | "quarto"
+        | "vierde" | "czwarty" => 4,
         _ => return None,
     })
 }
@@ -315,7 +364,11 @@ fn year_of(v: u32, len: u8) -> Option<i32> {
     match len {
         4 => Some(v as i32),
         // Excel's two-digit-year rule: 00–29 → 2000s, 30–99 → 1900s.
-        2 => Some(if v < 30 { 2000 + v as i32 } else { 1900 + v as i32 }),
+        2 => Some(if v < 30 {
+            2000 + v as i32
+        } else {
+            1900 + v as i32
+        }),
         _ => None,
     }
 }
@@ -329,7 +382,10 @@ fn split_time(s: &str) -> Option<(&str, Option<u32>)> {
             let b = last.as_bytes();
             let h = b.iter().position(|&c| c == b'h');
             let is_clock = |h: usize| {
-                (1..=2).contains(&h) && b[..h].iter().all(u8::is_ascii_digit) && b[h + 1..].iter().all(u8::is_ascii_digit) && b.len() - h - 1 <= 2
+                (1..=2).contains(&h)
+                    && b[..h].iter().all(u8::is_ascii_digit)
+                    && b[h + 1..].iter().all(u8::is_ascii_digit)
+                    && b.len() - h - 1 <= 2
             };
             if h.is_some_and(is_clock) {
                 return Some((date.trim_end_matches([' ', ',']), Some(parse_clock(last)?)));
@@ -372,7 +428,11 @@ fn parse_clock(t: &str) -> Option<u32> {
     let fr;
     if let Some(i) = t.find('h').filter(|&i| i > 0 && !t.contains(':')) {
         let (a, b) = (&t[..i], &t[i + 1..]);
-        fr = if b.is_empty() { format!("{a}:00") } else { format!("{a}:{b}") };
+        fr = if b.is_empty() {
+            format!("{a}:00")
+        } else {
+            format!("{a}:{b}")
+        };
         t = &fr;
     }
     let mut parts = t.split(':');
@@ -390,7 +450,13 @@ fn parse_clock(t: &str) -> Option<u32> {
                 return None;
             }
             let sec: f64 = match parts.next() {
-                Some(x) if !x.is_empty() && x.len() <= 9 && x.chars().all(|c| c.is_ascii_digit() || c == '.') => x.parse().ok()?,
+                Some(x)
+                    if !x.is_empty()
+                        && x.len() <= 9
+                        && x.chars().all(|c| c.is_ascii_digit() || c == '.') =>
+                {
+                    x.parse().ok()?
+                }
                 Some(_) => return None,
                 None => 0.0,
             };
@@ -466,7 +532,9 @@ fn normalize_tokens(toks: Vec<Tok>) -> Vec<Tok> {
     for t in toks {
         match &t {
             Tok::Word(w) if filler_word(w) => continue,
-            Tok::Word(w) if ordinal_suffix(w) && matches!(out.last(), Some(Tok::Num { .. })) => continue,
+            Tok::Word(w) if ordinal_suffix(w) && matches!(out.last(), Some(Tok::Num { .. })) => {
+                continue;
+            }
             Tok::Sep(' ') if matches!(out.last(), None | Some(Tok::Sep(_))) => continue,
             Tok::Sep(c) if *c != ' ' && matches!(out.last(), Some(Tok::Sep(' '))) => {
                 out.pop();
@@ -488,7 +556,10 @@ fn parse_core(mut toks: Vec<Tok>, order: Option<DateOrder>) -> Option<ParsedDate
             toks.pop();
         }
         match toks.last() {
-            Some(Tok::Word(w)) if matches!(w.as_str(), "godine" | "god" | "g" | "r" | "roku") && toks.len() > 1 => {
+            Some(Tok::Word(w))
+                if matches!(w.as_str(), "godine" | "god" | "g" | "r" | "roku")
+                    && toks.len() > 1 =>
+            {
                 toks.pop();
                 trailing_dot = false;
             }
@@ -500,12 +571,26 @@ fn parse_core(mut toks: Vec<Tok>, order: Option<DateOrder>) -> Option<ParsedDate
 
 fn day(y: i32, m: u8, d: u32, ambiguous: bool) -> Option<ParsedDate> {
     let d = u8::try_from(d).ok()?;
-    valid_ymd(y, m, d).then_some(ParsedDate { year: y, month: m, day: d, precision: DatePrecision::Day, time: None, ambiguous })
+    valid_ymd(y, m, d).then_some(ParsedDate {
+        year: y,
+        month: m,
+        day: d,
+        precision: DatePrecision::Day,
+        time: None,
+        ambiguous,
+    })
 }
 
 fn month(y: i32, m: u32) -> Option<ParsedDate> {
     let m = u8::try_from(m).ok()?;
-    valid_ymd(y, m, 1).then_some(ParsedDate { year: y, month: m, day: 1, precision: DatePrecision::Month, time: None, ambiguous: false })
+    valid_ymd(y, m, 1).then_some(ParsedDate {
+        year: y,
+        month: m,
+        day: 1,
+        precision: DatePrecision::Month,
+        time: None,
+        ambiguous: false,
+    })
 }
 
 fn quarter(y: i32, q: u8) -> Option<ParsedDate> {
@@ -533,14 +618,22 @@ fn parse_tokens(t: &[Tok], order: Option<DateOrder>, trailing_dot: bool) -> Opti
     }
     match t {
         // ---- all-numeric, three fields -------------------------------------------------
-        [Num { v: y, len: 4 }, Sep(a), Num { v: m, len: ml }, Sep(b), Num { v: d, len: dl }]
-            if a == b && matches!(a, '-' | '/' | '.') && *ml <= 2 && *dl <= 2 =>
-        {
+        [
+            Num { v: y, len: 4 },
+            Sep(a),
+            Num { v: m, len: ml },
+            Sep(b),
+            Num { v: d, len: dl },
+        ] if a == b && matches!(a, '-' | '/' | '.') && *ml <= 2 && *dl <= 2 => {
             day(*y as i32, u8::try_from(*m).ok()?, *d, false)
         }
-        [Num { v: a, len: al }, Sep(s1), Num { v: b, len: bl }, Sep(s2), Num { v: y, len: yl }]
-            if s1 == s2 && matches!(s1, '.' | '/' | '-') && *al <= 2 && *bl <= 2 =>
-        {
+        [
+            Num { v: a, len: al },
+            Sep(s1),
+            Num { v: b, len: bl },
+            Sep(s2),
+            Num { v: y, len: yl },
+        ] if s1 == s2 && matches!(s1, '.' | '/' | '-') && *al <= 2 && *bl <= 2 => {
             let y = year_of(*y, *yl)?;
             let (a, b) = (*a, *b);
             if *s1 == '.' {
@@ -575,10 +668,14 @@ fn parse_tokens(t: &[Tok], order: Option<DateOrder>, trailing_dot: bool) -> Opti
         // 12 March 2024 / 12. mart 2024. / 12-Mar-24
         [Num { v: d, len: dl }, rest @ ..] if *dl <= 2 => {
             let rest = skip_seps(rest);
-            let [Word(w), rest @ ..] = rest else { return None };
+            let [Word(w), rest @ ..] = rest else {
+                return None;
+            };
             let m = month_word(w)?;
             let rest = skip_seps(rest);
-            let [Num { v: y, len: yl }] = rest else { return None };
+            let [Num { v: y, len: yl }] = rest else {
+                return None;
+            };
             day(year_of(*y, *yl)?, m, *d, false)
         }
         // March 12, 2024 / March 2024 / Mar-24 / mart 2024.
@@ -598,7 +695,9 @@ fn parse_tokens(t: &[Tok], order: Option<DateOrder>, trailing_dot: bool) -> Opti
                 [Num { v: y, len: 2 }] => month(year_of(*y, 2)?, m as u32),
                 [Num { v: d, len: dl }, rest @ ..] if *dl <= 2 => {
                     let rest = skip_seps(rest);
-                    let [Num { v: y, len: 4 }] = rest else { return None };
+                    let [Num { v: y, len: 4 }] = rest else {
+                        return None;
+                    };
                     day(*y as i32, m, *d, false)
                 }
                 _ => None,
@@ -630,16 +729,37 @@ fn skip_seps(mut t: &[Tok]) -> &[Tok] {
 /// The date is the Monday (or the given ISO weekday) of that week.
 fn parse_week(t: &[Tok]) -> Option<ParsedDate> {
     use Tok::*;
-    let is_week = |w: &str| matches!(w, "w" | "wk" | "kw" | "week" | "woche" | "semaine" | "semana" | "settimana" | "tydzien");
+    let is_week = |w: &str| {
+        matches!(
+            w,
+            "w" | "wk" | "kw" | "week" | "woche" | "semaine" | "semana" | "settimana" | "tydzien"
+        )
+    };
     let (y, w, d) = match t {
         [Num { v: y, len: 4 }, Word(k), Num { v: w, len: 1 | 2 }] if k == "w" => (*y, *w, 1),
-        [Num { v: y, len: 4 }, Sep('-'), Word(k), Num { v: w, len: 2 }] if k == "w" => (*y, *w, 1),
-        [Num { v: y, len: 4 }, Sep('-'), Word(k), Num { v: w, len: 2 }, Sep('-'), Num { v: d, len: 1 }] if k == "w" => (*y, *w, *d),
+        [
+            Num { v: y, len: 4 },
+            Sep('-'),
+            Word(k),
+            Num { v: w, len: 2 },
+        ] if k == "w" => (*y, *w, 1),
+        [
+            Num { v: y, len: 4 },
+            Sep('-'),
+            Word(k),
+            Num { v: w, len: 2 },
+            Sep('-'),
+            Num { v: d, len: 1 },
+        ] if k == "w" => (*y, *w, *d),
         [Word(k), rest @ ..] if is_week(k) => {
             let rest = skip_seps(rest);
-            let [Num { v: w, len: 1 | 2 }, rest @ ..] = rest else { return None };
+            let [Num { v: w, len: 1 | 2 }, rest @ ..] = rest else {
+                return None;
+            };
             let rest = skip_seps(rest);
-            let [Num { v: y, len: 4 }] = rest else { return None };
+            let [Num { v: y, len: 4 }] = rest else {
+                return None;
+            };
             (*y, *w, 1)
         }
         _ => return None,
@@ -656,15 +776,28 @@ fn parse_week(t: &[Tok]) -> Option<ParsedDate> {
         return None; // year has only 52 weeks
     }
     let (yy, m, dd) = civil_from_days(day0 + d as i64 - 1);
-    Some(ParsedDate { year: yy, month: m, day: dd, precision: DatePrecision::Week(w as u8), time: None, ambiguous: false })
+    Some(ParsedDate {
+        year: yy,
+        month: m,
+        day: dd,
+        precision: DatePrecision::Week(w as u8),
+        time: None,
+        ambiguous: false,
+    })
 }
 
 /// Quarter strings: exactly one quarter keyword, one quarter number (digit 1–4, Roman numeral or
 /// ordinal word) adjacent to it, and one year; separators in between.
 fn parse_quarter(t: &[Tok]) -> Option<ParsedDate> {
     use Tok::*;
-    let kw = t.iter().position(|x| matches!(x, Word(w) if quarter_word(w)))?;
-    if t.iter().filter(|x| matches!(x, Word(w) if quarter_word(w))).count() != 1 {
+    let kw = t
+        .iter()
+        .position(|x| matches!(x, Word(w) if quarter_word(w)))?;
+    if t.iter()
+        .filter(|x| matches!(x, Word(w) if quarter_word(w)))
+        .count()
+        != 1
+    {
         return None;
     }
     let mut q: Option<(usize, u8)> = None;
@@ -672,7 +805,11 @@ fn parse_quarter(t: &[Tok]) -> Option<ParsedDate> {
     // Quarter number must touch the keyword (only separators / "rd"-style suffixes between).
     let adjacent = |i: usize| {
         let (lo, hi) = if i < kw { (i, kw) } else { (kw, i) };
-        hi - lo <= 3 && t[lo + 1..hi].iter().all(|x| matches!(x, Sep(_)) || matches!(x, Word(w) if matches!(w.as_str(), "st" | "nd" | "rd" | "th")))
+        hi - lo <= 3
+            && t[lo + 1..hi].iter().all(|x| {
+                matches!(x, Sep(_))
+                    || matches!(x, Word(w) if matches!(w.as_str(), "st" | "nd" | "rd" | "th"))
+            })
     };
     for (i, x) in t.iter().enumerate() {
         match x {
@@ -681,7 +818,10 @@ fn parse_quarter(t: &[Tok]) -> Option<ParsedDate> {
             }
             Num { v, len: 4 } if y.is_none() => y = Some((i, *v as i32)),
             // "Q3 24", "3Q24", "Q3'24": two-digit year only right after the quarter number.
-            Num { v, len: 2 } if y.is_none() && q.is_some_and(|(qi, _)| i == qi + 1 || i == qi + 2 || i == kw + 1) => {
+            Num { v, len: 2 }
+                if y.is_none()
+                    && q.is_some_and(|(qi, _)| i == qi + 1 || i == qi + 2 || i == kw + 1) =>
+            {
                 y = Some((i, year_of(*v, 2)?));
             }
             Word(w) if i != kw => {
@@ -706,16 +846,24 @@ pub fn is_period_label(s: &str) -> bool {
     if s.is_empty() || s.len() > 24 {
         return false;
     }
-    let Some(toks) = tokenize(s) else { return false };
+    let Some(toks) = tokenize(s) else {
+        return false;
+    };
     let mut toks: &[Tok] = &toks;
     while let [rest @ .., Tok::Sep('.' | ',' | ':')] = toks {
         toks = rest;
     }
     match toks {
         [Tok::Word(w)] => month_word(w).is_some(),
-        [Tok::Word(k), Tok::Num { v, len: 1 }] | [Tok::Num { v, len: 1 }, Tok::Word(k)] => quarter_word(k) && (1..=4).contains(v),
-        [Tok::Num { v, len: 1 }, Tok::Sep('.' | ' '), Tok::Word(k)] => quarter_word(k) && (1..=4).contains(v),
-        [Tok::Word(r), Tok::Sep(' ' | '.'), Tok::Word(k)] => quarter_word(k) && roman_or_ordinal(r).is_some(),
+        [Tok::Word(k), Tok::Num { v, len: 1 }] | [Tok::Num { v, len: 1 }, Tok::Word(k)] => {
+            quarter_word(k) && (1..=4).contains(v)
+        }
+        [Tok::Num { v, len: 1 }, Tok::Sep('.' | ' '), Tok::Word(k)] => {
+            quarter_word(k) && (1..=4).contains(v)
+        }
+        [Tok::Word(r), Tok::Sep(' ' | '.'), Tok::Word(k)] => {
+            quarter_word(k) && roman_or_ordinal(r).is_some()
+        }
         _ => false,
     }
 }
@@ -742,7 +890,9 @@ impl DateOrderVotes {
         if head.len() < 2 || head[0].len() > 2 {
             return; // ISO yyyy-mm-dd says nothing about a/b order
         }
-        let (Ok(a), Ok(b)) = (head[0].trim().parse::<u32>(), head[1].trim().parse::<u32>()) else { return };
+        let (Ok(a), Ok(b)) = (head[0].trim().parse::<u32>(), head[1].trim().parse::<u32>()) else {
+            return;
+        };
         if a > 12 && b <= 12 {
             self.day_month += 1;
         } else if b > 12 && a <= 12 {
@@ -833,13 +983,34 @@ mod tests {
         assert_eq!(ymd("2024.03.12."), Some((2024, 3, 12)));
         let d = parse_date("2024-03-12T10:30:00Z", None).unwrap();
         assert_eq!((d.year, d.month, d.day, d.time), (2024, 3, 12, Some(37800)));
-        assert_eq!(parse_date("2024-03-12 10:30", None).unwrap().time, Some(37800));
-        assert_eq!(parse_date("2024-03-12T10:30:00+01:00", None).unwrap().time, Some(37800));
-        assert_eq!(parse_date("3/12/2024 2:05 PM", None).unwrap().time, Some(14 * 3600 + 300));
-        assert_eq!(parse_date("3/12/2024 12:00 AM", None).unwrap().time, Some(0));
-        assert_eq!(parse_date("12.03.2024. 23:59:59", None).unwrap().time, Some(86399));
-        assert_eq!(parse_date("01.01.2019,14:42", None).unwrap().time, Some(14 * 3600 + 42 * 60));
-        assert_eq!(parse_date("March 12, 2024, 10:30", None).unwrap().time, Some(37800));
+        assert_eq!(
+            parse_date("2024-03-12 10:30", None).unwrap().time,
+            Some(37800)
+        );
+        assert_eq!(
+            parse_date("2024-03-12T10:30:00+01:00", None).unwrap().time,
+            Some(37800)
+        );
+        assert_eq!(
+            parse_date("3/12/2024 2:05 PM", None).unwrap().time,
+            Some(14 * 3600 + 300)
+        );
+        assert_eq!(
+            parse_date("3/12/2024 12:00 AM", None).unwrap().time,
+            Some(0)
+        );
+        assert_eq!(
+            parse_date("12.03.2024. 23:59:59", None).unwrap().time,
+            Some(86399)
+        );
+        assert_eq!(
+            parse_date("01.01.2019,14:42", None).unwrap().time,
+            Some(14 * 3600 + 42 * 60)
+        );
+        assert_eq!(
+            parse_date("March 12, 2024, 10:30", None).unwrap().time,
+            Some(37800)
+        );
         assert_eq!(parse_date("2024-03-12 25:00", None), None);
         assert_eq!(parse_date("2024-03-12 10:3", None), None);
         assert_eq!(parse_date("10:30", None), None);
@@ -869,7 +1040,10 @@ mod tests {
     #[test]
     fn month_precision() {
         let d = parse_date("03/2024", None).unwrap();
-        assert_eq!((d.year, d.month, d.precision), (2024, 3, DatePrecision::Month));
+        assert_eq!(
+            (d.year, d.month, d.precision),
+            (2024, 3, DatePrecision::Month)
+        );
         assert_eq!(ymd("2024-03"), Some((2024, 3, 1)));
         assert_eq!(ymd("03.2024."), Some((2024, 3, 1)));
         assert_eq!(ymd("03.2024"), None); // could be a decimal number
@@ -901,9 +1075,21 @@ mod tests {
                 assert_eq!(ymd(s), Some(want), "{s:?}");
             }
         }
-        for (s, y, m) in [("March 2024", 2024, 3), ("Mar-24", 2024, 3), ("mart 2024.", 2024, 3), ("okt 2026", 2026, 10), ("Јануар 2024", 2024, 1), ("2024 March", 2024, 3), ("Jul '99", 1999, 7)] {
+        for (s, y, m) in [
+            ("March 2024", 2024, 3),
+            ("Mar-24", 2024, 3),
+            ("mart 2024.", 2024, 3),
+            ("okt 2026", 2026, 10),
+            ("Јануар 2024", 2024, 1),
+            ("2024 March", 2024, 3),
+            ("Jul '99", 1999, 7),
+        ] {
             let d = parse_date(s, None).unwrap_or_else(|| panic!("{s:?}"));
-            assert_eq!((d.year, d.month, d.precision), (y, m, DatePrecision::Month), "{s:?}");
+            assert_eq!(
+                (d.year, d.month, d.precision),
+                (y, m, DatePrecision::Month),
+                "{s:?}"
+            );
         }
         assert_eq!(parse_date("12 March", None), None);
         // A day of a month without a year is no date (it was read as March 2025, 2026, …).
@@ -912,7 +1098,11 @@ mod tests {
         }
         for (s, y) in [("Mar 99", 1999), ("Mar.24", 2024), ("Mar/24", 2024)] {
             let d = parse_date(s, None).unwrap_or_else(|| panic!("{s:?}"));
-            assert_eq!((d.year, d.month, d.precision), (y, 3, DatePrecision::Month), "{s:?}");
+            assert_eq!(
+                (d.year, d.month, d.precision),
+                (y, 3, DatePrecision::Month),
+                "{s:?}"
+            );
         }
         assert_eq!(parse_date("Marchx 2024", None), None);
         // "avg 00" in an English sheet is an average for 2000, not August 2000; with a mark or a
@@ -949,23 +1139,57 @@ mod tests {
             ("2024 III kvartal", 2024, 3),
         ] {
             let d = parse_date(s, None).unwrap_or_else(|| panic!("{s:?}"));
-            assert_eq!((d.year, d.precision, d.month), (y, DatePrecision::Quarter(q), (q - 1) * 3 + 1), "{s:?}");
+            assert_eq!(
+                (d.year, d.precision, d.month),
+                (y, DatePrecision::Quarter(q), (q - 1) * 3 + 1),
+                "{s:?}"
+            );
         }
-        for s in ["Q5 2024", "Q3", "Q3 Q4 2024", "V kvartal 2024", "Q3 2024 total"] {
+        for s in [
+            "Q5 2024",
+            "Q3",
+            "Q3 Q4 2024",
+            "V kvartal 2024",
+            "Q3 2024 total",
+        ] {
             assert_eq!(parse_date(s, None), None, "{s:?}");
         }
     }
 
     #[test]
     fn not_dates() {
-        for s in ["", "2024", "abc", "12", "1.5", "1,200.50", "12/03", "12.03.", "Total", "ABC-12-2024", "1-2-3-4", "+381 11 123 4567", "10:30", "12345678"] {
+        for s in [
+            "",
+            "2024",
+            "abc",
+            "12",
+            "1.5",
+            "1,200.50",
+            "12/03",
+            "12.03.",
+            "Total",
+            "ABC-12-2024",
+            "1-2-3-4",
+            "+381 11 123 4567",
+            "10:30",
+            "12345678",
+        ] {
             assert_eq!(parse_date(s, None), None, "{s:?}");
         }
     }
 
     #[test]
     fn period_labels() {
-        for s in ["Jan", "mart", "Јануар", "Q3", "3Q", "III kvartal", "3. kvartal", "December:"] {
+        for s in [
+            "Jan",
+            "mart",
+            "Јануар",
+            "Q3",
+            "3Q",
+            "III kvartal",
+            "3. kvartal",
+            "December:",
+        ] {
             assert!(is_period_label(s), "{s:?}");
         }
         for s in ["Jan 2024", "Total", "Q5", "", "Marchx"] {
@@ -975,8 +1199,14 @@ mod tests {
 
     #[test]
     fn order_votes() {
-        assert_eq!(infer_date_order(["25/12/2024", "03/04/2024", "13/01/2024"]), Some(DateOrder::DayMonth));
-        assert_eq!(infer_date_order(["12/25/2024", "03/04/2024"]), Some(DateOrder::MonthDay));
+        assert_eq!(
+            infer_date_order(["25/12/2024", "03/04/2024", "13/01/2024"]),
+            Some(DateOrder::DayMonth)
+        );
+        assert_eq!(
+            infer_date_order(["12/25/2024", "03/04/2024"]),
+            Some(DateOrder::MonthDay)
+        );
         assert_eq!(infer_date_order(["03/04/2024", "2024-12-25"]), None);
         assert_eq!(infer_date_order(["31-01-2024"]), Some(DateOrder::DayMonth));
         assert_eq!(infer_date_order(["x"]), None);

@@ -17,8 +17,15 @@ pub enum Role {
 }
 
 impl Role {
-    pub const ALL: [Role; 7] =
-        [Role::Title, Role::Header, Role::Data, Role::GroupHeader, Role::Total, Role::Note, Role::Other];
+    pub const ALL: [Role; 7] = [
+        Role::Title,
+        Role::Header,
+        Role::Data,
+        Role::GroupHeader,
+        Role::Total,
+        Role::Note,
+        Role::Other,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {

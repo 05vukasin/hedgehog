@@ -15,7 +15,7 @@
 //! or `T<n>_all`): nothing is copied at load, and a filter on `period` skips the other branches
 //! before they read a row.
 
-use hh_core::normalize::{header_period, ColRole, Dtype, Table};
+use hh_core::normalize::{ColRole, Dtype, Table, header_period};
 use rusqlite::Transaction;
 
 use crate::catalog::{data_cols, is_numeric, sql_names};
@@ -32,10 +32,54 @@ const MAX_KEYS: usize = 8;
 const MAX_TABLE_COLUMNS: usize = 1990;
 
 const WEEKDAYS: &[&str] = &[
-    "mon", "tue", "wed", "thu", "fri", "sat", "sun", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-    "sunday", "mo", "di", "mi", "do", "fr", "sa", "so", "montag", "dienstag", "mittwoch", "donnerstag", "freitag",
-    "samstag", "sonntag", "lun", "mar", "mer", "jeu", "ven", "sam", "dim", "lu", "ma", "me", "je", "ve", "di", "pon",
-    "uto", "sre", "čet", "pet", "sub", "ned",
+    "mon",
+    "tue",
+    "wed",
+    "thu",
+    "fri",
+    "sat",
+    "sun",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "mo",
+    "di",
+    "mi",
+    "do",
+    "fr",
+    "sa",
+    "so",
+    "montag",
+    "dienstag",
+    "mittwoch",
+    "donnerstag",
+    "freitag",
+    "samstag",
+    "sonntag",
+    "lun",
+    "mar",
+    "mer",
+    "jeu",
+    "ven",
+    "sam",
+    "dim",
+    "lu",
+    "ma",
+    "me",
+    "je",
+    "ve",
+    "di",
+    "pon",
+    "uto",
+    "sre",
+    "čet",
+    "pet",
+    "sub",
+    "ned",
 ];
 
 /// One period column of a long view.
@@ -80,7 +124,10 @@ fn period_word(w: &str, dated: bool) -> bool {
     }
     let b = lw.as_bytes();
     let short_num = |x: &[u8]| !x.is_empty() && x.len() <= 2 && x.iter().all(u8::is_ascii_digit);
-    if b.len() >= 2 && (matches!(b[0], b'q' | b'h' | b'w' | b'k') && short_num(&b[1..]) || matches!(b[b.len() - 1], b'q' | b'h') && short_num(&b[..b.len() - 1])) {
+    if b.len() >= 2
+        && (matches!(b[0], b'q' | b'h' | b'w' | b'k') && short_num(&b[1..])
+            || matches!(b[b.len() - 1], b'q' | b'h') && short_num(&b[..b.len() - 1]))
+    {
         return true;
     }
     WEEKDAYS.contains(&lw.as_str())
@@ -93,11 +140,18 @@ fn period_word(w: &str, dated: bool) -> bool {
 fn header_rest(name: &str) -> String {
     // Without the " (2)" that makes a duplicate name unique.
     let name = match name.rsplit_once(" (") {
-        Some((head, tail)) if tail.ends_with(')') && tail[..tail.len() - 1].bytes().all(|b| b.is_ascii_digit()) => head,
+        Some((head, tail))
+            if tail.ends_with(')')
+                && tail[..tail.len() - 1].bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            head
+        }
         _ => name,
     };
     let dated = name.split(|c: char| c.is_whitespace()).any(|w| {
-        w.len() >= 7 && w.bytes().filter(u8::is_ascii_digit).count() >= 6 && w.bytes().all(|b| b.is_ascii_digit() || b"-./".contains(&b))
+        w.len() >= 7
+            && w.bytes().filter(u8::is_ascii_digit).count() >= 6
+            && w.bytes().all(|b| b.is_ascii_digit() || b"-./".contains(&b))
     });
     let mut parts: Vec<String> = Vec::new();
     for part in name.split(" / ") {
@@ -154,7 +208,12 @@ pub fn long_view(t: &Table, types: &[Option<ColType>]) -> Option<LongView> {
     groups.retain(|(_, ks)| distinct(ks) >= MIN_PERIODS);
     let (best_gran, _) = groups.iter().max_by_key(|(_, ks)| ks.len())?.0.clone();
     // Every group of that granularity whose periods repeat another's: one measure each.
-    let biggest = groups.iter().filter(|((g, _), _)| *g == best_gran).max_by_key(|(_, ks)| ks.len())?.1.clone();
+    let biggest = groups
+        .iter()
+        .filter(|((g, _), _)| *g == best_gran)
+        .max_by_key(|(_, ks)| ks.len())?
+        .1
+        .clone();
     let mut chosen: Vec<Vec<usize>> = vec![biggest.clone()];
     for ((g, _), ks) in &groups {
         if *g == best_gran && *ks != biggest {
@@ -166,7 +225,11 @@ pub fn long_view(t: &Table, types: &[Option<ColType>]) -> Option<LongView> {
     for ks in &chosen {
         for &k in ks {
             let (col, period, _, rest) = &cands[k];
-            periods.push(PeriodCol { col: *col, period: period.clone(), measure: rest.clone() });
+            periods.push(PeriodCol {
+                col: *col,
+                period: period.clone(),
+                measure: rest.clone(),
+            });
         }
     }
     periods.sort_by_key(|p| p.col);
@@ -206,7 +269,11 @@ pub fn period_of(name: &str) -> Option<(String, &'static str)> {
     let b = name.as_bytes();
     let digit = |k: usize| b.get(k).is_some_and(u8::is_ascii_digit);
     for i in 0..b.len().saturating_sub(6) {
-        if (i > 0 && digit(i - 1)) || !(i..i + 4).all(digit) || b[i + 4] != b'-' || !(i + 5..i + 7).all(digit) {
+        if (i > 0 && digit(i - 1))
+            || !(i..i + 4).all(digit)
+            || b[i + 4] != b'-'
+            || !(i + 5..i + 7).all(digit)
+        {
             continue;
         }
         let y: u32 = name[i..i + 4].parse().ok()?;
@@ -216,7 +283,9 @@ pub fn period_of(name: &str) -> Option<(String, &'static str)> {
         }
         if b.get(i + 7) == Some(&b'-') && (i + 8..i + 10).all(digit) && !digit(i + 10) {
             let d: u32 = name[i + 8..i + 10].parse().ok()?;
-            return (1..=31).contains(&d).then(|| (name[i..i + 10].to_string(), "day"));
+            return (1..=31)
+                .contains(&d)
+                .then(|| (name[i..i + 10].to_string(), "day"));
         }
         return (!digit(i + 7)).then(|| (name[i..i + 7].to_string(), "month"));
     }
@@ -246,10 +315,18 @@ pub fn text_period(s: &str) -> Option<(String, &'static str)> {
     let (tag, num) = rest.split_at(rest.find(|c: char| c.is_ascii_digit())?);
     let n: u32 = num.parse().ok()?;
     match tag.to_ascii_uppercase().as_str() {
-        "S" | "H" if (1..=2).contains(&n) && num.len() == 1 => Some((format!("{y}-S{n}"), "half-year")),
-        "Q" | "T" if (1..=4).contains(&n) && num.len() == 1 => Some((format!("{y}-Q{n}"), "quarter")),
+        "S" | "H" if (1..=2).contains(&n) && num.len() == 1 => {
+            Some((format!("{y}-S{n}"), "half-year"))
+        }
+        "Q" | "T" if (1..=4).contains(&n) && num.len() == 1 => {
+            Some((format!("{y}-Q{n}"), "quarter"))
+        }
         "W" if (1..=53).contains(&n) && num.len() == 2 => Some((format!("{y}-W{num}"), "week")),
-        "M" | "" if (1..=12).contains(&n) && num.len() == 2 && (tag == "M" || s.as_bytes()[4] == b'-') => {
+        "M" | ""
+            if (1..=12).contains(&n)
+                && num.len() == 2
+                && (tag == "M" || s.as_bytes()[4] == b'-') =>
+        {
             Some((format!("{y}-{num}"), "month"))
         }
         _ => None,
@@ -258,7 +335,10 @@ pub fn text_period(s: &str) -> Option<(String, &'static str)> {
 
 /// A text column whose filled values (all of the first 400) are period codes of one granularity:
 /// (first, last, granularity) over `rows`.
-pub fn text_period_column(c: &hh_core::normalize::Column, rows: &[usize]) -> Option<(String, String, &'static str)> {
+pub fn text_period_column(
+    c: &hh_core::normalize::Column,
+    rows: &[usize],
+) -> Option<(String, String, &'static str)> {
     if c.dtype != Dtype::Text {
         return None;
     }
@@ -266,7 +346,9 @@ pub fn text_period_column(c: &hh_core::normalize::Column, rows: &[usize]) -> Opt
     let (mut lo, mut hi): (Option<String>, Option<String>) = (None, None);
     let mut checked = 0;
     for &r in rows {
-        let Some(hh_core::normalize::Out::Text(s)) = c.values.get(r) else { continue };
+        let Some(hh_core::normalize::Out::Text(s)) = c.values.get(r) else {
+            continue;
+        };
         let (p, g) = text_period(s)?;
         if gran.is_some_and(|x| x != g) {
             return None;
@@ -288,11 +370,27 @@ pub fn text_period_column(c: &hh_core::normalize::Column, rows: &[usize]) -> Opt
 /// (`LAST UPDATE`, `Stand`, `extraction_date`).
 pub fn update_stamp(name: &str) -> bool {
     const STAMP: &[&str] = &[
-        "update", "updated", "aktualisiert", "aktualisierung", "stand", "extraction", "extracted", "published",
-        "publication", "downloaded", "download", "timestamp", "loaded", "retrieved", "maj", "atualização", "atualizacao",
+        "update",
+        "updated",
+        "aktualisiert",
+        "aktualisierung",
+        "stand",
+        "extraction",
+        "extracted",
+        "published",
+        "publication",
+        "downloaded",
+        "download",
+        "timestamp",
+        "loaded",
+        "retrieved",
+        "maj",
+        "atualização",
+        "atualizacao",
     ];
     let low = name.to_lowercase();
-    low.split(|c: char| !c.is_alphanumeric()).any(|w| STAMP.contains(&w))
+    low.split(|c: char| !c.is_alphanumeric())
+        .any(|w| STAMP.contains(&w))
 }
 
 /// B89: time coverage from period codes written as text (`TIME_PERIOD` '2019-S1') for tables
@@ -305,13 +403,18 @@ pub fn fix_stamp_coverage(
 ) {
     let mut changed = false;
     for (t, cov) in norm.tables.iter().zip(covs.iter_mut()) {
-        let stamped = cov.as_ref().is_some_and(|c| c.source == "column" && !c.columns.is_empty() && c.columns.iter().all(|n| update_stamp(n)));
+        let stamped = cov.as_ref().is_some_and(|c| {
+            c.source == "column"
+                && !c.columns.is_empty()
+                && c.columns.iter().all(|n| update_stamp(n))
+        });
         if !(stamped || cov.is_none()) {
             continue;
         }
         let rows = crate::catalog::data_rows(t);
         let names = sql_names(t);
-        let found = data_cols(t).find_map(|(i, c)| text_period_column(c, &rows).map(|p| (names[i].clone(), p)));
+        let found = data_cols(t)
+            .find_map(|(i, c)| text_period_column(c, &rows).map(|p| (names[i].clone(), p)));
         if let Some((name, (from, to, gran))) = found {
             *cov = Some(hh_core::normalize::TimeCoverage {
                 from,
@@ -332,20 +435,26 @@ pub fn fix_stamp_coverage(
     let with: Vec<&hh_core::normalize::TimeCoverage> = covs.iter().flatten().collect();
     *wb = match with.as_slice() {
         [] => None,
-        [one, ..] if with.iter().all(|c| c.granularity == one.granularity) => Some(hh_core::normalize::TimeCoverage {
-            from: with.iter().map(|c| c.from.clone()).min().unwrap_or_default(),
-            to: with.iter().map(|c| c.to.clone()).max().unwrap_or_default(),
-            granularity: one.granularity,
-            source: one.source,
-            columns: norm
-                .tables
-                .iter()
-                .zip(covs.iter())
-                .filter_map(|(t, c)| c.as_ref().map(|c| (t, c)))
-                .flat_map(|(t, c)| c.columns.iter().map(move |n| format!("{}.{n}", t.id())))
-                .collect(),
-            tables: with.iter().flat_map(|c| c.tables.clone()).collect(),
-        }),
+        [one, ..] if with.iter().all(|c| c.granularity == one.granularity) => {
+            Some(hh_core::normalize::TimeCoverage {
+                from: with
+                    .iter()
+                    .map(|c| c.from.clone())
+                    .min()
+                    .unwrap_or_default(),
+                to: with.iter().map(|c| c.to.clone()).max().unwrap_or_default(),
+                granularity: one.granularity,
+                source: one.source,
+                columns: norm
+                    .tables
+                    .iter()
+                    .zip(covs.iter())
+                    .filter_map(|(t, c)| c.as_ref().map(|c| (t, c)))
+                    .flat_map(|(t, c)| c.columns.iter().map(move |n| format!("{}.{n}", t.id())))
+                    .collect(),
+                tables: with.iter().flat_map(|c| c.tables.clone()).collect(),
+            })
+        }
         _ => wb.take(),
     };
 }
@@ -354,7 +463,15 @@ pub fn fix_stamp_coverage(
 fn own_names(t: &Table, lv: &LongView) -> [String; 6] {
     let names = sql_names(t);
     let taken: Vec<String> = lv.keys.iter().map(|&i| names[i].to_lowercase()).collect();
-    ["measure", "period", "period_label", "value", "_src_col", "_row_type"].map(|n| {
+    [
+        "measure",
+        "period",
+        "period_label",
+        "value",
+        "_src_col",
+        "_row_type",
+    ]
+    .map(|n| {
         let mut name = n.to_string();
         while n != "_row_type" && taken.contains(&name.to_lowercase()) {
             name.push('_');
@@ -379,27 +496,58 @@ pub fn create_sql(t: &Table, lv: &LongView, all: bool) -> String {
         let col = quote_ident(&names[p.col]);
         let mut sel = keys.clone();
         if lv.has_measure {
-            sel.push(format!("{} AS {}", sql_text(&p.measure), quote_ident(&measure)));
+            sel.push(format!(
+                "{} AS {}",
+                sql_text(&p.measure),
+                quote_ident(&measure)
+            ));
         }
-        sel.push(format!("{} AS {}", sql_text(&p.period), quote_ident(&period)));
-        sel.push(format!("{} AS {}", sql_text(&names[p.col]), quote_ident(&label)));
+        sel.push(format!(
+            "{} AS {}",
+            sql_text(&p.period),
+            quote_ident(&period)
+        ));
+        sel.push(format!(
+            "{} AS {}",
+            sql_text(&names[p.col]),
+            quote_ident(&label)
+        ));
         sel.push(format!("{col} AS {}", quote_ident(&value)));
         if all {
             sel.push("\"_row_type\"".into());
         }
         sel.push("\"_src_row\"".into());
-        sel.push(format!("{} AS {}", sql_text(&c.source_col.map(letter).unwrap_or_default()), quote_ident(&src_col)));
-        let source = if all { format!("{}_all", lv.table) } else { lv.table.clone() };
-        branches.push(format!("SELECT {} FROM {} WHERE {col} IS NOT NULL", sel.join(", "), quote_ident(&source)));
+        sel.push(format!(
+            "{} AS {}",
+            sql_text(&c.source_col.map(letter).unwrap_or_default()),
+            quote_ident(&src_col)
+        ));
+        let source = if all {
+            format!("{}_all", lv.table)
+        } else {
+            lv.table.clone()
+        };
+        branches.push(format!(
+            "SELECT {} FROM {} WHERE {col} IS NOT NULL",
+            sel.join(", "),
+            quote_ident(&source)
+        ));
     }
     let name = if all { &lv.all_name } else { &lv.name };
-    format!("CREATE VIEW {} AS {}", quote_ident(name), branches.join(" UNION ALL "))
+    format!(
+        "CREATE VIEW {} AS {}",
+        quote_ident(name),
+        branches.join(" UNION ALL ")
+    )
 }
 
 /// Creates the long views of all tables (called by [`crate::sql::Db::load`] inside its
 /// transaction, after the tables and their `T<n>` / `T<n>_all` views exist). Returns the
 /// tables that got one.
-pub fn create_all(tx: &Transaction<'_>, norm: &hh_core::normalize::Normalized) -> rusqlite::Result<Vec<usize>> {
+pub fn create_all(
+    tx: &Transaction<'_>,
+    norm: &hh_core::normalize::Normalized,
+) -> rusqlite::Result<Vec<usize>> {
     let mut made = Vec::new();
     for t in &norm.tables {
         let Some(lv) = table_view(t) else { continue };
@@ -415,7 +563,9 @@ pub fn table_view(t: &Table) -> Option<LongView> {
     // Cheap check first: most tables have no period headers at all.
     let names = sql_names(t);
     let n = data_cols(t)
-        .filter(|(i, c)| c.role == ColRole::Data && is_numeric(c.dtype) && period_of(&names[*i]).is_some())
+        .filter(|(i, c)| {
+            c.role == ColRole::Data && is_numeric(c.dtype) && period_of(&names[*i]).is_some()
+        })
         .take(MIN_PERIODS)
         .count();
     if n < MIN_PERIODS {
@@ -442,7 +592,12 @@ fn period_span(lv: &LongView) -> String {
 pub fn catalog_line(t: &Table, lv: &LongView, mixed: Option<usize>, total_rows: bool) -> String {
     let names = sql_names(t);
     let [measure, period, _, value, _, _] = own_names(t, lv);
-    let mut per: Vec<String> = lv.keys.iter().take(4).map(|&i| ident(&short(&names[i], 30))).collect();
+    let mut per: Vec<String> = lv
+        .keys
+        .iter()
+        .take(4)
+        .map(|&i| ident(&short(&names[i], 30)))
+        .collect();
     if lv.keys.len() > 4 {
         per.push("…".into());
     }
@@ -474,15 +629,30 @@ pub fn catalog_line(t: &Table, lv: &LongView, mixed: Option<usize>, total_rows: 
                 ms.push(&p.measure);
             }
         }
-        let shown: Vec<String> = ms.iter().take(4).map(|m| format!("'{}'", short(m, 24))).collect();
-        s.push_str(&format!(" · {} = {}{}", ident(&measure), shown.join(" | "), if ms.len() > 4 { " | …" } else { "" }));
+        let shown: Vec<String> = ms
+            .iter()
+            .take(4)
+            .map(|m| format!("'{}'", short(m, 24)))
+            .collect();
+        s.push_str(&format!(
+            " · {} = {}{}",
+            ident(&measure),
+            shown.join(" | "),
+            if ms.len() > 4 { " | …" } else { "" }
+        ));
     }
     if let Some(m) = mixed {
-        s.push_str(&format!(" · rows mix measures: filter {} first", ident(&names[m])));
+        s.push_str(&format!(
+            " · rows mix measures: filter {} first",
+            ident(&names[m])
+        ));
     }
     if total_rows {
         // A model summed `_long_all` whole and got every total twice: which view to sum.
-        s.push_str(&format!(" · sum {}; {} adds the total rows (filter _row_type)", lv.name, lv.all_name));
+        s.push_str(&format!(
+            " · sum {}; {} adds the total rows (filter _row_type)",
+            lv.name, lv.all_name
+        ));
     }
     s
 }
@@ -503,7 +673,11 @@ fn iso_months(s: &str) -> Option<(i64, i64)> {
                 let q: i64 = q.parse().ok().filter(|q| (1..=4).contains(q))?;
                 Some((y * 12 + (q - 1) * 3, 3))
             } else {
-                let m: i64 = rest.parse().ok().filter(|m| (1..=12).contains(m)).filter(|_| rest.len() == 2)?;
+                let m: i64 = rest
+                    .parse()
+                    .ok()
+                    .filter(|m| (1..=12).contains(m))
+                    .filter(|_| rest.len() == 2)?;
                 Some((y * 12 + m - 1, 1))
             }
         }
@@ -520,7 +694,11 @@ fn iso_range(s: &str) -> Option<(i64, i64)> {
 }
 
 fn months_text(n: i64) -> String {
-    if n % 12 == 0 { format!("{}-year", n / 12) } else { format!("{n}-month") }
+    if n % 12 == 0 {
+        format!("{}-year", n / 12)
+    } else {
+        format!("{n}-month")
+    }
 }
 
 /// The most common value and how often it occurs.
@@ -532,7 +710,9 @@ fn mode(v: &[i64]) -> Option<(i64, usize)> {
             None => counts.push((x, 1)),
         }
     }
-    counts.into_iter().max_by_key(|c| (c.1, std::cmp::Reverse(c.0)))
+    counts
+        .into_iter()
+        .max_by_key(|c| (c.1, std::cmp::Reverse(c.0)))
 }
 
 /// Rolling windows of a table: its period column (ISO ranges, `2026-05/2026-07`), the window
@@ -575,8 +755,15 @@ pub fn rolling(t: &Table) -> Option<Rolling> {
         if n * 10 < wins.len() * 9 || k * 10 < steps.len() * 9 || step <= 0 || step >= len {
             continue;
         }
-        let label = (c.derived_kind() == Some("period") && i > 0 && t.columns[i - 1].dtype == Dtype::Text).then(|| i - 1);
-        return Some(Rolling { col: i, label, len, step });
+        let label =
+            (c.derived_kind() == Some("period") && i > 0 && t.columns[i - 1].dtype == Dtype::Text)
+                .then(|| i - 1);
+        return Some(Rolling {
+            col: i,
+            label,
+            len,
+            step,
+        });
     }
     None
 }
@@ -586,7 +773,11 @@ pub fn rolling(t: &Table) -> Option<Rolling> {
 /// period 2026-05/2026-07; the one before without overlap: 'Feb-Apr 2026')`. `first`: an earlier
 /// table with the same windows, named instead.
 pub fn rolling_line(t: &Table, r: &Rolling, first: Option<&str>) -> String {
-    let what = format!("rolling {} windows, {} step", months_text(r.len), months_text(r.step));
+    let what = format!(
+        "rolling {} windows, {} step",
+        months_text(r.len),
+        months_text(r.step)
+    );
     if let Some(f) = first {
         return format!("    periods: overlapping windows as in {f}");
     }
@@ -597,22 +788,42 @@ pub fn rolling_line(t: &Table, r: &Rolling, first: Option<&str>) -> String {
     };
     let rows = crate::catalog::data_rows(t);
     let win = |row: usize| text(r.col, row).and_then(|s| iso_range(&s));
-    let latest = rows.iter().copied().filter(|&x| win(x).is_some()).max_by_key(|&x| win(x).map(|w| w.0));
+    let latest = rows
+        .iter()
+        .copied()
+        .filter(|&x| win(x).is_some())
+        .max_by_key(|&x| win(x).map(|w| w.0));
     let mut s = format!("    periods: {what} — they overlap");
     let gap = r.len / r.step;
     if r.len % r.step == 0 {
-        s.push_str(&format!("; the previous non-overlapping window is {gap} rows earlier"));
+        s.push_str(&format!(
+            "; the previous non-overlapping window is {gap} rows earlier"
+        ));
     }
     if let Some(l) = latest {
         let (start, _) = win(l).unwrap_or_default();
-        let prev = rows.iter().copied().find(|&x| win(x).is_some_and(|w| w.0 == start - r.len));
+        let prev = rows
+            .iter()
+            .copied()
+            .find(|&x| win(x).is_some_and(|w| w.0 == start - r.len));
         let show = |row: usize| match r.label {
             Some(c) => text(c, row).map(|v| format!("'{v}'")),
             None => text(r.col, row).map(|v| format!("'{v}'")),
         };
-        let label_col = r.label.map(|c| format!("{} ", ident(&names[c]))).unwrap_or_default();
+        let label_col = r
+            .label
+            .map(|c| format!("{} ", ident(&names[c])))
+            .unwrap_or_default();
         if let Some(lv) = show(l) {
-            let iso = if r.label.is_some() { format!(" = {} {}", ident(&names[r.col]), text(r.col, l).unwrap_or_default()) } else { String::new() };
+            let iso = if r.label.is_some() {
+                format!(
+                    " = {} {}",
+                    ident(&names[r.col]),
+                    text(r.col, l).unwrap_or_default()
+                )
+            } else {
+                String::new()
+            };
             s.push_str(&format!(" (latest {label_col}{lv}{iso}"));
             if let Some(p) = prev.and_then(show) {
                 s.push_str(&format!("; the one before it without overlap: {p}"));
@@ -631,9 +842,9 @@ pub fn brief_text(lv: &LongView) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sql::{Db, DEFAULT_TIMEOUT};
-    use hh_core::normalize::{Column, Normalized, Out, RowType, TimeCoverage, Transforms};
+    use crate::sql::{DEFAULT_TIMEOUT, Db};
     use hh_core::Rect;
+    use hh_core::normalize::{Column, Normalized, Out, RowType, TimeCoverage, Transforms};
 
     fn col(name: &str, role: ColRole, dtype: Dtype, src: u32, values: Vec<Out>) -> Column {
         Column {
@@ -655,23 +866,46 @@ mod tests {
     /// A table of labels (col_A) and their derived ISO periods (`period`, no source column).
     fn periods_table(labels: &[&str], isos: &[&str]) -> Table {
         let n = labels.len();
-        let mut period = col("period", ColRole::Data, Dtype::Text, 0, isos.iter().map(|s| Out::Text((*s).into())).collect());
+        let mut period = col(
+            "period",
+            ColRole::Data,
+            Dtype::Text,
+            0,
+            isos.iter().map(|s| Out::Text((*s).into())).collect(),
+        );
         period.source_col = None;
         period.original_header = Vec::new();
         Table {
             n: 2,
             sheet: "T2_x".into(),
             source_sheet: "1".into(),
-            rect: Rect { top: 0, left: 0, bottom: n as u32, right: 2 },
+            rect: Rect {
+                top: 0,
+                left: 0,
+                bottom: n as u32,
+                right: 2,
+            },
             header_top: 0,
             header_rows: 1,
             title: None,
             notes: vec![],
             confidence: 0.9,
             columns: vec![
-                col("col_A", ColRole::Data, Dtype::Text, 0, labels.iter().map(|s| Out::Text((*s).into())).collect()),
+                col(
+                    "col_A",
+                    ColRole::Data,
+                    Dtype::Text,
+                    0,
+                    labels.iter().map(|s| Out::Text((*s).into())).collect(),
+                ),
                 period,
-                col("rate", ColRole::Data, Dtype::Number, 1, (0..n).map(|i| Out::Num(4.0 + i as f64 / 10.0)).collect()),
+                col(
+                    "rate",
+                    ColRole::Data,
+                    Dtype::Number,
+                    1,
+                    (0..n).map(|i| Out::Num(4.0 + i as f64 / 10.0)).collect(),
+                ),
             ],
             src_rows: (1..=n as u32).collect(),
             row_types: vec![RowType::Data; n],
@@ -683,8 +917,20 @@ mod tests {
     #[test]
     fn rolling_windows_overlap() {
         let t = periods_table(
-            &["Jan-Mar 2026", "Feb-Apr 2026", "Mar-May 2026", "Apr-Jun 2026", "May-Jul 2026"],
-            &["2026-01/2026-03", "2026-02/2026-04", "2026-03/2026-05", "2026-04/2026-06", "2026-05/2026-07"],
+            &[
+                "Jan-Mar 2026",
+                "Feb-Apr 2026",
+                "Mar-May 2026",
+                "Apr-Jun 2026",
+                "May-Jul 2026",
+            ],
+            &[
+                "2026-01/2026-03",
+                "2026-02/2026-04",
+                "2026-03/2026-05",
+                "2026-04/2026-06",
+                "2026-05/2026-07",
+            ],
         );
         let r = rolling(&t).expect("rolling");
         assert_eq!((r.col, r.label, r.len, r.step), (1, Some(0), 3, 1));
@@ -693,17 +939,43 @@ mod tests {
             "    periods: rolling 3-month windows, 1-month step — they overlap; the previous non-overlapping window is 3 rows earlier \
              (latest col_A 'May-Jul 2026' = period 2026-05/2026-07; the one before it without overlap: 'Feb-Apr 2026')"
         );
-        assert_eq!(rolling_line(&t, &r, Some("T2")), "    periods: overlapping windows as in T2");
+        assert_eq!(
+            rolling_line(&t, &r, Some("T2")),
+            "    periods: overlapping windows as in T2"
+        );
         // Quarters one quarter apart do not overlap: not rolling.
         let q = periods_table(
-            &["Jan-Mar 2025", "Apr-Jun 2025", "Jul-Sep 2025", "Oct-Dec 2025", "Jan-Mar 2026"],
-            &["2025-01/2025-03", "2025-04/2025-06", "2025-07/2025-09", "2025-10/2025-12", "2026-01/2026-03"],
+            &[
+                "Jan-Mar 2025",
+                "Apr-Jun 2025",
+                "Jul-Sep 2025",
+                "Oct-Dec 2025",
+                "Jan-Mar 2026",
+            ],
+            &[
+                "2025-01/2025-03",
+                "2025-04/2025-06",
+                "2025-07/2025-09",
+                "2025-10/2025-12",
+                "2026-01/2026-03",
+            ],
         );
         assert!(rolling(&q).is_none());
-        let q = periods_table(&["a", "b", "c", "d"], &["2025-Q1/2025-Q1", "2025-Q2/2025-Q2", "2025-Q3/2025-Q3", "2025-Q4/2025-Q4"]);
+        let q = periods_table(
+            &["a", "b", "c", "d"],
+            &[
+                "2025-Q1/2025-Q1",
+                "2025-Q2/2025-Q2",
+                "2025-Q3/2025-Q3",
+                "2025-Q4/2025-Q4",
+            ],
+        );
         assert!(rolling(&q).is_none());
         // Three-year averages one year apart: rolling.
-        let y = periods_table(&["a", "b", "c", "d"], &["2019/2021", "2020/2022", "2021/2023", "2022/2024"]);
+        let y = periods_table(
+            &["a", "b", "c", "d"],
+            &["2019/2021", "2020/2022", "2021/2023", "2022/2024"],
+        );
         let r = rolling(&y).expect("rolling years");
         assert_eq!((r.len, r.step), (36, 12));
     }
@@ -711,28 +983,66 @@ mod tests {
     /// Region × 2021..2024 plus a change column and a total row.
     fn wide() -> Normalized {
         let regions = ["North", "South", "Total"];
-        let mut columns = vec![
-            col("Region", ColRole::Data, Dtype::Text, 0, regions.iter().map(|r| Out::Text((*r).into())).collect()),
-        ];
+        let mut columns = vec![col(
+            "Region",
+            ColRole::Data,
+            Dtype::Text,
+            0,
+            regions.iter().map(|r| Out::Text((*r).into())).collect(),
+        )];
         for (k, y) in [2021, 2022, 2023, 2024].iter().enumerate() {
-            let vals = vec![Out::Num(10.0 * (k + 1) as f64), Out::Num(1.0 + k as f64), Out::Num(11.0 * (k + 1) as f64)];
-            let vals = if *y == 2022 { vec![Out::Null, vals[1].clone(), vals[2].clone()] } else { vals };
-            columns.push(col(&y.to_string(), ColRole::Data, Dtype::Number, 1 + k as u32, vals));
+            let vals = vec![
+                Out::Num(10.0 * (k + 1) as f64),
+                Out::Num(1.0 + k as f64),
+                Out::Num(11.0 * (k + 1) as f64),
+            ];
+            let vals = if *y == 2022 {
+                vec![Out::Null, vals[1].clone(), vals[2].clone()]
+            } else {
+                vals
+            };
+            columns.push(col(
+                &y.to_string(),
+                ColRole::Data,
+                Dtype::Number,
+                1 + k as u32,
+                vals,
+            ));
         }
-        columns.push(col("2021/ 2024", ColRole::Data, Dtype::Number, 5, vec![Out::Num(0.5); 3]));
-        columns.push(col("_src_row", ColRole::SrcRow, Dtype::Integer, 0, (0..3).map(|i| Out::Num(i as f64 + 2.0)).collect()));
+        columns.push(col(
+            "2021/ 2024",
+            ColRole::Data,
+            Dtype::Number,
+            5,
+            vec![Out::Num(0.5); 3],
+        ));
+        columns.push(col(
+            "_src_row",
+            ColRole::SrcRow,
+            Dtype::Integer,
+            0,
+            (0..3).map(|i| Out::Num(i as f64 + 2.0)).collect(),
+        ));
         columns.push(col(
             "_row_type",
             ColRole::RowType,
             Dtype::Text,
             0,
-            ["data", "data", "total"].iter().map(|s| Out::Text((*s).into())).collect(),
+            ["data", "data", "total"]
+                .iter()
+                .map(|s| Out::Text((*s).into()))
+                .collect(),
         ));
         let t = Table {
             n: 1,
             sheet: "T1_x".into(),
             source_sheet: "Sheet1".into(),
-            rect: Rect { top: 0, left: 0, bottom: 3, right: 5 },
+            rect: Rect {
+                top: 0,
+                left: 0,
+                bottom: 3,
+                right: 5,
+            },
             header_top: 0,
             header_rows: 1,
             title: Some(("Sales in EUR".into(), (0, 0))),
@@ -744,7 +1054,10 @@ mod tests {
             transforms: Transforms::default(),
             warnings: vec![],
         };
-        Normalized { tables: vec![t], ..Default::default() }
+        Normalized {
+            tables: vec![t],
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -753,32 +1066,63 @@ mod tests {
         let t = &norm.tables[0];
         let lv = table_view(t).expect("a long view");
         assert_eq!(lv.name, "T1_long");
-        assert_eq!(lv.periods.len(), 4, "the change column 2021/ 2024 is not a period");
+        assert_eq!(
+            lv.periods.len(),
+            4,
+            "the change column 2021/ 2024 is not a period"
+        );
         assert_eq!(lv.keys, vec![0]);
         assert!(!lv.has_measure);
         let db = Db::load(&norm).unwrap();
         let r = db.query("SELECT period, value, _src_col, _src_row FROM T1_long WHERE Region = 'South' ORDER BY period", 50, DEFAULT_TIMEOUT).unwrap();
-        assert_eq!(r.rows, vec![
-            vec!["2021", "1", "B", "3"],
-            vec!["2022", "2", "C", "3"],
-            vec!["2023", "3", "D", "3"],
-            vec!["2024", "4", "E", "3"],
-        ]);
+        assert_eq!(
+            r.rows,
+            vec![
+                vec!["2021", "1", "B", "3"],
+                vec!["2022", "2", "C", "3"],
+                vec!["2023", "3", "D", "3"],
+                vec!["2024", "4", "E", "3"],
+            ]
+        );
         // Empty cells are left out; total rows are in, marked.
-        let n = db.query("SELECT count(*) FROM T1_long", 5, DEFAULT_TIMEOUT).unwrap();
+        let n = db
+            .query("SELECT count(*) FROM T1_long", 5, DEFAULT_TIMEOUT)
+            .unwrap();
         assert_eq!(n.rows[0][0], "7");
-        assert!(db.query("SELECT _row_type FROM T1_long", 5, DEFAULT_TIMEOUT).is_err(), "T1_long has data rows only");
-        let n = db.query("SELECT count(*) FROM T1_long_all WHERE _row_type = 'data'", 5, DEFAULT_TIMEOUT).unwrap();
+        assert!(
+            db.query("SELECT _row_type FROM T1_long", 5, DEFAULT_TIMEOUT)
+                .is_err(),
+            "T1_long has data rows only"
+        );
+        let n = db
+            .query(
+                "SELECT count(*) FROM T1_long_all WHERE _row_type = 'data'",
+                5,
+                DEFAULT_TIMEOUT,
+            )
+            .unwrap();
         assert_eq!(n.rows[0][0], "7");
-        let tot = db.query("SELECT value FROM T1_long_all WHERE _row_type = 'total' AND period = '2024'", 5, DEFAULT_TIMEOUT).unwrap();
+        let tot = db
+            .query(
+                "SELECT value FROM T1_long_all WHERE _row_type = 'total' AND period = '2024'",
+                5,
+                DEFAULT_TIMEOUT,
+            )
+            .unwrap();
         assert_eq!(tot.rows[0][0], "44");
         let line = catalog_line(t, &lv, None, true);
         assert!(line.contains("T1_long: the 4 year columns \"2021\"..\"2024\" as rows (Region, period '2021'..'2024', value)"), "{line}");
-        assert!(line.contains("sum T1_long; T1_long_all adds the total rows (filter _row_type)"), "{line}");
+        assert!(
+            line.contains("sum T1_long; T1_long_all adds the total rows (filter _row_type)"),
+            "{line}"
+        );
         // B21: types from the title (bare year headers), the change column, the label column.
         let tys = crate::types::classify(t, &sql_names(t), None, &[]);
         let ty = |i: usize| tys[i].clone().unwrap();
-        assert_eq!((ty(1).sem, ty(1).currency.as_deref()), (Sem::Amount, Some("EUR")));
+        assert_eq!(
+            (ty(1).sem, ty(1).currency.as_deref()),
+            (Sem::Amount, Some("EUR"))
+        );
         assert_eq!(ty(5).sem, Sem::Rate);
         assert_eq!(ty(0).sem, Sem::Dimension);
         let no_sum = crate::types::no_sum_line(t, &sql_names(t), &tys, None).unwrap();
@@ -790,7 +1134,15 @@ mod tests {
         let mut norm = wide();
         let t = &mut norm.tables[0];
         let extra: Vec<Column> = (0..4)
-            .map(|k| col(&format!("Cost / {}", 2021 + k), ColRole::Data, Dtype::Number, 10 + k, vec![Out::Num(1.0); 3]))
+            .map(|k| {
+                col(
+                    &format!("Cost / {}", 2021 + k),
+                    ColRole::Data,
+                    Dtype::Number,
+                    10 + k,
+                    vec![Out::Num(1.0); 3],
+                )
+            })
             .collect();
         for (k, c) in t.columns.iter_mut().enumerate().skip(1).take(4) {
             c.name = format!("Sales / {}", 2020 + k);
@@ -802,7 +1154,11 @@ mod tests {
         assert_eq!(lv.periods.len(), 8);
         let db = Db::load(&norm).unwrap();
         let r = db.query("SELECT measure, count(*) FROM T1_long WHERE period = '2023' GROUP BY measure ORDER BY measure", 5, DEFAULT_TIMEOUT).unwrap();
-        assert_eq!(r.rows, vec![vec!["Cost", "2"], vec!["Sales", "2"]], "data rows only");
+        assert_eq!(
+            r.rows,
+            vec![vec!["Cost", "2"], vec!["Sales", "2"]],
+            "data rows only"
+        );
     }
 
     #[test]
@@ -821,22 +1177,39 @@ mod tests {
     #[test]
     fn periods_written_as_text() {
         // B89: Eurostat's TIME_PERIOD codes; labels that only mention a year are not periods.
-        assert_eq!(text_period("2019-S1"), Some(("2019-S1".into(), "half-year")));
+        assert_eq!(
+            text_period("2019-S1"),
+            Some(("2019-S1".into(), "half-year"))
+        );
         assert_eq!(text_period("2019S2"), Some(("2019-S2".into(), "half-year")));
         assert_eq!(text_period("2024-Q3"), Some(("2024-Q3".into(), "quarter")));
         assert_eq!(text_period("2024M03"), Some(("2024-03".into(), "month")));
         assert_eq!(text_period("2024-03"), Some(("2024-03".into(), "month")));
         assert_eq!(text_period("2024"), Some(("2024".into(), "year")));
-        for s in ["Jan-Mar 1971", "2024-13", "20241", "2024 total", "12345", "2024-S3"] {
+        for s in [
+            "Jan-Mar 1971",
+            "2024-13",
+            "20241",
+            "2024 total",
+            "12345",
+            "2024-S3",
+        ] {
             assert_eq!(text_period(s), None, "{s}");
         }
-        assert!(update_stamp("LAST UPDATE") && update_stamp("Stand") && !update_stamp("TIME_PERIOD"));
+        assert!(
+            update_stamp("LAST UPDATE") && update_stamp("Stand") && !update_stamp("TIME_PERIOD")
+        );
         // A table dated only by its update stamp: the coverage comes from TIME_PERIOD.
         let mut n = wide();
         let t = &mut n.tables[0];
         let rows = t.rows();
-        let periods: Vec<Out> = (0..rows).map(|i| Out::Text(format!("{}-S{}", 2019 + i / 2, 1 + i % 2))).collect();
-        t.columns.insert(0, col("TIME_PERIOD", ColRole::Data, Dtype::Text, 0, periods));
+        let periods: Vec<Out> = (0..rows)
+            .map(|i| Out::Text(format!("{}-S{}", 2019 + i / 2, 1 + i % 2)))
+            .collect();
+        t.columns.insert(
+            0,
+            col("TIME_PERIOD", ColRole::Data, Dtype::Text, 0, periods),
+        );
         let stamp = |n: &str| TimeCoverage {
             from: "2026-10-19".into(),
             to: "2026-10-19".into(),
@@ -849,7 +1222,10 @@ mod tests {
         let mut wb = Some(stamp("T1.LAST UPDATE"));
         fix_stamp_coverage(&n, &mut covs, &mut wb);
         let wb = wb.unwrap();
-        assert_eq!((wb.from.as_str(), wb.granularity, wb.columns.clone()), ("2019-S1", "half-year", vec!["T1.TIME_PERIOD".to_string()]));
+        assert_eq!(
+            (wb.from.as_str(), wb.granularity, wb.columns.clone()),
+            ("2019-S1", "half-year", vec!["T1.TIME_PERIOD".to_string()])
+        );
         assert_eq!(covs[0].as_ref().unwrap().columns, ["TIME_PERIOD"]);
         // A real date column is left alone.
         let mut covs = vec![Some(stamp("Datum"))];

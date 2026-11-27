@@ -116,8 +116,15 @@ pub fn table_pairs(gt: &[Rect], pred: &[Rect], crit: TableCriterion) -> Vec<(usi
 /// row's labelled cells inside `rect`), top to bottom, give the header as the run of header rows
 /// after any leading title / note / other rows. Returns those rows.
 pub fn gt_header_rows(rows: &[(u32, Role)]) -> Vec<u32> {
-    let start = rows.iter().position(|(_, r)| !matches!(r, Role::Title | Role::Note | Role::Other)).unwrap_or(rows.len());
-    rows[start..].iter().take_while(|(_, r)| *r == Role::Header).map(|(row, _)| *row).collect()
+    let start = rows
+        .iter()
+        .position(|(_, r)| !matches!(r, Role::Title | Role::Note | Role::Other))
+        .unwrap_or(rows.len());
+    rows[start..]
+        .iter()
+        .take_while(|(_, r)| *r == Role::Header)
+        .map(|(row, _)| *row)
+        .collect()
 }
 
 /// True positive / false positive / false negative counts.
@@ -131,7 +138,11 @@ pub struct Prf {
 impl Prf {
     /// From a match count and the sizes of both sides.
     pub fn from_matches(tp: usize, n_gt: usize, n_pred: usize) -> Prf {
-        Prf { tp: tp as u64, fp: (n_pred - tp) as u64, fn_: (n_gt - tp) as u64 }
+        Prf {
+            tp: tp as u64,
+            fp: (n_pred - tp) as u64,
+            fn_: (n_gt - tp) as u64,
+        }
     }
 
     pub fn add(&mut self, o: Prf) {
@@ -193,7 +204,11 @@ impl Confusion {
         let tp = self.counts[k][k];
         let gt: u64 = self.counts[k].iter().sum();
         let pred: u64 = (0..N_ROLES).map(|g| self.counts[g][k]).sum();
-        Prf { tp, fp: pred - tp, fn_: gt - tp }
+        Prf {
+            tp,
+            fp: pred - tp,
+            fn_: gt - tp,
+        }
     }
 
     /// Per-class F1 (`None` = class absent on both sides).
@@ -244,7 +259,9 @@ impl FileMacro {
     }
 
     pub fn per_class(&self) -> [Option<f64>; N_ROLES] {
-        std::array::from_fn(|k| (self.file_n[k] > 0).then(|| self.file_sum[k] / self.file_n[k] as f64))
+        std::array::from_fn(|k| {
+            (self.file_n[k] > 0).then(|| self.file_sum[k] / self.file_n[k] as f64)
+        })
     }
 
     /// Number of files in which each class was defined.

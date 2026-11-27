@@ -18,7 +18,10 @@ pub(super) fn add_columns(t: &mut Table) {
 /// A spelling's grouping key: lowercase, diacritics folded, without spaces and punctuation
 /// (`Mc Kay`, `McKay`, `MCKAY` and `Mc-Kay` share `mckay`).
 fn fold(s: &str) -> String {
-    crate::values::norm_key(s).chars().filter(|c| c.is_alphanumeric()).collect()
+    crate::values::norm_key(s)
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect()
 }
 
 /// Columns of at most this many distinct values are checked for spelling variants.
@@ -34,7 +37,10 @@ const KEY_WARN_GROUPS: usize = 3;
 fn add_key_columns(t: &mut Table) {
     let mut adds: Vec<(usize, Column, String)> = Vec::new();
     for (i, c) in t.columns.iter().enumerate() {
-        if !matches!(c.role, ColRole::Data | ColRole::Group) || c.dtype != Dtype::Text || c.is_derived() {
+        if !matches!(c.role, ColRole::Data | ColRole::Group)
+            || c.dtype != Dtype::Text
+            || c.is_derived()
+        {
             continue;
         }
         let mut counts: HashMap<&str, usize> = HashMap::new();
@@ -49,7 +55,11 @@ fn add_key_columns(t: &mut Table) {
                 }
             }
         }
-        if counts.len() < 2 || counts.len() > KEY_MAX_DISTINCT || chars > 40 * n || counts.len() * 2 > n {
+        if counts.len() < 2
+            || counts.len() > KEY_MAX_DISTINCT
+            || chars > 40 * n
+            || counts.len() * 2 > n
+        {
             continue;
         }
         // Spellings per key, most frequent first (ties: alphabetical, for determinism).
@@ -60,15 +70,25 @@ fn add_key_columns(t: &mut Table) {
                 groups.entry(key).or_default().push((s, k));
             }
         }
-        let mut variants: Vec<Vec<(&str, usize)>> = groups.into_values().filter(|g| g.len() >= 2).collect();
+        let mut variants: Vec<Vec<(&str, usize)>> =
+            groups.into_values().filter(|g| g.len() >= 2).collect();
         if variants.is_empty() {
             continue;
         }
         for g in &mut variants {
             g.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
         }
-        variants.sort_by(|a, b| b.iter().map(|x| x.1).sum::<usize>().cmp(&a.iter().map(|x| x.1).sum()).then(a[0].0.cmp(b[0].0)));
-        let canon: HashMap<&str, &str> = variants.iter().flat_map(|g| g.iter().map(move |x| (x.0, g[0].0))).collect();
+        variants.sort_by(|a, b| {
+            b.iter()
+                .map(|x| x.1)
+                .sum::<usize>()
+                .cmp(&a.iter().map(|x| x.1).sum())
+                .then(a[0].0.cmp(b[0].0))
+        });
+        let canon: HashMap<&str, &str> = variants
+            .iter()
+            .flat_map(|g| g.iter().map(move |x| (x.0, g[0].0)))
+            .collect();
         let values = c
             .values
             .iter()
@@ -81,11 +101,24 @@ fn add_key_columns(t: &mut Table) {
         let shown: Vec<String> = variants
             .iter()
             .take(KEY_WARN_GROUPS)
-            .map(|g| g.iter().map(|x| format!("'{}'", x.0)).collect::<Vec<_>>().join(" / "))
+            .map(|g| {
+                g.iter()
+                    .map(|x| format!("'{}'", x.0))
+                    .collect::<Vec<_>>()
+                    .join(" / ")
+            })
             .collect();
-        let more = if variants.len() > KEY_WARN_GROUPS { format!(" and {} more", variants.len() - KEY_WARN_GROUPS) } else { String::new() };
-        let warning =
-            format!("\"{}\" has spellings of the same value ({}{}): \"{{key}}\" holds one spelling per group, group by it", c.name, shown.join(", "), more);
+        let more = if variants.len() > KEY_WARN_GROUPS {
+            format!(" and {} more", variants.len() - KEY_WARN_GROUPS)
+        } else {
+            String::new()
+        };
+        let warning = format!(
+            "\"{}\" has spellings of the same value ({}{}): \"{{key}}\" holds one spelling per group, group by it",
+            c.name,
+            shown.join(", "),
+            more
+        );
         adds.push((i + 1, derived_column(name, values), warning));
     }
     if adds.is_empty() {
@@ -103,8 +136,14 @@ fn add_key_columns(t: &mut Table) {
 
 /// Name of a derived column: `<base>_<suffix>`, or just `<suffix>` for an unnamed base (`col_A`).
 fn derived_name(base: &str, suffix: &str) -> String {
-    let unnamed = base.strip_prefix("col_").is_some_and(|l| !l.is_empty() && l.bytes().all(|b| b.is_ascii_uppercase()));
-    if unnamed { suffix.to_string() } else { format!("{base}_{suffix}") }
+    let unnamed = base
+        .strip_prefix("col_")
+        .is_some_and(|l| !l.is_empty() && l.bytes().all(|b| b.is_ascii_uppercase()));
+    if unnamed {
+        suffix.to_string()
+    } else {
+        format!("{base}_{suffix}")
+    }
 }
 
 fn derived_column(name: String, values: Vec<Out>) -> Column {
@@ -134,17 +173,30 @@ fn add_period_columns(t: &mut Table) {
         if c.role != ColRole::Data || c.dtype != Dtype::Text || c.is_derived() {
             continue;
         }
-        let Some(spans) = column_label_periods(&c.values) else { continue };
+        let Some(spans) = column_label_periods(&c.values) else {
+            continue;
+        };
         if spans.iter().flatten().count() < 3 {
             continue;
         }
-        let labels: Vec<Option<String>> = spans.iter().map(|s| s.as_ref().map(span_label)).collect();
-        let differs = c.values.iter().zip(&labels).any(|(v, l)| matches!((v, l), (Out::Text(s), Some(l)) if s.trim() != l));
+        let labels: Vec<Option<String>> =
+            spans.iter().map(|s| s.as_ref().map(span_label)).collect();
+        let differs = c
+            .values
+            .iter()
+            .zip(&labels)
+            .any(|(v, l)| matches!((v, l), (Out::Text(s), Some(l)) if s.trim() != l));
         if !differs {
             continue;
         }
-        let values = labels.into_iter().map(|l| l.map_or(Out::Null, Out::Text)).collect();
-        adds.push((i + 1, derived_column(derived_name(&c.name, "period"), values)));
+        let values = labels
+            .into_iter()
+            .map(|l| l.map_or(Out::Null, Out::Text))
+            .collect();
+        adds.push((
+            i + 1,
+            derived_column(derived_name(&c.name, "period"), values),
+        ));
     }
     if adds.is_empty() {
         return;
@@ -162,25 +214,49 @@ mod tests {
     use super::*;
 
     fn text(v: &[&str]) -> Vec<Out> {
-        v.iter().map(|s| if s.is_empty() { Out::Null } else { Out::Text((*s).into()) }).collect()
+        v.iter()
+            .map(|s| {
+                if s.is_empty() {
+                    Out::Null
+                } else {
+                    Out::Text((*s).into())
+                }
+            })
+            .collect()
     }
 
     fn labels(v: &[&str]) -> Option<Vec<String>> {
-        column_label_periods(&text(v)).map(|s| s.iter().map(|x| x.as_ref().map_or(String::new(), span_label)).collect())
+        column_label_periods(&text(v)).map(|s| {
+            s.iter()
+                .map(|x| x.as_ref().map_or(String::new(), span_label))
+                .collect()
+        })
     }
 
     #[test]
     fn period_labels_of_a_cpi_column() {
         let got = labels(&[
-            "Ø 2011", "2012-01-01T00:00:00", "2012-02-01T00:00:00", "Ø 2012", "Ø 13", "2020-03-01T00:00:00", "Apr.201",
-            "Mai.201", "Dez.201", "Ø 20", "Jän.211", "Feb.21", "Ø 25", "",
+            "Ø 2011",
+            "2012-01-01T00:00:00",
+            "2012-02-01T00:00:00",
+            "Ø 2012",
+            "Ø 13",
+            "2020-03-01T00:00:00",
+            "Apr.201",
+            "Mai.201",
+            "Dez.201",
+            "Ø 20",
+            "Jän.211",
+            "Feb.21",
+            "Ø 25",
+            "",
         ])
         .unwrap();
         assert_eq!(
             got,
             [
-                "2011", "2012-01", "2012-02", "2012", "2013", "2020-03", "2020-04", "2020-05", "2020-12", "2020", "2021-01",
-                "2021-02", "2025", ""
+                "2011", "2012-01", "2012-02", "2012", "2013", "2020-03", "2020-04", "2020-05",
+                "2020-12", "2020", "2021-01", "2021-02", "2025", ""
             ]
         );
     }
@@ -188,14 +264,40 @@ mod tests {
     #[test]
     fn month_ranges_and_other_forms() {
         assert_eq!(
-            labels(&["Jan-Mar 1971", "Feb-Apr 1971", "Nov-Jan 2026", "Dec - Feb 2026"]).unwrap(),
-            ["1971-01/1971-03", "1971-02/1971-04", "2025-11/2026-01", "2025-12/2026-02"]
+            labels(&[
+                "Jan-Mar 1971",
+                "Feb-Apr 1971",
+                "Nov-Jan 2026",
+                "Dec - Feb 2026"
+            ])
+            .unwrap(),
+            [
+                "1971-01/1971-03",
+                "1971-02/1971-04",
+                "2025-11/2026-01",
+                "2025-12/2026-02"
+            ]
         );
-        assert_eq!(labels(&["2025 Q1", "2025 Q2", "Q3 2025"]).unwrap(), ["2025-Q1", "2025-Q2", "2025-Q3"]);
-        assert_eq!(labels(&["Jänner 2022", "Februar 2022", "März 2022"]).unwrap(), ["2022-01", "2022-02", "2022-03"]);
-        assert_eq!(labels(&["janvier 2022", "février 2022", "mars 2022"]).unwrap(), ["2022-01", "2022-02", "2022-03"]);
-        assert_eq!(labels(&["Jan-24", "Feb-24", "Dec-24"]).unwrap(), ["2024-01", "2024-02", "2024-12"]);
-        assert_eq!(labels(&["2024", "Jan 2025", "Feb 2025"]).unwrap(), ["2024", "2025-01", "2025-02"]);
+        assert_eq!(
+            labels(&["2025 Q1", "2025 Q2", "Q3 2025"]).unwrap(),
+            ["2025-Q1", "2025-Q2", "2025-Q3"]
+        );
+        assert_eq!(
+            labels(&["Jänner 2022", "Februar 2022", "März 2022"]).unwrap(),
+            ["2022-01", "2022-02", "2022-03"]
+        );
+        assert_eq!(
+            labels(&["janvier 2022", "février 2022", "mars 2022"]).unwrap(),
+            ["2022-01", "2022-02", "2022-03"]
+        );
+        assert_eq!(
+            labels(&["Jan-24", "Feb-24", "Dec-24"]).unwrap(),
+            ["2024-01", "2024-02", "2024-12"]
+        );
+        assert_eq!(
+            labels(&["2024", "Jan 2025", "Feb 2025"]).unwrap(),
+            ["2024", "2025-01", "2025-02"]
+        );
         // Names, month names without a year and bare years alone are no period labels.
         assert_eq!(labels(&["Wien", "Graz", "Linz"]), None);
         assert_eq!(labels(&["Januar", "Februar", "März"]), None);
@@ -218,7 +320,12 @@ mod tests {
             n: 1,
             sheet: "T1".into(),
             source_sheet: "S".into(),
-            rect: crate::model::Rect { top: 0, left: 0, bottom: n as u32, right: 1 },
+            rect: crate::model::Rect {
+                top: 0,
+                left: 0,
+                bottom: n as u32,
+                right: 1,
+            },
             header_top: 0,
             header_rows: 1,
             title: None,
@@ -239,15 +346,27 @@ mod tests {
             n: 1,
             sheet: "T1".into(),
             source_sheet: "S".into(),
-            rect: crate::model::Rect { top: 0, left: 0, bottom: 4, right: 1 },
+            rect: crate::model::Rect {
+                top: 0,
+                left: 0,
+                bottom: 4,
+                right: 1,
+            },
             header_top: 0,
             header_rows: 1,
             title: None,
             notes: Vec::new(),
             confidence: 1.0,
             columns: vec![
-                col("Jahr / Monat", text(&["Jän.21", "Feb.21", "Mär.21", "Ø 21"]), 0),
-                Column { dtype: Dtype::Number, ..col("Rate", vec![Out::Num(1.0); 4], 1) },
+                col(
+                    "Jahr / Monat",
+                    text(&["Jän.21", "Feb.21", "Mär.21", "Ø 21"]),
+                    0,
+                ),
+                Column {
+                    dtype: Dtype::Number,
+                    ..col("Rate", vec![Out::Num(1.0); 4], 1)
+                },
                 col("Name", text(&["a", "b", "c", "d"]), 2),
             ],
             src_rows: vec![1, 2, 3, 4],
@@ -257,7 +376,10 @@ mod tests {
         };
         add_columns(&mut t);
         let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Jahr / Monat", "Jahr / Monat_period", "Rate", "Name"]);
+        assert_eq!(
+            names,
+            ["Jahr / Monat", "Jahr / Monat_period", "Rate", "Name"]
+        );
         assert_eq!(t.columns[1].values[3], Out::Text("2021".into()));
         assert_eq!(t.columns[1].derived_kind(), Some("period"));
         assert_eq!(t.transforms.get(T::PeriodColumnsAdded), 1);
@@ -267,18 +389,49 @@ mod tests {
     #[test]
     fn spelling_variants_get_a_key_column() {
         let mut t = table(vec![
-            data_col("Trader", text(&["McKay", "Mc Kay", "McKay", "Smith", "SMITH", "Jones", "Smith", "Jones", "McKay", "Smith"]), 0),
-            data_col("Desk", text(&["East", "West", "East", "West", "East", "West", "East", "West", "East", "West"]), 1),
+            data_col(
+                "Trader",
+                text(&[
+                    "McKay", "Mc Kay", "McKay", "Smith", "SMITH", "Jones", "Smith", "Jones",
+                    "McKay", "Smith",
+                ]),
+                0,
+            ),
+            data_col(
+                "Desk",
+                text(&[
+                    "East", "West", "East", "West", "East", "West", "East", "West", "East", "West",
+                ]),
+                1,
+            ),
         ]);
         add_columns(&mut t);
         let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["Trader", "Trader_key", "Desk"]);
-        let keys: Vec<&str> = t.columns[1].values.iter().map(|v| if let Out::Text(s) = v { s.as_str() } else { "" }).collect();
-        assert_eq!(keys, ["McKay", "McKay", "McKay", "Smith", "Smith", "Jones", "Smith", "Jones", "McKay", "Smith"]);
+        let keys: Vec<&str> = t.columns[1]
+            .values
+            .iter()
+            .map(|v| if let Out::Text(s) = v { s.as_str() } else { "" })
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "McKay", "McKay", "McKay", "Smith", "Smith", "Jones", "Smith", "Jones", "McKay",
+                "Smith"
+            ]
+        );
         assert_eq!(t.columns[1].derived_kind(), Some("key"));
-        assert!(t.warnings[0].contains("'Smith' / 'SMITH'") && t.warnings[0].contains("\"Trader_key\""), "{:?}", t.warnings);
+        assert!(
+            t.warnings[0].contains("'Smith' / 'SMITH'") && t.warnings[0].contains("\"Trader_key\""),
+            "{:?}",
+            t.warnings
+        );
         // Mostly distinct values (a register of descriptions): no key column.
-        let mut t = table(vec![data_col("Text", text(&["a b", "A B", "c", "d", "e", "f", "g", "h", "i", "j", "k"]), 0)]);
+        let mut t = table(vec![data_col(
+            "Text",
+            text(&["a b", "A B", "c", "d", "e", "f", "g", "h", "i", "j", "k"]),
+            0,
+        )]);
         add_columns(&mut t);
         assert_eq!(t.columns.len(), 1);
     }

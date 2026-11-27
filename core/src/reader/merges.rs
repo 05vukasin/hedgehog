@@ -49,7 +49,11 @@ impl<R: Read + Seek> Scanner<R> {
             }
         }
         let doc = doc?;
-        let xl_path = doc.rfind('/').map(|i| &doc[..=i]).map(|p| p.strip_prefix('/').unwrap_or(p)).unwrap_or("");
+        let xl_path = doc
+            .rfind('/')
+            .map(|i| &doc[..=i])
+            .map(|p| p.strip_prefix('/').unwrap_or(p))
+            .unwrap_or("");
         let xl_path = xl_path.to_string();
 
         // Relationship id → target (raw, like calamine), last one wins.
@@ -57,14 +61,18 @@ impl<R: Read + Seek> Scanner<R> {
         let mut targets: HashMap<Vec<u8>, Vec<u8>> = HashMap::new();
         let mut styles_target = None;
         for t in tags(&rels) {
-            if !t.closing && local(t.name) == b"Relationship"
-                && let Some(id) = t.attr(b"Id") {
-                    let target = t.attr(b"Target").unwrap_or(b"").to_vec();
-                    if t.attr(b"Type").is_some_and(|ty| ty.ends_with(b"/relationships/styles")) {
-                        styles_target = Some(target.clone());
-                    }
-                    targets.insert(id.to_vec(), target);
+            if !t.closing
+                && local(t.name) == b"Relationship"
+                && let Some(id) = t.attr(b"Id")
+            {
+                let target = t.attr(b"Target").unwrap_or(b"").to_vec();
+                if t.attr(b"Type")
+                    .is_some_and(|ty| ty.ends_with(b"/relationships/styles"))
+                {
+                    styles_target = Some(target.clone());
                 }
+                targets.insert(id.to_vec(), target);
+            }
         }
         let wb = read_small(&mut zip, &format!("{xl_path}workbook.xml"))?;
         let mut parts = HashMap::new();
@@ -81,7 +89,9 @@ impl<R: Read + Seek> Scanner<R> {
                     rid = v;
                 }
             }
-            let (Some(name), Some(target)) = (name, targets.get(rid)) else { continue };
+            let (Some(name), Some(target)) = (name, targets.get(rid)) else {
+                continue;
+            };
             let target = std::str::from_utf8(target).ok()?;
             let path = match target.strip_prefix('/') {
                 Some(abs) => abs.to_string(),
@@ -107,7 +117,12 @@ impl<R: Read + Seek> Scanner<R> {
     /// whose `cells` the reader has built; `None` to let the caller ask calamine for the merges.
     /// `dims` is the `<dimension>` calamine read for that sheet; the part found here must declare
     /// the same.
-    pub fn scan(&mut self, name: &str, dims: Dimensions, cells: &[Cell]) -> Option<(Vec<Rect>, Option<Vec<Format>>)> {
+    pub fn scan(
+        &mut self,
+        name: &str,
+        dims: Dimensions,
+        cells: &[Cell],
+    ) -> Option<(Vec<Rect>, Option<Vec<Format>>)> {
         let path = self.parts.get(name)?;
         let mut f = self.zip.by_name(path).ok()?;
         super::styles::scan_sheet(&mut f, dims, self.xfs.as_deref(), cells)
@@ -182,13 +197,20 @@ pub(super) fn parse_merge_cells(xml: &[u8]) -> Vec<Rect> {
         if t.closing && name == b"mergeCells" {
             return out;
         }
-        if !t.closing && name == b"mergeCell"
-            && let Some(r) = t.attr(b"ref") {
-                match dimension(r) {
-                    Some(d) => out.push(Rect { top: d.start.0, left: d.start.1, bottom: d.end.0, right: d.end.1 }),
-                    None => return Vec::new(),
-                }
+        if !t.closing
+            && name == b"mergeCell"
+            && let Some(r) = t.attr(b"ref")
+        {
+            match dimension(r) {
+                Some(d) => out.push(Rect {
+                    top: d.start.0,
+                    left: d.start.1,
+                    bottom: d.end.0,
+                    right: d.end.1,
+                }),
+                None => return Vec::new(),
             }
+        }
     }
     Vec::new() // no </mergeCells>: calamine's XmlEof error
 }
@@ -202,7 +224,10 @@ fn dimension(r: &[u8]) -> Option<Dimensions> {
         None => Some(Dimensions { start: a, end: a }),
         Some(b) => {
             let b = cell_ref(b)?;
-            parts.next().is_none().then_some(Dimensions { start: a, end: b })
+            parts
+                .next()
+                .is_none()
+                .then_some(Dimensions { start: a, end: b })
         }
     }
 }
@@ -300,7 +325,9 @@ impl<'a> Iterator for Attrs<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let s = self.s;
-        let start = s.iter().position(|b| !b.is_ascii_whitespace() && *b != b'/')?;
+        let start = s
+            .iter()
+            .position(|b| !b.is_ascii_whitespace() && *b != b'/')?;
         let eq = start + s[start..].iter().position(|&b| b == b'=')?;
         let key = s[start..eq].trim_ascii();
         let q0 = eq + 1 + s[eq + 1..].iter().position(|b| !b.is_ascii_whitespace())?;
@@ -359,9 +386,21 @@ impl<'a> Iterator for Tags<'a> {
             let closing = rest[1] == b'/';
             let body = &rest[1 + closing as usize..i];
             let self_closing = body.last() == Some(&b'/');
-            let body = if self_closing { &body[..body.len() - 1] } else { body };
-            let name_end = body.iter().position(|b| b.is_ascii_whitespace()).unwrap_or(body.len());
-            return Some(Tag { name: &body[..name_end], attrs: &body[name_end..], closing, self_closing });
+            let body = if self_closing {
+                &body[..body.len() - 1]
+            } else {
+                body
+            };
+            let name_end = body
+                .iter()
+                .position(|b| b.is_ascii_whitespace())
+                .unwrap_or(body.len());
+            return Some(Tag {
+                name: &body[..name_end],
+                attrs: &body[name_end..],
+                closing,
+                self_closing,
+            });
         }
     }
 }
@@ -372,9 +411,24 @@ mod tests {
 
     #[test]
     fn refs_like_calamine() {
-        assert_eq!(dimension(b"A1:B2"), Some(Dimensions { start: (0, 0), end: (1, 1) }));
-        assert_eq!(dimension(b"c3"), Some(Dimensions { start: (2, 2), end: (2, 2) }));
-        assert_eq!(dimension(b"XFD1048576").map(|d| d.end), Some((1_048_575, 16_383)));
+        assert_eq!(
+            dimension(b"A1:B2"),
+            Some(Dimensions {
+                start: (0, 0),
+                end: (1, 1)
+            })
+        );
+        assert_eq!(
+            dimension(b"c3"),
+            Some(Dimensions {
+                start: (2, 2),
+                end: (2, 2)
+            })
+        );
+        assert_eq!(
+            dimension(b"XFD1048576").map(|d| d.end),
+            Some((1_048_575, 16_383))
+        );
         assert_eq!(dimension(b"A1:B2:C3"), None);
         assert_eq!(dimension(b"A:B"), None);
         assert_eq!(dimension(b"1:2"), None);
@@ -386,10 +440,28 @@ mod tests {
         let xml = br#"<mergeCells count="3"><mergeCell ref="A1:C1"/><x:mergeCell ref='B3:B9'></x:mergeCell><!-- <mergeCell ref="Z9"/> --><mergeCell other="1"/></mergeCells><pageMargins/>"#;
         assert_eq!(
             parse_merge_cells(xml),
-            vec![Rect { top: 0, left: 0, bottom: 0, right: 2 }, Rect { top: 2, left: 1, bottom: 8, right: 1 }]
+            vec![
+                Rect {
+                    top: 0,
+                    left: 0,
+                    bottom: 0,
+                    right: 2
+                },
+                Rect {
+                    top: 2,
+                    left: 1,
+                    bottom: 8,
+                    right: 1
+                }
+            ]
         );
         assert!(parse_merge_cells(br#"<mergeCells/>"#).is_empty());
-        assert!(parse_merge_cells(br#"<mergeCells><mergeCell ref="A1:B"/><mergeCell ref="A1:B2"/></mergeCells>"#).is_empty());
+        assert!(
+            parse_merge_cells(
+                br#"<mergeCells><mergeCell ref="A1:B"/><mergeCell ref="A1:B2"/></mergeCells>"#
+            )
+            .is_empty()
+        );
         assert!(parse_merge_cells(br#"<mergeCells><mergeCell ref="A1:B2"/>"#).is_empty());
     }
 

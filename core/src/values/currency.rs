@@ -15,25 +15,62 @@ use super::number::DecimalSep;
 
 /// Active ISO 4217 alphabetic codes (source: ISO 4217 list one; test codes XTS/XXX omitted).
 const ISO_CODES: [&str; 176] = [
-    "AED", "AFN", "ALL", "AMD", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT", "BHD", "BIF", "BMD", "BND",
-    "BOB", "BOV", "BRL", "BSD", "BTN", "BWP", "BYN", "BZD", "CAD", "CDF", "CHE", "CHF", "CHW", "CLF", "CLP", "CNY",
-    "COP", "COU", "CRC", "CUP", "CVE", "CZK", "DJF", "DKK", "DOP", "DZD", "EGP", "ERN", "ETB", "EUR", "FJD", "FKP",
-    "GBP", "GEL", "GHS", "GIP", "GMD", "GNF", "GTQ", "GYD", "HKD", "HNL", "HTG", "HUF", "IDR", "ILS", "INR", "IQD",
-    "IRR", "ISK", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF", "KPW", "KRW", "KWD", "KYD", "KZT", "LAK", "LBP",
-    "LKR", "LRD", "LSL", "LYD", "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MRU", "MUR", "MVR", "MWK", "MXN",
-    "MXV", "MYR", "MZN", "NAD", "NGN", "NIO", "NOK", "NPR", "NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN",
-    "PYG", "QAR", "RON", "RSD", "RUB", "RWF", "SAR", "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLE", "SOS", "SRD",
-    "SSP", "STN", "SVC", "SYP", "SZL", "THB", "TJS", "TMT", "TND", "TOP", "TRY", "TTD", "TWD", "TZS", "UAH", "UGX",
-    "USD", "USN", "UYI", "UYU", "UYW", "UZS", "VED", "VES", "VND", "VUV", "WST", "XAD", "XAF", "XAG", "XAU", "XBA",
-    "XBB", "XBC", "XBD", "XCD", "XCG", "XDR", "XOF", "XPD", "XPF", "XPT", "XSU", "XUA", "YER", "ZAR", "ZMW", "ZWG",
+    "AED", "AFN", "ALL", "AMD", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT", "BHD",
+    "BIF", "BMD", "BND", "BOB", "BOV", "BRL", "BSD", "BTN", "BWP", "BYN", "BZD", "CAD", "CDF",
+    "CHE", "CHF", "CHW", "CLF", "CLP", "CNY", "COP", "COU", "CRC", "CUP", "CVE", "CZK", "DJF",
+    "DKK", "DOP", "DZD", "EGP", "ERN", "ETB", "EUR", "FJD", "FKP", "GBP", "GEL", "GHS", "GIP",
+    "GMD", "GNF", "GTQ", "GYD", "HKD", "HNL", "HTG", "HUF", "IDR", "ILS", "INR", "IQD", "IRR",
+    "ISK", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF", "KPW", "KRW", "KWD", "KYD", "KZT",
+    "LAK", "LBP", "LKR", "LRD", "LSL", "LYD", "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP",
+    "MRU", "MUR", "MVR", "MWK", "MXN", "MXV", "MYR", "MZN", "NAD", "NGN", "NIO", "NOK", "NPR",
+    "NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PYG", "QAR", "RON", "RSD", "RUB",
+    "RWF", "SAR", "SBD", "SCR", "SDG", "SEK", "SGD", "SHP", "SLE", "SOS", "SRD", "SSP", "STN",
+    "SVC", "SYP", "SZL", "THB", "TJS", "TMT", "TND", "TOP", "TRY", "TTD", "TWD", "TZS", "UAH",
+    "UGX", "USD", "USN", "UYI", "UYU", "UYW", "UZS", "VED", "VES", "VND", "VUV", "WST", "XAD",
+    "XAF", "XAG", "XAU", "XBA", "XBB", "XBC", "XBD", "XCD", "XCG", "XDR", "XOF", "XPD", "XPF",
+    "XPT", "XSU", "XUA", "YER", "ZAR", "ZMW", "ZWG",
 ];
 
 /// (ISO code, ambiguous, case-insensitive aliases in lowercase).
 const ALIASES: &[(&str, bool, &[&str])] = &[
-    ("USD", false, &["$", "usd", "us$", "u$s", "dollar", "dollars", "dolara", "долара"]),
-    ("EUR", false, &["€", "eur", "euro", "euros", "evra", "evro", "eura", "евра", "евро"]),
+    (
+        "USD",
+        false,
+        &[
+            "$",
+            "usd",
+            "us$",
+            "u$s",
+            "dollar",
+            "dollars",
+            "dolara",
+            "долара",
+        ],
+    ),
+    (
+        "EUR",
+        false,
+        &[
+            "€", "eur", "euro", "euros", "evra", "evro", "eura", "евра", "евро",
+        ],
+    ),
     ("GBP", false, &["£", "gbp", "pounds", "stg"]),
-    ("RSD", false, &["rsd", "din", "din.", "dinar", "dinara", "dinari", "дин", "дин.", "динар", "динара"]),
+    (
+        "RSD",
+        false,
+        &[
+            "rsd",
+            "din",
+            "din.",
+            "dinar",
+            "dinara",
+            "dinari",
+            "дин",
+            "дин.",
+            "динар",
+            "динара",
+        ],
+    ),
     ("CHF", false, &["chf", "fr.", "fr", "sfr", "sfr.", "chf."]),
     ("JPY", true, &["¥", "円"]),
     ("JPY", false, &["jpy", "yen"]),
@@ -82,20 +119,50 @@ pub struct CurrencyMatch {
     pub wordlike: bool,
 }
 
-const WORDLIKE: [&str; 10] = ["ALL", "BOB", "CUP", "GEL", "MAD", "MOP", "PEN", "SOS", "TOP", "TRY"];
+const WORDLIKE: [&str; 10] = [
+    "ALL", "BOB", "CUP", "GEL", "MAD", "MOP", "PEN", "SOS", "TOP", "TRY",
+];
 
 /// True if the text mentions a currency: a currency symbol, a (non-word-like) ISO code or alias
 /// as a separate token, or the word "currency" in a few languages. Used as column evidence.
 pub fn mentions_currency(s: &str) -> bool {
-    if s.chars().any(|c| matches!(c, '$' | '€' | '£' | '¥' | '₹' | '₽' | '₺' | '₩' | '₪' | '₴' | '₫' | '฿' | '₱' | '₦' | '₸')) {
+    if s.chars().any(|c| {
+        matches!(
+            c,
+            '$' | '€'
+                | '£'
+                | '¥'
+                | '₹'
+                | '₽'
+                | '₺'
+                | '₩'
+                | '₪'
+                | '₴'
+                | '₫'
+                | '฿'
+                | '₱'
+                | '₦'
+                | '₸'
+        )
+    }) {
         return true;
     }
-    s.split(|c: char| !c.is_alphanumeric() && c != '.').filter(|w| !w.is_empty()).any(|w| {
-        matches!(
-            w.to_lowercase().as_str(),
-            "currency" | "valuta" | "währung" | "wahrung" | "devise" | "moneda" | "divisa" | "waluta" | "moeda"
-        ) || currency_match(w).is_some_and(|m| !m.wordlike && (w.len() >= 3 || !w.is_ascii()))
-    })
+    s.split(|c: char| !c.is_alphanumeric() && c != '.')
+        .filter(|w| !w.is_empty())
+        .any(|w| {
+            matches!(
+                w.to_lowercase().as_str(),
+                "currency"
+                    | "valuta"
+                    | "währung"
+                    | "wahrung"
+                    | "devise"
+                    | "moneda"
+                    | "divisa"
+                    | "waluta"
+                    | "moeda"
+            ) || currency_match(w).is_some_and(|m| !m.wordlike && (w.len() >= 3 || !w.is_ascii()))
+        })
 }
 
 /// Case-insensitive comparison of `word` against a lowercase entry.
@@ -118,25 +185,46 @@ pub(crate) fn eq_fold(word: &str, lower: &str) -> bool {
 /// spellings are accepted only for the common codes listed as aliases, so words like `all` or
 /// `top` are not read as currencies.
 pub fn is_iso_code(word: &str) -> bool {
-    word.len() == 3 && word.bytes().all(|b| b.is_ascii_uppercase()) && ISO_CODES.binary_search(&word).is_ok()
+    word.len() == 3
+        && word.bytes().all(|b| b.is_ascii_uppercase())
+        && ISO_CODES.binary_search(&word).is_ok()
 }
 
 /// Recognizes a currency symbol, code or word.
 pub fn currency_match(word: &str) -> Option<CurrencyMatch> {
     if word == "KM" {
         // konvertibilna marka; lowercase "km" is kilometres
-        return Some(CurrencyMatch { code: "BAM", ambiguous: false, wordlike: false });
+        return Some(CurrencyMatch {
+            code: "BAM",
+            ambiguous: false,
+            wordlike: false,
+        });
     }
     if word == "Ft" {
         // Hungarian forint as written in Hungary; lowercase "ft" is feet.
-        return Some(CurrencyMatch { code: "HUF", ambiguous: false, wordlike: false });
+        return Some(CurrencyMatch {
+            code: "HUF",
+            ambiguous: false,
+            wordlike: false,
+        });
     }
-    if let Some((code, ambiguous, _)) = ALIASES.iter().find(|(_, _, a)| a.iter().any(|x| eq_fold(word, x))) {
-        return Some(CurrencyMatch { code, ambiguous: *ambiguous, wordlike: false });
+    if let Some((code, ambiguous, _)) = ALIASES
+        .iter()
+        .find(|(_, _, a)| a.iter().any(|x| eq_fold(word, x)))
+    {
+        return Some(CurrencyMatch {
+            code,
+            ambiguous: *ambiguous,
+            wordlike: false,
+        });
     }
     if is_iso_code(word) {
         let i = ISO_CODES.binary_search(&word).ok()?;
-        return Some(CurrencyMatch { code: ISO_CODES[i], ambiguous: false, wordlike: WORDLIKE.contains(&word) });
+        return Some(CurrencyMatch {
+            code: ISO_CODES[i],
+            ambiguous: false,
+            wordlike: WORDLIKE.contains(&word),
+        });
     }
     None
 }
@@ -151,10 +239,13 @@ pub fn currency(word: &str) -> Option<&'static str> {
 /// Used only as a fallback when the column gives no evidence.
 pub fn decimal_convention(code: &str) -> Option<DecimalSep> {
     match code {
-        "USD" | "GBP" | "JPY" | "CNY" | "INR" | "AUD" | "CAD" | "NZD" | "HKD" | "SGD" | "MXN" | "KRW" | "ILS" | "THB"
-        | "PHP" | "CHF" | "NGN" | "MYR" | "PKR" | "TWD" | "AED" | "SAR" => Some(DecimalSep::Dot),
-        "RSD" | "BAM" | "MKD" | "HRK" | "BRL" | "PLN" | "CZK" | "HUF" | "RON" | "BGN" | "TRY" | "RUB" | "UAH" | "DKK"
-        | "NOK" | "SEK" | "ISK" | "ARS" | "CLP" | "COP" | "IDR" | "VND" | "ZAR" | "KZT" | "UYU" => Some(DecimalSep::Comma),
+        "USD" | "GBP" | "JPY" | "CNY" | "INR" | "AUD" | "CAD" | "NZD" | "HKD" | "SGD" | "MXN"
+        | "KRW" | "ILS" | "THB" | "PHP" | "CHF" | "NGN" | "MYR" | "PKR" | "TWD" | "AED" | "SAR" => {
+            Some(DecimalSep::Dot)
+        }
+        "RSD" | "BAM" | "MKD" | "HRK" | "BRL" | "PLN" | "CZK" | "HUF" | "RON" | "BGN" | "TRY"
+        | "RUB" | "UAH" | "DKK" | "NOK" | "SEK" | "ISK" | "ARS" | "CLP" | "COP" | "IDR" | "VND"
+        | "ZAR" | "KZT" | "UYU" => Some(DecimalSep::Comma),
         _ => None,
     }
 }
@@ -179,10 +270,32 @@ mod tests {
     #[test]
     fn symbols() {
         let cases = [
-            ("$", "USD"), ("US$", "USD"), ("€", "EUR"), ("£", "GBP"), ("¥", "JPY"), ("₹", "INR"), ("₽", "RUB"),
-            ("₺", "TRY"), ("₩", "KRW"), ("₪", "ILS"), ("zł", "PLN"), ("Kč", "CZK"), ("kr", "SEK"), ("kr.", "SEK"),
-            ("Fr.", "CHF"), ("CHF", "CHF"), ("R$", "BRL"), ("C$", "CAD"), ("A$", "AUD"), ("HK$", "HKD"),
-            ("din.", "RSD"), ("дин.", "RSD"), ("KM", "BAM"), ("Ft", "HUF"), ("lei", "RON"), ("лв.", "BGN"),
+            ("$", "USD"),
+            ("US$", "USD"),
+            ("€", "EUR"),
+            ("£", "GBP"),
+            ("¥", "JPY"),
+            ("₹", "INR"),
+            ("₽", "RUB"),
+            ("₺", "TRY"),
+            ("₩", "KRW"),
+            ("₪", "ILS"),
+            ("zł", "PLN"),
+            ("Kč", "CZK"),
+            ("kr", "SEK"),
+            ("kr.", "SEK"),
+            ("Fr.", "CHF"),
+            ("CHF", "CHF"),
+            ("R$", "BRL"),
+            ("C$", "CAD"),
+            ("A$", "AUD"),
+            ("HK$", "HKD"),
+            ("din.", "RSD"),
+            ("дин.", "RSD"),
+            ("KM", "BAM"),
+            ("Ft", "HUF"),
+            ("lei", "RON"),
+            ("лв.", "BGN"),
         ];
         for (s, c) in cases {
             assert_eq!(currency(s), Some(c), "{s:?}");

@@ -30,13 +30,23 @@ struct Snap {
 impl Snap {
     /// A fresh, empty fixture folder for `name` (fixed path under cargo's test tmp dir, no pid).
     fn new(name: &'static str) -> Snap {
-        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("hh_snapshots").join(name);
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join("hh_snapshots")
+            .join(name);
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // No disk cache: the result must not depend on what an earlier run left behind.
-        let opts = Options { cache: None, ..Options::default() };
+        let opts = Options {
+            cache: None,
+            ..Options::default()
+        };
         let session = Session::with_options(&dir, &[], opts).unwrap();
-        Snap { name, dir, session, out: format!("# snapshot: {name}\n") }
+        Snap {
+            name,
+            dir,
+            session,
+            out: format!("# snapshot: {name}\n"),
+        }
     }
 
     fn path(&self, file: &str) -> PathBuf {
@@ -52,7 +62,10 @@ impl Snap {
     }
 
     fn save(&self, file: &str, wb: &mut Workbook) {
-        wb.set_properties(&DocProperties::new().set_creation_datetime(&ExcelDateTime::from_ymd(2024, 1, 1).unwrap()));
+        wb.set_properties(
+            &DocProperties::new()
+                .set_creation_datetime(&ExcelDateTime::from_ymd(2024, 1, 1).unwrap()),
+        );
         wb.save(self.path(file)).unwrap();
     }
 
@@ -62,7 +75,9 @@ impl Snap {
         const AT: &str = "(normalized in ";
         let mut from = 0;
         while let Some(i) = s[from..].find(AT).map(|i| i + from + AT.len()) {
-            let Some(j) = s[i..].find(" s)").map(|j| j + i) else { break };
+            let Some(j) = s[i..].find(" s)").map(|j| j + i) else {
+                break;
+            };
             s.replace_range(i..j, "<t>");
             from = i;
         }
@@ -76,7 +91,8 @@ impl Snap {
             Err(e) => format!("ERROR: {}", e.0),
         };
         let text = self.clean(&text);
-        self.out.push_str(&format!("\n## open_file {file}\n{text}\n"));
+        self.out
+            .push_str(&format!("\n## open_file {file}\n{text}\n"));
     }
 
     /// `open_file` with the user's question (B150).
@@ -86,7 +102,9 @@ impl Snap {
             Err(e) => format!("ERROR: {}", e.0),
         };
         let text = self.clean(&text);
-        self.out.push_str(&format!("\n## open_file {file} question: {question}\n{text}\n"));
+        self.out.push_str(&format!(
+            "\n## open_file {file} question: {question}\n{text}\n"
+        ));
     }
 
     fn query(&mut self, file: &str, sql: &str) {
@@ -96,7 +114,8 @@ impl Snap {
             Err(e) => format!("ERROR: {}", e.0),
         };
         let text = self.clean(&text);
-        self.out.push_str(&format!("\n## query {file}: {sql}\n{text}\n"));
+        self.out
+            .push_str(&format!("\n## query {file}: {sql}\n{text}\n"));
     }
 
     fn describe(&mut self, file: &str, table: &str) {
@@ -105,7 +124,8 @@ impl Snap {
             Err(e) => format!("ERROR: {}", e.0),
         };
         let text = self.clean(&text);
-        self.out.push_str(&format!("\n## describe_table {file} {table}\n{text}\n"));
+        self.out
+            .push_str(&format!("\n## describe_table {file} {table}\n{text}\n"));
     }
 
     fn totals(&mut self, file: &str) {
@@ -120,7 +140,9 @@ impl Snap {
     /// Compares with (or, with `UPDATE_SNAPSHOTS=1`, rewrites) `snapshots/<name>.txt`.
     fn check(self) {
         let rel = format!("agent/tests/snapshots/{}.txt", self.name);
-        let file = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(format!("{}.txt", self.name));
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/snapshots")
+            .join(format!("{}.txt", self.name));
         let got = self.out;
         let update = std::env::var("UPDATE_SNAPSHOTS").is_ok_and(|v| !v.is_empty() && v != "0");
         let want = std::fs::read_to_string(&file).ok();
@@ -154,7 +176,11 @@ fn diff(a: &str, b: &str) -> String {
     let mut l = vec![vec![0u32; m + 1]; n + 1];
     for i in (0..n).rev() {
         for j in (0..m).rev() {
-            l[i][j] = if a[i] == b[j] { l[i + 1][j + 1] + 1 } else { l[i + 1][j].max(l[i][j + 1]) };
+            l[i][j] = if a[i] == b[j] {
+                l[i + 1][j + 1] + 1
+            } else {
+                l[i + 1][j].max(l[i][j + 1])
+            };
         }
     }
     // (kind, line): ' ' same, '-' only in a, '+' only in b
@@ -173,7 +199,11 @@ fn diff(a: &str, b: &str) -> String {
             i += 1;
         }
     }
-    let near = |k: usize| ops[k.saturating_sub(2)..(k + 3).min(ops.len())].iter().any(|o| o.0 != ' ');
+    let near = |k: usize| {
+        ops[k.saturating_sub(2)..(k + 3).min(ops.len())]
+            .iter()
+            .any(|o| o.0 != ' ')
+    };
     let mut out = String::new();
     let mut skipped = false;
     for (k, (c, line)) in ops.iter().enumerate() {
@@ -270,8 +300,14 @@ fn total_rows() {
     );
     s.save("totals.xlsx", &mut wb);
     s.open("totals.xlsx");
-    s.query("totals.xlsx", "SELECT Region, Sales FROM T1 ORDER BY Sales DESC");
-    s.query("totals.xlsx", "SELECT Region, Sales, _row_type FROM T1_all ORDER BY _src_row");
+    s.query(
+        "totals.xlsx",
+        "SELECT Region, Sales FROM T1 ORDER BY Sales DESC",
+    );
+    s.query(
+        "totals.xlsx",
+        "SELECT Region, Sales, _row_type FROM T1_all ORDER BY _src_row",
+    );
     s.query("totals.xlsx", "SELECT SUM(\"Nächte\") AS n FROM T2");
     s.totals("totals.xlsx");
     s.check();
@@ -283,18 +319,51 @@ fn total_rows() {
 fn total_codes_grouped_names_rolling() {
     let mut s = Snap::new("total_codes_grouped_names_rolling");
     let mut wb = Workbook::new();
-    let mut data = vec![vec![S("Relação Jurídica"), S("Sexo"), S("Técnico"), S("Outros"), S("TOTAL")]];
-    let groups: [(&str, [f64; 2], [f64; 2]); 4] =
-        [("Comissão", [8.0, 6.0], [4.0, 7.0]), ("CTFP indeterminado", [712.0, 1429.0], [152.0, 87.0]), ("CTFP certo", [3.0, 5.0], [0.0, 1.0]), ("Outras", [4.0, 3.0], [27.0, 1.0])];
-    let sum = |k: usize, j: usize| groups.iter().map(|g| if j == 0 { g.1[k] } else { g.2[k] }).sum::<f64>();
+    let mut data = vec![vec![
+        S("Relação Jurídica"),
+        S("Sexo"),
+        S("Técnico"),
+        S("Outros"),
+        S("TOTAL"),
+    ]];
+    let groups: [(&str, [f64; 2], [f64; 2]); 4] = [
+        ("Comissão", [8.0, 6.0], [4.0, 7.0]),
+        ("CTFP indeterminado", [712.0, 1429.0], [152.0, 87.0]),
+        ("CTFP certo", [3.0, 5.0], [0.0, 1.0]),
+        ("Outras", [4.0, 3.0], [27.0, 1.0]),
+    ];
+    let sum = |k: usize, j: usize| {
+        groups
+            .iter()
+            .map(|g| if j == 0 { g.1[k] } else { g.2[k] })
+            .sum::<f64>()
+    };
     let tot = |k: usize| sum(k, 0) + sum(k, 1);
-    data.push(vec![S("Total"), S("M"), N(sum(0, 0)), N(sum(0, 1)), N(tot(0))]);
+    data.push(vec![
+        S("Total"),
+        S("M"),
+        N(sum(0, 0)),
+        N(sum(0, 1)),
+        N(tot(0)),
+    ]);
     data.push(vec![S(""), S("F"), N(sum(1, 0)), N(sum(1, 1)), N(tot(1))]);
-    data.push(vec![S(""), S("T"), N(sum(0, 0) + sum(1, 0)), N(sum(0, 1) + sum(1, 1)), N(tot(0) + tot(1))]);
+    data.push(vec![
+        S(""),
+        S("T"),
+        N(sum(0, 0) + sum(1, 0)),
+        N(sum(0, 1) + sum(1, 1)),
+        N(tot(0) + tot(1)),
+    ]);
     for (name, a, b) in groups {
         data.push(vec![S(name), S("M"), N(a[0]), N(b[0]), N(a[0] + b[0])]);
         data.push(vec![S(""), S("F"), N(a[1]), N(b[1]), N(a[1] + b[1])]);
-        data.push(vec![S(""), S("T"), N(a[0] + a[1]), N(b[0] + b[1]), N(a[0] + a[1] + b[0] + b[1])]);
+        data.push(vec![
+            S(""),
+            S("T"),
+            N(a[0] + a[1]),
+            N(b[0] + b[1]),
+            N(a[0] + a[1] + b[0] + b[1]),
+        ]);
     }
     // The group label once per group, as in a report with merged cells.
     rows(sheet(&mut wb, "Quadro 1"), 0, 0, &data);
@@ -302,17 +371,37 @@ fn total_codes_grouped_names_rolling() {
     s.open("social.xlsx");
     s.describe("social.xlsx", "T1");
     s.query("social.xlsx", "SELECT SUM(TOTAL) FROM T1");
-    s.query("social.xlsx", "SELECT SUM(TOTAL) FROM T1_all WHERE _row_type = 'total'");
+    s.query(
+        "social.xlsx",
+        "SELECT SUM(TOTAL) FROM T1_all WHERE _row_type = 'total'",
+    );
     // Grouped names (B161) and rolling windows (B162).
-    let mut csv = String::from("Period,\"Refund / Armed forces, 2017\",\"Refund / Fire brigades, 2017\",Rate\n");
-    let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let mut csv = String::from(
+        "Period,\"Refund / Armed forces, 2017\",\"Refund / Fire brigades, 2017\",Rate\n",
+    );
+    let months = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     for m in 0..8 {
-        csv.push_str(&format!("{}-{} 2026,{},{},{}\n", months[m], months[m + 2], 100 + m, 50 + 2 * m, 4.0 + m as f64 / 10.0));
+        csv.push_str(&format!(
+            "{}-{} 2026,{},{},{}\n",
+            months[m],
+            months[m + 2],
+            100 + m,
+            50 + 2 * m,
+            4.0 + m as f64 / 10.0
+        ));
     }
     s.write("refunds.csv", &csv);
     s.open("refunds.csv");
-    s.query("refunds.csv", "SELECT SUM(\"Refund / {Armed forces, 2017}\") AS armed FROM T1");
-    s.query("refunds.csv", "SELECT SUM(\"Refund / Armed forces 2017\") FROM T1");
+    s.query(
+        "refunds.csv",
+        "SELECT SUM(\"Refund / {Armed forces, 2017}\") AS armed FROM T1",
+    );
+    s.query(
+        "refunds.csv",
+        "SELECT SUM(\"Refund / Armed forces 2017\") FROM T1",
+    );
     s.check();
 }
 
@@ -321,22 +410,51 @@ fn total_codes_grouped_names_rolling() {
 fn periods() {
     let mut s = Snap::new("periods");
     let mut csv = String::from("Country,2019,2020,2021,2022,2023\n");
-    for (i, c) in ["Austria", "Belgium", "Croatia", "Denmark", "Estonia", "Finland"].iter().enumerate() {
+    for (i, c) in [
+        "Austria", "Belgium", "Croatia", "Denmark", "Estonia", "Finland",
+    ]
+    .iter()
+    .enumerate()
+    {
         let b = 100.0 + 13.0 * i as f64;
-        csv.push_str(&format!("{c},{},{},{},{},{}\n", b, b + 1.5, b + 3.0, b + 2.0, b + 4.5));
+        csv.push_str(&format!(
+            "{c},{},{},{},{},{}\n",
+            b,
+            b + 1.5,
+            b + 3.0,
+            b + 2.0,
+            b + 4.5
+        ));
     }
     s.write("gdp.csv", &csv);
     let mut wb = Workbook::new();
-    let mut data = vec![vec![S("Product"), S("Ø 22"), S("Jan-24"), S("Feb-24"), S("Mar-24"), S("Apr-24")]];
+    let mut data = vec![vec![
+        S("Product"),
+        S("Ø 22"),
+        S("Jan-24"),
+        S("Feb-24"),
+        S("Mar-24"),
+        S("Apr-24"),
+    ]];
     let products = ["Apples", "Pears", "Plums", "Cherries", "Grapes"];
     for (i, p) in products.iter().enumerate() {
         let b = 10.0 * (i + 1) as f64;
-        data.push(vec![S(p), N(b), N(b + 1.0), N(b + 2.0), N(b + 3.0), N(b + 4.0)]);
+        data.push(vec![
+            S(p),
+            N(b),
+            N(b + 1.0),
+            N(b + 2.0),
+            N(b + 3.0),
+            N(b + 4.0),
+        ]);
     }
     rows(sheet(&mut wb, "Prices"), 0, 0, &data);
     s.save("prices.xlsx", &mut wb);
     s.open("gdp.csv");
-    s.query("gdp.csv", "SELECT * FROM T1_long WHERE Country = 'Croatia' ORDER BY 2");
+    s.query(
+        "gdp.csv",
+        "SELECT * FROM T1_long WHERE Country = 'Croatia' ORDER BY 2",
+    );
     s.open("prices.xlsx");
     s.describe("prices.xlsx", "T1");
     s.check();
@@ -355,7 +473,13 @@ fn entities() {
     ];
     let mut csv = String::from("buyer,supplier,price,signed\n");
     for i in 0..30 {
-        csv.push_str(&format!("\"{}\",Supplier {},{},2020-{:02}-15\n", buyers[i % buyers.len()], i % 4, 1000 + i * 10, 1 + i % 12));
+        csv.push_str(&format!(
+            "\"{}\",Supplier {},{},2020-{:02}-15\n",
+            buyers[i % buyers.len()],
+            i % 4,
+            1000 + i * 10,
+            1 + i % 12
+        ));
     }
     s.write("contracts.csv", &csv);
     let names = ["Acme GmbH", "Acme Gmbh.", "Beta AG", "Gamma KG", "Delta SE"];
@@ -367,7 +491,10 @@ fn entities() {
     s.write("customers.csv", &csv);
     s.open("contracts.csv");
     s.query("contracts.csv", "SELECT buyer_id, count(DISTINCT buyer_name) AS names, count(*) AS n FROM T1 GROUP BY buyer_id ORDER BY n DESC, buyer_id");
-    s.query("contracts.csv", "SELECT buyer, count(*) AS n FROM T1 GROUP BY buyer ORDER BY buyer");
+    s.query(
+        "contracts.csv",
+        "SELECT buyer, count(*) AS n FROM T1 GROUP BY buyer ORDER BY buyer",
+    );
     s.open("customers.csv");
     s.query("customers.csv", "SELECT customer_name, SUM(amount) AS a FROM T1 GROUP BY customer_name ORDER BY customer_name");
     s.check();
@@ -381,7 +508,12 @@ fn multi_file_join() {
     let mut lines = String::from("orderID,productID,unitPrice,quantity\n");
     for i in 0..20 {
         let id = 1000 + i;
-        orders.push_str(&format!("{id},{},{}-03-{:02}\n", 1 + i % 3, if i < 12 { 2021 } else { 2022 }, 1 + i % 28));
+        orders.push_str(&format!(
+            "{id},{},{}-03-{:02}\n",
+            1 + i % 3,
+            if i < 12 { 2021 } else { 2022 },
+            1 + i % 28
+        ));
         for k in 0..(1 + i % 3) {
             lines.push_str(&format!("{id},{},{}.5,{}\n", 10 + k, 5 + k, 1 + i % 4));
         }
@@ -406,9 +538,21 @@ fn union_views() {
     let mut wb = Workbook::new();
     for (k, state) in ["Burgenland", "Tirol", "Wien"].iter().enumerate() {
         let ws = sheet(&mut wb, &state[..3]);
-        ws.write(0, 0, format!("Nächtigungen in {state} – nach Herkunftsland Juli 2026")).unwrap();
+        ws.write(
+            0,
+            0,
+            format!("Nächtigungen in {state} – nach Herkunftsland Juli 2026"),
+        )
+        .unwrap();
         let mut data = vec![vec![S("Herkunftsland"), S("Ankünfte"), S("Nächtigungen")]];
-        let countries = ["Deutschland", "Italien", "Niederlande", "Schweiz", "Ungarn", "Polen"];
+        let countries = [
+            "Deutschland",
+            "Italien",
+            "Niederlande",
+            "Schweiz",
+            "Ungarn",
+            "Polen",
+        ];
         for (r, c) in countries.iter().enumerate() {
             let a = (100 * (k + 1) + r * 7) as f64;
             data.push(vec![S(c), N(a), N(3.0 * a + r as f64)]);
@@ -417,7 +561,10 @@ fn union_views() {
     }
     s.save("states.xlsx", &mut wb);
     s.open("states.xlsx");
-    s.query("states.xlsx", "SELECT * FROM U1 WHERE Herkunftsland = 'Italien' ORDER BY 1");
+    s.query(
+        "states.xlsx",
+        "SELECT * FROM U1 WHERE Herkunftsland = 'Italien' ORDER BY 1",
+    );
     s.check();
 }
 
@@ -428,8 +575,16 @@ fn quality_line() {
     let mut csv = String::from("id,category,amount,discount\n");
     for i in 0..30 {
         let cat = ["Retail", "Wholesale", "Online"][i % 3];
-        let discount = if cat == "Online" { String::new() } else { format!("{}", i % 5) };
-        let amount = if i % 10 == 9 { -(i as i64) * 3 } else { 100 + i as i64 * 4 };
+        let discount = if cat == "Online" {
+            String::new()
+        } else {
+            format!("{}", i % 5)
+        };
+        let amount = if i % 10 == 9 {
+            -(i as i64) * 3
+        } else {
+            100 + i as i64 * 4
+        };
         csv.push_str(&format!("{},{cat},{amount},{discount}\n", 100 + i));
     }
     // two exact duplicates of earlier rows
@@ -472,7 +627,8 @@ fn units_from_titles() {
     let mut s = Snap::new("units_from_titles");
     let mut wb = Workbook::new();
     let ws = sheet(&mut wb, "Budget");
-    ws.write(0, 0, "Municipal budget 2024, in 1 000 EUR").unwrap();
+    ws.write(0, 0, "Municipal budget 2024, in 1 000 EUR")
+        .unwrap();
     rows(
         ws,
         2,
@@ -487,7 +643,8 @@ fn units_from_titles() {
         ],
     );
     let ws = sheet(&mut wb, "People");
-    ws.write(0, 0, "Population by district (thousands)").unwrap();
+    ws.write(0, 0, "Population by district (thousands)")
+        .unwrap();
     rows(
         ws,
         2,
@@ -512,16 +669,32 @@ fn units_from_titles() {
 fn booleans() {
     let mut s = Snap::new("booleans");
     let mut wb = Workbook::new();
-    let mut data = vec![vec![S("Employee"), S("Remote"), S("Certified"), S("Salary")]];
+    let mut data = vec![vec![
+        S("Employee"),
+        S("Remote"),
+        S("Certified"),
+        S("Salary"),
+    ]];
     let names = ["Ana", "Ben", "Cleo", "Dan", "Eva", "Finn", "Gus", "Hana"];
     for (i, n) in names.iter().enumerate() {
-        data.push(vec![S(n), B(i % 2 == 0), S(if i % 3 == 0 { "yes" } else { "no" }), N(3000.0 + 250.0 * i as f64)]);
+        data.push(vec![
+            S(n),
+            B(i % 2 == 0),
+            S(if i % 3 == 0 { "yes" } else { "no" }),
+            N(3000.0 + 250.0 * i as f64),
+        ]);
     }
     rows(sheet(&mut wb, "Staff"), 0, 0, &data);
     s.save("staff.xlsx", &mut wb);
     s.open("staff.xlsx");
-    s.query("staff.xlsx", "SELECT count(*) AS n FROM T1 WHERE Remote = 'TRUE'");
-    s.query("staff.xlsx", "SELECT Remote, Certified, count(*) AS n FROM T1 GROUP BY 1, 2 ORDER BY 1, 2");
+    s.query(
+        "staff.xlsx",
+        "SELECT count(*) AS n FROM T1 WHERE Remote = 'TRUE'",
+    );
+    s.query(
+        "staff.xlsx",
+        "SELECT Remote, Certified, count(*) AS n FROM T1 GROUP BY 1, 2 ORDER BY 1, 2",
+    );
     s.check();
 }
 
@@ -535,17 +708,33 @@ fn result_notes() {
     for i in 0..18 {
         let amount = 100 + i * 10;
         sum += amount;
-        let bonus = if i % 3 == 0 { String::new() } else { (i * 2).to_string() };
-        csv.push_str(&format!("{},City {i},{amount},{bonus}\n", ["North", "South", "East"][i % 3]));
+        let bonus = if i % 3 == 0 {
+            String::new()
+        } else {
+            (i * 2).to_string()
+        };
+        csv.push_str(&format!(
+            "{},City {i},{amount},{bonus}\n",
+            ["North", "South", "East"][i % 3]
+        ));
     }
     csv.push_str(&format!("Total,,{sum},\n"));
     s.write("sales.csv", &csv);
     s.open("sales.csv");
     s.query("sales.csv", "SELECT amount FROM T1 WHERE region = 'Total'");
-    s.query("sales.csv", "SELECT SUM(amount) FROM T1 WHERE region = 'West'");
-    s.query("sales.csv", "SELECT count(*) FROM T1 WHERE region = 'north'");
+    s.query(
+        "sales.csv",
+        "SELECT SUM(amount) FROM T1 WHERE region = 'West'",
+    );
+    s.query(
+        "sales.csv",
+        "SELECT count(*) FROM T1 WHERE region = 'north'",
+    );
     s.query("sales.csv", "SELECT * FROM T1 WHERE amount = 7");
-    s.query("sales.csv", "SELECT city, amount + bonus AS x FROM T1 ORDER BY _src_row LIMIT 3");
+    s.query(
+        "sales.csv",
+        "SELECT city, amount + bonus AS x FROM T1 ORDER BY _src_row LIMIT 3",
+    );
     s.check();
 }
 
@@ -555,7 +744,12 @@ fn sql_hints() {
     let mut s = Snap::new("sql_hints");
     let mut csv = String::from("buyer,price,signed\n");
     for i in 0..12 {
-        csv.push_str(&format!("Buyer {},{},2020-{:02}-15\n", i % 3, 1000 + i * 10, 1 + i % 12));
+        csv.push_str(&format!(
+            "Buyer {},{},2020-{:02}-15\n",
+            i % 3,
+            1000 + i * 10,
+            1 + i % 12
+        ));
     }
     s.write("contracts.csv", &csv);
     let mut wb = Workbook::new();
@@ -572,8 +766,10 @@ fn sql_hints() {
             vec![S("Total")],
         ],
     );
-    ws.write_formula(4, 1, Formula::new("=SUM(B2:B4)").set_result("328")).unwrap();
-    ws.write_formula(4, 2, Formula::new("=SUM(C2:C4)").set_result("60")).unwrap();
+    ws.write_formula(4, 1, Formula::new("=SUM(B2:B4)").set_result("328"))
+        .unwrap();
+    ws.write_formula(4, 2, Formula::new("=SUM(C2:C4)").set_result("60"))
+        .unwrap();
     s.save("flows.xlsx", &mut wb);
     s.open("contracts.csv");
     for q in [
@@ -630,20 +826,46 @@ fn locale_numbers() {
     let mut s = Snap::new("locale_numbers");
     let mut eu = String::from("Gemeinde;Einwohner;Fläche km²;Datum\n");
     let mut us = String::from("County,Population,Income,Date\n");
-    let towns = ["Aachen", "Bonn", "Celle", "Dachau", "Erding", "Fulda", "Gotha"];
+    let towns = [
+        "Aachen", "Bonn", "Celle", "Dachau", "Erding", "Fulda", "Gotha",
+    ];
     for (i, t) in towns.iter().enumerate() {
         let pop = 12_345 + i * 101_010;
-        eu.push_str(&format!("{t};{}.{:03};{},{:02};{:02}.03.2024\n", pop / 1000, pop % 1000, 40 + i * 7, 5 + i * 11, 1 + i));
-        us.push_str(&format!("{t} County,\"{},{:03}\",\"{},{:03}.{:02}\",03/{:02}/2024\n", pop / 1000, pop % 1000, 40 + i, 100 + i * 37, 5 + i, 1 + i));
+        eu.push_str(&format!(
+            "{t};{}.{:03};{},{:02};{:02}.03.2024\n",
+            pop / 1000,
+            pop % 1000,
+            40 + i * 7,
+            5 + i * 11,
+            1 + i
+        ));
+        us.push_str(&format!(
+            "{t} County,\"{},{:03}\",\"{},{:03}.{:02}\",03/{:02}/2024\n",
+            pop / 1000,
+            pop % 1000,
+            40 + i,
+            100 + i * 37,
+            5 + i,
+            1 + i
+        ));
     }
     s.write("gemeinden.csv", &eu);
     s.write("counties.csv", &us);
     s.open("gemeinden.csv");
-    s.query("gemeinden.csv", "SELECT SUM(Einwohner) AS p, MIN(Datum) AS d FROM T1");
+    s.query(
+        "gemeinden.csv",
+        "SELECT SUM(Einwohner) AS p, MIN(Datum) AS d FROM T1",
+    );
     s.open("counties.csv");
-    s.query("counties.csv", "SELECT SUM(Population) AS p, MAX(Income) AS i, MIN(Date) AS d FROM T1");
+    s.query(
+        "counties.csv",
+        "SELECT SUM(Population) AS p, MAX(Income) AS i, MIN(Date) AS d FROM T1",
+    );
     // Latin-1 bytes with a decimal comma.
-    s.write_bytes("latin1.csv", b"Stadt;Wert\nK\xf6ln;1,5\nM\xfcnchen;2,25\nN\xfcrnberg;3,75\nD\xfcsseldorf;4,0\n");
+    s.write_bytes(
+        "latin1.csv",
+        b"Stadt;Wert\nK\xf6ln;1,5\nM\xfcnchen;2,25\nN\xfcrnberg;3,75\nD\xfcsseldorf;4,0\n",
+    );
     s.open("latin1.csv");
     s.query("latin1.csv", "SELECT * FROM T1");
     s.check();
@@ -657,27 +879,51 @@ fn side_by_side_and_stacked() {
     let ws = sheet(&mut wb, "Two");
     let mut left = vec![vec![S("City"), S("Visitors")]];
     let mut right = vec![vec![S("Month"), S("Rain mm"), S("Sun h")]];
-    let cities = ["Graz", "Linz", "Salzburg", "Innsbruck", "Klagenfurt", "Villach"];
+    let cities = [
+        "Graz",
+        "Linz",
+        "Salzburg",
+        "Innsbruck",
+        "Klagenfurt",
+        "Villach",
+    ];
     let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul"];
     for (i, c) in cities.iter().enumerate() {
         left.push(vec![S(c), N(1000.0 + 37.0 * i as f64)]);
     }
     for (i, m) in months.iter().enumerate() {
-        right.push(vec![S(m), N(40.0 + 3.0 * i as f64), N(80.0 + 20.0 * i as f64)]);
+        right.push(vec![
+            S(m),
+            N(40.0 + 3.0 * i as f64),
+            N(80.0 + 20.0 * i as f64),
+        ]);
     }
     rows(ws, 0, 0, &left);
     rows(ws, 0, 4, &right);
     let ws = sheet(&mut wb, "Stacked");
     ws.write(0, 0, "Table A: Staff by department").unwrap();
     let mut a = vec![vec![S("Department"), S("Staff"), S("Vacancies")]];
-    for (i, d) in ["Finance", "IT", "Legal", "Sales", "Support"].iter().enumerate() {
+    for (i, d) in ["Finance", "IT", "Legal", "Sales", "Support"]
+        .iter()
+        .enumerate()
+    {
         a.push(vec![S(d), N(10.0 + 4.0 * i as f64), N((i % 3) as f64)]);
     }
     rows(ws, 2, 0, &a);
     ws.write(9, 0, "Table B: Contracts by year").unwrap();
-    let mut b = vec![vec![S("Year"), S("Contracts"), S("Value EUR"), S("Average EUR")]];
+    let mut b = vec![vec![
+        S("Year"),
+        S("Contracts"),
+        S("Value EUR"),
+        S("Average EUR"),
+    ]];
     for i in 0..6 {
-        b.push(vec![N(2018.0 + i as f64), N(20.0 + 3.0 * i as f64), N(150000.0 + 12500.0 * i as f64), N(7500.0 - 100.0 * i as f64)]);
+        b.push(vec![
+            N(2018.0 + i as f64),
+            N(20.0 + 3.0 * i as f64),
+            N(150000.0 + 12500.0 * i as f64),
+            N(7500.0 - 100.0 * i as f64),
+        ]);
     }
     rows(ws, 11, 0, &b);
     s.save("layout.xlsx", &mut wb);
@@ -695,9 +941,13 @@ fn table_runs_and_brief() {
     let mut s = Snap::new("table_runs_and_brief");
     let mut wb = Workbook::new();
     let lands: Vec<String> = (0..36).map(|r| format!("Land {r}")).collect();
-    for (k, state) in ["Burgenland", "Kärnten", "Salzburg", "Tirol", "Wien"].iter().enumerate() {
+    for (k, state) in ["Burgenland", "Kärnten", "Salzburg", "Tirol", "Wien"]
+        .iter()
+        .enumerate()
+    {
         let ws = sheet(&mut wb, &state[..3]);
-        ws.write(0, 0, format!("Nächtigungen in {state} – Juli 2026")).unwrap();
+        ws.write(0, 0, format!("Nächtigungen in {state} – Juli 2026"))
+            .unwrap();
         let mut data = vec![vec![S("Herkunftsland"), S("Ankünfte"), S("Nächtigungen")]];
         for (r, l) in lands.iter().enumerate() {
             let a = (100 * (k + 1) + r * 7) as f64;
@@ -708,17 +958,47 @@ fn table_runs_and_brief() {
     s.save("states.xlsx", &mut wb);
     s.open("states.xlsx");
     let mut wb = Workbook::new();
-    let abs = ["Jahr", "Einnahmen / insgesamt", "Einnahmen / Steuern", "Ausgaben / insgesamt", "Ausgaben / Zinsen", "Saldo"];
-    let pct: Vec<String> = abs.iter().skip(1).map(|h| format!("{h} / % des BIP")).collect();
+    let abs = [
+        "Jahr",
+        "Einnahmen / insgesamt",
+        "Einnahmen / Steuern",
+        "Ausgaben / insgesamt",
+        "Ausgaben / Zinsen",
+        "Saldo",
+    ];
+    let pct: Vec<String> = abs
+        .iter()
+        .skip(1)
+        .map(|h| format!("{h} / % des BIP"))
+        .collect();
     for k in 0..21 {
         let ws = sheet(&mut wb, &format!("1.{k}"));
-        ws.write(0, 0, format!("1.{k} Staatshaushalt Bereich {k}")).unwrap();
+        ws.write(0, 0, format!("1.{k} Staatshaushalt Bereich {k}"))
+            .unwrap();
         let mut a = vec![abs.iter().map(|h| S(h)).collect::<Vec<_>>()];
-        let mut b = vec![std::iter::once(S("Jahr")).chain(pct.iter().map(|h| S(h))).collect::<Vec<_>>()];
+        let mut b = vec![
+            std::iter::once(S("Jahr"))
+                .chain(pct.iter().map(|h| S(h)))
+                .collect::<Vec<_>>(),
+        ];
         for y in 0..6 {
             let v = (k * 10 + y) as f64;
-            a.push(vec![N(2019.0 + y as f64), N(100.0 + v), N(80.0 + v), N(110.0 + v), N(5.0 + v), N(-10.0)]);
-            b.push(vec![N(2019.0 + y as f64), N(45.5 + v), N(38.25 + v), N(48.75 + v), N(2.5), N(-3.25)]);
+            a.push(vec![
+                N(2019.0 + y as f64),
+                N(100.0 + v),
+                N(80.0 + v),
+                N(110.0 + v),
+                N(5.0 + v),
+                N(-10.0),
+            ]);
+            b.push(vec![
+                N(2019.0 + y as f64),
+                N(45.5 + v),
+                N(38.25 + v),
+                N(48.75 + v),
+                N(2.5),
+                N(-3.25),
+            ]);
         }
         rows(ws, 2, 0, &a);
         rows(ws, 11, 0, &b);
@@ -738,8 +1018,15 @@ fn question_focus() {
     let ws = sheet(&mut wb, "Budget");
     ws.write(0, 0, "City budget 2024").unwrap();
     let mut b = vec![vec![S("Item"), S("Revenue EUR"), S("Expenses EUR")]];
-    for (i, item) in ["Taxes", "Fees", "Grants", "Schools", "Roads", "Parks"].iter().enumerate() {
-        b.push(vec![S(item), N(1000.0 + 150.0 * i as f64), N(800.0 + 120.0 * i as f64)]);
+    for (i, item) in ["Taxes", "Fees", "Grants", "Schools", "Roads", "Parks"]
+        .iter()
+        .enumerate()
+    {
+        b.push(vec![
+            S(item),
+            N(1000.0 + 150.0 * i as f64),
+            N(800.0 + 120.0 * i as f64),
+        ]);
     }
     b.push(vec![S("Total"), N(8250.0), N(6600.0)]);
     rows(ws, 2, 0, &b);
@@ -748,7 +1035,11 @@ fn question_focus() {
     let mut p = vec![vec![S("Jahr"), S("Bezirk"), S("Einwohner")]];
     for y in 2019..2025 {
         for (i, d) in ["Nord", "Süd", "Mitte"].iter().enumerate() {
-            p.push(vec![N(y as f64), S(d), N(10000.0 + 500.0 * i as f64 + 40.0 * (y - 2019) as f64)]);
+            p.push(vec![
+                N(y as f64),
+                S(d),
+                N(10000.0 + 500.0 * i as f64 + 40.0 * (y - 2019) as f64),
+            ]);
         }
     }
     rows(ws, 2, 0, &p);
@@ -769,11 +1060,20 @@ fn question_focus() {
     s.save("city.xlsx", &mut wb);
     s.open("city.xlsx");
     // words and column names
-    s.open_for("city.xlsx", "What were the total revenues and expenses in the budget?");
+    s.open_for(
+        "city.xlsx",
+        "What were the total revenues and expenses in the budget?",
+    );
     // German names through the concept list, and a year
-    s.open_for("city.xlsx", "How many inhabitants did each district have in 2024?");
+    s.open_for(
+        "city.xlsx",
+        "How many inhabitants did each district have in 2024?",
+    );
     // a month the monthly table covers
-    s.open_for("city.xlsx", "What was the consumer price index in March 2023?");
+    s.open_for(
+        "city.xlsx",
+        "What was the consumer price index in March 2023?",
+    );
     // no table told apart: the catalog as without a question
     s.open_for("city.xlsx", "Summarize this file.");
     s.check();
@@ -794,7 +1094,14 @@ fn header_rows() {
         ws.write(4, 3 + 2 * k, "Number").unwrap();
         ws.write(4, 4 + 2 * k, "%").unwrap();
     }
-    let ages = [S("All Services"), S("Under 18"), S("18 and 19"), S("20-24"), S("25-29"), S("30-34")];
+    let ages = [
+        S("All Services"),
+        S("Under 18"),
+        S("18 and 19"),
+        S("20-24"),
+        S("25-29"),
+        S("30-34"),
+    ];
     let mut body = Vec::new();
     for (i, a) in ages.iter().enumerate() {
         rows(ws, 6 + i as u32, if i == 0 { 0 } else { 1 }, &[vec![*a]]);
@@ -807,9 +1114,25 @@ fn header_rows() {
     }
     rows(ws, 6, 3, &body);
     let ws = sheet(&mut wb, "Scores");
-    let mut sc = vec![vec![S("WP ID"), S("Group"), S("Condition"), N(1.0), N(2.0), N(3.0), N(4.0)]];
+    let mut sc = vec![vec![
+        S("WP ID"),
+        S("Group"),
+        S("Condition"),
+        N(1.0),
+        N(2.0),
+        N(3.0),
+        N(4.0),
+    ]];
     for i in 0..6 {
-        sc.push(vec![N(92.0 + i as f64), N(4.0), S(if i % 2 == 0 { "CAI" } else { "Lecture" }), N(1.0), N((i % 3) as f64), N(2.0), N(-1.0)]);
+        sc.push(vec![
+            N(92.0 + i as f64),
+            N(4.0),
+            S(if i % 2 == 0 { "CAI" } else { "Lecture" }),
+            N(1.0),
+            N((i % 3) as f64),
+            N(2.0),
+            N(-1.0),
+        ]);
     }
     rows(ws, 0, 0, &sc);
     let ws = sheet(&mut wb, "Projects");
@@ -817,17 +1140,48 @@ fn header_rows() {
     rows(ws, 2, 2, &[vec![S("Project Name:")]]);
     rows(ws, 2, 5, &[vec![S("Number of Clients:"), N(5.0)]]);
     let mut p = vec![
-        ["No.", "Contract Number", "Client", "Client Unit", "Contact", "Project", "Quantity", "Days", "Status"].map(S).to_vec(),
+        [
+            "No.",
+            "Contract Number",
+            "Client",
+            "Client Unit",
+            "Contact",
+            "Project",
+            "Quantity",
+            "Days",
+            "Status",
+        ]
+        .map(S)
+        .to_vec(),
     ];
-    for (i, u) in ["ZhongHang", "Cheng Wei", "BaBaiJiu", "Xiao Lian", "DongNan"].iter().enumerate() {
+    for (i, u) in ["ZhongHang", "Cheng Wei", "BaBaiJiu", "Xiao Lian", "DongNan"]
+        .iter()
+        .enumerate()
+    {
         let (no, days) = (i as f64 + 1.0, 70.0 + 7.0 * i as f64);
-        let (c, k) = (["DH1", "DH2", "DH3", "DH4", "DH5"][i], ["180-1", "180-2", "180-3", "180-4", "180-5"][i]);
-        p.push(vec![N(no), S(c), S("DaoKe"), S(u), S(k), S("Robot"), N(10.0 * no), N(days), S("Completed")]);
+        let (c, k) = (
+            ["DH1", "DH2", "DH3", "DH4", "DH5"][i],
+            ["180-1", "180-2", "180-3", "180-4", "180-5"][i],
+        );
+        p.push(vec![
+            N(no),
+            S(c),
+            S("DaoKe"),
+            S(u),
+            S(k),
+            S("Robot"),
+            N(10.0 * no),
+            N(days),
+            S("Completed"),
+        ]);
     }
     rows(ws, 3, 1, &p);
     s.save("headers.xlsx", &mut wb);
     s.open("headers.xlsx");
-    s.query("headers.xlsx", "SELECT \"Contract Number\", \"Client Unit\" FROM T3 LIMIT 2");
+    s.query(
+        "headers.xlsx",
+        "SELECT \"Contract Number\", \"Client Unit\" FROM T3 LIMIT 2",
+    );
     s.check();
 }
 

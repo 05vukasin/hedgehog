@@ -12,9 +12,9 @@
 
 use std::collections::HashMap;
 
-use hh_core::eval::metrics::{iou, table_matches, TableCriterion};
+use hh_core::eval::metrics::{TableCriterion, iou, table_matches};
 use hh_core::eval::{data_root, deco, split::Split, statsheets, synthetic};
-use hh_core::{a1, layout, learned, open, Grid, Rect, Role, Value};
+use hh_core::{Grid, Rect, Role, Value, a1, layout, learned, open};
 
 fn tag(r: Role) -> char {
     match r {
@@ -47,7 +47,9 @@ fn majority(roles: impl Iterator<Item = Role>) -> char {
     for r in roles {
         *n.entry(tag(r)).or_default() += 1;
     }
-    n.into_iter().max_by_key(|&(c, k)| (k, c)).map_or('-', |(c, _)| c)
+    n.into_iter()
+        .max_by_key(|&(c, k)| (k, c))
+        .map_or('-', |(c, _)| c)
 }
 
 #[test]
@@ -61,17 +63,29 @@ fn tables_gtdump() {
     }
     .unwrap();
     let file_filter = std::env::var("HH_GT_FILE").ok();
-    let limit: usize = std::env::var("HH_GT_LIMIT").ok().and_then(|s| s.parse().ok()).unwrap_or(40);
-    let thr: f64 = std::env::var("HH_GT_IOU").ok().and_then(|s| s.parse().ok()).unwrap_or(0.8);
+    let limit: usize = std::env::var("HH_GT_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(40);
+    let thr: f64 = std::env::var("HH_GT_IOU")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.8);
     let rules_only = std::env::var_os("HH_GT_RULES").is_some();
     let diff = std::env::var_os("HH_GT_DIFF").is_some();
     let model = learned::embedded().unwrap();
     let mut shown = 0;
     // Dev only, unless HH_GT_SPLIT says otherwise (never tune on test; look there only to explain a
     // score).
-    let split: Split = std::env::var("HH_GT_SPLIT").ok().and_then(|s| s.parse().ok()).unwrap_or(Split::Dev);
+    let split: Split = std::env::var("HH_GT_SPLIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(Split::Dev);
     for file in corpus.files.iter().filter(|f| split.contains(&f.id)) {
-        if file_filter.as_ref().is_some_and(|s| !file.id.contains(s.as_str())) {
+        if file_filter
+            .as_ref()
+            .is_some_and(|s| !file.id.contains(s.as_str()))
+        {
             continue;
         }
         let Ok(wb) = open(&file.path) else { continue };
@@ -84,31 +98,50 @@ fn tables_gtdump() {
             let Some(sheet) = sheet else { continue };
             let grid = Grid::new(sheet);
             let rules = layout::analyze(&grid);
-            let l = if rules_only { rules.clone() } else { learned::analyze(&grid, model) };
+            let l = if rules_only {
+                rules.clone()
+            } else {
+                learned::analyze(&grid, model)
+            };
             let pred: Vec<Rect> = l.tables.iter().map(|t| t.rect).collect();
             if diff {
                 // Only sheets where the refined tables differ from the rules' tables.
                 let other = learned::analyze_with(&grid, model, learned::RefineSteps::NONE);
                 let crit = TableCriterion::Iou(thr);
                 let po: Vec<Rect> = other.tables.iter().map(|t| t.rect).collect();
-                let (a, b) = (table_matches(&gs.tables, &po, crit), table_matches(&gs.tables, &pred, crit));
+                let (a, b) = (
+                    table_matches(&gs.tables, &po, crit),
+                    table_matches(&gs.tables, &pred, crit),
+                );
                 if po == pred {
                     continue;
                 }
                 println!("   DIFF tp {a} -> {b}, pred {} -> {}", po.len(), pred.len());
             } else {
-                let ok = gs.tables.len() == pred.len() && gs.tables.iter().all(|g| pred.iter().any(|p| iou(*g, *p) >= thr));
+                let ok = gs.tables.len() == pred.len()
+                    && gs
+                        .tables
+                        .iter()
+                        .all(|g| pred.iter().any(|p| iou(*g, *p) >= thr));
                 if ok {
                     continue;
                 }
             }
             println!("== {} | {}", file.id, gs.name);
             println!("   gt   {:?}", gs.tables.iter().map(rs).collect::<Vec<_>>());
-            let p: Vec<String> =
-                l.tables.iter().map(|t| format!("{} h{}+{}", rs(&t.rect), t.header_top + 1, t.header_rows)).collect();
+            let p: Vec<String> = l
+                .tables
+                .iter()
+                .map(|t| format!("{} h{}+{}", rs(&t.rect), t.header_top + 1, t.header_rows))
+                .collect();
             println!("   pred {p:?}");
-            let gt: HashMap<(u32, u32), Role> = gs.cells.iter().map(|c| ((c.row, c.col), c.role)).collect();
-            let span = gs.tables.iter().chain(&pred).fold((u32::MAX, 0), |(a, b), r| (a.min(r.top), b.max(r.bottom)));
+            let gt: HashMap<(u32, u32), Role> =
+                gs.cells.iter().map(|c| ((c.row, c.col), c.role)).collect();
+            let span = gs
+                .tables
+                .iter()
+                .chain(&pred)
+                .fold((u32::MAX, 0), |(a, b), r| (a.min(r.top), b.max(r.bottom)));
             let mut by_row: Vec<(u32, Vec<usize>)> = Vec::new();
             for (i, c) in sheet.cells.iter().enumerate() {
                 if c.row + 3 < span.0 || c.row > span.1 + 3 {
@@ -131,10 +164,26 @@ fn tables_gtdump() {
                 let g = majority(cells().filter_map(|c| gt.get(&(c.row, c.col)).copied()));
                 let m = majority(idx.iter().map(|&i| l.roles[i]));
                 let r = majority(idx.iter().map(|&i| rules.roles[i]));
-                let ing = if gs.tables.iter().any(|t| t.top <= *row && *row <= t.bottom) { 'g' } else { ' ' };
-                let inp = if pred.iter().any(|t| t.top <= *row && *row <= t.bottom) { 'p' } else { ' ' };
-                let text: Vec<String> = cells().take(5).map(|c| format!("{}={}", a1(c.row, c.col), short(&c.value))).collect();
-                println!("  {:>5} {g}{m}{r} {ing}{inp} {:>3}  {}", row + 1, idx.len(), text.join(" "));
+                let ing = if gs.tables.iter().any(|t| t.top <= *row && *row <= t.bottom) {
+                    'g'
+                } else {
+                    ' '
+                };
+                let inp = if pred.iter().any(|t| t.top <= *row && *row <= t.bottom) {
+                    'p'
+                } else {
+                    ' '
+                };
+                let text: Vec<String> = cells()
+                    .take(5)
+                    .map(|c| format!("{}={}", a1(c.row, c.col), short(&c.value)))
+                    .collect();
+                println!(
+                    "  {:>5} {g}{m}{r} {ing}{inp} {:>3}  {}",
+                    row + 1,
+                    idx.len(),
+                    text.join(" ")
+                );
             }
             shown += 1;
             if shown >= limit {

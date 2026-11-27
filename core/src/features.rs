@@ -17,7 +17,10 @@ pub struct Features {
 
 impl Features {
     pub fn new(rows: usize) -> Self {
-        Features { rows, ..Default::default() }
+        Features {
+            rows,
+            ..Default::default()
+        }
     }
 
     pub fn rows(&self) -> usize {
@@ -31,7 +34,10 @@ impl Features {
     /// Adds a column. Panics on a duplicate name or wrong length — both are programming errors.
     pub fn add(&mut self, name: &'static str, values: Vec<f32>) {
         assert_eq!(values.len(), self.rows, "feature `{name}` has wrong length");
-        assert!(!self.index.contains_key(name), "feature `{name}` added twice");
+        assert!(
+            !self.index.contains_key(name),
+            "feature `{name}` added twice"
+        );
         self.index.insert(name, self.names.len());
         self.names.push(name);
         self.columns.push(values);

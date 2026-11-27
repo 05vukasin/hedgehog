@@ -5,7 +5,7 @@ use rustc_hash::FxHashSet;
 use crate::grid::Grid;
 use crate::model::{Rect, Value};
 use crate::totals::detect::{Evidence, TotalCandidate, TotalOrigin};
-use crate::totals::formula::{parse, FormulaKind, RefKind};
+use crate::totals::formula::{FormulaKind, RefKind, parse};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CheckReason {
@@ -68,7 +68,11 @@ pub fn numeric_text(s: &str) -> Option<f64> {
         Some(x) => (x.trim_end(), true),
         None => (t, false),
     };
-    if !t.bytes().any(|b| b.is_ascii_digit()) || !t.bytes().all(|b| b.is_ascii_digit() || matches!(b, b',' | b'.' | b'-' | b'+')) {
+    if !t.bytes().any(|b| b.is_ascii_digit())
+        || !t
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b',' | b'.' | b'-' | b'+'))
+    {
         return None;
     }
     let v: f64 = t.replace(',', "").parse().ok()?;
@@ -122,7 +126,9 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
     check.actual = match cell.and_then(|c| c.value.as_ref()) {
         Some(Value::Number(v) | Value::DateTime(v)) => Some(*v),
         // A typed total stored as text, as its source may be ("2,117,353").
-        Some(Value::Text(s)) if cand.origin == TotalOrigin::Typed && numeric_text(s).is_some() => numeric_text(s),
+        Some(Value::Text(s)) if cand.origin == TotalOrigin::Typed && numeric_text(s).is_some() => {
+            numeric_text(s)
+        }
         Some(_) => {
             check.reason = CheckReason::NotNumeric;
             return check;
@@ -135,7 +141,10 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
     // Direct `+` operands (single cells of an addition chain) convert numeric text like Excel does.
     // The parse the dependency index already holds, if any (B132).
     let parsed_here;
-    let parsed = match (cell.and_then(|c| c.formula.as_deref()), grid.parsed_formula(cand.row, cand.col)) {
+    let parsed = match (
+        cell.and_then(|c| c.formula.as_deref()),
+        grid.parsed_formula(cand.row, cand.col),
+    ) {
         (Some(_), Some(p)) => Some(p),
         (Some(f), None) => {
             parsed_here = parse(f);
@@ -144,8 +153,19 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
         (None, _) => None,
     };
     let coerce: Vec<(u32, u32)> = parsed
-        .filter(|p| matches!(p.kind, FormulaKind::AdditionChain | FormulaKind::Sum | FormulaKind::Subtotal))
-        .map(|p| p.sum_refs.iter().filter(|r| r.kind == RefKind::Cell).map(|r| (r.rect.top, r.rect.left)).collect())
+        .filter(|p| {
+            matches!(
+                p.kind,
+                FormulaKind::AdditionChain | FormulaKind::Sum | FormulaKind::Subtotal
+            )
+        })
+        .map(|p| {
+            p.sum_refs
+                .iter()
+                .filter(|r| r.kind == RefKind::Cell)
+                .map(|r| (r.rect.top, r.rect.left))
+                .collect()
+        })
         .unwrap_or_default();
 
     let typed = cand.origin == TotalOrigin::Typed;
@@ -212,7 +232,9 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
     }
     let expected = sum - double;
     check.expected = Some(expected);
-    let Some(actual) = check.actual else { return check };
+    let Some(actual) = check.actual else {
+        return check;
+    };
     check.diff = Some(actual - expected);
     if close(actual, expected, false) {
         check.ok = Some(true);
@@ -228,7 +250,10 @@ pub fn verify(grid: &Grid, cand: &TotalCandidate) -> TotalCheck {
     } else if typed && values.len() > 1 && close(actual, expected / values.len() as f64, true) {
         check.reason = CheckReason::MatchesAverage;
     } else if typed
-        && !cand.evidence.iter().any(|e| matches!(e, Evidence::ArithmeticMatch | Evidence::SiblingsMatch))
+        && !cand
+            .evidence
+            .iter()
+            .any(|e| matches!(e, Evidence::ArithmeticMatch | Evidence::SiblingsMatch))
     {
         check.reason = CheckReason::Unconfirmed;
     } else {

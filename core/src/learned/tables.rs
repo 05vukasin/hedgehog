@@ -51,8 +51,13 @@ impl RowInfo {
     }
 
     fn top(c: &[u32; 7]) -> (Role, f32) {
-        let k = (0..7).max_by_key(|&k| (c[k], std::cmp::Reverse(k))).unwrap();
-        (Role::ALL[k], c[k] as f32 / c.iter().sum::<u32>().max(1) as f32)
+        let k = (0..7)
+            .max_by_key(|&k| (c[k], std::cmp::Reverse(k)))
+            .unwrap();
+        (
+            Role::ALL[k],
+            c[k] as f32 / c.iter().sum::<u32>().max(1) as f32,
+        )
     }
 
     fn role(&self) -> Role {
@@ -84,7 +89,12 @@ fn rows_in(grid: &Grid, rect: Rect, roles: &[Role], raw: &[Role], rules: &[Role]
             continue;
         }
         if out.last().is_none_or(|r| r.row != c.row) {
-            out.push(RowInfo { row: c.row, counts: [0; 7], raw: [0; 7], rules: [0; 7] });
+            out.push(RowInfo {
+                row: c.row,
+                counts: [0; 7],
+                raw: [0; 7],
+                rules: [0; 7],
+            });
         }
         let r = out.last_mut().unwrap();
         r.counts[rid(roles[i])] += 1;
@@ -186,7 +196,11 @@ pub fn refine(grid: &Grid, lay: &mut SheetLayout, raw: &[Role], rules: &[Role], 
         }
         let mut t = t;
         header_depth(grid, &mut t, &rows, steps, &mut lay.roles);
-        let pieces = if steps.split { split(grid, t, &rows, &mut lay.roles) } else { vec![t] };
+        let pieces = if steps.split {
+            split(grid, t, &rows, &mut lay.roles)
+        } else {
+            vec![t]
+        };
         for mut p in pieces {
             let rows = rows_in(grid, p.rect, &lay.roles, raw, rules);
             trim_edges(grid, &mut p, &rows, steps);
@@ -199,7 +213,13 @@ pub fn refine(grid: &Grid, lay: &mut SheetLayout, raw: &[Role], rules: &[Role], 
         // metadata above the real table) is not one.
         out.retain(|t| {
             let rows = rows_in(grid, t.rect, &lay.roles, raw, rules);
-            rows.is_empty() || rows.iter().any(|r| matches!(r.role(), Role::Header | Role::Data | Role::Total | Role::GroupHeader))
+            rows.is_empty()
+                || rows.iter().any(|r| {
+                    matches!(
+                        r.role(),
+                        Role::Header | Role::Data | Role::Total | Role::GroupHeader
+                    )
+                })
         });
     }
     if steps.extend {
@@ -225,7 +245,8 @@ fn merge_header_only(
         // Merge every directly preceding header-only table over the same columns.
         while let Some(prev) = out.last() {
             let p = prev.rect;
-            let same_cols = p.left.abs_diff(t.rect.left) <= 1 && p.right.abs_diff(t.rect.right) <= 1;
+            let same_cols =
+                p.left.abs_diff(t.rect.left) <= 1 && p.right.abs_diff(t.rect.right) <= 1;
             // A vertical merge of the upper header may hang into the next table's first row
             // (`Number` over A2:A6, the next table's unit row 6).
             let adjacent = p.bottom <= t.rect.top && t.rect.top - p.bottom <= 2;
@@ -234,9 +255,15 @@ fn merge_header_only(
             }
             // Its rows from its header down to the next table; title rows above its header do not
             // count against it.
-            let from = if prev.header_rows > 0 { prev.header_top } else { p.top };
-            let rows: Vec<RowInfo> =
-                rows_in(grid, p, roles, raw, rules).into_iter().filter(|r| r.row >= from && r.row < t.rect.top).collect();
+            let from = if prev.header_rows > 0 {
+                prev.header_top
+            } else {
+                p.top
+            };
+            let rows: Vec<RowInfo> = rows_in(grid, p, roles, raw, rules)
+                .into_iter()
+                .filter(|r| r.row >= from && r.row < t.rect.top)
+                .collect();
             // A row inside the span of a vertical merge that starts on a header row above it and
             // reaches into the next table (`Number` over A2:A6) is part of the header block whatever the model says of its
             // other cells (a row of fuel prices under `Gasoline | Diesel`, MiMoTable 8PumpMachinery).
@@ -301,10 +328,26 @@ fn merge_continuations(
             let (a, b) = (p.rect, t.rect);
             let same_cols = a.left.abs_diff(b.left) <= 1 && a.right.abs_diff(b.right) <= 1;
             let adjacent = a.bottom < b.top && b.top - a.bottom <= 1;
-            if same_cols && adjacent && t.header_top == b.top && t.header_rows > 0 && p.header_rows > 0 {
-                let rows = rows_in(grid, Rect { bottom: b.top + t.header_rows - 1, ..b }, roles, raw, rules);
-                let data =
-                    !rows.is_empty() && rows.iter().all(|r| r.share(Role::Data) + r.share(Role::Total) >= CONTINUATION_DATA);
+            if same_cols
+                && adjacent
+                && t.header_top == b.top
+                && t.header_rows > 0
+                && p.header_rows > 0
+            {
+                let rows = rows_in(
+                    grid,
+                    Rect {
+                        bottom: b.top + t.header_rows - 1,
+                        ..b
+                    },
+                    roles,
+                    raw,
+                    rules,
+                );
+                let data = !rows.is_empty()
+                    && rows
+                        .iter()
+                        .all(|r| r.share(Role::Data) + r.share(Role::Total) >= CONTINUATION_DATA);
                 if data {
                     p.rect.bottom = b.bottom;
                     p.rect.left = a.left.min(b.left);
@@ -380,7 +423,13 @@ fn extend_down(grid: &Grid, tables: &mut [DetectedTable], roles: &[Role]) {
 }
 
 /// Step 2: header depth from the model's row roles.
-fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Steps, roles: &mut [Role]) {
+fn header_depth(
+    grid: &Grid,
+    t: &mut DetectedTable,
+    rows: &[RowInfo],
+    steps: Steps,
+    roles: &mut [Role],
+) {
     let numbering = |row: u32| numbering_row(grid, t.rect, row) || unit_row(grid, t.rect, row);
     // A label over period numbers (`Year | 1 | 2 | …`) keeps its header place, but a row of that
     // shape under a header is data (`Item 0 | 1 | 2 | 3`).
@@ -402,7 +451,11 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
                     && matches!(c.value, Some(Value::Number(x)) if !(x.fract() == 0.0 && (1900.0..=2100.0).contains(&x)))
             })
         };
-        while k > 0 && rows[k - 1].role() == Role::Header && rows[k - 1].row + 1 == top && !plain_number(rows[k - 1].row) {
+        while k > 0
+            && rows[k - 1].role() == Role::Header
+            && rows[k - 1].row + 1 == top
+            && !plain_number(rows[k - 1].row)
+        {
             k -= 1;
             top = rows[k].row;
         }
@@ -417,7 +470,10 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
         // stays: a piece the rules cut off is handled by `merge_continuations`).
         let start = rows.partition_point(|r| r.row < t.header_top);
         let mut end = rows.partition_point(|r| r.row < body);
-        while end > start + 1 && rows[end - 1].share(Role::Data) >= SHRINK_AGREE && !keeps(rows[end - 1].row) {
+        while end > start + 1
+            && rows[end - 1].share(Role::Data) >= SHRINK_AGREE
+            && !keeps(rows[end - 1].row)
+        {
             end -= 1;
         }
         if end < rows.partition_point(|r| r.row < body) {
@@ -435,7 +491,10 @@ fn header_depth(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Ste
         }
     }
     let body = t.header_top + t.header_rows;
-    for r in rows.iter().filter(|r| r.row >= t.header_top && r.row < body) {
+    for r in rows
+        .iter()
+        .filter(|r| r.row >= t.header_top && r.row < body)
+    {
         if numbering(r.row) {
             for &i in grid.row_cells(r.row) {
                 let c = grid.sheet.cells[i as usize].col;
@@ -467,9 +526,11 @@ fn unit_row(grid: &Grid, rect: Rect, row: u32) -> bool {
 /// The filled cells of `row` inside `rect` number the columns ([`crate::layout::column_numbering`]).
 fn numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
     let cells = &grid.sheet.cells;
-    let vals = grid.row_cells(row).iter().map(|&i| &cells[i as usize]).filter(|c| {
-        c.col >= rect.left && c.col <= rect.right && !is_blank(&c.value)
-    });
+    let vals = grid
+        .row_cells(row)
+        .iter()
+        .map(|&i| &cells[i as usize])
+        .filter(|c| c.col >= rect.left && c.col <= rect.right && !is_blank(&c.value));
     let vals: Vec<&Value> = vals.filter_map(|c| c.value.as_ref()).collect();
     vals.len() >= 3 && crate::layout::column_numbering(vals.into_iter())
 }
@@ -477,15 +538,22 @@ fn numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
 /// [`numbering_row`] after a text label (`Year | 1 | 2 | …`).
 fn labelled_numbering_row(grid: &Grid, rect: Rect, row: u32) -> bool {
     let cells = &grid.sheet.cells;
-    let vals = grid.row_cells(row).iter().map(|&i| &cells[i as usize]).filter(|c| {
-        c.col >= rect.left && c.col <= rect.right && !is_blank(&c.value)
-    });
+    let vals = grid
+        .row_cells(row)
+        .iter()
+        .map(|&i| &cells[i as usize])
+        .filter(|c| c.col >= rect.left && c.col <= rect.right && !is_blank(&c.value));
     let vals: Vec<&Value> = vals.filter_map(|c| c.value.as_ref()).collect();
     vals.len() >= 4 && crate::layout::labelled_numbering(vals.into_iter())
 }
 
 /// Step 3: split at a run of model header rows inside the body.
-fn split(grid: &Grid, t: DetectedTable, rows: &[RowInfo], roles: &mut [Role]) -> Vec<DetectedTable> {
+fn split(
+    grid: &Grid,
+    t: DetectedTable,
+    rows: &[RowInfo],
+    roles: &mut [Role],
+) -> Vec<DetectedTable> {
     let body = t.header_top + t.header_rows;
     let start = rows.partition_point(|r| r.row < body);
     let header_text = header_signature(grid, &t, t.header_top, body);
@@ -507,10 +575,15 @@ fn split(grid: &Grid, t: DetectedTable, rows: &[RowInfo], roles: &mut [Role]) ->
         while e < rows.len() && rows[e].raw_role() == Role::Header {
             e += 1;
         }
-        let data_after = rows[e..].iter().take_while(|r| r.raw_role() != Role::Header).filter(|r| r.role() == Role::Data).count();
+        let data_after = rows[e..]
+            .iter()
+            .take_while(|r| r.raw_role() != Role::Header)
+            .filter(|r| r.role() == Role::Data)
+            .count();
         let run_top = rows[k].row;
         let run_end = rows[e - 1].row + 1;
-        let repeated = header_signature(grid, &cur, run_top, run_end) == header_text && !header_text.is_empty();
+        let repeated = header_signature(grid, &cur, run_top, run_end) == header_text
+            && !header_text.is_empty();
         // A new header spans the table like its data rows do (a lone label row is a group).
         let width = rows[k..e].iter().map(RowInfo::n).max().unwrap_or(0);
         let around: Vec<u32> = rows[start..k]
@@ -525,12 +598,20 @@ fn split(grid: &Grid, t: DetectedTable, rows: &[RowInfo], roles: &mut [Role]) ->
         let wide = width as f32 >= SPLIT_MIN_WIDTH * typical as f32;
         // Title rows directly above the run belong to the new table.
         let mut top = k;
-        while top > start && matches!(rows[top - 1].raw_role(), Role::Title) && rows[top - 1].row + 1 == rows[top].row {
+        while top > start
+            && matches!(rows[top - 1].raw_role(), Role::Title)
+            && rows[top - 1].row + 1 == rows[top].row
+        {
             top -= 1;
         }
         // The new table is set apart by a blank row above it (sub-headers inside one table are not).
         let apart = top > start && rows[top - 1].row + 1 < rows[top].row;
-        if data_before >= SPLIT_MIN_DATA && data_after >= SPLIT_MIN_DATA && !repeated && wide && apart {
+        if data_before >= SPLIT_MIN_DATA
+            && data_after >= SPLIT_MIN_DATA
+            && !repeated
+            && wide
+            && apart
+        {
             let prev_bottom = rows[top - 1].row;
             let mut upper = cur.clone();
             upper.rect.bottom = prev_bottom;
@@ -538,7 +619,12 @@ fn split(grid: &Grid, t: DetectedTable, rows: &[RowInfo], roles: &mut [Role]) ->
             cur.rect.top = rows[top].row;
             cur.header_top = run_top;
             cur.header_rows = run_end - run_top;
-            for i in grid.cells_in(Rect { top: run_top, left: cur.rect.left, bottom: run_end - 1, right: cur.rect.right }) {
+            for i in grid.cells_in(Rect {
+                top: run_top,
+                left: cur.rect.left,
+                bottom: run_end - 1,
+                right: cur.rect.right,
+            }) {
                 roles[i as usize] = Role::Header;
             }
             data_before = 0;
@@ -566,14 +652,21 @@ fn header_signature(grid: &Grid, t: &DetectedTable, top: u32, end: u32) -> Vec<(
     if end <= top {
         return Vec::new();
     }
-    let rect = Rect { top, left: t.rect.left, bottom: end - 1, right: t.rect.right };
+    let rect = Rect {
+        top,
+        left: t.rect.left,
+        bottom: end - 1,
+        right: t.rect.right,
+    };
     let cells = &grid.sheet.cells;
     grid.cells_in(rect)
         .iter()
         .filter_map(|&i| {
             let c = &cells[i as usize];
             match &c.value {
-                Some(Value::Text(s)) if !s.trim().is_empty() => Some((c.col, s.trim().to_lowercase())),
+                Some(Value::Text(s)) if !s.trim().is_empty() => {
+                    Some((c.col, s.trim().to_lowercase()))
+                }
                 _ => None,
             }
         })
@@ -605,7 +698,10 @@ fn trim_edges(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Steps
         }
     }
     if steps.trim_top {
-        while lo + 1 < hi && rows[lo].row < t.header_top && matches!(rows[lo].role(), Role::Title | Role::Note | Role::Other) {
+        while lo + 1 < hi
+            && rows[lo].row < t.header_top
+            && matches!(rows[lo].role(), Role::Title | Role::Note | Role::Other)
+        {
             lo += 1;
         }
     }
@@ -614,7 +710,11 @@ fn trim_edges(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Steps
     }
     let top = rows[lo].row.min(t.header_top);
     let bottom = rows[hi - 1].row.max(top);
-    let inner = Rect { top, bottom, ..t.rect };
+    let inner = Rect {
+        top,
+        bottom,
+        ..t.rect
+    };
     // Columns: only the trimmed rows may have widened the rectangle.
     let cells = &grid.sheet.cells;
     let (mut left, mut right) = (u32::MAX, 0);
@@ -634,7 +734,12 @@ fn trim_edges(grid: &Grid, t: &mut DetectedTable, rows: &[RowInfo], steps: Steps
     if left > right {
         return;
     }
-    t.rect = Rect { top, left, bottom, right };
+    t.rect = Rect {
+        top,
+        left,
+        bottom,
+        right,
+    };
     t.header_top = t.header_top.clamp(top, bottom);
     t.header_rows = t.header_rows.min(bottom + 1 - t.header_top);
 }
@@ -657,21 +762,62 @@ mod tests {
                 if v.is_empty() {
                     continue;
                 }
-                let value = v.parse::<f64>().map_or_else(|_| Value::Text(v.to_string()), Value::Number);
-                cells.push(Cell { row: r as u32, col: c as u32, value: Some(value), formula: None });
+                let value = v
+                    .parse::<f64>()
+                    .map_or_else(|_| Value::Text(v.to_string()), Value::Number);
+                cells.push(Cell {
+                    row: r as u32,
+                    col: c as u32,
+                    value: Some(value),
+                    formula: None,
+                });
             }
         }
-        Fix { sheet: Sheet { name: "s".into(), cells, merges: vec![], formats: vec![] }, row_roles: rows.iter().map(|r| r.1).collect() }
+        Fix {
+            sheet: Sheet {
+                name: "s".into(),
+                cells,
+                merges: vec![],
+                formats: vec![],
+            },
+            row_roles: rows.iter().map(|r| r.1).collect(),
+        }
     }
 
-    fn table(top: u32, bottom: u32, right: u32, header_top: u32, header_rows: u32) -> DetectedTable {
-        DetectedTable { rect: Rect { top, left: 0, bottom, right }, header_top, header_rows, confidence: 1.0 }
+    fn table(
+        top: u32,
+        bottom: u32,
+        right: u32,
+        header_top: u32,
+        header_rows: u32,
+    ) -> DetectedTable {
+        DetectedTable {
+            rect: Rect {
+                top,
+                left: 0,
+                bottom,
+                right,
+            },
+            header_top,
+            header_rows,
+            confidence: 1.0,
+        }
     }
 
     /// Runs `steps` on `tables`; `raw_rows` overrides the model's raw (unguarded) role of rows.
-    fn run(f: &Fix, tables: Vec<DetectedTable>, steps: Steps, raw_rows: &[(u32, Role)]) -> SheetLayout {
+    fn run(
+        f: &Fix,
+        tables: Vec<DetectedTable>,
+        steps: Steps,
+        raw_rows: &[(u32, Role)],
+    ) -> SheetLayout {
         let grid = Grid::new(&f.sheet);
-        let roles: Vec<Role> = f.sheet.cells.iter().map(|c| f.row_roles[c.row as usize]).collect();
+        let roles: Vec<Role> = f
+            .sheet
+            .cells
+            .iter()
+            .map(|c| f.row_roles[c.row as usize])
+            .collect();
         let raw: Vec<Role> = f
             .sheet
             .cells
@@ -679,7 +825,10 @@ mod tests {
             .zip(&roles)
             .map(|(c, &r)| raw_rows.iter().find(|x| x.0 == c.row).map_or(r, |x| x.1))
             .collect();
-        let mut lay = SheetLayout { tables, roles: roles.clone() };
+        let mut lay = SheetLayout {
+            tables,
+            roles: roles.clone(),
+        };
         refine(&grid, &mut lay, &raw, &roles, steps);
         lay
     }
@@ -705,8 +854,21 @@ mod tests {
             (&["South", "3", "4"], D),
             (&["Source: survey, all regions, 2024 edition"], N),
         ]);
-        let l = run(&f, vec![table(0, 4, 2, 1, 1)], only(|s| (s.trim_top, s.trim_bottom) = (true, true)), &[]);
-        assert_eq!(l.tables[0].rect, Rect { top: 1, left: 0, bottom: 3, right: 2 });
+        let l = run(
+            &f,
+            vec![table(0, 4, 2, 1, 1)],
+            only(|s| (s.trim_top, s.trim_bottom) = (true, true)),
+            &[],
+        );
+        assert_eq!(
+            l.tables[0].rect,
+            Rect {
+                top: 1,
+                left: 0,
+                bottom: 3,
+                right: 2
+            }
+        );
         assert_eq!((l.tables[0].header_top, l.tables[0].header_rows), (1, 1));
         // The last body row stays even when the model calls it a note.
         let g = fix(&[(&["A", "B"], H), (&["x", "1"], N)]);
@@ -716,12 +878,31 @@ mod tests {
 
     #[test]
     fn other_rows_the_rules_call_data_stay() {
-        let f = fix(&[(&["No", "Name"], H), (&["1", "a"], D), (&["2", "b"], O), (&["3", "c"], O)]);
+        let f = fix(&[
+            (&["No", "Name"], H),
+            (&["1", "a"], D),
+            (&["2", "b"], O),
+            (&["3", "c"], O),
+        ]);
         let grid = Grid::new(&f.sheet);
-        let roles: Vec<Role> = f.sheet.cells.iter().map(|c| f.row_roles[c.row as usize]).collect();
+        let roles: Vec<Role> = f
+            .sheet
+            .cells
+            .iter()
+            .map(|c| f.row_roles[c.row as usize])
+            .collect();
         let rules = vec![D; roles.len()];
-        let mut lay = SheetLayout { tables: vec![table(0, 3, 1, 0, 1)], roles: roles.clone() };
-        refine(&grid, &mut lay, &roles, &rules, only(|s| s.trim_bottom = true));
+        let mut lay = SheetLayout {
+            tables: vec![table(0, 3, 1, 0, 1)],
+            roles: roles.clone(),
+        };
+        refine(
+            &grid,
+            &mut lay,
+            &roles,
+            &rules,
+            only(|s| s.trim_bottom = true),
+        );
         assert_eq!(lay.tables[0].rect.bottom, 3);
     }
 
@@ -735,7 +916,12 @@ mod tests {
             (&["South", "3", "4"], D),
         ]);
         // The rules: header rows 1–2 (row 0 a title inside the rectangle).
-        let l = run(&f, vec![table(0, 4, 2, 1, 2)], only(|s| (s.header_up, s.header_shrink) = (true, true)), &[]);
+        let l = run(
+            &f,
+            vec![table(0, 4, 2, 1, 2)],
+            only(|s| (s.header_up, s.header_shrink) = (true, true)),
+            &[],
+        );
         assert_eq!((l.tables[0].header_top, l.tables[0].header_rows), (0, 2));
     }
 
@@ -763,9 +949,22 @@ mod tests {
             (&["2020", "1", "2"], D),
             (&["2021", "3", "4"], D),
         ]);
-        let l = run(&f, vec![table(0, 1, 2, 0, 1), table(2, 4, 2, 2, 1)], only(|s| s.merge_header_only = true), &[]);
+        let l = run(
+            &f,
+            vec![table(0, 1, 2, 0, 1), table(2, 4, 2, 2, 1)],
+            only(|s| s.merge_header_only = true),
+            &[],
+        );
         assert_eq!(l.tables.len(), 1);
-        assert_eq!(l.tables[0].rect, Rect { top: 0, left: 0, bottom: 4, right: 2 });
+        assert_eq!(
+            l.tables[0].rect,
+            Rect {
+                top: 0,
+                left: 0,
+                bottom: 4,
+                right: 2
+            }
+        );
         assert_eq!((l.tables[0].header_top, l.tables[0].header_rows), (0, 3));
     }
 
@@ -779,7 +978,12 @@ mod tests {
             (&["Inactivation", "d", "4"], D),
         ]);
         // The rules cut the table at row 3 and took that data row for a header.
-        let l = run(&f, vec![table(0, 2, 2, 0, 1), table(3, 4, 2, 3, 1)], only(|s| s.continuation = true), &[]);
+        let l = run(
+            &f,
+            vec![table(0, 2, 2, 0, 1), table(3, 4, 2, 3, 1)],
+            only(|s| s.continuation = true),
+            &[],
+        );
         assert_eq!(l.tables.len(), 1);
         assert_eq!(l.tables[0].rect.bottom, 4);
     }
@@ -796,9 +1000,21 @@ mod tests {
             (&["South", "7", "8"], D),
         ]);
         // The guard turned the new header into data; the raw model role is header.
-        let l = run(&f, vec![table(0, 6, 2, 0, 1)], only(|s| s.split = true), &[(4, H)]);
+        let l = run(
+            &f,
+            vec![table(0, 6, 2, 0, 1)],
+            only(|s| s.split = true),
+            &[(4, H)],
+        );
         assert_eq!(l.tables.len(), 2);
-        assert_eq!((l.tables[0].rect.bottom, l.tables[1].rect.top, l.tables[1].header_top), (2, 4, 4));
+        assert_eq!(
+            (
+                l.tables[0].rect.bottom,
+                l.tables[1].rect.top,
+                l.tables[1].header_top
+            ),
+            (2, 4, 4)
+        );
         let grid = Grid::new(&f.sheet);
         assert_eq!(l.roles[grid.cell_index(4, 1).unwrap()], H);
         // A sub-header without a blank row above it is no new table.
@@ -810,7 +1026,17 @@ mod tests {
             (&["North", "5", "6"], D),
             (&["South", "7", "8"], D),
         ]);
-        assert_eq!(run(&g, vec![table(0, 5, 2, 0, 1)], only(|s| s.split = true), &[(3, H)]).tables.len(), 1);
+        assert_eq!(
+            run(
+                &g,
+                vec![table(0, 5, 2, 0, 1)],
+                only(|s| s.split = true),
+                &[(3, H)]
+            )
+            .tables
+            .len(),
+            1
+        );
         // Nor is a repeated header.
         let h = fix(&[
             (&["Term", "Price", "Vol"], H),
@@ -821,7 +1047,17 @@ mod tests {
             (&["Jan", "5", "6"], D),
             (&["Feb", "7", "8"], D),
         ]);
-        assert_eq!(run(&h, vec![table(0, 6, 2, 0, 1)], only(|s| s.split = true), &[(4, H)]).tables.len(), 1);
+        assert_eq!(
+            run(
+                &h,
+                vec![table(0, 6, 2, 0, 1)],
+                only(|s| s.split = true),
+                &[(4, H)]
+            )
+            .tables
+            .len(),
+            1
+        );
     }
 
     #[test]
@@ -843,6 +1079,14 @@ mod tests {
             &[],
         );
         assert_eq!(l.tables.len(), 1);
-        assert_eq!(l.tables[0].rect, Rect { top: 3, left: 0, bottom: 7, right: 2 });
+        assert_eq!(
+            l.tables[0].rect,
+            Rect {
+                top: 3,
+                left: 0,
+                bottom: 7,
+                right: 2
+            }
+        );
     }
 }

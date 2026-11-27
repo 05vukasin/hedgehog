@@ -114,13 +114,20 @@ const NEEDLES: [&[u8]; 24] = [
 /// True if `b` contains one of [`NEEDLES`] (ASCII case-insensitive), in one pass dispatched on the
 /// first letter.
 fn ascii_may_hold_keyword(b: &[u8]) -> bool {
-    let at = |rest: &[u8], n: &[u8]| rest.len() >= n.len() && rest[..n.len()].eq_ignore_ascii_case(n);
+    let at =
+        |rest: &[u8], n: &[u8]| rest.len() >= n.len() && rest[..n.len()].eq_ignore_ascii_case(n);
     (0..b.len()).any(|i| {
         let rest = &b[i..];
         match b[i].to_ascii_lowercase() {
-            b't' => at(rest, b"tot") || at(rest, b"toplam") || at(rest, b"toal") || at(rest, b"ttal"),
+            b't' => {
+                at(rest, b"tot") || at(rest, b"toplam") || at(rest, b"toal") || at(rest, b"ttal")
+            }
             b's' => {
-                at(rest, b"sum") || at(rest, b"svega") || at(rest, b"som") || at(rest, b"skup") || at(rest, b"samtals")
+                at(rest, b"sum")
+                    || at(rest, b"svega")
+                    || at(rest, b"som")
+                    || at(rest, b"skup")
+                    || at(rest, b"samtals")
             }
             b'u' => at(rest, b"ukup"),
             b'z' => at(rest, b"zbir") || at(rest, b"zusammen"),
@@ -178,7 +185,8 @@ fn more_tokens_than(text: &str, max: usize) -> bool {
 }
 
 fn contains_phrase(toks: &[String], phrase: &[&str]) -> bool {
-    toks.windows(phrase.len()).any(|w| w.iter().zip(phrase).all(|(a, b)| a == b))
+    toks.windows(phrase.len())
+        .any(|w| w.iter().zip(phrase).all(|(a, b)| a == b))
 }
 
 /// Total words in more languages, matched on the diacritic- and script-folded tokens
@@ -188,8 +196,26 @@ fn contains_phrase(toks: &[String], phrase: &[&str]) -> bool {
 /// Greek `σύνολο`, German `gesamt`/`insgesamt` (also after the group: "Deutschland gesamt",
 /// "EU 27 insgesamt"), Serbian `ukupno`.
 const FOLDED_TOTAL: &[&str] = &[
-    "celkem", "celkom", "yhteensa", "osszesen", "vsego", "itogo", "itog", "ogolem", "lacznie", "razem", "kokku",
-    "samtals", "toplam", "totalt", "gesamt", "insgesamt", "ukupno", "σύνολο", "συνολο", "σύνολα",
+    "celkem",
+    "celkom",
+    "yhteensa",
+    "osszesen",
+    "vsego",
+    "itogo",
+    "itog",
+    "ogolem",
+    "lacznie",
+    "razem",
+    "kokku",
+    "samtals",
+    "toplam",
+    "totalt",
+    "gesamt",
+    "insgesamt",
+    "ukupno",
+    "σύνολο",
+    "συνολο",
+    "σύνολα",
 ];
 
 /// Folded grand-total phrases: "Total général", "Totaal generaal", "Totale complessivo".
@@ -204,7 +230,9 @@ const FOLDED_GRAND: &[&[&str]] = &[
 
 /// "total" with one letter dropped or two neighbours swapped ("Toal", "Totl", "Grand Totl"); not
 /// "tota" (a word in several languages). Only in short labels.
-const TYPOS: &[&str] = &["toal", "totl", "otal", "ttal", "totla", "toatl", "ottal", "ttoal"];
+const TYPOS: &[&str] = &[
+    "toal", "totl", "otal", "ttal", "totla", "toatl", "ottal", "ttoal",
+];
 
 /// Labels with at most this many words may carry a typo of "total".
 const TYPO_LABEL_MAX_WORDS: usize = 3;
@@ -235,9 +263,16 @@ fn spaced_letters(text: &str) -> Option<String> {
 /// Folded tokens of `text` without trailing footnote numbers ("Summe aller Produkte 2").
 fn folded_tokens(text: &str) -> Vec<String> {
     let key = crate::values::norm_key(text);
-    let mut toks: Vec<String> =
-        key.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect();
-    while toks.len() > 1 && toks.last().is_some_and(|w| w.len() <= 2 && w.bytes().all(|b| b.is_ascii_digit())) {
+    let mut toks: Vec<String> = key
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect();
+    while toks.len() > 1
+        && toks
+            .last()
+            .is_some_and(|w| w.len() <= 2 && w.bytes().all(|b| b.is_ascii_digit()))
+    {
         toks.pop();
     }
     toks
@@ -256,7 +291,9 @@ fn more_languages(toks: &[String], text: &str) -> Option<KeywordLevel> {
     let edge = |w: &String| FOLDED_TOTAL.contains(&w.as_str());
     if folded.len() <= FOLDED_LABEL_MAX_WORDS {
         let (first, last) = (&folded[0], &folded[folded.len() - 1]);
-        if edge(first) || edge(last) || contains_phrase(&folded, &["i", "alt"]) && (folded.len() == 2 || last == "alt")
+        if edge(first)
+            || edge(last)
+            || contains_phrase(&folded, &["i", "alt"]) && (folded.len() == 2 || last == "alt")
         {
             return Some(KeywordLevel::Total);
         }
@@ -265,7 +302,11 @@ fn more_languages(toks: &[String], text: &str) -> Option<KeywordLevel> {
         && let (Some(first), Some(last)) = (toks.first(), toks.last())
         && (TYPOS.contains(&first.as_str()) || TYPOS.contains(&last.as_str()))
     {
-        return Some(if toks.iter().any(|w| w == "grand") { KeywordLevel::GrandTotal } else { KeywordLevel::Total });
+        return Some(if toks.iter().any(|w| w == "grand") {
+            KeywordLevel::GrandTotal
+        } else {
+            KeywordLevel::Total
+        });
     }
     None
 }
@@ -287,7 +328,11 @@ pub fn total_keyword_base(text: &str) -> Option<KeywordLevel> {
 fn keyword(text: &str, more: bool) -> Option<KeywordLevel> {
     if !may_hold_keyword(text) {
         // fast path for the vast majority of labels: no allocation
-        return if more { spaced_letters(text).and_then(|t| keyword(&t, true)) } else { None };
+        return if more {
+            spaced_letters(text).and_then(|t| keyword(&t, true))
+        } else {
+            None
+        };
     }
     if more_tokens_than(text, MAX_TOKENS) {
         return None; // a sentence: skip tokenizing it
@@ -394,16 +439,61 @@ const OF_WHICH: &[&[&str]] = &[
 
 /// Average words (folded), as the first word of a label.
 const AVERAGE: &[&str] = &[
-    "average", "avg", "mean", "median", "durchschnitt", "mittelwert", "moyenne", "mediane", "media", "mediana",
-    "promedio", "prosek", "prosecno", "prosjek", "prosjecno", "sredina", "srednee", "srednia", "gemiddelde",
-    "gemiddeld", "gennemsnit", "gjennomsnitt", "genomsnitt", "keskiarvo", "atlag", "prumer", "priemer", "povprecje",
+    "average",
+    "avg",
+    "mean",
+    "median",
+    "durchschnitt",
+    "mittelwert",
+    "moyenne",
+    "mediane",
+    "media",
+    "mediana",
+    "promedio",
+    "prosek",
+    "prosecno",
+    "prosjek",
+    "prosjecno",
+    "sredina",
+    "srednee",
+    "srednia",
+    "gemiddelde",
+    "gemiddeld",
+    "gennemsnit",
+    "gjennomsnitt",
+    "genomsnitt",
+    "keskiarvo",
+    "atlag",
+    "prumer",
+    "priemer",
+    "povprecje",
 ];
 
 /// Balance words (folded), as the first word of a label.
 const BALANCE: &[&str] = &[
-    "saldo", "salda", "balance", "bal", "solde", "differenz", "difference", "diff", "differenza", "diferencia",
-    "diferenca", "razlika", "rozdil", "roznica", "verschil", "skillnad", "forskel", "forskjell", "erotus",
-    "kulonbseg", "net", "netto", "nett",
+    "saldo",
+    "salda",
+    "balance",
+    "bal",
+    "solde",
+    "differenz",
+    "difference",
+    "diff",
+    "differenza",
+    "diferencia",
+    "diferenca",
+    "razlika",
+    "rozdil",
+    "roznica",
+    "verschil",
+    "skillnad",
+    "forskel",
+    "forskjell",
+    "erotus",
+    "kulonbseg",
+    "net",
+    "netto",
+    "nett",
 ];
 
 /// Balance labels have at most this many words ("SALDO (D - P)", "Balance debit - credit").
@@ -435,7 +525,9 @@ fn nonsum_first_word(w: &str) -> bool {
 /// The kind of non-sum row a label announces ("of which: …", "Average", "Ø 2012", "Saldo") and how plainly
 /// ([`NonSumLabel`]), or `None`.
 pub fn nonsum_keyword(text: &str) -> Option<(NonSumKind, NonSumLabel)> {
-    let t = text.trim().trim_start_matches(['-', '–', '—', '•', '·', '(', ' ', '\u{a0}']);
+    let t = text
+        .trim()
+        .trim_start_matches(['-', '–', '—', '•', '·', '(', ' ', '\u{a0}']);
     if t.is_empty() || t.len() > 160 {
         return None;
     }
@@ -446,10 +538,19 @@ pub fn nonsum_keyword(text: &str) -> Option<(NonSumKind, NonSumLabel)> {
         if rest.chars().next().is_some_and(char::is_alphabetic) {
             return None;
         }
-        let words = rest.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).count();
+        let words = rest
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .count();
         let sign = rest.chars().all(|n| !n.is_alphabetic());
-        return (words < AVERAGE_LABEL_MAX_WORDS)
-            .then_some((NonSumKind::Average, if sign { NonSumLabel::Sign } else { NonSumLabel::Phrase }));
+        return (words < AVERAGE_LABEL_MAX_WORDS).then_some((
+            NonSumKind::Average,
+            if sign {
+                NonSumLabel::Sign
+            } else {
+                NonSumLabel::Phrase
+            },
+        ));
     }
     if more_tokens_than(t, OF_WHICH_LABEL_MAX_WORDS) {
         return None;
@@ -473,19 +574,36 @@ pub fn nonsum_keyword(text: &str) -> Option<(NonSumKind, NonSumLabel)> {
     let toks = folded_tokens(t);
     let first = toks.first()?;
     if AVERAGE.contains(&first.as_str()) && toks.len() <= AVERAGE_LABEL_MAX_WORDS {
-        let bare = toks[1..].iter().all(|w| w.bytes().all(|b| b.is_ascii_digit()));
-        return Some((NonSumKind::Average, if bare { NonSumLabel::Bare } else { NonSumLabel::Phrase }));
+        let bare = toks[1..]
+            .iter()
+            .all(|w| w.bytes().all(|b| b.is_ascii_digit()));
+        return Some((
+            NonSumKind::Average,
+            if bare {
+                NonSumLabel::Bare
+            } else {
+                NonSumLabel::Phrase
+            },
+        ));
     }
     // Only a candidate: the row must sit under a total row and hold a difference of its numbers.
     if BALANCE.contains(&first.as_str()) && toks.len() <= BALANCE_LABEL_MAX_WORDS {
         let bare = toks.len() == 1;
-        return Some((NonSumKind::Balance, if bare { NonSumLabel::Bare } else { NonSumLabel::Phrase }));
+        return Some((
+            NonSumKind::Balance,
+            if bare {
+                NonSumLabel::Bare
+            } else {
+                NonSumLabel::Phrase
+            },
+        ));
     }
     // The phrase and what the part is ("davon Inland", "of which: exports"), or the phrase ending in
     // a colon: "Josta" alone is a first name, not Finnish "of which".
     let colon = t.trim_end().ends_with(':');
     if OF_WHICH.iter().any(|p| {
-        (toks.len() > p.len() || (toks.len() == p.len() && colon)) && toks.iter().zip(p.iter()).all(|(a, b)| a == b)
+        (toks.len() > p.len() || (toks.len() == p.len() && colon))
+            && toks.iter().zip(p.iter()).all(|(a, b)| a == b)
     }) {
         return Some((NonSumKind::OfWhich, NonSumLabel::Phrase));
     }
@@ -533,7 +651,10 @@ const LABEL_WITH_TEXT_RIGHT_MAX_WORDS: usize = 3;
 /// Trailing footnote numbers ("Summe aller Produkte 2") are ignored.
 pub fn keyword_at_edge(text: &str) -> bool {
     let mut toks = tokens(text);
-    while toks.last().is_some_and(|w| w.len() <= 2 && w.bytes().all(|b| b.is_ascii_digit())) {
+    while toks
+        .last()
+        .is_some_and(|w| w.len() <= 2 && w.bytes().all(|b| b.is_ascii_digit()))
+    {
         toks.pop();
     }
     let edge = |w: Option<&String>| w.is_some_and(|w| total_keyword(w).is_some());
@@ -548,11 +669,21 @@ fn other_language_total(text: &str) -> Option<KeywordLevel> {
         return None;
     }
     let key = crate::values::norm_key(text);
-    let first = key.split(|c: char| !c.is_alphanumeric()).find(|w| !w.is_empty()).unwrap_or("");
+    let first = key
+        .split(|c: char| !c.is_alphanumeric())
+        .find(|w| !w.is_empty())
+        .unwrap_or("");
     if first == "all" {
         return None;
     }
-    let sub = ["zwischensumme", "subtotale", "subtotaal", "sous", "subtotales", "medjuzbir"];
+    let sub = [
+        "zwischensumme",
+        "subtotale",
+        "subtotaal",
+        "sous",
+        "subtotales",
+        "medjuzbir",
+    ];
     if sub.contains(&first) || first.starts_with("zwischen") {
         Some(KeywordLevel::Subtotal)
     } else {
@@ -569,24 +700,41 @@ mod tests {
         for n in NEEDLES {
             let mut up = b"x ".to_vec();
             up.extend(n.to_ascii_uppercase());
-            assert!(ascii_may_hold_keyword(n) && ascii_may_hold_keyword(&up), "{}", String::from_utf8_lossy(n));
+            assert!(
+                ascii_may_hold_keyword(n) && ascii_may_hold_keyword(&up),
+                "{}",
+                String::from_utf8_lossy(n)
+            );
         }
         assert!(!ascii_may_hold_keyword(b"Revenue / Q1 to"));
     }
 
     #[test]
     fn incidental_total_words() {
-        use super::{incidental_keyword as inc, REGISTER_MIN_ROWS as N};
+        use super::{REGISTER_MIN_ROWS as N, incidental_keyword as inc};
         // Free text right of other text in a register: descriptions, suppliers' names.
         assert!(inc("AQUISIÇÃO DE UMA ESTAÇÃO TOTAL", true, false, N));
         assert!(inc("Prótese total anca", true, false, 176_513));
-        assert!(inc("507210360 - GLOBAL 2 SEGURANÇA TOTAL LDA", true, false, N));
+        assert!(inc(
+            "507210360 - GLOBAL 2 SEGURANÇA TOTAL LDA",
+            true,
+            false,
+            N
+        ));
         // The first text with more text right of it, longer than a label: a description or name.
         assert!(inc("BEECH TREE TOTAL CARE LIMITED", false, true, N));
         assert!(inc("Total knee replacement implant", false, true, N));
         assert!(!inc("Total Region North", false, true, N));
         // Short labels, the row's first text, and short sheets (reports) keep their keyword.
-        for s in ["Total", "TOTAL:", "Grand total", "Ukupno Vojvodina", "Gesamt", "Summe", "Sub-total"] {
+        for s in [
+            "Total",
+            "TOTAL:",
+            "Grand total",
+            "Ukupno Vojvodina",
+            "Gesamt",
+            "Summe",
+            "Sub-total",
+        ] {
             assert!(!inc(s, true, true, N), "{s}");
         }
         assert!(!inc("AQUISIÇÃO DE UMA ESTAÇÃO TOTAL", false, false, N));
@@ -596,16 +744,42 @@ mod tests {
     #[test]
     fn more_languages_typos_and_ambiguous_words() {
         use super::{ambiguous_keyword as amb, total_keyword_base as base};
-        for s in ["Всего", "ИТОГО", "Celkem", "Razem", "I alt", "Yhteensä", "Összesen", "Σύνολο", "∑", "Toal", "Totl",
-            "T o t a l", "Totalt", "Kokku", "Ogółem", "Deutschland gesamt", "EU 27 insgesamt", "Nord gesamt",
-            "Razem Belgia", "Danmark i alt", "Praha celkem"]
-        {
+        for s in [
+            "Всего",
+            "ИТОГО",
+            "Celkem",
+            "Razem",
+            "I alt",
+            "Yhteensä",
+            "Összesen",
+            "Σύνολο",
+            "∑",
+            "Toal",
+            "Totl",
+            "T o t a l",
+            "Totalt",
+            "Kokku",
+            "Ogółem",
+            "Deutschland gesamt",
+            "EU 27 insgesamt",
+            "Nord gesamt",
+            "Razem Belgia",
+            "Danmark i alt",
+            "Praha celkem",
+        ] {
             assert!(total_keyword(s).is_some(), "{s}");
         }
         assert_eq!(total_keyword("Grand Totl"), Some(GrandTotal));
         assert_eq!(total_keyword("Total général"), Some(GrandTotal));
         assert_eq!(total_keyword("Totaal generaal"), Some(GrandTotal));
-        for s in ["Tota", "Tonal", "Totalitarian regimes", "Alternative fuels", "Gesamtschule Nord", "Altona"] {
+        for s in [
+            "Tota",
+            "Tonal",
+            "Totalitarian regimes",
+            "Alternative fuels",
+            "Gesamtschule Nord",
+            "Altona",
+        ] {
             assert_eq!(total_keyword(s), None, "{s}");
         }
         // The row model's keywords stay as they were trained.
@@ -626,10 +800,20 @@ mod tests {
 
     #[test]
     fn of_which_and_average_labels() {
-        use super::{nonsum_keyword as ns, NonSumKind::*, NonSumLabel::*};
-        for s in ["of which: domestic", "  of which exports", "davon Inland", "davon: Export", "od toga: izvoz",
-            "dont : exportations", "di cui: estero", "w tym: eksport", "thereof abroad", "- of which online", "из них: женщины"]
-        {
+        use super::{NonSumKind::*, NonSumLabel::*, nonsum_keyword as ns};
+        for s in [
+            "of which: domestic",
+            "  of which exports",
+            "davon Inland",
+            "davon: Export",
+            "od toga: izvoz",
+            "dont : exportations",
+            "di cui: estero",
+            "w tym: eksport",
+            "thereof abroad",
+            "- of which online",
+            "из них: женщины",
+        ] {
             assert_eq!(ns(s), Some((OfWhich, Phrase)), "{s}");
         }
         assert_eq!(ns("Ø 2012"), Some((Average, Sign)));
@@ -643,9 +827,16 @@ mod tests {
         assert_eq!(ns("Saldo"), Some((Balance, Bare)));
         assert_eq!(ns("Différence"), Some((Balance, Bare)));
         assert_eq!(ns("Разлика"), Some((Balance, Bare)));
-        for s in ["Østfold", "Durchschnittshöhe in Euro", "Average hourly earnings of all full-time employees", "Dontworry",
-            "Of course", "Total", "Josta", "Davon"]
-        {
+        for s in [
+            "Østfold",
+            "Durchschnittshöhe in Euro",
+            "Average hourly earnings of all full-time employees",
+            "Dontworry",
+            "Of course",
+            "Total",
+            "Josta",
+            "Davon",
+        ] {
             assert_eq!(ns(s), None, "{s}");
         }
     }
@@ -656,7 +847,9 @@ mod tests {
         assert!(edge("Summe der bezogenen Rohstoffe"));
         assert!(edge("Totaal van aantal eenheden"));
         assert!(edge("ANDERSON PETRO Total"));
-        assert!(edge("Summe aller Produkte einschl. besondere Finanzierungsvorgänge 2"));
+        assert!(edge(
+            "Summe aller Produkte einschl. besondere Finanzierungsvorgänge 2"
+        ));
         assert!(!edge("Volumendring. Sum tre måneder, rullerende"));
         assert!(!edge("Prótese total anca"));
     }
@@ -695,6 +888,11 @@ mod tests {
         assert_eq!(total_keyword("Price"), None);
         assert_eq!(total_keyword("Totally unrelated sentence"), None);
         assert_eq!(total_keyword("Beograd"), None);
-        assert_eq!(total_keyword("The total is computed from all rows above minus the returns of last year"), None);
+        assert_eq!(
+            total_keyword(
+                "The total is computed from all rows above minus the returns of last year"
+            ),
+            None
+        );
     }
 }

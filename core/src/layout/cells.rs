@@ -27,33 +27,117 @@ pub(crate) enum Agg {
 }
 
 const MISSING_TOKENS: &[&str] = &[
-    "-", "--", "---", "–", "—", "n/a", "na", "n.a.", "#n/a", "x", ".", "..", "...", "?", "null", "none", "nema", "нема",
+    "-", "--", "---", "–", "—", "n/a", "na", "n.a.", "#n/a", "x", ".", "..", "...", "?", "null",
+    "none", "nema", "нема",
     // NCES and other US tables: not applicable, rounds to zero, reporting standards not met.
-    "†", "#", "‡",
-    // US Census: not applicable, not available.
+    "†", "#", "‡", // US Census: not applicable, not available.
     "(x)", "(na)",
 ];
 
 const TOTAL_WORDS: &[&str] = &[
-    "total", "totals", "subtotal", "subtotals", "sum", "ukupno", "ukupna", "ukupni", "ukupan", "sveukupno", "svega",
-    "zbir", "zbirno", "укупно", "укупна", "укупни", "укупан", "свеукупно", "свега", "збир", "збирно", "average",
-    "avg", "mean", "maximum", "minimum", "prosek", "prosečno", "просек", "просечно",
+    "total",
+    "totals",
+    "subtotal",
+    "subtotals",
+    "sum",
+    "ukupno",
+    "ukupna",
+    "ukupni",
+    "ukupan",
+    "sveukupno",
+    "svega",
+    "zbir",
+    "zbirno",
+    "укупно",
+    "укупна",
+    "укупни",
+    "укупан",
+    "свеукупно",
+    "свега",
+    "збир",
+    "збирно",
+    "average",
+    "avg",
+    "mean",
+    "maximum",
+    "minimum",
+    "prosek",
+    "prosečno",
+    "просек",
+    "просечно",
 ];
 
-const AGG_FUNCS: &[&str] = &["SUM(", "SUBTOTAL(", "AVERAGE(", "MAX(", "MIN(", "COUNT(", "COUNTA(", "MEDIAN("];
+const AGG_FUNCS: &[&str] = &[
+    "SUM(",
+    "SUBTOTAL(",
+    "AVERAGE(",
+    "MAX(",
+    "MIN(",
+    "COUNT(",
+    "COUNTA(",
+    "MEDIAN(",
+];
 
 const NOTE_WORDS: &[&str] = &[
-    "note", "notes", "source", "sources", "napomena", "napomene", "izvor", "izvori", "напомена", "напомене", "извор",
-    "извори", "nb", "footnote", "footnotes", "comment", "comments", "remark", "remarks", "prepared", "pripremio",
-    "pripremila", "припремио", "disclaimer",
+    "note",
+    "notes",
+    "source",
+    "sources",
+    "napomena",
+    "napomene",
+    "izvor",
+    "izvori",
+    "напомена",
+    "напомене",
+    "извор",
+    "извори",
+    "nb",
+    "footnote",
+    "footnotes",
+    "comment",
+    "comments",
+    "remark",
+    "remarks",
+    "prepared",
+    "pripremio",
+    "pripremila",
+    "припремио",
+    "disclaimer",
 ];
 
 /// Note words in more languages (de, fr, es, it, pt, nl, pl, cs, da, sv, fi; B38), counted only
 /// with a colon after them.
 const NOTE_WORDS_COLON: &[&str] = &[
-    "quelle", "quellen", "anmerkung", "anmerkungen", "hinweis", "hinweise", "fussnote", "fußnote", "fussnoten",
-    "fußnoten", "remarque", "remarques", "nota", "notas", "fuente", "fuentes", "fonte", "fontes", "opmerking",
-    "opmerkingen", "bron", "uwaga", "uwagi", "źródło", "poznámka", "poznámky", "zdroj", "kilde", "källa", "lähde",
+    "quelle",
+    "quellen",
+    "anmerkung",
+    "anmerkungen",
+    "hinweis",
+    "hinweise",
+    "fussnote",
+    "fußnote",
+    "fussnoten",
+    "fußnoten",
+    "remarque",
+    "remarques",
+    "nota",
+    "notas",
+    "fuente",
+    "fuentes",
+    "fonte",
+    "fontes",
+    "opmerking",
+    "opmerkingen",
+    "bron",
+    "uwaga",
+    "uwagi",
+    "źródło",
+    "poznámka",
+    "poznámky",
+    "zdroj",
+    "kilde",
+    "källa",
+    "lähde",
 ];
 
 pub(crate) fn kind_of(cell: &Cell) -> Kind {
@@ -83,11 +167,16 @@ fn text_kind(s: &str) -> Kind {
     }
     // `20221)`, `2022 1)`: a year with a note mark in a header stays a label.
     let unbalanced = t.matches(')').count() > t.matches('(').count();
-    if !unbalanced && t.len() <= 40 && !is_period_code(t) && t.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '-' | '(' | '+' | '.')) {
+    if !unbalanced
+        && t.len() <= 40
+        && !is_period_code(t)
+        && t.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '-' | '(' | '+' | '.'))
+    {
         // A number with a footnote mark or flag (`28472.72*`, `1737³`, `6077.61 (p)`, `20560.32e`)
         // is a number, not a label (B33: such rows started new tables).
         use crate::values::number::{NumberHint, parse_number};
-        if parse_number(t, NumberHint::default()).is_some_and(|p| p.footnote && p.unit.is_none() && p.currency.is_none())
+        if parse_number(t, NumberHint::default())
+            .is_some_and(|p| p.footnote && p.unit.is_none() && p.currency.is_none())
         {
             return Kind::Num;
         }
@@ -97,7 +186,8 @@ fn text_kind(s: &str) -> Kind {
     use crate::values::missing::{NumericAnnotation, numeric_annotation};
     let annot = numeric_annotation(t);
     if annot == Some(NumericAnnotation::Censored) && t != "(Z)"
-        || (annot == Some(NumericAnnotation::Suppressed) && t.chars().filter(|c| c.is_alphabetic()).count() >= 6)
+        || (annot == Some(NumericAnnotation::Suppressed)
+            && t.chars().filter(|c| c.is_alphabetic()).count() >= 6)
     {
         return Kind::Missing;
     }
@@ -122,8 +212,29 @@ pub(crate) fn is_unit_text(t: &str) -> bool {
         return true;
     }
     const WORDS: [&str; 24] = [
-        "in", "je", "per", "pro", "personen", "persons", "anzahl", "number", "stunden", "hours", "jahre", "years",
-        "prozent", "percent", "punkte", "points", "einwohner", "inhabitants", "tonnes", "tonnen", "t", "ha", "km",
+        "in",
+        "je",
+        "per",
+        "pro",
+        "personen",
+        "persons",
+        "anzahl",
+        "number",
+        "stunden",
+        "hours",
+        "jahre",
+        "years",
+        "prozent",
+        "percent",
+        "punkte",
+        "points",
+        "einwohner",
+        "inhabitants",
+        "tonnes",
+        "tonnen",
+        "t",
+        "ha",
+        "km",
         "euro",
     ];
     let mut any_unit = false;
@@ -133,7 +244,11 @@ pub(crate) fn is_unit_text(t: &str) -> bool {
             continue;
         }
         let lw = w.to_lowercase();
-        if w.contains('%') || w.contains('‰') || scale(w).is_some() || unit(w).is_some() || crate::values::currency::currency(w).is_some()
+        if w.contains('%')
+            || w.contains('‰')
+            || scale(w).is_some()
+            || unit(w).is_some()
+            || crate::values::currency::currency(w).is_some()
         {
             any_unit = true;
         } else if WORDS.contains(&lw.as_str()) {
@@ -157,7 +272,11 @@ pub(crate) fn is_rule_text(t: &str) -> bool {
     }
     let mut it = t.chars();
     let Some(first) = it.next() else { return false };
-    let min = if matches!(first, '-' | '=' | '_' | '~' | '–' | '—') { 3 } else { 4 };
+    let min = if matches!(first, '-' | '=' | '_' | '~' | '–' | '—') {
+        3
+    } else {
+        4
+    };
     matches!(first, '-' | '=' | '_' | '~' | '*' | '#' | '+' | '–' | '—')
         && t.chars().count() >= min
         && t.chars().all(|c| c == first || (c == ' ' && first != ' '))
@@ -173,14 +292,17 @@ fn looks_numeric(t: &str) -> bool {
     if let Some((mean, spread)) = t.split_once(" (SD ") {
         let spread = spread.strip_suffix(')').unwrap_or(spread);
         return mean.parse::<f64>().is_ok_and(|n| n.is_finite())
-            && spread.parse::<f64>().is_ok_and(|n| n.is_finite() && n >= 0.0);
+            && spread
+                .parse::<f64>()
+                .is_ok_and(|n| n.is_finite() && n >= 0.0);
     }
     let mut digits = 0usize;
     let mut other = 0usize;
     for ch in t.chars() {
         match ch {
             '0'..='9' => digits += 1,
-            ',' | '.' | ' ' | '\u{a0}' | '\'' | '(' | ')' | '-' | '+' | '/' | '%' | '$' | '€' | '£' => {}
+            ',' | '.' | ' ' | '\u{a0}' | '\'' | '(' | ')' | '-' | '+' | '/' | '%' | '$' | '€'
+            | '£' => {}
             _ => other += 1,
         }
     }
@@ -216,7 +338,12 @@ pub(crate) fn is_text_period(t: &str) -> bool {
     if is_period_code(t) {
         return true;
     }
-    if t.len() < 6 || t.len() > 10 || !t.bytes().all(|b| b.is_ascii_digit() || matches!(b, b'-' | b'/' | b'.')) {
+    if t.len() < 6
+        || t.len() > 10
+        || !t
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'-' | b'/' | b'.'))
+    {
         return false;
     }
     let sep = match t.bytes().find(|b| !b.is_ascii_digit()) {
@@ -227,12 +354,21 @@ pub(crate) fn is_text_period(t: &str) -> bool {
     if parts.iter().any(|p| p.is_empty()) || t.bytes().any(|b| !b.is_ascii_digit() && b != sep) {
         return false;
     }
-    let year = |p: &str| p.len() == 4 && p.parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n));
-    let small = |p: &str, max: u32| p.len() <= 2 && p.parse::<u32>().is_ok_and(|n| (1..=max).contains(&n));
+    let year = |p: &str| {
+        p.len() == 4
+            && p.parse::<f64>()
+                .is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n))
+    };
+    let small =
+        |p: &str, max: u32| p.len() <= 2 && p.parse::<u32>().is_ok_and(|n| (1..=max).contains(&n));
     match parts[..] {
         // `2010-01`, `01/2010`; not `2011/12`, a split year (fiscal, marketing).
-        [a, b] if sep != b'.' => (sep == b'-' && year(a) && small(b, 12)) || (small(a, 12) && year(b)),
-        [a, b, c] => (year(a) && small(b, 12) && small(c, 31)) || (small(a, 31) && small(b, 31) && year(c)),
+        [a, b] if sep != b'.' => {
+            (sep == b'-' && year(a) && small(b, 12)) || (small(a, 12) && year(b))
+        }
+        [a, b, c] => {
+            (year(a) && small(b, 12) && small(c, 31)) || (small(a, 31) && small(b, 31) && year(c))
+        }
         _ => false,
     }
 }
@@ -241,12 +377,19 @@ pub(crate) fn is_text_period(t: &str) -> bool {
 /// the first) or a range of years (`2004-2008`). A column label, not a number (B55).
 pub(crate) fn is_split_year(t: &str) -> bool {
     let b = t.as_bytes();
-    if !(7..=9).contains(&b.len()) || !b[..4].iter().all(u8::is_ascii_digit) || !matches!(b[4], b'-' | b'/') {
+    if !(7..=9).contains(&b.len())
+        || !b[..4].iter().all(u8::is_ascii_digit)
+        || !matches!(b[4], b'-' | b'/')
+    {
         return false;
     }
     let rest = &t[5..];
-    let Ok(y) = t[..4].parse::<u32>() else { return false };
-    if !(YEAR_MIN as u32..=YEAR_MAX as u32).contains(&y) || !rest.bytes().all(|c| c.is_ascii_digit()) {
+    let Ok(y) = t[..4].parse::<u32>() else {
+        return false;
+    };
+    if !(YEAR_MIN as u32..=YEAR_MAX as u32).contains(&y)
+        || !rest.bytes().all(|c| c.is_ascii_digit())
+    {
         return false;
     }
     match rest.len() {
@@ -264,7 +407,9 @@ pub(crate) fn is_period_code(t: &str) -> bool {
     if !t.is_ascii() || !(6..=7).contains(&b.len()) || !b[..4].iter().all(u8::is_ascii_digit) {
         return false;
     }
-    let year = t[..4].parse::<f64>().is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n));
+    let year = t[..4]
+        .parse::<f64>()
+        .is_ok_and(|n| (YEAR_MIN..=YEAR_MAX).contains(&n));
     let n = &t[5..];
     let max = match b[4].to_ascii_uppercase() {
         b'Q' | b'K' => 4,
@@ -272,7 +417,8 @@ pub(crate) fn is_period_code(t: &str) -> bool {
         b'H' | b'S' => 2,
         _ => return false,
     };
-    year && n.bytes().all(|c| c.is_ascii_digit()) && n.parse::<u32>().is_ok_and(|v| (1..=max).contains(&v))
+    year && n.bytes().all(|c| c.is_ascii_digit())
+        && n.parse::<u32>().is_ok_and(|v| (1..=max).contains(&v))
 }
 
 pub(crate) fn text_of(cell: &Cell) -> Option<&str> {
@@ -283,7 +429,10 @@ pub(crate) fn text_of(cell: &Cell) -> Option<&str> {
 }
 
 fn tokens(s: &str) -> Vec<String> {
-    s.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(|w| w.to_lowercase()).collect()
+    s.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase())
+        .collect()
 }
 
 /// "Total", "Grand total", "Ukupno Vojvodina", "Subtotal:", "УКУПНО", "Σ".
@@ -301,8 +450,12 @@ pub(crate) fn is_total_label(s: &str) -> bool {
             TOTAL_WORDS.contains(&w.to_lowercase().as_str())
         }
     };
-    let mut words = t.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty());
-    let Some(first) = words.next() else { return false };
+    let mut words = t
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty());
+    let Some(first) = words.next() else {
+        return false;
+    };
     if is_total_word(first) {
         return true;
     }
@@ -323,19 +476,26 @@ pub(crate) fn is_total_label(s: &str) -> bool {
 /// `#Rounds to zero.`, `!Interpret data with caution.`, `: not available`). A single dash
 /// (`-Counterparty`) is a list item and `... aber` a continued sentence, not a legend.
 fn is_legend_line(t: &str) -> bool {
-    let mark: String = t.chars().take_while(|c| matches!(c, '-' | '–' | '—' | ':' | '#' | '!')).collect();
+    let mark: String = t
+        .chars()
+        .take_while(|c| matches!(c, '-' | '–' | '—' | ':' | '#' | '!'))
+        .collect();
     let rest = t[mark.len()..].trim_start();
     let n = mark.chars().count();
     let first = mark.chars().next();
     let ok_mark = (n >= 3 && first.is_some_and(|f| f != ':' && mark.chars().all(|c| c == f)))
         || (n == 1 && matches!(first, Some('#' | '!')))
         || (n == 1 && first == Some(':') && t[1..].starts_with(' '));
-    ok_mark && rest.chars().next().is_some_and(char::is_alphabetic) && rest.split_whitespace().count() >= 2
+    ok_mark
+        && rest.chars().next().is_some_and(char::is_alphabetic)
+        && rest.split_whitespace().count() >= 2
 }
 
 pub(crate) fn is_note_label(s: &str) -> bool {
     let t = s.trim();
-    let Some(first) = t.chars().next() else { return false };
+    let Some(first) = t.chars().next() else {
+        return false;
+    };
     if matches!(first, '*' | '†' | '‡' | '¹' | '²' | '³' | '⁽') {
         return true;
     }
@@ -353,13 +513,18 @@ pub(crate) fn is_note_label(s: &str) -> bool {
             return true;
         }
     }
-    let Some(first) = tokens(t).into_iter().next() else { return false };
+    let Some(first) = tokens(t).into_iter().next() else {
+        return false;
+    };
     if NOTE_WORDS.contains(&first.as_str()) {
         return true;
     }
     // Other languages' note words only as a label with a colon ("Quelle:", "Remarque :").
     NOTE_WORDS_COLON.contains(&first.as_str())
-        && t.chars().skip(first.chars().count()).find(|c| !c.is_whitespace()) == Some(':')
+        && t.chars()
+            .skip(first.chars().count())
+            .find(|c| !c.is_whitespace())
+            == Some(':')
 }
 
 /// `SUM(`/`AVERAGE(`/`MAX(`… over at least two same-sheet cells, anywhere (loose summary cells).
@@ -369,7 +534,10 @@ pub(crate) fn is_aggregate_formula(formula: &str) -> bool {
         return false;
     }
     let (refs, _) = parse_refs(f.as_bytes());
-    refs.iter().map(|r| (r.r2 - r.r1 + 1) as u64 * (r.c2 - r.c1 + 1) as u64).sum::<u64>() >= 2
+    refs.iter()
+        .map(|r| (r.r2 - r.r1 + 1) as u64 * (r.c2 - r.c1 + 1) as u64)
+        .sum::<u64>()
+        >= 2
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -391,13 +559,23 @@ pub(crate) fn formula_agg(formula: &str, row: u32, col: u32) -> Agg {
     if refs.is_empty() || !(is_sum || rest_is_plus) {
         return Agg::None;
     }
-    let cells: u64 = refs.iter().map(|r| (r.r2 - r.r1 + 1) as u64 * (r.c2 - r.c1 + 1) as u64).sum();
+    let cells: u64 = refs
+        .iter()
+        .map(|r| (r.r2 - r.r1 + 1) as u64 * (r.c2 - r.c1 + 1) as u64)
+        .sum();
     if cells < 2 {
         return Agg::None;
     }
-    if refs.iter().all(|r| r.c1 == col && r.c2 == col && r.r2 < row) {
+    if refs
+        .iter()
+        .all(|r| r.c1 == col && r.c2 == col && r.r2 < row)
+    {
         Agg::Vertical
-    } else if (is_sum || refs.len() >= 3) && refs.iter().all(|r| r.r1 == row && r.r2 == row && r.c2 < col) {
+    } else if (is_sum || refs.len() >= 3)
+        && refs
+            .iter()
+            .all(|r| r.r1 == row && r.r2 == row && r.c2 < col)
+    {
         Agg::Horizontal
     } else {
         Agg::None
@@ -410,12 +588,26 @@ fn parse_refs(b: &[u8]) -> (Vec<Ref>, bool) {
     let mut only_plus = true;
     let mut i = 0;
     while i < b.len() {
-        let prev_ident = i > 0 && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_' || b[i - 1] == b'.');
+        let prev_ident =
+            i > 0 && (b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_' || b[i - 1] == b'.');
         if !prev_ident && let Some((r, c, n)) = cell_ref(&b[i..]) {
             let mut j = i + n;
-            let mut rf = Ref { r1: r, c1: c, r2: r, c2: c };
-            if j < b.len() && b[j] == b':' && let Some((r2, c2, n2)) = cell_ref(&b[j + 1..]) {
-                rf = Ref { r1: r.min(r2), c1: c.min(c2), r2: r.max(r2), c2: c.max(c2) };
+            let mut rf = Ref {
+                r1: r,
+                c1: c,
+                r2: r,
+                c2: c,
+            };
+            if j < b.len()
+                && b[j] == b':'
+                && let Some((r2, c2, n2)) = cell_ref(&b[j + 1..])
+            {
+                rf = Ref {
+                    r1: r.min(r2),
+                    c1: c.min(c2),
+                    r2: r.max(r2),
+                    c2: c.max(c2),
+                };
                 j += 1 + n2;
             }
             // Function names like LOG10( are not refs.
@@ -477,13 +669,33 @@ mod tests {
 
     #[test]
     fn totals_and_notes() {
-        for s in ["Total", "Grand Total", "Ukupno Vojvodina", "SUBTOTAL:", "УКУПНО", "Σ", "Svega", "Total revenue"] {
+        for s in [
+            "Total",
+            "Grand Total",
+            "Ukupno Vojvodina",
+            "SUBTOTAL:",
+            "УКУПНО",
+            "Σ",
+            "Svega",
+            "Total revenue",
+        ] {
             assert!(is_total_label(s), "{s}");
         }
-        for s in ["Totally unrelated long label with many many words total", "Region", "Beograd"] {
+        for s in [
+            "Totally unrelated long label with many many words total",
+            "Region",
+            "Beograd",
+        ] {
             assert!(!is_total_label(s), "{s}");
         }
-        for s in ["Source: RZS", "Napomena: preliminarno", "* preliminary", "(1) estimated", "a) excl. VAT", "Извор: РЗС"] {
+        for s in [
+            "Source: RZS",
+            "Napomena: preliminarno",
+            "* preliminary",
+            "(1) estimated",
+            "a) excl. VAT",
+            "Извор: РЗС",
+        ] {
             assert!(is_note_label(s), "{s}");
         }
         for s in ["Beograd", "Q1", "(500)"] {
@@ -506,22 +718,53 @@ mod tests {
 
     #[test]
     fn periods_rules_units_and_marked_numbers() {
-        for s in ["2010-01", "01/2010", "2010-01-31", "31.01.2010", "1/31/2010"] {
+        for s in [
+            "2010-01",
+            "01/2010",
+            "2010-01-31",
+            "31.01.2010",
+            "1/31/2010",
+        ] {
             assert!(is_text_period(s), "{s}");
         }
-        for s in ["2010.01", "01.2010", "2011/12", "2010-13", "1234-01", "12-34", "2010"] {
+        for s in [
+            "2010.01", "01.2010", "2011/12", "2010-13", "1234-01", "12-34", "2010",
+        ] {
             assert!(!is_text_period(s), "{s}");
         }
-        for s in ["-----", "=====", "_____", "~~~~~", "*****", "|", "---------------"] {
+        for s in [
+            "-----",
+            "=====",
+            "_____",
+            "~~~~~",
+            "*****",
+            "|",
+            "---------------",
+        ] {
             assert!(is_rule_text(s), "{s}");
         }
         for s in ["-", "--", "Total", "=-=", "1---"] {
             assert!(!is_rule_text(s), "{s}");
         }
-        for s in ["Mrd. EUR", "%", "% 4)", "2020 = 100", "1 000 Personen", "Tsd. EUR", "in 1000 EUR", "EUR"] {
+        for s in [
+            "Mrd. EUR",
+            "%",
+            "% 4)",
+            "2020 = 100",
+            "1 000 Personen",
+            "Tsd. EUR",
+            "in 1000 EUR",
+            "EUR",
+        ] {
             assert!(is_unit_text(s), "{s}");
         }
-        for s in ["Region", "in", "Ursprungswerte", "2020", "Bruttoinlandsprodukt"] {
+        for s in [
+            "Region",
+            "in",
+            "Ursprungswerte",
+            "2020",
+            "Bruttoinlandsprodukt",
+        ] {
             assert!(!is_unit_text(s), "{s}");
         }
         for s in ["28472.72*", "1737³", "6077.61 (p)", "20560.32e", "7 p"] {
@@ -552,10 +795,20 @@ mod tests {
             assert!(!is_split_year(s), "{s}");
         }
         // Symbol legends under a table are notes; list items and continued sentences are not.
-        for s in ["---Not available.", "# Rounds to zero.", "!Interpret data with caution.", ": not available"] {
+        for s in [
+            "---Not available.",
+            "# Rounds to zero.",
+            "!Interpret data with caution.",
+            ": not available",
+        ] {
             assert!(is_note_label(s), "{s}");
         }
-        for s in ["-Counterparty ($MM)", "... aber der Betreiber", "#1 Plant", "---"] {
+        for s in [
+            "-Counterparty ($MM)",
+            "... aber der Betreiber",
+            "#1 Plant",
+            "---",
+        ] {
             assert!(!is_note_label(s), "{s}");
         }
         // Missing-value marks: Eurostat `:` with flags, NCES and Census marks.
@@ -576,11 +829,20 @@ mod tests {
         for value in ["40.3 (SD 12.9", "39.7 (SD 12.6)", "55 (SD 13", "-2 (SD 0)"] {
             assert_eq!(text_kind(value), Kind::Num, "{value}");
         }
-        for value in ["Mean (SD)", "Number (SD reporting)", "40.3 (SD pending", "40.3 (SD -1)",
-            "40.3 (SD 12.9) years", "NaN (SD 2)", "40.3 (SD inf)", "40.3 (SD 12.9))",
-            "40.3 (SD 12.9) other", "40.3 SD 12.9", "SD 12.9"] {
+        for value in [
+            "Mean (SD)",
+            "Number (SD reporting)",
+            "40.3 (SD pending",
+            "40.3 (SD -1)",
+            "40.3 (SD 12.9) years",
+            "NaN (SD 2)",
+            "40.3 (SD inf)",
+            "40.3 (SD 12.9))",
+            "40.3 (SD 12.9) other",
+            "40.3 SD 12.9",
+            "SD 12.9",
+        ] {
             assert_eq!(text_kind(value), Kind::Text, "{value}");
         }
     }
-
 }

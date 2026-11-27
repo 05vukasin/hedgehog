@@ -29,7 +29,17 @@ impl MissingKind {
 /// Excel error literals (case-insensitive).
 pub fn is_excel_error(s: &str) -> bool {
     const ERRORS: [&str; 11] = [
-        "#n/a", "#ref!", "#div/0!", "#value!", "#name?", "#num!", "#null!", "#spill!", "#calc!", "#getting_data", "#n/a!",
+        "#n/a",
+        "#ref!",
+        "#div/0!",
+        "#value!",
+        "#name?",
+        "#num!",
+        "#null!",
+        "#spill!",
+        "#calc!",
+        "#getting_data",
+        "#n/a!",
     ];
     let t = trim(s);
     t.starts_with('#') && t.len() <= 14 && ERRORS.iter().any(|e| t.eq_ignore_ascii_case(e))
@@ -58,14 +68,22 @@ pub fn missing_token(s: &str) -> Option<MissingKind> {
     // Pure punctuation placeholders: runs of one dash kind, slashes, dots, ?, *, _.
     let mut chars = t.chars().filter(|c| !c.is_whitespace());
     let first = chars.next()?;
-    if matches!(first, '-' | '–' | '—' | '−' | '/' | '.' | '…' | ':' | '?' | '*' | '_' | '\\') && chars.all(|c| c == first) {
+    if matches!(
+        first,
+        '-' | '–' | '—' | '−' | '/' | '.' | '…' | ':' | '?' | '*' | '_' | '\\'
+    ) && chars.all(|c| c == first)
+    {
         return Some(MissingKind::Placeholder);
     }
     // Eurostat: ":" with flag letters ("not available, confidential" `: c`, `:z`, `: bu`).
     if let Some(flags) = t.strip_prefix(':') {
         let flags = trim(flags);
         // `m`: "missing, data cannot exist" (only after `:`; a number with `m` is a unit).
-        if (1..=3).contains(&flags.len()) && flags.bytes().all(|b| FLAG_LETTERS.contains(&b) || b == b'm') {
+        if (1..=3).contains(&flags.len())
+            && flags
+                .bytes()
+                .all(|b| FLAG_LETTERS.contains(&b) || b == b'm')
+        {
             return Some(MissingKind::Placeholder);
         }
     }
@@ -127,16 +145,19 @@ pub fn numeric_annotation(s: &str) -> Option<NumericAnnotation> {
         }
         return None;
     }
-    if matches!(t, "c" | "C" | "[c]" | "[C]" | "(c)" | "(C)" | "(D)" | "(S)" | "[low]" | "[u]" | "F") {
+    if matches!(
+        t,
+        "c" | "C" | "[c]" | "[C]" | "(c)" | "(C)" | "(D)" | "(S)" | "[low]" | "[u]" | "F"
+    ) {
         return Some(NumericAnnotation::Suppressed);
     }
     match norm_key(t).as_str() {
-        "confidential" | "conf." | "suppressed" | "withheld" | "redacted" | "geheim" | "vertraulich" | "confidentiel"
-        | "secret" | "secret statistique" | "riservato" | "confidencial" | "poverljivo" | "tajno" => {
-            Some(NumericAnnotation::Suppressed)
-        }
-        "see note" | "see notes" | "see footnote" | "see footnotes" | "see comment" | "see text" | "siehe fussnote"
-        | "siehe anmerkung" | "voir note" | "ver nota" | "vidi napomenu" => Some(NumericAnnotation::SeeNote),
+        "confidential" | "conf." | "suppressed" | "withheld" | "redacted" | "geheim"
+        | "vertraulich" | "confidentiel" | "secret" | "secret statistique" | "riservato"
+        | "confidencial" | "poverljivo" | "tajno" => Some(NumericAnnotation::Suppressed),
+        "see note" | "see notes" | "see footnote" | "see footnotes" | "see comment"
+        | "see text" | "siehe fussnote" | "siehe anmerkung" | "voir note" | "ver nota"
+        | "vidi napomenu" => Some(NumericAnnotation::SeeNote),
         _ => None,
     }
 }
@@ -146,7 +167,11 @@ pub fn numeric_annotation(s: &str) -> Option<NumericAnnotation> {
 /// columns; the cell features (and so the trained row model) keep seeing these as text.
 pub fn table_missing_token(s: &str) -> Option<MissingKind> {
     missing_token(s).or_else(|| {
-        matches!(trim(s), "(X)" | "(x)" | "[x]" | "[X]" | "(NA)" | "[NA]" | "[z]" | "[Z]").then_some(MissingKind::Placeholder)
+        matches!(
+            trim(s),
+            "(X)" | "(x)" | "[x]" | "[X]" | "(NA)" | "[NA]" | "[z]" | "[Z]"
+        )
+        .then_some(MissingKind::Placeholder)
     })
 }
 
@@ -235,7 +260,21 @@ mod tests {
         for (s, k) in cases {
             assert_eq!(missing_token(s), Some(k), "{s:?}");
         }
-        for s in ["0", "a", "-5", "Beograd", "n", "#hashtag", "x1", "- a", "nema kraja", "1/2", ": note", "c", "<5"] {
+        for s in [
+            "0",
+            "a",
+            "-5",
+            "Beograd",
+            "n",
+            "#hashtag",
+            "x1",
+            "- a",
+            "nema kraja",
+            "1/2",
+            ": note",
+            "c",
+            "<5",
+        ] {
             assert_eq!(missing_token(s), None, "{s:?}");
         }
         assert_eq!(MissingKind::Error.as_str(), "error");
@@ -244,7 +283,11 @@ mod tests {
     #[test]
     fn table_missing_tokens() {
         for s in ["(X)", "[x]", "(NA)", "[z]", "-", ":"] {
-            assert_eq!(table_missing_token(s), Some(MissingKind::Placeholder), "{s:?}");
+            assert_eq!(
+                table_missing_token(s),
+                Some(MissingKind::Placeholder),
+                "{s:?}"
+            );
         }
         for s in ["(X)", "[x]", "(NA)", "(Z)"] {
             assert_eq!(missing_token(s), None, "{s:?}");
@@ -271,7 +314,19 @@ mod tests {
         ] {
             assert_eq!(numeric_annotation(s), Some(k), "{s:?}");
         }
-        for s in ["", "5", "<", "<abc", "< 5 years", "cc", "C++", "approx.", "-", "n/a", "confidentially speaking"] {
+        for s in [
+            "",
+            "5",
+            "<",
+            "<abc",
+            "< 5 years",
+            "cc",
+            "C++",
+            "approx.",
+            "-",
+            "n/a",
+            "confidentially speaking",
+        ] {
             assert_eq!(numeric_annotation(s), None, "{s:?}");
         }
     }

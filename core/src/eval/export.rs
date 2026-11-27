@@ -13,7 +13,7 @@ use crate::features::Features;
 use crate::grid::Grid;
 
 use super::gt::{Corpus, GtFile};
-use super::split::{fnv1a, Split};
+use super::split::{Split, fnv1a};
 
 /// What to export.
 #[derive(Debug, Clone)]
@@ -40,7 +40,10 @@ pub struct ExportStats {
 /// Role as a small integer, in [`Role::ALL`] order (the `label` column and the `l_*` features;
 /// -1 = no cell).
 pub fn role_id(r: Role) -> i32 {
-    Role::ALL.iter().position(|&x| x == r).map_or(-1, |i| i as i32)
+    Role::ALL
+        .iter()
+        .position(|&x| x == r)
+        .map_or(-1, |i| i as i32)
 }
 
 /// Every feature column for one sheet, in a fixed order: core features, then layout features.
@@ -91,7 +94,12 @@ pub fn layout_and_features(grid: &Grid, styles: bool) -> (crate::analysis::Sheet
         });
         let mut ctx = Features::new(n);
         crate::context::compute(grid, &mut ctx);
-        (join(lay.join()), ctx, join(values.join()), join(totals.join()))
+        (
+            join(lay.join()),
+            ctx,
+            join(values.join()),
+            join(totals.join()),
+        )
     });
     f.append(values);
     f.append(totals);
@@ -115,7 +123,9 @@ fn finish(
 ) {
     let n = grid.sheet.cells.len();
     let lx = LayoutTotals::new(grid, lay, cands);
-    let mut cols: Vec<Vec<f32>> = (0..LAYOUT_TOTALS.len()).map(|_| Vec::with_capacity(n)).collect();
+    let mut cols: Vec<Vec<f32>> = (0..LAYOUT_TOTALS.len())
+        .map(|_| Vec::with_capacity(n))
+        .collect();
     for i in 0..n {
         for (col, v) in cols.iter_mut().zip(lx.cell(i)) {
             col.push(v);
@@ -172,7 +182,9 @@ impl<'g> LayoutTotals<'g> {
         let mut row_v: rustc_hash::FxHashMap<u32, u32> = Default::default();
         let mut col_h: rustc_hash::FxHashMap<u32, u32> = Default::default();
         for c in cands {
-            let Some(i) = grid.cell_index(c.row, c.col) else { continue };
+            let Some(i) = grid.cell_index(c.row, c.col) else {
+                continue;
+            };
             let vertical = c.direction == Direction::Vertical;
             let level = match c.level {
                 TotalLevel::Total => 1.0,
@@ -188,12 +200,33 @@ impl<'g> LayoutTotals<'g> {
         }
         let cells = &grid.sheet.cells;
         let numeric = |idx: &[u32]| {
-            idx.iter().filter(|&&i| matches!(cells[i as usize].value, Some(crate::model::Value::Number(_)))).count().max(1)
+            idx.iter()
+                .filter(|&&i| {
+                    matches!(
+                        cells[i as usize].value,
+                        Some(crate::model::Value::Number(_))
+                    )
+                })
+                .count()
+                .max(1)
         };
         // A row or column without candidates has 0 / numbers = +0.0.
-        let row_v = row_v.into_iter().map(|(r, v)| (r, (v, v as f32 / numeric(grid.row_cells(r)) as f32))).collect();
-        let col_h = col_h.into_iter().map(|(c, h)| (c, h as f32 / numeric(grid.col_cells(c)) as f32)).collect();
-        LayoutTotals { grid, lay, in_table: in_tables(&grid.sheet.cells, &lay.tables), cand, row_v, col_h }
+        let row_v = row_v
+            .into_iter()
+            .map(|(r, v)| (r, (v, v as f32 / numeric(grid.row_cells(r)) as f32)))
+            .collect();
+        let col_h = col_h
+            .into_iter()
+            .map(|(c, h)| (c, h as f32 / numeric(grid.col_cells(c)) as f32))
+            .collect();
+        LayoutTotals {
+            grid,
+            lay,
+            in_table: in_tables(&grid.sheet.cells, &lay.tables),
+            cand,
+            row_v,
+            col_h,
+        }
     }
 
     /// The [`LAYOUT_TOTALS`] of cell `i` (index into `sheet.cells`), in order.
@@ -205,7 +238,8 @@ impl<'g> LayoutTotals<'g> {
             if r < 0 || c < 0 {
                 return -1.0;
             }
-            grid.cell_index(r as u32, c as u32).map_or(-1.0, |i| role_id(roles[i]) as f32)
+            grid.cell_index(r as u32, c as u32)
+                .map_or(-1.0, |i| role_id(roles[i]) as f32)
         };
         let c = &cells[i];
         let (r, k) = (c.row as i64, c.col as i64);
@@ -231,8 +265,12 @@ impl<'g> LayoutTotals<'g> {
 /// Per cell: whether any table's rectangle contains it (`l_in_table`). A sweep over the rows with
 /// the tables that span the current row, instead of testing every table for every cell:
 /// O(cells × overlapping tables + tables · log) rather than O(cells × tables).
-pub(crate) fn in_tables(cells: &[crate::model::Cell], tables: &[crate::analysis::DetectedTable]) -> Vec<bool> {
-    let inside = |r: &crate::model::Rect, c: &crate::model::Cell| r.left <= c.col && c.col <= r.right;
+pub(crate) fn in_tables(
+    cells: &[crate::model::Cell],
+    tables: &[crate::analysis::DetectedTable],
+) -> Vec<bool> {
+    let inside =
+        |r: &crate::model::Rect, c: &crate::model::Cell| r.left <= c.col && c.col <= r.right;
     let mut rects: Vec<crate::model::Rect> = tables.iter().map(|t| t.rect).collect();
     rects.sort_by_key(|r| r.top);
     let mut order: Vec<u32> = Vec::new();
@@ -244,7 +282,11 @@ pub(crate) fn in_tables(cells: &[crate::model::Cell], tables: &[crate::analysis:
     let mut active: Vec<crate::model::Rect> = Vec::new();
     let (mut next, mut row) = (0usize, None::<u32>);
     for k in 0..cells.len() {
-        let i = if order.is_empty() { k } else { order[k] as usize };
+        let i = if order.is_empty() {
+            k
+        } else {
+            order[k] as usize
+        };
         let c = &cells[i];
         if row != Some(c.row) {
             row = Some(c.row);
@@ -301,7 +343,9 @@ fn add_style_features(grid: &Grid, f: &mut Features) {
                 sizes[s.size_half_pt as usize] += 1;
             }
         }
-        let mode = (1..sizes.len()).max_by_key(|&k| (sizes[k], std::cmp::Reverse(k))).filter(|&k| sizes[k] > 0);
+        let mode = (1..sizes.len())
+            .max_by_key(|&k| (sizes[k], std::cmp::Reverse(k)))
+            .filter(|&k| sizes[k] > 0);
         for (i, fm) in sheet.formats.iter().enumerate() {
             let Some(s) = fm.unpack() else { continue };
             let align = match s.align {
@@ -368,19 +412,43 @@ fn quote(s: &str) -> String {
 
 /// Writes the CSV header (when `header`) and one row per kept labelled cell of every file in the
 /// split. Files that fail to open are counted and skipped.
-pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, header: bool) -> std::io::Result<ExportStats> {
+pub fn export(
+    corpus: &Corpus,
+    opts: &ExportOptions,
+    out: &mut impl Write,
+    header: bool,
+) -> std::io::Result<ExportStats> {
     let mut stats = ExportStats::default();
     let mut names: Option<Vec<&'static str>> = None;
     let keep_below = (opts.data_keep.clamp(0.0, 1.0) as f64 * u64::MAX as f64) as u64;
-    let weight = if opts.data_keep > 0.0 { 1.0 / opts.data_keep.min(1.0) } else { 0.0 };
-    let files: Vec<&GtFile> =
-        corpus.files.iter().filter(|f| opts.split.contains(&f.id)).take(opts.limit.unwrap_or(usize::MAX)).collect();
+    let weight = if opts.data_keep > 0.0 {
+        1.0 / opts.data_keep.min(1.0)
+    } else {
+        0.0
+    };
+    let files: Vec<&GtFile> = corpus
+        .files
+        .iter()
+        .filter(|f| opts.split.contains(&f.id))
+        .take(opts.limit.unwrap_or(usize::MAX))
+        .collect();
     let mut wrote_header = !header;
     for (k, file) in files.iter().enumerate() {
         if opts.progress && k % 50 == 0 {
             eprintln!("  {}/{} files, {} rows", k, files.len(), stats.rows);
         }
-        let wb = std::iter::once(&file.path).chain(&file.fallback_paths).find_map(|p| crate::reader::open_with(p, crate::reader::ReadOptions { formats: true, ..Default::default() }).ok());
+        let wb = std::iter::once(&file.path)
+            .chain(&file.fallback_paths)
+            .find_map(|p| {
+                crate::reader::open_with(
+                    p,
+                    crate::reader::ReadOptions {
+                        formats: true,
+                        ..Default::default()
+                    },
+                )
+                .ok()
+            });
         let Some(wb) = wb else {
             stats.failed += 1;
             continue;
@@ -388,7 +456,9 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
         stats.files += 1;
         let split = super::split::split_of(&file.id).as_str();
         for gs in &file.sheets {
-            let Some((si, _)) = super::run::find_sheet(&wb, &gs.name, gs.index) else { continue };
+            let Some((si, _)) = super::run::find_sheet(&wb, &gs.name, gs.index) else {
+                continue;
+            };
             let sheet = &wb.sheets[si];
             let grid = Grid::new(sheet);
             let f = sheet_features(&grid);
@@ -404,10 +474,19 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
             }
             match &names {
                 None => names = Some(f.names().to_vec()),
-                Some(n) => assert_eq!(n.as_slice(), f.names(), "feature columns differ between sheets"),
+                Some(n) => assert_eq!(
+                    n.as_slice(),
+                    f.names(),
+                    "feature columns differ between sheets"
+                ),
             }
             stats.sheets += 1;
-            let prefix = format!("{},{},{}", quote(&opts.source), quote(&file.id), quote(&gs.name));
+            let prefix = format!(
+                "{},{},{}",
+                quote(&opts.source),
+                quote(&file.id),
+                quote(&gs.name)
+            );
             let mut line = String::new();
             for gc in &gs.cells {
                 let idx = grid.cell_index(gc.row, gc.col).or_else(|| {
@@ -416,7 +495,10 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
                 });
                 let Some(i) = idx else { continue };
                 let w = if gc.role == Role::Data {
-                    let h = fnv1a(&format!("{}\u{1f}{}\u{1f}{}\u{1f}{}", file.id, gs.name, gc.row, gc.col));
+                    let h = fnv1a(&format!(
+                        "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+                        file.id, gs.name, gc.row, gc.col
+                    ));
                     if h > keep_below {
                         continue;
                     }
@@ -426,7 +508,13 @@ pub fn export(corpus: &Corpus, opts: &ExportOptions, out: &mut impl Write, heade
                 };
                 line.clear();
                 use std::fmt::Write as _;
-                let _ = write!(line, "{prefix},{},{},{split},{},{w}", gc.row, gc.col, role_id(gc.role));
+                let _ = write!(
+                    line,
+                    "{prefix},{},{},{split},{},{w}",
+                    gc.row,
+                    gc.col,
+                    role_id(gc.role)
+                );
                 for c in &cols {
                     let _ = write!(line, ",{}", c[i]);
                 }
@@ -448,17 +536,33 @@ mod tests {
     #[test]
     fn in_tables_matches_testing_every_table() {
         let t = |top, left, bottom, right| DetectedTable {
-            rect: Rect { top, left, bottom, right },
+            rect: Rect {
+                top,
+                left,
+                bottom,
+                right,
+            },
             header_top: top,
             header_rows: 1,
             confidence: 1.0,
         };
-        let tables = vec![t(5, 0, 9, 3), t(0, 2, 20, 2), t(12, 1, 14, 6), t(30, 0, 30, 0), t(8, 5, 12, 9)];
+        let tables = vec![
+            t(5, 0, 9, 3),
+            t(0, 2, 20, 2),
+            t(12, 1, 14, 6),
+            t(30, 0, 30, 0),
+            t(8, 5, 12, 9),
+        ];
         let mut cells = Vec::new();
         for r in 0..35u32 {
             for c in 0..11u32 {
                 if (r * 7 + c * 3) % 4 != 0 {
-                    cells.push(Cell { row: r, col: c, value: Some(Value::Number(1.0)), formula: None });
+                    cells.push(Cell {
+                        row: r,
+                        col: c,
+                        value: Some(Value::Number(1.0)),
+                        formula: None,
+                    });
                 }
             }
         }
@@ -467,7 +571,10 @@ mod tests {
                 .iter()
                 .map(|c| {
                     tables.iter().any(|t| {
-                        t.rect.top <= c.row && c.row <= t.rect.bottom && t.rect.left <= c.col && c.col <= t.rect.right
+                        t.rect.top <= c.row
+                            && c.row <= t.rect.bottom
+                            && t.rect.left <= c.col
+                            && c.col <= t.rect.right
                     })
                 })
                 .collect()

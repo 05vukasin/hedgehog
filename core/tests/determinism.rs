@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use hh_core::{layout, open, Grid, NormalizeOptions};
+use hh_core::{Grid, NormalizeOptions, layout, open};
 use rust_xlsxwriter::{Workbook, Worksheet};
 
 fn tmp(name: &str) -> PathBuf {
@@ -17,7 +17,8 @@ fn tmp(name: &str) -> PathBuf {
 /// Title, header and 30 rows over 14 columns; column `j` holds a text ("rev 7") on every
 /// `j + 2`-th row, so the columns have many different type purities, then a total row.
 fn mixed_table(ws: &mut Worksheet, seed: u32) {
-    ws.write_string(0, 0, "Quarterly figures by region").unwrap();
+    ws.write_string(0, 0, "Quarterly figures by region")
+        .unwrap();
     ws.write_string(2, 0, "Region").unwrap();
     for j in 1..15u16 {
         ws.write_string(2, j, format!("M{j}")).unwrap();
@@ -29,7 +30,8 @@ fn mixed_table(ws: &mut Worksheet, seed: u32) {
             if (i + seed).is_multiple_of(j as u32 + 2) {
                 ws.write_string(r, j, format!("rev {i}")).unwrap();
             } else {
-                ws.write_number(r, j, ((i * 37 + j as u32 * 11 + seed) % 997) as f64 + 0.25).unwrap();
+                ws.write_number(r, j, ((i * 37 + j as u32 * 11 + seed) % 997) as f64 + 0.25)
+                    .unwrap();
             }
         }
     }
@@ -56,17 +58,27 @@ fn table_confidence_does_not_depend_on_hash_order() {
     let mut book = open(&path).unwrap();
     std::fs::remove_file(&path).ok();
     let sheet = book.sheets.remove(0);
-    let first: Vec<u32> = layout::analyze(&Grid::new(&sheet)).tables.iter().map(|t| t.confidence.to_bits()).collect();
+    let first: Vec<u32> = layout::analyze(&Grid::new(&sheet))
+        .tables
+        .iter()
+        .map(|t| t.confidence.to_bits())
+        .collect();
     assert!(!first.is_empty());
     for _ in 0..60 {
-        let again: Vec<u32> =
-            layout::analyze(&Grid::new(&sheet)).tables.iter().map(|t| t.confidence.to_bits()).collect();
+        let again: Vec<u32> = layout::analyze(&Grid::new(&sheet))
+            .tables
+            .iter()
+            .map(|t| t.confidence.to_bits())
+            .collect();
         assert_eq!(again, first);
     }
 }
 
 fn normalize_bytes(src: &Path, out: &Path, threads: Option<usize>) -> (String, Vec<u8>) {
-    let opts = NormalizeOptions { threads, ..Default::default() };
+    let opts = NormalizeOptions {
+        threads,
+        ..Default::default()
+    };
     let o = hh_core::normalize_file(src, out, &opts).unwrap();
     let xlsx = std::fs::read(&o.xlsx_path).unwrap();
     std::fs::remove_dir_all(out).ok();
@@ -91,13 +103,19 @@ fn normalized_output_is_byte_identical() {
     let first = normalize_bytes(&src, &out, None);
     let core = zip_part(&first.1, "docProps/core.xml");
     assert!(core.contains("1980-01-01T00:00:00Z"), "{core}");
-    for (k, threads) in [None, Some(1), None, Some(1), Some(3), None, Some(1)].into_iter().enumerate() {
+    for (k, threads) in [None, Some(1), None, Some(1), Some(3), None, Some(1)]
+        .into_iter()
+        .enumerate()
+    {
         if k == 3 {
             std::thread::sleep(std::time::Duration::from_millis(1100));
         }
         let again = normalize_bytes(&src, &out, threads);
         assert!(again.0 == first.0, "manifest differs (threads {threads:?})");
-        assert!(again.1 == first.1, "xlsx bytes differ (threads {threads:?})");
+        assert!(
+            again.1 == first.1,
+            "xlsx bytes differ (threads {threads:?})"
+        );
     }
     std::fs::remove_file(&src).ok();
 }
@@ -111,7 +129,10 @@ fn corpus_files_are_repeatable() {
         eprintln!("HEDGEHOG_DATA not set; skipped");
         return;
     };
-    let files = ["irregular/us_bea/007_trad0826.xlsx", "irregular/us_bea/001_gdp-gdi-vintage-history.xlsx"];
+    let files = [
+        "irregular/us_bea/007_trad0826.xlsx",
+        "irregular/us_bea/001_gdp-gdi-vintage-history.xlsx",
+    ];
     for f in files {
         let src = data.join(f);
         if !src.exists() {
@@ -124,7 +145,11 @@ fn corpus_files_are_repeatable() {
             let threads = if k < 4 { None } else { Some(1) };
             let again = normalize_bytes(&src, &out, threads);
             assert!(again.0 == first.0, "{f}: manifest differs in run {}", k + 2);
-            assert!(again.1 == first.1, "{f}: xlsx bytes differ in run {}", k + 2);
+            assert!(
+                again.1 == first.1,
+                "{f}: xlsx bytes differ in run {}",
+                k + 2
+            );
         }
         eprintln!("{f}: 10 runs identical");
     }

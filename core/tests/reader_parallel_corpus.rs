@@ -10,37 +10,75 @@
 //! Files are untrusted and only parsed.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use hh_core::reader::{open_with, ReadOptions};
+use hh_core::reader::{ReadOptions, open_with};
 
 fn files() -> Vec<PathBuf> {
     if let Ok(list) = std::env::var("READ_LIST") {
-        return std::fs::read_to_string(list).unwrap().lines().filter(|l| !l.trim().is_empty()).map(PathBuf::from).collect();
+        return std::fs::read_to_string(list)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(PathBuf::from)
+            .collect();
     }
     let data = std::env::var("HEDGEHOG_DATA").unwrap_or_else(|_| "../../testdata".into());
-    let Ok(rd) = std::fs::read_dir(PathBuf::from(data).join("irregular/enron")) else { return Vec::new() };
+    let Ok(rd) = std::fs::read_dir(PathBuf::from(data).join("irregular/enron")) else {
+        return Vec::new();
+    };
     let mut v: Vec<PathBuf> = rd
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("xlsx") || x.eq_ignore_ascii_case("xlsm")))
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("xlsx") || x.eq_ignore_ascii_case("xlsm"))
+        })
         .collect();
     v.sort();
     v
 }
 
 /// The workbook as comparable text: per sheet its name, cells, merges and formats; or the error.
-fn read(path: &PathBuf, formats: bool) -> Result<Vec<(String, Vec<hh_core::Cell>, Vec<hh_core::Rect>, Vec<hh_core::model::Format>)>, String> {
-    let wb = open_with(path, ReadOptions { formats, ..Default::default() }).map_err(|e| e.to_string())?;
-    Ok(wb.sheets.into_iter().map(|s| (s.name, s.cells, s.merges, s.formats)).collect())
+fn read(
+    path: &PathBuf,
+    formats: bool,
+) -> Result<
+    Vec<(
+        String,
+        Vec<hh_core::Cell>,
+        Vec<hh_core::Rect>,
+        Vec<hh_core::model::Format>,
+    )>,
+    String,
+> {
+    let wb = open_with(
+        path,
+        ReadOptions {
+            formats,
+            ..Default::default()
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(wb
+        .sheets
+        .into_iter()
+        .map(|s| (s.name, s.cells, s.merges, s.formats))
+        .collect())
 }
 
 #[test]
 #[ignore]
 fn parallel_read_matches_one_thread() {
     let files = files();
-    let chunk: usize = std::env::var("READ_CHUNK").ok().and_then(|s| s.parse().ok()).unwrap_or(4096);
-    let threads: usize = std::env::var("READ_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
+    let chunk: usize = std::env::var("READ_CHUNK")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4096);
+    let threads: usize = std::env::var("READ_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2);
     let next = AtomicUsize::new(0);
     let checked = AtomicUsize::new(0);
     let diffs = Mutex::new(Vec::new());

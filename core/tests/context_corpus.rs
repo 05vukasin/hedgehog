@@ -3,12 +3,12 @@
 //! `cargo test --release -p hh_core --test context_corpus -- --ignored --nocapture`
 //! Env: `HEDGEHOG_DATA` (default `../testdata` next to the repo), `HH_CORPUS_N` (default 500).
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::time::Instant;
 
 use hh_core::context;
-use hh_core::{open, Features, Grid};
+use hh_core::{Features, Grid, open};
 
 fn data_dir() -> PathBuf {
     match std::env::var("HEDGEHOG_DATA") {
@@ -37,17 +37,23 @@ fn enron_sample() {
     // Deterministic shuffle.
     let mut seed: u64 = 7;
     for i in (1..files.len()).rev() {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         files.swap(i, (seed >> 33) as usize % (i + 1));
     }
-    let want: usize = std::env::var("HH_CORPUS_N").ok().and_then(|s| s.parse().ok()).unwrap_or(500);
+    let want: usize = std::env::var("HH_CORPUS_N")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(500);
     files.truncate(want);
 
     let (mut opened, mut open_errors, mut panics) = (0, 0, Vec::new());
     let mut file_ms: Vec<f64> = Vec::new();
     let mut comps_per_sheet: Vec<f64> = Vec::new();
     let (mut sheets, mut nonempty_sheets, mut multi_comp) = (0usize, 0usize, 0usize);
-    let (mut total_cells, mut total_comps, mut singleton_comps, mut comps_ge4) = (0usize, 0usize, 0usize, 0usize);
+    let (mut total_cells, mut total_comps, mut singleton_comps, mut comps_ge4) =
+        (0usize, 0usize, 0usize, 0usize);
     let (mut block_rows, mut single_block_rows) = (0usize, 0usize);
     let (mut merged_cells, mut text_over_num, mut row_label) = (0usize, 0usize, 0usize);
     let mut slowest = (0.0f64, String::new());
@@ -84,7 +90,13 @@ fn enron_sample() {
         file_ms.push(ms);
         if ms > slowest.0 {
             let cells: usize = wb.sheets.iter().map(|s| s.cells.len()).sum();
-            slowest = (ms, format!("{} ({cells} cells)", path.file_name().unwrap().to_string_lossy()));
+            slowest = (
+                ms,
+                format!(
+                    "{} ({cells} cells)",
+                    path.file_name().unwrap().to_string_lossy()
+                ),
+            );
         }
         for (n, f, comps) in per_sheet {
             sheets += 1;
@@ -106,18 +118,52 @@ fn enron_sample() {
                     single_block_rows += (single[i] == 1.0) as usize;
                 }
             }
-            merged_cells += f.get("c_in_merge").unwrap().iter().filter(|&&v| v == 1.0).count();
-            text_over_num += f.get("c_text_over_numbers").unwrap().iter().filter(|&&v| v >= 0.8).count();
-            row_label += f.get("c_row_label").unwrap().iter().filter(|&&v| v == 1.0).count();
+            merged_cells += f
+                .get("c_in_merge")
+                .unwrap()
+                .iter()
+                .filter(|&&v| v == 1.0)
+                .count();
+            text_over_num += f
+                .get("c_text_over_numbers")
+                .unwrap()
+                .iter()
+                .filter(|&&v| v >= 0.8)
+                .count();
+            row_label += f
+                .get("c_row_label")
+                .unwrap()
+                .iter()
+                .filter(|&&v| v == 1.0)
+                .count();
         }
     }
 
     file_ms.sort_by(|a, b| a.partial_cmp(b).unwrap());
     comps_per_sheet.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let mean = |v: &[f64]| if v.is_empty() { 0.0 } else { v.iter().sum::<f64>() / v.len() as f64 };
-    let share = |a: usize, b: usize| if b == 0 { 0.0 } else { 100.0 * a as f64 / b as f64 };
-    println!("== context corpus check: {} files sampled from {}", files.len(), dir.display());
-    println!("opened {opened}, open errors {open_errors}, panics {}", panics.len());
+    let mean = |v: &[f64]| {
+        if v.is_empty() {
+            0.0
+        } else {
+            v.iter().sum::<f64>() / v.len() as f64
+        }
+    };
+    let share = |a: usize, b: usize| {
+        if b == 0 {
+            0.0
+        } else {
+            100.0 * a as f64 / b as f64
+        }
+    };
+    println!(
+        "== context corpus check: {} files sampled from {}",
+        files.len(),
+        dir.display()
+    );
+    println!(
+        "opened {opened}, open errors {open_errors}, panics {}",
+        panics.len()
+    );
     println!(
         "compute time per file (all sheets): mean {:.2} ms, p50 {:.2}, p95 {:.2}, p99 {:.2}, max {:.1} ms [{}]",
         mean(&file_ms),

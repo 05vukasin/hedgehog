@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use hh_core::normalize::{normalize_workbook, Dtype, Options, Out, Table};
+use hh_core::normalize::{Dtype, Options, Out, Table, normalize_workbook};
 use hh_core::open;
 use rust_xlsxwriter::Workbook;
 
@@ -16,7 +16,8 @@ enum V<'a> {
 
 /// One table: header row, then the body rows; its first table.
 fn table(name: &str, header: &[&str], body: &[Vec<V>]) -> Table {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_items_{name}_{}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_items_{name}_{}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     for (c, h) in header.iter().enumerate() {
@@ -33,11 +34,18 @@ fn table(name: &str, header: &[&str], body: &[Vec<V>]) -> Table {
     wb.save(&path).unwrap();
     let book = open(&path).unwrap();
     std::fs::remove_file(&path).ok();
-    normalize_workbook(&book, &Options::default()).tables.into_iter().next().expect("a table")
+    normalize_workbook(&book, &Options::default())
+        .tables
+        .into_iter()
+        .next()
+        .expect("a table")
 }
 
 fn col<'a>(t: &'a Table, name: &str) -> &'a hh_core::normalize::Column {
-    t.columns.iter().find(|c| c.name == name).unwrap_or_else(|| panic!("no {name}"))
+    t.columns
+        .iter()
+        .find(|c| c.name == name)
+        .unwrap_or_else(|| panic!("no {name}"))
 }
 
 /// en-0371: an item-number column with sub-items `(1)`, `(2)` among plain numbers 1, 2, 3 keeps
@@ -46,14 +54,31 @@ fn col<'a>(t: &'a Table, name: &str) -> &'a hh_core::normalize::Column {
 fn item_number_in_parentheses_is_no_negative() {
     use V::*;
     let mut body = Vec::new();
-    for (k, item) in ["(1)", "1", "2", "3", "(2)", "1", "2", "(3)", "1", "2", "3", "4"].iter().enumerate() {
-        body.push(vec![T(item), T(["Field leveling", "Earth backfill", "Sod laying"][k % 3]), N(10.5 + k as f64)]);
+    for (k, item) in [
+        "(1)", "1", "2", "3", "(2)", "1", "2", "(3)", "1", "2", "3", "4",
+    ]
+    .iter()
+    .enumerate()
+    {
+        body.push(vec![
+            T(item),
+            T(["Field leveling", "Earth backfill", "Sod laying"][k % 3]),
+            N(10.5 + k as f64),
+        ]);
     }
     let t = table("item", &["No.", "Item", "Quantity"], &body);
     let no = col(&t, "No.");
     assert!(!no.values.contains(&Out::Num(-1.0)), "{:?}", no.values);
-    assert!(no.values.contains(&Out::Text("(1)".into())), "{:?}", no.values);
-    assert!(no.values.contains(&Out::Text("(3)".into())), "{:?}", no.values);
+    assert!(
+        no.values.contains(&Out::Text("(1)".into())),
+        "{:?}",
+        no.values
+    );
+    assert!(
+        no.values.contains(&Out::Text("(3)".into())),
+        "{:?}",
+        no.values
+    );
 }
 
 /// An amount column that writes negatives in parentheses (a thousands separator, another
@@ -81,7 +106,11 @@ fn accounting_negatives_in_an_amount_column() {
         vec![T("D"), N(9.0)],
     ];
     let t = table("neg", &["Item", "Change"], &body);
-    assert!(col(&t, "Change").values.contains(&Out::Num(-4.0)), "{:?}", col(&t, "Change").values);
+    assert!(
+        col(&t, "Change").values.contains(&Out::Num(-4.0)),
+        "{:?}",
+        col(&t, "Change").values
+    );
 }
 
 /// en-0496: a `Date` column of plain serials (no date format) is a date column; serials under
@@ -89,8 +118,21 @@ fn accounting_negatives_in_an_amount_column() {
 #[test]
 fn plain_serials_under_a_date_header() {
     use V::*;
-    let body: Vec<Vec<V>> = (0..6).map(|k| vec![N(1.0 + k as f64), N(44301.0 + k as f64), N(44301.0 + 7.0 * k as f64), N(3.0 + k as f64)]).collect();
-    let t = table("serial", &["Serial Number", "Date", "Amount", "Date of week"], &body);
+    let body: Vec<Vec<V>> = (0..6)
+        .map(|k| {
+            vec![
+                N(1.0 + k as f64),
+                N(44301.0 + k as f64),
+                N(44301.0 + 7.0 * k as f64),
+                N(3.0 + k as f64),
+            ]
+        })
+        .collect();
+    let t = table(
+        "serial",
+        &["Serial Number", "Date", "Amount", "Date of week"],
+        &body,
+    );
     let d = col(&t, "Date");
     assert_eq!(d.dtype, Dtype::Date);
     assert_eq!(d.values[0], Out::Date(44301.0));

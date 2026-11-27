@@ -6,12 +6,13 @@
 
 use std::path::PathBuf;
 
-use hh_core::normalize::{normalize_workbook, Normalized, Options, Out, RowType, Table};
+use hh_core::normalize::{Normalized, Options, Out, RowType, Table, normalize_workbook};
 use hh_core::open;
 use rust_xlsxwriter::{Workbook, Worksheet};
 
 fn build(name: &str, fill: impl Fn(&mut Worksheet)) -> Vec<Normalized> {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_totals_text_{name}_{}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_totals_text_{name}_{}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     fill(ws);
@@ -21,22 +22,49 @@ fn build(name: &str, fill: impl Fn(&mut Worksheet)) -> Vec<Normalized> {
     // Both analyzers: the rules alone and rules + the learned row model.
     [true, false]
         .into_iter()
-        .map(|rules_only| normalize_workbook(&book, &Options { rules_only, keep_totals: true, ..Options::default() }))
+        .map(|rules_only| {
+            normalize_workbook(
+                &book,
+                &Options {
+                    rules_only,
+                    keep_totals: true,
+                    ..Options::default()
+                },
+            )
+        })
         .collect()
 }
 
 /// Rows of `t` as (first label, row type).
 fn rows(t: &Table) -> Vec<(String, RowType)> {
-    let labels = &t.columns.iter().find(|c| c.values.iter().any(|v| matches!(v, Out::Text(_)))).unwrap().values;
+    let labels = &t
+        .columns
+        .iter()
+        .find(|c| c.values.iter().any(|v| matches!(v, Out::Text(_))))
+        .unwrap()
+        .values;
     labels
         .iter()
         .zip(&t.row_types)
-        .map(|(v, rt)| (if let Out::Text(s) = v { s.clone() } else { String::new() }, *rt))
+        .map(|(v, rt)| {
+            (
+                if let Out::Text(s) = v {
+                    s.clone()
+                } else {
+                    String::new()
+                },
+                *rt,
+            )
+        })
         .collect()
 }
 
 fn row_type(t: &Table, label: &str) -> RowType {
-    rows(t).into_iter().find(|(l, _)| l == label).unwrap_or_else(|| panic!("no row {label}: {:?}", rows(t))).1
+    rows(t)
+        .into_iter()
+        .find(|(l, _)| l == label)
+        .unwrap_or_else(|| panic!("no row {label}: {:?}", rows(t)))
+        .1
 }
 
 fn write_rows(ws: &mut Worksheet, top: u32, rows: &[(&str, &[&str])]) {
@@ -52,7 +80,8 @@ fn write_rows(ws: &mut Worksheet, top: u32, rows: &[(&str, &[&str])]) {
 #[test]
 fn totals_of_numbers_stored_as_text() {
     for n in build("text", |ws| {
-        ws.write_string(0, 0, "Table 2: Police-reported crime, selected offences").unwrap();
+        ws.write_string(0, 0, "Table 2: Police-reported crime, selected offences")
+            .unwrap();
         write_rows(ws, 2, &[("Type of offence", &["2017", "2018", "2019"])]);
         write_rows(
             ws,
@@ -61,10 +90,19 @@ fn totals_of_numbers_stored_as_text() {
                 ("Total violent crime", &["1,500", "2,250", "3,375"]),
                 ("Homicide", &["600", "1,200", "1,800"]),
                 ("Robbery", &["900", "1,050", "1,575"]),
-                ("Total Criminal Code traffic violations", &["1,300", "2,500", "3,700"]),
+                (
+                    "Total Criminal Code traffic violations",
+                    &["1,300", "2,500", "3,700"],
+                ),
                 ("Alcohol-impaired driving", &["500", "1,100", "1,600"]),
-                ("Other Criminal Code traffic violations", &["800", "1,400", "2,100"]),
-                ("Total other federal statute violations", &["710", "1,320", "1,930"]),
+                (
+                    "Other Criminal Code traffic violations",
+                    &["800", "1,400", "2,100"],
+                ),
+                (
+                    "Total other federal statute violations",
+                    &["710", "1,320", "1,930"],
+                ),
                 ("Youth Criminal Justice Act", &["310", "620", "930"]),
                 ("Other federal statutes", &["400", "700", "1,000"]),
                 ("Breaking and entering", &["120", "130", "140"]),
@@ -72,10 +110,20 @@ fn totals_of_numbers_stored_as_text() {
         );
     }) {
         let t = &n.tables[0];
-        for label in ["Total violent crime", "Total Criminal Code traffic violations", "Total other federal statute violations"] {
+        for label in [
+            "Total violent crime",
+            "Total Criminal Code traffic violations",
+            "Total other federal statute violations",
+        ] {
             assert_ne!(row_type(t, label), RowType::Data, "{label}: {:?}", rows(t));
         }
-        for label in ["Homicide", "Robbery", "Alcohol-impaired driving", "Youth Criminal Justice Act", "Breaking and entering"] {
+        for label in [
+            "Homicide",
+            "Robbery",
+            "Alcohol-impaired driving",
+            "Youth Criminal Justice Act",
+            "Breaking and entering",
+        ] {
             assert_eq!(row_type(t, label), RowType::Data, "{label}: {:?}", rows(t));
         }
     }
@@ -84,15 +132,30 @@ fn totals_of_numbers_stored_as_text() {
 #[test]
 fn all_rows_that_add_up_are_totals() {
     for n in build("all", |ws| {
-        ws.write_string(0, 0, "TABLE 2. Federal obligations to colleges, by agency: FY 2016").unwrap();
-        write_rows(ws, 2, &[("Institution", &["All agencies", "DOD", "DOE", "Share (%)"])]);
+        ws.write_string(
+            0,
+            0,
+            "TABLE 2. Federal obligations to colleges, by agency: FY 2016",
+        )
+        .unwrap();
+        write_rows(
+            ws,
+            2,
+            &[("Institution", &["All agencies", "DOD", "DOE", "Share (%)"])],
+        );
         write_rows(
             ws,
             3,
             &[
                 ("All HBCUs", &["37,297.8", "1,995.6", "582.4", "41.3"]),
-                ("North Carolina A&T", &["12,608.5", "230.9", "200.0", "12.5"]),
-                ("Morehouse School of Medicine", &["14,542.8", "1,000.2", "182.4", "17.1"]),
+                (
+                    "North Carolina A&T",
+                    &["12,608.5", "230.9", "200.0", "12.5"],
+                ),
+                (
+                    "Morehouse School of Medicine",
+                    &["14,542.8", "1,000.2", "182.4", "17.1"],
+                ),
                 ("Jackson State U.", &["10,146.5", "764.5", "200.0", "11.9"]),
             ],
         );
@@ -110,14 +173,36 @@ fn all_rows_that_add_up_are_totals() {
             ],
         );
     }) {
-        let all = n.tables.iter().find(|t| rows(t).iter().any(|r| r.0 == "All HBCUs")).expect("table with All HBCUs");
+        let all = n
+            .tables
+            .iter()
+            .find(|t| rows(t).iter().any(|r| r.0 == "All HBCUs"))
+            .expect("table with All HBCUs");
         assert_ne!(row_type(all, "All HBCUs"), RowType::Data, "{:?}", rows(all));
-        for label in ["North Carolina A&T", "Morehouse School of Medicine", "Jackson State U."] {
-            assert_eq!(row_type(all, label), RowType::Data, "{label}: {:?}", rows(all));
+        for label in [
+            "North Carolina A&T",
+            "Morehouse School of Medicine",
+            "Jackson State U.",
+        ] {
+            assert_eq!(
+                row_type(all, label),
+                RowType::Data,
+                "{label}: {:?}",
+                rows(all)
+            );
         }
-        let other = n.tables.iter().find(|t| rows(t).iter().any(|r| r.0 == "North")).expect("second table");
+        let other = n
+            .tables
+            .iter()
+            .find(|t| rows(t).iter().any(|r| r.0 == "North"))
+            .expect("second table");
         for label in ["North", "South", "All ages program", "All other regions"] {
-            assert_eq!(row_type(other, label), RowType::Data, "{label}: {:?}", rows(other));
+            assert_eq!(
+                row_type(other, label),
+                RowType::Data,
+                "{label}: {:?}",
+                rows(other)
+            );
         }
     }
 }
@@ -125,7 +210,12 @@ fn all_rows_that_add_up_are_totals() {
 #[test]
 fn a_section_total_keeps_its_section_label() {
     for n in build("section", |ws| {
-        ws.write_string(0, 0, "TABLE 4. U.S. R&D expenditures, by type of work: Selected years").unwrap();
+        ws.write_string(
+            0,
+            0,
+            "TABLE 4. U.S. R&D expenditures, by type of work: Selected years",
+        )
+        .unwrap();
         write_rows(ws, 2, &[("Type of work", &["2000", "2010", "2012"])]);
         ws.write_string(3, 0, "Current $billions").unwrap();
         write_rows(
@@ -154,17 +244,41 @@ fn a_section_total_keeps_its_section_label() {
         assert_eq!(t.row_types.len(), 8, "{:?}", rows(t));
         assert_ne!(t.row_types[0], RowType::Data, "{:?}", rows(t));
         // The group column names the section of every row, the total rows' too.
-        let group = t.columns.iter().find(|c| c.values.iter().any(|v| *v == Out::Text("Percent distribution".into())));
-        let group = group.unwrap_or_else(|| panic!("no group column: {:?}", t.columns.iter().map(|c| &c.name).collect::<Vec<_>>()));
-        assert_eq!(group.values[0], Out::Text("Current $billions".into()), "{:?}", group.values);
-        assert_eq!(group.values[4], Out::Text("Percent distribution".into()), "{:?}", group.values);
+        let group = t.columns.iter().find(|c| {
+            c.values
+                .iter()
+                .any(|v| *v == Out::Text("Percent distribution".into()))
+        });
+        let group = group.unwrap_or_else(|| {
+            panic!(
+                "no group column: {:?}",
+                t.columns.iter().map(|c| &c.name).collect::<Vec<_>>()
+            )
+        });
+        assert_eq!(
+            group.values[0],
+            Out::Text("Current $billions".into()),
+            "{:?}",
+            group.values
+        );
+        assert_eq!(
+            group.values[4],
+            Out::Text("Percent distribution".into()),
+            "{:?}",
+            group.values
+        );
     }
 }
 
 #[test]
 fn a_kept_subtotal_keeps_its_parent() {
     for n in build("parent", |ws| {
-        ws.write_string(0, 0, "Table 2. Higher education R&D expenditures, by source of funds").unwrap();
+        ws.write_string(
+            0,
+            0,
+            "Table 2. Higher education R&D expenditures, by source of funds",
+        )
+        .unwrap();
         write_rows(ws, 2, &[("Source of funds", &["2011", "2012"])]);
         write_rows(
             ws,
@@ -182,11 +296,21 @@ fn a_kept_subtotal_keeps_its_parent() {
     }) {
         let t = &n.tables[0];
         let parent = t.columns.iter().find(|c| c.name.ends_with("_parent"));
-        let parent = parent.unwrap_or_else(|| panic!("no parent column: {:?}", t.columns.iter().map(|c| &c.name).collect::<Vec<_>>()));
+        let parent = parent.unwrap_or_else(|| {
+            panic!(
+                "no parent column: {:?}",
+                t.columns.iter().map(|c| &c.name).collect::<Vec<_>>()
+            )
+        });
         for (j, (label, rt)) in rows(t).into_iter().enumerate() {
             if label.contains("All federal") || label.contains("All nonfederal") {
                 assert_ne!(rt, RowType::Data, "{label}: {:?}", rows(t));
-                assert_eq!(parent.values[j], Out::Text("All R&D expenditures".into()), "{label}: {:?}", parent.values);
+                assert_eq!(
+                    parent.values[j],
+                    Out::Text("All R&D expenditures".into()),
+                    "{label}: {:?}",
+                    parent.values
+                );
             }
         }
     }
@@ -197,7 +321,8 @@ fn a_group_named_like_a_total_names_its_total_row() {
     // The learned row model reads the label-only "Total drug violations" row as a group header (the
     // rules alone read it as a total row of its own): the model path, as the CLI runs it.
     for n in build("named", |ws| {
-        ws.write_string(0, 0, "Table 1: Police-reported drug offences, Canada").unwrap();
+        ws.write_string(0, 0, "Table 1: Police-reported drug offences, Canada")
+            .unwrap();
         write_rows(ws, 2, &[("Violation", &["2012", "", "2013", ""])]);
         write_rows(ws, 3, &[("", &["number", "rate", "number", "rate"])]);
         write_rows(
@@ -207,11 +332,17 @@ fn a_group_named_like_a_total_names_its_total_row() {
                 ("Cannabis violations", &[]),
                 ("Possession", &["57,895", "167", "58,965", "168"]),
                 ("Trafficking", &["9,773", "28", "9,110", "26"]),
-                ("Total cannabis violations", &["67,668", "195", "68,075", "194"]),
+                (
+                    "Total cannabis violations",
+                    &["67,668", "195", "68,075", "194"],
+                ),
                 ("Cocaine violations", &[]),
                 ("Possession", &["7,885", "23", "7,000", "20"]),
                 ("Trafficking", &["10,358", "30", "9,500", "27"]),
-                ("Total cocaine violations", &["18,243", "53", "16,500", "47"]),
+                (
+                    "Total cocaine violations",
+                    &["18,243", "53", "16,500", "47"],
+                ),
                 ("Precursor or equipment", &["30", "0", "36", "0"]),
                 ("Total drug violations", &[]),
                 ("Possession", &["65,780", "190", "65,965", "188"]),
@@ -227,8 +358,22 @@ fn a_group_named_like_a_total_names_its_total_row() {
         let t = &n.tables[0];
         let last = t.row_types.len() - 1;
         assert_ne!(t.row_types[last], RowType::Data, "{:?}", rows(t));
-        let group = t.columns.iter().find(|c| c.values.iter().any(|v| *v == Out::Text("Cocaine violations".into())));
-        let group = group.unwrap_or_else(|| panic!("no group column: {:?}", t.columns.iter().map(|c| &c.name).collect::<Vec<_>>()));
-        assert_eq!(group.values[last], Out::Text("Total drug violations".into()), "{:?}", group.values);
+        let group = t.columns.iter().find(|c| {
+            c.values
+                .iter()
+                .any(|v| *v == Out::Text("Cocaine violations".into()))
+        });
+        let group = group.unwrap_or_else(|| {
+            panic!(
+                "no group column: {:?}",
+                t.columns.iter().map(|c| &c.name).collect::<Vec<_>>()
+            )
+        });
+        assert_eq!(
+            group.values[last],
+            Out::Text("Total drug violations".into()),
+            "{:?}",
+            group.values
+        );
     }
 }

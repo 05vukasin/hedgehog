@@ -5,10 +5,10 @@
 
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::time::Instant;
 
-use hh_core::{layout, open, Grid, Role};
+use hh_core::{Grid, Role, layout, open};
 
 #[test]
 #[ignore]
@@ -17,7 +17,10 @@ fn corpus_sanity() {
         eprintln!("HH_LAYOUT_CORPUS not set; skipping");
         return;
     };
-    let n: usize = std::env::var("HH_LAYOUT_N").ok().and_then(|v| v.parse().ok()).unwrap_or(300);
+    let n: usize = std::env::var("HH_LAYOUT_N")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300);
     let mut files: Vec<_> = std::fs::read_dir(&dir)
         .unwrap()
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -34,7 +37,8 @@ fn corpus_sanity() {
     let (mut ok, mut failed, mut panics) = (0, 0, Vec::new());
     let (mut sheets, mut nonempty) = (0usize, 0usize);
     let mut per_sheet: BTreeMap<usize, usize> = BTreeMap::new();
-    let (mut tables, mut with_header, mut multi_header, mut with_total, mut mid_total) = (0, 0, 0, 0, 0);
+    let (mut tables, mut with_header, mut multi_header, mut with_total, mut mid_total) =
+        (0, 0, 0, 0, 0);
     let (mut s_title, mut s_note, mut s_group, mut s_total, mut s_multi) = (0, 0, 0, 0, 0);
     let mut many: Vec<(usize, String)> = Vec::new();
     let mut role_counts: BTreeMap<&str, usize> = BTreeMap::new();
@@ -61,7 +65,11 @@ fn corpus_sanity() {
             let dt = t1.elapsed().as_secs_f64();
             t_layout += dt;
             if dt > worst.0 {
-                worst = (dt, format!("{} [{}]", path.display(), sheet.name), sheet.cells.len());
+                worst = (
+                    dt,
+                    format!("{} [{}]", path.display(), sheet.name),
+                    sheet.cells.len(),
+                );
             }
             let Ok(l) = res else {
                 panics.push(format!("{} [{}]", path.display(), sheet.name));
@@ -70,7 +78,10 @@ fn corpus_sanity() {
             assert_eq!(l.roles.len(), sheet.cells.len());
             *per_sheet.entry(l.tables.len().min(6)).or_default() += 1;
             if l.tables.len() >= 6 {
-                many.push((l.tables.len(), format!("{} [{}]", path.display(), sheet.name)));
+                many.push((
+                    l.tables.len(),
+                    format!("{} [{}]", path.display(), sheet.name),
+                ));
             }
             s_multi += (l.tables.len() > 1) as usize;
             for r in &l.roles {
@@ -101,7 +112,11 @@ fn corpus_sanity() {
         }
     }
     let pct = |a: usize, b: usize| 100.0 * a as f64 / b.max(1) as f64;
-    println!("files: {} sampled, {ok} opened, {failed} reader errors, {} panics", files.len(), panics.len());
+    println!(
+        "files: {} sampled, {ok} opened, {failed} reader errors, {} panics",
+        files.len(),
+        panics.len()
+    );
     for p in &panics {
         println!("  PANIC {p}");
     }
@@ -114,7 +129,10 @@ fn corpus_sanity() {
         worst.2,
         worst.1
     );
-    println!("tables per non-empty sheet (6 = 6+): {per_sheet:?}; sheets with >1 table {:.1}%", pct(s_multi, nonempty));
+    println!(
+        "tables per non-empty sheet (6 = 6+): {per_sheet:?}; sheets with >1 table {:.1}%",
+        pct(s_multi, nonempty)
+    );
     println!(
         "tables {tables}: header found {:.1}%, ≥2 header rows {:.1}%, with total {:.1}%, mid-table total {:.1}%",
         pct(with_header, tables),
@@ -142,11 +160,23 @@ fn corpus_sanity() {
 #[test]
 #[ignore]
 fn dump_sheet() {
-    let Ok(path) = std::env::var("HH_LAYOUT_DUMP") else { return };
-    let want = std::env::var("HH_LAYOUT_SHEET").ok().filter(|w| !w.is_empty());
-    let env = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+    let Ok(path) = std::env::var("HH_LAYOUT_DUMP") else {
+        return;
+    };
+    let want = std::env::var("HH_LAYOUT_SHEET")
+        .ok()
+        .filter(|w| !w.is_empty());
+    let env = |k: &str| {
+        std::env::var(k)
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0)
+    };
     let (r0, c0) = (env("HH_LAYOUT_R0"), env("HH_LAYOUT_C0"));
-    let max_rows: u32 = std::env::var("HH_LAYOUT_ROWS").ok().and_then(|v| v.parse().ok()).unwrap_or(80);
+    let max_rows: u32 = std::env::var("HH_LAYOUT_ROWS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(80);
     let wb = open(&path).unwrap();
     for sheet in &wb.sheets {
         if want.as_ref().is_some_and(|w| *w != sheet.name) || sheet.cells.is_empty() {
@@ -183,11 +213,15 @@ fn dump_sheet() {
                 (Some(v), _) => format!("{v:?}"),
                 _ => String::new(),
             };
-            grid.entry(c.row).or_default().insert(c.col, (ch, v.chars().take(10).collect()));
+            grid.entry(c.row)
+                .or_default()
+                .insert(c.col, (ch, v.chars().take(10).collect()));
         }
         for (r, cols) in grid {
-            let line: Vec<String> =
-                cols.iter().map(|(c, (ch, v))| format!("{}{ch}:{v}", hh_core::a1(r, *c))).collect();
+            let line: Vec<String> = cols
+                .iter()
+                .map(|(c, (ch, v))| format!("{}{ch}:{v}", hh_core::a1(r, *c)))
+                .collect();
             println!("{:>4} {}", r + 1, line.join(" | "));
         }
     }
@@ -216,7 +250,9 @@ fn csv_fields(line: &str) -> Vec<String> {
 #[test]
 #[ignore]
 fn deco_quick_eval() {
-    let Ok(dir) = std::env::var("HH_DECO") else { return };
+    let Ok(dir) = std::env::var("HH_DECO") else {
+        return;
+    };
     let dir = std::path::PathBuf::from(dir);
     let csv = std::fs::read_to_string(dir.join("annotations/rangeAnnotations.csv")).unwrap();
     // (file, sheet) -> [(label, rect)]
@@ -227,9 +263,18 @@ fn deco_quick_eval() {
             continue;
         }
         let p = |i: usize| f[i].trim().parse::<u32>().ok();
-        let (Some(c0), Some(r0), Some(c1), Some(r1)) = (p(7), p(8), p(9), p(10)) else { continue };
-        let rect = hh_core::Rect { top: r0, left: c0, bottom: r1, right: c1 };
-        gt.entry((f[0].clone(), f[1].clone())).or_default().push((f[4].clone(), rect));
+        let (Some(c0), Some(r0), Some(c1), Some(r1)) = (p(7), p(8), p(9), p(10)) else {
+            continue;
+        };
+        let rect = hh_core::Rect {
+            top: r0,
+            left: c0,
+            bottom: r1,
+            right: c1,
+        };
+        gt.entry((f[0].clone(), f[1].clone()))
+            .or_default()
+            .push((f[4].clone(), rect));
     }
     type Anns = Vec<(String, hh_core::Rect)>;
     let mut by_file: BTreeMap<String, Vec<(String, Anns)>> = BTreeMap::new();
@@ -239,11 +284,20 @@ fn deco_quick_eval() {
     let iou = |a: &hh_core::Rect, b: &hh_core::Rect| {
         let ih = (a.bottom.min(b.bottom) as i64 - a.top.max(b.top) as i64 + 1).max(0);
         let iw = (a.right.min(b.right) as i64 - a.left.max(b.left) as i64 + 1).max(0);
-        let area = |r: &hh_core::Rect| (r.bottom - r.top + 1) as i64 * (r.right - r.left + 1) as i64;
+        let area =
+            |r: &hh_core::Rect| (r.bottom - r.top + 1) as i64 * (r.right - r.left + 1) as i64;
         let inter = ih * iw;
         inter as f64 / (area(a) + area(b) - inter) as f64
     };
-    let names = ["title", "header", "data", "group_header", "total", "note", "other"];
+    let names = [
+        "title",
+        "header",
+        "data",
+        "group_header",
+        "total",
+        "note",
+        "other",
+    ];
     let map = |l: &str| match l {
         "MetaTitle" => Some("title"),
         "Header" => Some("header"),
@@ -254,7 +308,8 @@ fn deco_quick_eval() {
         "Other" => Some("other"),
         _ => None,
     };
-    let (mut n_gt, mut n_pred, mut tp5, mut tp9, mut tp10) = (0usize, 0usize, 0usize, 0usize, 0usize);
+    let (mut n_gt, mut n_pred, mut tp5, mut tp9, mut tp10) =
+        (0usize, 0usize, 0usize, 0usize, 0usize);
     let mut conf: BTreeMap<(&str, &str), usize> = BTreeMap::new();
     let mut sheets_eval = 0;
     let mut cats: BTreeMap<&str, usize> = BTreeMap::new();
@@ -268,12 +323,20 @@ fn deco_quick_eval() {
         if hh_core::eval::split::split_of(file) != hh_core::eval::split::Split::Dev {
             continue;
         }
-        let Ok(wb) = open(dir.join("completed").join(file)) else { continue };
+        let Ok(wb) = open(dir.join("completed").join(file)) else {
+            continue;
+        };
         for (sname, anns) in sheets {
-            let Some(sheet) = wb.sheets.iter().find(|s| &s.name == sname) else { continue };
+            let Some(sheet) = wb.sheets.iter().find(|s| &s.name == sname) else {
+                continue;
+            };
             sheets_eval += 1;
             let l = layout::analyze(&Grid::new(sheet));
-            let gtt: Vec<_> = anns.iter().filter(|(lb, _)| lb == "Table").map(|(_, r)| *r).collect();
+            let gtt: Vec<_> = anns
+                .iter()
+                .filter(|(lb, _)| lb == "Table")
+                .map(|(_, r)| *r)
+                .collect();
             n_gt += gtt.len();
             n_pred += l.tables.len();
             let mut used = vec![false; l.tables.len()];
@@ -285,15 +348,27 @@ fn deco_quick_eval() {
                     .filter(|(i, _)| !used[*i])
                     .map(|(i, t)| (iou(g, &t.rect), i))
                     .max_by(|a, b| a.0.total_cmp(&b.0));
-                let fmt = |r: &hh_core::Rect| format!("{}:{}", hh_core::a1(r.top, r.left), hh_core::a1(r.bottom, r.right));
+                let fmt = |r: &hh_core::Rect| {
+                    format!(
+                        "{}:{}",
+                        hh_core::a1(r.top, r.left),
+                        hh_core::a1(r.bottom, r.right)
+                    )
+                };
                 let bv = best.map_or(0.0, |b| b.0);
                 if bv < 0.999 {
                     let cat = match best {
                         None => "no pred",
                         Some((_, i)) => {
                             let p = l.tables[i].rect;
-                            let contains = p.top <= g.top && p.left <= g.left && p.bottom >= g.bottom && p.right >= g.right;
-                            let inside = p.top >= g.top && p.left >= g.left && p.bottom <= g.bottom && p.right <= g.right;
+                            let contains = p.top <= g.top
+                                && p.left <= g.left
+                                && p.bottom >= g.bottom
+                                && p.right >= g.right;
+                            let inside = p.top >= g.top
+                                && p.left >= g.left
+                                && p.bottom <= g.bottom
+                                && p.right <= g.right;
                             match (contains, inside) {
                                 (true, _) => "pred too big",
                                 (_, true) => "pred too small",
@@ -323,15 +398,38 @@ fn deco_quick_eval() {
                     continue;
                 }
                 let p = t.rect;
-                let inside_gt = gtt.iter().any(|g| p.top >= g.top && p.bottom <= g.bottom && p.left >= g.left && p.right <= g.right);
+                let inside_gt = gtt.iter().any(|g| {
+                    p.top >= g.top && p.bottom <= g.bottom && p.left >= g.left && p.right <= g.right
+                });
                 let overl = gtt.iter().any(|g| iou(g, &p) > 0.0);
-                let kind = if inside_gt { "fragment" } else if overl { "overlap" } else { "spurious" };
+                let kind = if inside_gt {
+                    "fragment"
+                } else if overl {
+                    "overlap"
+                } else {
+                    "spurious"
+                };
                 let h = (p.bottom - p.top + 1).min(10);
                 let w = (p.right - p.left + 1).min(10);
-                *fp.entry(format!("{kind} h{h:02} hdr{}", (t.header_rows > 0) as u8)).or_default() += 1;
+                *fp.entry(format!("{kind} h{h:02} hdr{}", (t.header_rows > 0) as u8))
+                    .or_default() += 1;
                 if std::env::var("HH_FP").is_ok_and(|k| k == kind) {
-                    let g = gtt.iter().find(|g| iou(g, &p) > 0.0).map_or("-".to_string(), |g| format!("{}:{}", hh_core::a1(g.top, g.left), hh_core::a1(g.bottom, g.right)));
-                    fp_list.push(format!("{kind} pred {}:{} hdr {} gt {g} | {file} [{sname}]", hh_core::a1(p.top, p.left), hh_core::a1(p.bottom, p.right), t.header_rows));
+                    let g = gtt
+                        .iter()
+                        .find(|g| iou(g, &p) > 0.0)
+                        .map_or("-".to_string(), |g| {
+                            format!(
+                                "{}:{}",
+                                hh_core::a1(g.top, g.left),
+                                hh_core::a1(g.bottom, g.right)
+                            )
+                        });
+                    fp_list.push(format!(
+                        "{kind} pred {}:{} hdr {} gt {g} | {file} [{sname}]",
+                        hh_core::a1(p.top, p.left),
+                        hh_core::a1(p.bottom, p.right),
+                        t.header_rows
+                    ));
                 }
                 let _ = w;
             }
@@ -339,14 +437,22 @@ fn deco_quick_eval() {
             let mut sheet_pred: BTreeMap<&str, usize> = BTreeMap::new();
             for (c, r) in sheet.cells.iter().zip(&l.roles) {
                 let lab = anns.iter().rev().find_map(|(lb, rr)| {
-                    let inside = (rr.top..=rr.bottom).contains(&c.row) && (rr.left..=rr.right).contains(&c.col);
+                    let inside = (rr.top..=rr.bottom).contains(&c.row)
+                        && (rr.left..=rr.right).contains(&c.col);
                     if inside { map(lb) } else { None }
                 });
                 if let Some(g) = lab
                     && std::env::var("HH_CELLS").is_ok_and(|x| x == format!("{g}:{}", r.as_str()))
                 {
-                    let v = format!("{:?}", c.value).chars().take(40).collect::<String>();
-                    println!("CELL {g}->{} {} {v} | {file} [{sname}]", r.as_str(), hh_core::a1(c.row, c.col));
+                    let v = format!("{:?}", c.value)
+                        .chars()
+                        .take(40)
+                        .collect::<String>();
+                    println!(
+                        "CELL {g}->{} {} {v} | {file} [{sname}]",
+                        r.as_str(),
+                        hh_core::a1(c.row, c.col)
+                    );
                 }
                 if let Some(g) = lab {
                     *sheet_gold.entry(g).or_default() += 1;
@@ -358,7 +464,10 @@ fn deco_quick_eval() {
                 }
             }
             for k in names {
-                let (g, p) = (sheet_gold.get(k).copied().unwrap_or(0), sheet_pred.get(k).copied().unwrap_or(0));
+                let (g, p) = (
+                    sheet_gold.get(k).copied().unwrap_or(0),
+                    sheet_pred.get(k).copied().unwrap_or(0),
+                );
                 let e = presence.entry(k).or_default();
                 if std::env::var("HH_GOLDONLY").is_ok_and(|x| x == k) && g > 0 && p == 0 {
                     println!("GOLDONLY {k} {g} | {file} [{sname}]");
@@ -381,7 +490,10 @@ fn deco_quick_eval() {
         (p, r, 2.0 * p * r / (p + r).max(1e-9))
     };
     for (k, v) in &presence {
-        println!("presence {k}: gold-only {} pred-only {} both {}", v.0, v.1, v.2);
+        println!(
+            "presence {k}: gold-only {} pred-only {} both {}",
+            v.0, v.1, v.2
+        );
     }
     let mut tv: Vec<_> = top.into_iter().collect();
     tv.sort_by_key(|x| std::cmp::Reverse(x.1));
@@ -406,8 +518,16 @@ fn deco_quick_eval() {
     let mut f1s = Vec::new();
     for g in names {
         let tp = *conf.get(&(g, g)).unwrap_or(&0);
-        let gold: usize = conf.iter().filter(|((a, _), _)| *a == g).map(|(_, v)| v).sum();
-        let pred: usize = conf.iter().filter(|((_, b), _)| *b == g).map(|(_, v)| v).sum();
+        let gold: usize = conf
+            .iter()
+            .filter(|((a, _), _)| *a == g)
+            .map(|(_, v)| v)
+            .sum();
+        let pred: usize = conf
+            .iter()
+            .filter(|((_, b), _)| *b == g)
+            .map(|(_, v)| v)
+            .sum();
         let p = tp as f64 / pred.max(1) as f64;
         let r = tp as f64 / gold.max(1) as f64;
         let f = 2.0 * p * r / (p + r).max(1e-9);
@@ -416,7 +536,14 @@ fn deco_quick_eval() {
             .iter()
             .map(|b| format!("{}", conf.get(&(g, *b)).unwrap_or(&0)))
             .collect();
-        println!("{g:>13}: gold {gold:>7} P {p:.3} R {r:.3} F1 {f:.3} | pred {}", row.join(" "));
+        println!(
+            "{g:>13}: gold {gold:>7} P {p:.3} R {r:.3} F1 {f:.3} | pred {}",
+            row.join(" ")
+        );
     }
-    println!("role macro F1 {:.3}  (pred columns: {})", f1s.iter().sum::<f64>() / f1s.len() as f64, names.join(" "));
+    println!(
+        "role macro F1 {:.3}  (pred columns: {})",
+        f1s.iter().sum::<f64>() / f1s.len() as f64,
+        names.join(" ")
+    );
 }

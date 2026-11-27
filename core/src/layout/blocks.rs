@@ -72,7 +72,10 @@ impl Row {
     }
     /// Numbers that are not years/dates.
     pub fn n_measure(&self) -> usize {
-        self.entries.iter().filter(|e| e.kind == Kind::Num && !e.label_num).count()
+        self.entries
+            .iter()
+            .filter(|e| e.kind == Kind::Num && !e.label_num)
+            .count()
     }
     pub fn n_num(&self) -> usize {
         self.entries.iter().filter(|e| e.kind == Kind::Num).count()
@@ -84,7 +87,11 @@ impl Row {
         self.entries.iter().map(|e| e.right).max().unwrap_or(0)
     }
     pub fn bottom(&self) -> u32 {
-        self.entries.iter().map(|e| e.bottom).max().unwrap_or(self.row)
+        self.entries
+            .iter()
+            .map(|e| e.bottom)
+            .max()
+            .unwrap_or(self.row)
     }
 }
 
@@ -135,7 +142,10 @@ fn entries_of(grid: &Grid) -> Vec<Entry> {
             right = m.right;
             bottom = m.bottom;
         }
-        let agg = c.formula.as_deref().map_or(Agg::None, |f| formula_agg(f, c.row, c.col));
+        let agg = c
+            .formula
+            .as_deref()
+            .map_or(Agg::None, |f| formula_agg(f, c.row, c.col));
         out.push(Entry {
             row: c.row,
             left: c.col,
@@ -175,13 +185,18 @@ fn components(grid: &Grid) -> Vec<Vec<Entry>> {
     let m = sheet.merges.len();
     let mut dsu = Dsu::new(n + m);
     // Merge index by anchor, to map Grid::merge_at rects back to a node.
-    let merge_node: HashMap<(u32, u32), u32> =
-        sheet.merges.iter().enumerate().map(|(k, r)| ((r.top, r.left), (n + k) as u32)).collect();
+    let merge_node: HashMap<(u32, u32), u32> = sheet
+        .merges
+        .iter()
+        .enumerate()
+        .map(|(k, r)| ((r.top, r.left), (n + k) as u32))
+        .collect();
     let node_at = |row: u32, col: u32| -> Option<u32> {
         if let Some(i) = grid.cell_index(row, col) {
             return Some(i as u32);
         }
-        grid.merge_at(row, col).and_then(|r| merge_node.get(&(r.top, r.left)).copied())
+        grid.merge_at(row, col)
+            .and_then(|r| merge_node.get(&(r.top, r.left)).copied())
     };
     for (i, c) in sheet.cells.iter().enumerate() {
         if let Some(r) = grid.merge_at(c.row, c.col)
@@ -266,7 +281,12 @@ fn make_region(mut entries: Vec<Entry>) -> Region {
     if !entries.is_sorted_by_key(|e| (e.row, e.left)) {
         entries.sort_by_key(|e| (e.row, e.left));
     }
-    let mut rect = Rect { top: u32::MAX, left: u32::MAX, bottom: 0, right: 0 };
+    let mut rect = Rect {
+        top: u32::MAX,
+        left: u32::MAX,
+        bottom: 0,
+        right: 0,
+    };
     for e in &entries {
         rect.top = rect.top.min(e.row);
         rect.left = rect.left.min(e.left);
@@ -281,7 +301,13 @@ fn make_region(mut entries: Vec<Entry>) -> Region {
             _ => lens.push((e.row, 1)),
         }
     }
-    let mut rows: Vec<Row> = lens.iter().map(|&(row, n)| Row { row, entries: Vec::with_capacity(n) }).collect();
+    let mut rows: Vec<Row> = lens
+        .iter()
+        .map(|&(row, n)| Row {
+            row,
+            entries: Vec::with_capacity(n),
+        })
+        .collect();
     let mut k = 0;
     for e in entries {
         if rows[k].entries.len() == lens[k].1 {
@@ -312,7 +338,9 @@ struct Profile {
 
 impl Profile {
     fn has_label_col(&self) -> bool {
-        self.counts.values().any(|&(t, n)| t > 0 && t as f32 >= LABEL_COL_TEXT_FRAC * (t + n) as f32)
+        self.counts
+            .values()
+            .any(|&(t, n)| t > 0 && t as f32 >= LABEL_COL_TEXT_FRAC * (t + n) as f32)
     }
     fn has_numeric_col(&self) -> bool {
         self.counts.values().any(|&(t, n)| n > t)
@@ -320,8 +348,13 @@ impl Profile {
     /// The leftmost column is a row-label column and some column right of it is numeric.
     fn labels_then_numbers(&self) -> bool {
         let mut it = self.counts.iter();
-        let Some((_, &(t, n))) = it.next() else { return false };
-        t > 0 && t as f32 >= LABEL_COL_TEXT_FRAC * (t + n) as f32 && t > 2 && it.any(|(_, &(t2, n2))| n2 > t2)
+        let Some((_, &(t, n))) = it.next() else {
+            return false;
+        };
+        t > 0
+            && t as f32 >= LABEL_COL_TEXT_FRAC * (t + n) as f32
+            && t > 2
+            && it.any(|(_, &(t2, n2))| n2 > t2)
     }
     fn absorb(&mut self, other: &Profile) {
         self.rect = Rect {
@@ -357,7 +390,10 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
     let starts_with_header = s < rows.len()
         && rows[s].n() >= 2
         && super::tables::is_header_row(&rows[s], &rows[s + 1..])
-        && rows[s + 1..].iter().take(MAX_HEADER_ROWS).any(|r| r.n_measure() > 0);
+        && rows[s + 1..]
+            .iter()
+            .take(MAX_HEADER_ROWS)
+            .any(|r| r.n_measure() > 0);
     // A row of years or dates is a header row too (`Apr 2012 | Oct 2012 | …` over `Number | %`,
     // the pair separated from its body by a blank row).
     let header_only = rows.len() <= MAX_HEADER_ROWS
@@ -387,7 +423,15 @@ fn profile(sheet: &Sheet, region: &Region) -> Profile {
                 .collect()
         })
         .unwrap_or_default();
-    Profile { rect: region.rect, starts_with_header, single_line, header_only, first_sig, counts, capped: false }
+    Profile {
+        rect: region.rect,
+        starts_with_header,
+        single_line,
+        header_only,
+        first_sig,
+        counts,
+        capped: false,
+    }
 }
 
 fn overlap(a0: u32, a1: u32, b0: u32, b1: u32) -> u32 {
@@ -404,8 +448,15 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
         return true;
     }
     let gap = low.rect.top as i64 - up.rect.bottom as i64 - 1;
-    let max_gap = if up.header_only { HEADER_ONLY_MAX_GAP } else { MAX_ROW_GAP };
-    if !(VERTICAL_MIN_GAP..=max_gap as i64).contains(&gap) || low.starts_with_header || low.single_line {
+    let max_gap = if up.header_only {
+        HEADER_ONLY_MAX_GAP
+    } else {
+        MAX_ROW_GAP
+    };
+    if !(VERTICAL_MIN_GAP..=max_gap as i64).contains(&gap)
+        || low.starts_with_header
+        || low.single_line
+    {
         return false;
     }
     if inside && !up.single_line {
@@ -417,7 +468,10 @@ fn merge_vertically(up: &Profile, low: &Profile) -> bool {
         let ov = overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right);
         return ov as f32 >= GAP_MIN_COL_OVERLAP * wl.min(wu) as f32;
     }
-    let (wu, wl) = (up.rect.right - up.rect.left + 1, low.rect.right - low.rect.left + 1);
+    let (wu, wl) = (
+        up.rect.right - up.rect.left + 1,
+        low.rect.right - low.rect.left + 1,
+    );
     let ov = overlap(up.rect.left, up.rect.right, low.rect.left, low.rect.right);
     if (ov as f32) < GAP_MIN_COL_OVERLAP * wu.max(wl) as f32 {
         return false;
@@ -486,8 +540,16 @@ fn merge_horizontally(left: &Profile, right: &Profile) -> bool {
     if gap > MAX_COL_GAP as i64 || right.has_label_col() || !right.has_numeric_col() {
         return false;
     }
-    let (hl, hr) = (left.rect.bottom - left.rect.top + 1, right.rect.bottom - right.rect.top + 1);
-    let ov = overlap(left.rect.top, left.rect.bottom, right.rect.top, right.rect.bottom);
+    let (hl, hr) = (
+        left.rect.bottom - left.rect.top + 1,
+        right.rect.bottom - right.rect.top + 1,
+    );
+    let ov = overlap(
+        left.rect.top,
+        left.rect.bottom,
+        right.rect.top,
+        right.rect.bottom,
+    );
     // Numbers on a few rows inside a taller table's rows, across one spacer column: the sparse
     // columns of that table (MDEA's profit columns S:T, filled on the hours that traded, B43).
     let inside = right.rect.top > left.rect.top
@@ -519,9 +581,15 @@ pub(crate) fn regions(grid: &Grid) -> Vec<Region> {
 /// Such numbers are measures, not labels.
 /// Ruling lines (B38): a row whose every cell is a run of `-`, `=`, `_`, … and any `|` cell.
 fn mark_rules(sheet: &Sheet, row: &mut Row) {
-    let rule = |e: &Entry| e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])).is_some_and(super::cells::is_rule_text);
+    let rule = |e: &Entry| {
+        e.cell
+            .and_then(|i| super::cells::text_of(&sheet.cells[i]))
+            .is_some_and(super::cells::is_rule_text)
+    };
     let pipe = |e: &Entry| {
-        e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])).is_some_and(|t| matches!(t.trim(), "|" | "||" | "¦"))
+        e.cell
+            .and_then(|i| super::cells::text_of(&sheet.cells[i]))
+            .is_some_and(|t| matches!(t.trim(), "|" | "||" | "¦"))
     };
     let all = row.filled().count() > 0 && row.filled().all(rule);
     for e in &mut row.entries {
@@ -535,9 +603,17 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
     // Periods written as text (`2010-01`) label columns only as a run across the row (a header
     // of periods); one or two text dates on a record are values.
     let text_period = |e: &Entry| {
-        e.cell.and_then(|i| super::cells::text_of(&sheet.cells[i])).is_some_and(|t| super::cells::is_text_period(t.trim()))
+        e.cell
+            .and_then(|i| super::cells::text_of(&sheet.cells[i]))
+            .is_some_and(|t| super::cells::is_text_period(t.trim()))
     };
-    if row.entries.iter().filter(|e| e.label_num && text_period(e)).count() < TEXT_PERIOD_MIN_RUN {
+    if row
+        .entries
+        .iter()
+        .filter(|e| e.label_num && text_period(e))
+        .count()
+        < TEXT_PERIOD_MIN_RUN
+    {
         for k in 0..row.entries.len() {
             if row.entries[k].label_num && text_period(&row.entries[k]) {
                 row.entries[k].label_num = false;
@@ -560,7 +636,10 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
         })
         .collect();
     // Most neighbours close together (a header of two year blocks jumps back once).
-    let jumps = years.windows(2).filter(|w| (w[1].1 - w[0].1).abs() > YEAR_MAX_STEP).count();
+    let jumps = years
+        .windows(2)
+        .filter(|w| (w[1].1 - w[0].1).abs() > YEAR_MAX_STEP)
+        .count();
     if years.len() < 2 || jumps * 3 < years.len() - 1 {
         return;
     }
@@ -568,10 +647,15 @@ fn drop_stray_years(sheet: &Sheet, row: &mut Row) {
         // A text period (`2010-01`) or a marked year stays a label; only plain numbers turn.
         let plain = |v: &Option<crate::model::Value>| match v {
             Some(crate::model::Value::Number(_)) => true,
-            Some(crate::model::Value::Text(t)) => t.trim().len() == 4 && t.trim().bytes().all(|b| b.is_ascii_digit()),
+            Some(crate::model::Value::Text(t)) => {
+                t.trim().len() == 4 && t.trim().bytes().all(|b| b.is_ascii_digit())
+            }
             _ => false,
         };
-        if row.entries[k].cell.is_some_and(|i| plain(&sheet.cells[i].value)) {
+        if row.entries[k]
+            .cell
+            .is_some_and(|i| plain(&sheet.cells[i].value))
+        {
             row.entries[k].label_num = false;
         }
     }
@@ -598,15 +682,24 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
             })
         })
     };
-    let profiles: Vec<Profile> =
-        blocks.iter().map(|b| Profile { capped: capped(&b.rect), ..profile(grid.sheet, b) }).collect();
+    let profiles: Vec<Profile> = blocks
+        .iter()
+        .map(|b| Profile {
+            capped: capped(&b.rect),
+            ..profile(grid.sheet, b)
+        })
+        .collect();
     let mut group: Vec<Profile> = profiles.clone();
     let mut dsu = Dsu::new(blocks.len());
     let join = |dsu: &mut Dsu, group: &mut Vec<Profile>, a: u32, b: u32| {
         let (ra, rb) = (dsu.find(a), dsu.find(b));
         if ra != rb {
             dsu.union(ra, rb);
-            let (keep, gone) = if dsu.find(ra) == ra { (ra, rb) } else { (rb, ra) };
+            let (keep, gone) = if dsu.find(ra) == ra {
+                (ra, rb)
+            } else {
+                (rb, ra)
+            };
             let g = group[gone as usize].clone();
             group[keep as usize].absorb(&g);
         }
@@ -640,10 +733,19 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
                 let Some(l) = p.rect.right.checked_add(gap + 1) else {
                     continue;
                 };
-                by_left.overlapping(&profiles, l, p.rect.top, p.rect.bottom.saturating_add(1), &mut near);
+                by_left.overlapping(
+                    &profiles,
+                    l,
+                    p.rect.top,
+                    p.rect.bottom.saturating_add(1),
+                    &mut near,
+                );
                 for &j in &near {
                     let q = &profiles[j];
-                    if !q.has_numeric_col() || q.rect.top > p.rect.bottom + 1 || q.rect.bottom < p.rect.top {
+                    if !q.has_numeric_col()
+                        || q.rect.top > p.rect.bottom + 1
+                        || q.rect.bottom < p.rect.top
+                    {
                         continue;
                     }
                     // Same row (row label) or the row just below (group label above its rows).
@@ -662,7 +764,9 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
     for (i, p) in profiles.iter().enumerate() {
         active.retain(|&g| {
             dsu.find(g) == g
-                && group[g as usize].rect.bottom as u64 + 1 + MAX_ROW_GAP.max(HEADER_ONLY_MAX_GAP) as u64
+                && group[g as usize].rect.bottom as u64
+                    + 1
+                    + MAX_ROW_GAP.max(HEADER_ONLY_MAX_GAP) as u64
                     >= p.rect.top as u64
         });
         let mut k = 0;
@@ -671,7 +775,10 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
             let me = dsu.find(i as u32);
             if dsu.find(g) == g
                 && g != me
-                && merge_vertically(&group[g as usize], &group[me as usize].clone().with_header(p))
+                && merge_vertically(
+                    &group[g as usize],
+                    &group[me as usize].clone().with_header(p),
+                )
             {
                 join(&mut dsu, &mut group, g, i as u32);
             }
@@ -687,7 +794,9 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
     // Blocks lying inside another group's bounding box (a lone group label in a label column)
     // belong to it.
     if ABSORB_CONTAINED {
-        let mut roots: Vec<u32> = (0..blocks.len() as u32).filter(|&g| dsu.find(g) == g).collect();
+        let mut roots: Vec<u32> = (0..blocks.len() as u32)
+            .filter(|&g| dsu.find(g) == g)
+            .collect();
         if roots.len() <= ABSORB_MAX_GROUPS {
             roots.sort_by_key(|&g| std::cmp::Reverse(area(&group[g as usize].rect)));
             for k in 0..roots.len() {
@@ -700,7 +809,11 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
                         continue;
                     }
                     let (o, n) = (group[outer as usize].rect, group[inner as usize].rect);
-                    if n.top >= o.top && n.bottom <= o.bottom && n.left >= o.left && n.right <= o.right {
+                    if n.top >= o.top
+                        && n.bottom <= o.bottom
+                        && n.left >= o.left
+                        && n.right <= o.right
+                    {
                         join(&mut dsu, &mut group, outer, inner);
                     }
                 }
@@ -719,7 +832,10 @@ fn regions_inner(grid: &Grid) -> Vec<Region> {
         if size[root as usize] == 1 {
             out.push(b);
         } else {
-            groups.entry(root).or_default().extend(b.rows.into_iter().flat_map(|r| r.entries));
+            groups
+                .entry(root)
+                .or_default()
+                .extend(b.rows.into_iter().flat_map(|r| r.entries));
         }
     }
     out.extend(groups.into_values().map(make_region));
@@ -740,13 +856,24 @@ impl ByLeft {
         for (i, p) in profiles.iter().enumerate() {
             let (ids, max_bottom) = lists.entry(p.rect.left).or_default();
             ids.push(i);
-            max_bottom.push(max_bottom.last().map_or(p.rect.bottom, |&m| m.max(p.rect.bottom)));
+            max_bottom.push(
+                max_bottom
+                    .last()
+                    .map_or(p.rect.bottom, |&m| m.max(p.rect.bottom)),
+            );
         }
         ByLeft { lists }
     }
 
     /// Blocks starting in column `left` with rows overlapping `top..=bottom`, in profile order.
-    fn overlapping(&self, profiles: &[Profile], left: u32, top: u32, bottom: u32, out: &mut Vec<usize>) {
+    fn overlapping(
+        &self,
+        profiles: &[Profile],
+        left: u32,
+        top: u32,
+        bottom: u32,
+        out: &mut Vec<usize>,
+    ) {
         out.clear();
         let Some((ids, max_bottom)) = self.lists.get(&left) else {
             return;
@@ -810,7 +937,12 @@ mod tests {
             for col in 0..4 {
                 let value = values[pattern % values.len()].clone();
                 pattern /= values.len();
-                sheet.cells.push(Cell { row: 0, col, value: Some(value), formula: None });
+                sheet.cells.push(Cell {
+                    row: 0,
+                    col,
+                    value: Some(value),
+                    formula: None,
+                });
             }
             let grid = Grid::new(&sheet);
             let mut region = make_region(entries_of(&grid));
@@ -830,8 +962,18 @@ mod tests {
         // Existing rule flags survive reconstruction; the newly combined row is not all rules.
         let sheet = Sheet {
             cells: vec![
-                Cell { row: 0, col: 0, value: Some(Value::Text("-----".into())), formula: None },
-                Cell { row: 0, col: 3, value: Some(Value::Text("label".into())), formula: None },
+                Cell {
+                    row: 0,
+                    col: 0,
+                    value: Some(Value::Text("-----".into())),
+                    formula: None,
+                },
+                Cell {
+                    row: 0,
+                    col: 3,
+                    value: Some(Value::Text("label".into())),
+                    formula: None,
+                },
             ],
             ..Sheet::default()
         };
@@ -842,7 +984,10 @@ mod tests {
             mark_rules(&sheet, &mut piece.rows[0]);
             drop_stray_years(&sheet, &mut piece.rows[0]);
         }
-        let entries = pieces.into_iter().flat_map(|p| p.rows.into_iter().flat_map(|r| r.entries)).collect();
+        let entries = pieces
+            .into_iter()
+            .flat_map(|p| p.rows.into_iter().flat_map(|r| r.entries))
+            .collect();
         let mut rebuilt = make_region(entries);
         mark_rules(&sheet, &mut rebuilt.rows[0]);
         drop_stray_years(&sheet, &mut rebuilt.rows[0]);
@@ -853,13 +998,26 @@ mod tests {
     fn rebuilt_rows_recheck_year_jumps_without_restoring_short_periods() {
         for first_row in [
             vec![Value::Number(1900.0), Value::Number(2020.0)],
-            vec![Value::Text("2010-01".into()), Value::Text("2010-02".into()), Value::Text("2010-03".into())],
+            vec![
+                Value::Text("2010-01".into()),
+                Value::Text("2010-02".into()),
+                Value::Text("2010-03".into()),
+            ],
         ] {
             let mut sheet = Sheet::default();
             for row in 0..3 {
                 for (i, first) in first_row.iter().enumerate() {
-                    let value = if row == 0 { first.clone() } else { Value::Number(row as f64 + 0.5) };
-                    sheet.cells.push(Cell { row, col: i as u32 * 3, value: Some(value), formula: None });
+                    let value = if row == 0 {
+                        first.clone()
+                    } else {
+                        Value::Number(row as f64 + 0.5)
+                    };
+                    sheet.cells.push(Cell {
+                        row,
+                        col: i as u32 * 3,
+                        value: Some(value),
+                        formula: None,
+                    });
                 }
             }
             // Aligned numeric bodies join across two blank spacer columns. Their combined

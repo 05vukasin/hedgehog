@@ -10,10 +10,10 @@ use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::path::Path;
 
 use calamine::{
-    open_workbook_auto_from_rs, Data, DataRef, Dimensions, Range, Reader, Sheets, Xlsx, XlsxError,
+    Data, DataRef, Dimensions, Range, Reader, Sheets, Xlsx, XlsxError, open_workbook_auto_from_rs,
 };
-use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
+use zip::write::SimpleFileOptions;
 
 use crate::model::{Cell, Rect, Sheet, Value, Workbook};
 
@@ -22,7 +22,9 @@ mod limits;
 mod merges;
 mod styles;
 
-pub use limits::{Limits, DEFAULT_MAX_CELLS, DEFAULT_MAX_DECOMPRESSED_BYTES, DEFAULT_MAX_SHARED_STRINGS};
+pub use limits::{
+    DEFAULT_MAX_CELLS, DEFAULT_MAX_DECOMPRESSED_BYTES, DEFAULT_MAX_SHARED_STRINGS, Limits,
+};
 
 /// A read failure: one line of text. [`Error::is_limit`] tells a refused file (over a [`Limits`]
 /// value) from a broken or unsupported one.
@@ -61,7 +63,11 @@ fn err(e: impl fmt::Display) -> Error {
         return p;
     }
     let line = msg.split_whitespace().collect::<Vec<_>>().join(" ");
-    Error(if line.is_empty() { "unreadable file".into() } else { line })
+    Error(if line.is_empty() {
+        "unreadable file".into()
+    } else {
+        line
+    })
 }
 
 /// Where a workbook's bytes come from: a file, read where it lies (never copied into memory as a
@@ -84,7 +90,10 @@ trait Source {
 
     /// The extension, lowercase.
     fn extension(&self) -> Option<String> {
-        self.name()?.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase)
+        self.name()?
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(str::to_ascii_lowercase)
     }
 }
 
@@ -161,7 +170,10 @@ fn sniff(src: &impl Source) -> Option<Format> {
             if let Ok(mut m) = zip.by_name("mimetype") {
                 let mut t = String::new();
                 m.by_ref().take(256).read_to_string(&mut t).ok()?;
-                return t.trim().starts_with("application/vnd.oasis.opendocument.spreadsheet").then_some(Format::Ods);
+                return t
+                    .trim()
+                    .starts_with("application/vnd.oasis.opendocument.spreadsheet")
+                    .then_some(Format::Ods);
             }
             if zip.index_for_name("xl/workbook.bin").is_some() {
                 return Some(Format::Xlsb);
@@ -170,7 +182,12 @@ fn sniff(src: &impl Source) -> Option<Format> {
                 return Some(Format::Xlsx);
             }
             let mut ct = String::new();
-            zip.by_name("[Content_Types].xml").ok()?.by_ref().take(1 << 20).read_to_string(&mut ct).ok()?;
+            zip.by_name("[Content_Types].xml")
+                .ok()?
+                .by_ref()
+                .take(1 << 20)
+                .read_to_string(&mut ct)
+                .ok()?;
             if ct.contains("sheet.binary.macroEnabled.main") {
                 Some(Format::Xlsb)
             } else if ct.contains("spreadsheetml") || ct.contains("ms-excel") {
@@ -186,7 +203,10 @@ fn sniff(src: &impl Source) -> Option<Format> {
 /// content that is not a zip or OLE container (a workbook saved as `.csv` opens as the workbook
 /// it is). Unreadable files go to calamine, which reports the error.
 fn is_delimited_text(src: &impl Source) -> bool {
-    if matches!(src.extension().as_deref(), Some("xls" | "xla" | "xlsx" | "xlsm" | "xlam" | "xlsb" | "ods")) {
+    if matches!(
+        src.extension().as_deref(),
+        Some("xls" | "xla" | "xlsx" | "xlsm" | "xlam" | "xlsb" | "ods")
+    ) {
         return false;
     }
     match head(src) {
@@ -244,7 +264,10 @@ pub struct ReadOptions {
 impl Default for ReadOptions {
     /// Formats only when the embedded learned model reads them; [`Limits::default`].
     fn default() -> Self {
-        ReadOptions { formats: crate::learned::embedded().is_some_and(|m| m.reads_formats()), limits: Limits::default() }
+        ReadOptions {
+            formats: crate::learned::embedded().is_some_and(|m| m.reads_formats()),
+            limits: Limits::default(),
+        }
     }
 }
 
@@ -278,14 +301,27 @@ pub fn open_bytes(bytes: &[u8], name: Option<&str>) -> Result<Workbook, Error> {
 /// (`.tsv` means tab-separated), and a zip or OLE container is read as what its content is,
 /// whatever the name says. The CSV sheet is named after the name's stem, `Sheet1` without one.
 /// [`FORMATS_MAX_BYTES`] applies to `bytes.len()`.
-pub fn open_bytes_with(bytes: &[u8], name: Option<&str>, opts: ReadOptions) -> Result<Workbook, Error> {
-    read(&BytesSource { bytes, name: name.map(Path::new) }, opts)
+pub fn open_bytes_with(
+    bytes: &[u8],
+    name: Option<&str>,
+    opts: ReadOptions,
+) -> Result<Workbook, Error> {
+    read(
+        &BytesSource {
+            bytes,
+            name: name.map(Path::new),
+        },
+        opts,
+    )
 }
 
 /// [`open_with`] and [`open_bytes_with`].
 fn read<S: Source>(src: &S, opts: ReadOptions) -> Result<Workbook, Error> {
     let small = || src.size().is_some_and(|n| n <= FORMATS_MAX_BYTES);
-    let opts = ReadOptions { formats: opts.formats || small(), ..opts };
+    let opts = ReadOptions {
+        formats: opts.formats || small(),
+        ..opts
+    };
     let limits = &opts.limits;
     if is_delimited_text(src) {
         let t = std::time::Instant::now();
@@ -315,9 +351,17 @@ fn read<S: Source>(src: &S, opts: ReadOptions) -> Result<Workbook, Error> {
         // Some converted workbooks list a veryHidden sheet with `r:id=""` (a leftover VBA module
         // sheet); calamine rejects the whole file. Drop those entries and retry from memory.
         Err(e) if e.to_string().contains("Relationship not found") => {
-            let repaired = src.raw().map_err(Into::into).and_then(repair_unlinked_sheets).map_err(|_| err(e))?;
+            let repaired = src
+                .raw()
+                .map_err(Into::into)
+                .and_then(repair_unlinked_sheets)
+                .map_err(|_| err(e))?;
             let wb = open_workbook_auto_from_rs(Cursor::new(repaired.as_slice())).map_err(err)?;
-            read_all(wb, || merges::Scanner::new(Cursor::new(repaired.as_slice()), opts.formats), limits)
+            read_all(
+                wb,
+                || merges::Scanner::new(Cursor::new(repaired.as_slice()), opts.formats),
+                limits,
+            )
         }
         Err(e) => Err(err(e)),
     }
@@ -341,7 +385,10 @@ fn magic(src: &impl Source) -> Option<Magic> {
 #[doc(hidden)]
 pub fn merge_scan_stats() -> (usize, usize) {
     use std::sync::atomic::Ordering::Relaxed;
-    (merges::SCANNED.load(Relaxed), merges::FALLBACK.load(Relaxed))
+    (
+        merges::SCANNED.load(Relaxed),
+        merges::FALLBACK.load(Relaxed),
+    )
 }
 
 fn trace(step: &str, since: std::time::Instant) {
@@ -378,7 +425,12 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
             total += cells.len() as u64;
             limits.check_cells(total)?;
             let merges = merge_cells(&mut wb, &name);
-            sheets.push(Sheet { name, cells, merges, formats: Vec::new() });
+            sheets.push(Sheet {
+                name,
+                cells,
+                merges,
+                formats: Vec::new(),
+            });
             continue;
         }
         // xlsx: values and formulas in one streaming pass, straight into sparse cells. When the
@@ -397,12 +449,14 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
             })
         };
         let (cells, early_scan) = match scanner.as_mut() {
-            Some(s) if !s.needs_cells() && matches!(wb, Sheets::Xlsx(_)) => std::thread::scope(|sc| {
-                let scan = sc.spawn(|| s.scan_merges(&name));
-                let cells = read_cells(&mut wb);
-                let scanned = scan.join().unwrap_or_else(|e| std::panic::resume_unwind(e));
-                (cells, Some(scanned))
-            }),
+            Some(s) if !s.needs_cells() && matches!(wb, Sheets::Xlsx(_)) => {
+                std::thread::scope(|sc| {
+                    let scan = sc.spawn(|| s.scan_merges(&name));
+                    let cells = read_cells(&mut wb);
+                    let scanned = scan.join().unwrap_or_else(|e| std::panic::resume_unwind(e));
+                    (cells, Some(scanned))
+                })
+            }
             _ => (read_cells(&mut wb), None),
         };
         let cells = cells?;
@@ -412,7 +466,9 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
                 // format) much faster than a second full XML parse. Anything unexpected →
                 // calamine's parse of the merges, and no formats.
                 let scanned = match early_scan {
-                    Some(early) => early.filter(|(declared, _)| *declared == dims).map(|(_, m)| (m, None)),
+                    Some(early) => early
+                        .filter(|(declared, _)| *declared == dims)
+                        .map(|(_, m)| (m, None)),
                     None => scanner.as_mut().and_then(|s| s.scan(&name, dims, &cells)),
                 };
                 let (merges, formats) = match scanned {
@@ -425,22 +481,36 @@ fn read_all<RS: Read + Seek, R: Read + Seek + Send>(
                         (merge_cells(&mut wb, &name), Vec::new())
                     }
                 };
-                Sheet { name, cells, merges, formats }
+                Sheet {
+                    name,
+                    cells,
+                    merges,
+                    formats,
+                }
             }
             None if matches!(wb, Sheets::Xlsx(_)) => {
                 // An xlsx part the one-pass reader rejected: values and formulas in two sparse
                 // passes (calamine's dense range spans the cells' bounding box: 38 GB for a
                 // hostile sheet), no formats.
-                let Sheets::Xlsx(x) = &mut wb else { unreachable!() };
+                let Sheets::Xlsx(x) = &mut wb else {
+                    unreachable!()
+                };
                 let cells = xlsx_cells_fallback(x, &name, limits, total)?;
                 let merges = merge_cells(&mut wb, &name);
-                Sheet { name, cells, merges, formats: Vec::new() }
+                Sheet {
+                    name,
+                    cells,
+                    merges,
+                    formats: Vec::new(),
+                }
             }
             None => {
                 // ods: its cell count was checked before calamine parsed it. A sheet name that
                 // occurs once is moved out of the reader rather than copied.
                 let taken = match &mut wb {
-                    Sheets::Ods(o) if sheet_names.iter().filter(|n| **n == name).count() == 1 => o.take_sheet(&name),
+                    Sheets::Ods(o) if sheet_names.iter().filter(|n| **n == name).count() == 1 => {
+                        o.take_sheet(&name)
+                    }
                     _ => None,
                 };
                 let (values, formulas) = match taken {
@@ -496,7 +566,9 @@ fn read_xlsx_cells<RS: Read + Seek>(
         seen += 1;
         if seen.is_multiple_of(65_536) {
             limits.check_time().map_err(ReadErr::Limit)?;
-            limits.check_cells(before + recs.len() as u64).map_err(ReadErr::Limit)?;
+            limits
+                .check_cells(before + recs.len() as u64)
+                .map_err(ReadErr::Limit)?;
         }
         if let Some(r) = record(rec) {
             recs.push(r);
@@ -521,7 +593,14 @@ fn read_xlsx_parallel<RS: Read + Seek>(
 ) -> Result<Option<(Vec<Cell>, Dimensions)>, Error> {
     let threads = calamine::parallel_read_threads();
     // A record of blank text stays a cell without value or formula until the order is known.
-    let cell = |rec: calamine::XlsxCellFormula<'_>| record(rec).map(|r| Cell { row: r.row, col: r.col, value: r.value, formula: r.formula });
+    let cell = |rec: calamine::XlsxCellFormula<'_>| {
+        record(rec).map(|r| Cell {
+            row: r.row,
+            col: r.col,
+            value: r.value,
+            formula: r.formula,
+        })
+    };
     let mut cells: Vec<Cell> = Vec::new();
     let (mut kept, mut ordered, mut prev) = (0u64, true, None);
     // Each chunk is copied as soon as its turn comes: the chunks' memory is reused by the next
@@ -539,7 +618,9 @@ fn read_xlsx_parallel<RS: Read + Seek>(
         }
         Ok(())
     };
-    let Some(dims) = x.worksheet_cells_parallel(name, threads, PARALLEL_MIN_PART, cell, &mut sink)? else {
+    let Some(dims) =
+        x.worksheet_cells_parallel(name, threads, PARALLEL_MIN_PART, cell, &mut sink)?
+    else {
         return Ok(None);
     };
     // What the worker threads freed goes back to the system before the next sheet.
@@ -553,21 +634,39 @@ fn read_xlsx_parallel<RS: Read + Seek>(
 /// One record of `next_cell_with_formula` (`None`: neither a value nor a formula).
 fn record(rec: calamine::XlsxCellFormula<'_>) -> Option<Record> {
     let has_value = !matches!(rec.value, DataRef::Empty);
-    let formula = rec.formula.filter(|f| !f.is_empty()).map(|f| match f.strip_prefix('=') {
-        Some(_) => f.trim_start_matches('=').to_string(),
-        None => f,
-    });
+    let formula = rec
+        .formula
+        .filter(|f| !f.is_empty())
+        .map(|f| match f.strip_prefix('=') {
+            Some(_) => f.trim_start_matches('=').to_string(),
+            None => f,
+        });
     if !has_value && formula.is_none() {
         return None;
     }
-    let value = if has_value { convert_ref(rec.value) } else { None };
-    Some(Record { row: rec.pos.0, col: rec.pos.1, value, has_value, formula })
+    let value = if has_value {
+        convert_ref(rec.value)
+    } else {
+        None
+    };
+    Some(Record {
+        row: rec.pos.0,
+        col: rec.pos.1,
+        value,
+        has_value,
+        formula,
+    })
 }
 
 impl Record {
     /// The cell, unless the record holds only blank text.
     fn into_cell(self) -> Option<Cell> {
-        (self.value.is_some() || self.formula.is_some()).then_some(Cell { row: self.row, col: self.col, value: self.value, formula: self.formula })
+        (self.value.is_some() || self.formula.is_some()).then_some(Cell {
+            row: self.row,
+            col: self.col,
+            value: self.value,
+            formula: self.formula,
+        })
     }
 }
 
@@ -575,7 +674,10 @@ impl Record {
 fn cells_of_records(mut recs: Vec<Record>) -> Vec<Cell> {
     // Usually already in order; otherwise sort (stable) and fold duplicates like the dense ranges
     // would: the last non-empty value and the last non-empty formula of a position win.
-    if !recs.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col)) {
+    if !recs
+        .windows(2)
+        .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col))
+    {
         recs.sort_by_key(|r| (r.row, r.col));
         let mut out: Vec<Record> = Vec::with_capacity(recs.len());
         for r in recs {
@@ -612,14 +714,25 @@ impl From<XlsxError> for ReadErr {
 
 /// An xls sheet's cells from calamine's sparse records (the last record of a position wins, as
 /// in its dense range).
-fn xls_cells<RS: Read + Seek>(x: &calamine::Xls<RS>, name: &str) -> Result<Vec<Cell>, calamine::XlsError> {
+fn xls_cells<RS: Read + Seek>(
+    x: &calamine::Xls<RS>,
+    name: &str,
+) -> Result<Vec<Cell>, calamine::XlsError> {
     let (values, formulas) = x.worksheet_cells(name)?;
     let mut cells: BTreeMap<(u32, u32), Cell> = BTreeMap::new();
     for c in values {
         let (row, col) = c.get_position();
         match convert(c.get_value()) {
             Some(value) => {
-                cells.insert((row, col), Cell { row, col, value: Some(value), formula: None });
+                cells.insert(
+                    (row, col),
+                    Cell {
+                        row,
+                        col,
+                        value: Some(value),
+                        formula: None,
+                    },
+                );
             }
             None => {
                 cells.remove(&(row, col));
@@ -634,14 +747,26 @@ fn xls_cells<RS: Read + Seek>(x: &calamine::Xls<RS>, name: &str) -> Result<Vec<C
         if f.is_empty() {
             continue;
         }
-        cells.entry((row, col)).or_insert(Cell { row, col, value: None, formula: None }).formula =
-            Some(f.trim_start_matches('=').to_string());
+        cells
+            .entry((row, col))
+            .or_insert(Cell {
+                row,
+                col,
+                value: None,
+                formula: None,
+            })
+            .formula = Some(f.trim_start_matches('=').to_string());
     }
     Ok(cells.into_values().collect())
 }
 
 /// An xlsb sheet's cells and formulas by its streaming readers (two passes).
-fn xlsb_cells<RS: Read + Seek>(x: &mut calamine::Xlsb<RS>, name: &str, limits: &Limits, before: u64) -> Result<Vec<Cell>, Error> {
+fn xlsb_cells<RS: Read + Seek>(
+    x: &mut calamine::Xlsb<RS>,
+    name: &str,
+    limits: &Limits,
+    before: u64,
+) -> Result<Vec<Cell>, Error> {
     let mut cells: BTreeMap<(u32, u32), Cell> = BTreeMap::new();
     {
         let mut r = x.worksheet_cells_reader(name).map_err(err)?;
@@ -655,7 +780,15 @@ fn xlsb_cells<RS: Read + Seek>(x: &mut calamine::Xlsb<RS>, name: &str, limits: &
             let (row, col) = c.get_position();
             match convert_ref(c.get_value().clone()) {
                 Some(value) => {
-                    cells.insert((row, col), Cell { row, col, value: Some(value), formula: None });
+                    cells.insert(
+                        (row, col),
+                        Cell {
+                            row,
+                            col,
+                            value: Some(value),
+                            formula: None,
+                        },
+                    );
                 }
                 None => {
                     cells.remove(&(row, col));
@@ -675,15 +808,27 @@ fn xlsb_cells<RS: Read + Seek>(x: &mut calamine::Xlsb<RS>, name: &str, limits: &
             continue;
         }
         let (row, col) = f.get_position();
-        cells.entry((row, col)).or_insert(Cell { row, col, value: None, formula: None }).formula =
-            Some(f.get_value().trim_start_matches('=').to_string());
+        cells
+            .entry((row, col))
+            .or_insert(Cell {
+                row,
+                col,
+                value: None,
+                formula: None,
+            })
+            .formula = Some(f.get_value().trim_start_matches('=').to_string());
     }
     Ok(cells.into_values().collect())
 }
 
 /// [`read_xlsx_cells`]'s fallback: values, then formulas (a formula error drops the formulas
 /// only, as calamine's `worksheet_formula` did); a part that is no worksheet is an empty sheet.
-fn xlsx_cells_fallback<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str, limits: &Limits, before: u64) -> Result<Vec<Cell>, Error> {
+fn xlsx_cells_fallback<RS: Read + Seek>(
+    x: &mut Xlsx<RS>,
+    name: &str,
+    limits: &Limits,
+    before: u64,
+) -> Result<Vec<Cell>, Error> {
     let mut cells: BTreeMap<(u32, u32), Cell> = BTreeMap::new();
     {
         let mut r = match x.worksheet_cells_reader(name) {
@@ -701,7 +846,15 @@ fn xlsx_cells_fallback<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str, limits: &L
             let (row, col) = c.get_position();
             match convert_ref(c.get_value().clone()) {
                 Some(value) => {
-                    cells.insert((row, col), Cell { row, col, value: Some(value), formula: None });
+                    cells.insert(
+                        (row, col),
+                        Cell {
+                            row,
+                            col,
+                            value: Some(value),
+                            formula: None,
+                        },
+                    );
                 }
                 None => {
                     cells.remove(&(row, col));
@@ -722,7 +875,15 @@ fn xlsx_cells_fallback<RS: Read + Seek>(x: &mut Xlsx<RS>, name: &str, limits: &L
     })();
     if read_formulas.is_ok() {
         for (row, col, f) in formulas {
-            cells.entry((row, col)).or_insert(Cell { row, col, value: None, formula: None }).formula = Some(f);
+            cells
+                .entry((row, col))
+                .or_insert(Cell {
+                    row,
+                    col,
+                    value: None,
+                    formula: None,
+                })
+                .formula = Some(f);
         }
     }
     limits.check_cells(before + cells.len() as u64)?;
@@ -754,7 +915,9 @@ fn strip_unlinked_sheets(xml: &str) -> String {
     let mut out = String::with_capacity(xml.len());
     let mut rest = xml;
     while let Some(start) = rest.find("<sheet ") {
-        let Some(len) = rest[start..].find("/>") else { break };
+        let Some(len) = rest[start..].find("/>") else {
+            break;
+        };
         let end = start + len + 2;
         out.push_str(&rest[..start]);
         let tag = &rest[start..end];
@@ -787,14 +950,24 @@ fn merge_cells<RS: Read + Seek>(wb: &mut Sheets<RS>, name: &str) -> Vec<Rect> {
         _ => Vec::new(),
     };
     dims.into_iter()
-        .map(|d| Rect { top: d.start.0, left: d.start.1, bottom: d.end.0, right: d.end.1 })
+        .map(|d| Rect {
+            top: d.start.0,
+            left: d.start.1,
+            bottom: d.end.0,
+            right: d.end.1,
+        })
         .collect()
 }
 
 /// The cells of a dense value range and a dense formula range: values that convert, with the
 /// non-empty formula of the same position, and formulas alone. Both ranges are walked in row
 /// order, so the cells come out sorted by position (B136: a merge instead of a sorted map).
-fn build_sheet(name: String, values: &Range<Data>, formulas: &Range<String>, merges: Vec<Rect>) -> Sheet {
+fn build_sheet(
+    name: String,
+    values: &Range<Data>,
+    formulas: &Range<String>,
+    merges: Vec<Rect>,
+) -> Sheet {
     let (vr, vc) = values.start().unwrap_or((0, 0));
     let mut vals = values
         .used_cells()
@@ -813,20 +986,40 @@ fn build_sheet(name: String, values: &Range<Data>, formulas: &Range<String>, mer
             (Some(&(v, _)), Some(&(f, _))) if v == f => {
                 let ((row, col), value) = vals.next().unwrap();
                 let (_, f) = forms.next().unwrap();
-                Cell { row, col, value: Some(value), formula: Some(f.trim_start_matches('=').to_string()) }
+                Cell {
+                    row,
+                    col,
+                    value: Some(value),
+                    formula: Some(f.trim_start_matches('=').to_string()),
+                }
             }
             (Some(&(v, _)), f) if f.is_none_or(|&(f, _)| v < f) => {
                 let ((row, col), value) = vals.next().unwrap();
-                Cell { row, col, value: Some(value), formula: None }
+                Cell {
+                    row,
+                    col,
+                    value: Some(value),
+                    formula: None,
+                }
             }
             _ => {
                 let ((row, col), f) = forms.next().unwrap();
-                Cell { row, col, value: None, formula: Some(f.trim_start_matches('=').to_string()) }
+                Cell {
+                    row,
+                    col,
+                    value: None,
+                    formula: Some(f.trim_start_matches('=').to_string()),
+                }
             }
         };
         cells.push(cell);
     }
-    Sheet { name, cells, merges, formats: Vec::new() }
+    Sheet {
+        name,
+        cells,
+        merges,
+        formats: Vec::new(),
+    }
 }
 
 /// [`convert`] for a borrowed xlsx value (shared strings are copied once, not twice).

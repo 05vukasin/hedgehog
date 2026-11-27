@@ -62,7 +62,11 @@ impl<'g> Totals<'g> {
     pub fn new(grid: &'g Grid<'g>) -> (Totals<'g>, Vec<crate::totals::TotalCandidate>) {
         let deps = grid.deps();
         // As the learned row model was trained: every total keyword counts, incidental or not.
-        let crate::totals::Detection { candidates: cands, keyword_rows, .. } = detect_rows(grid, deps, false);
+        let crate::totals::Detection {
+            candidates: cands,
+            keyword_rows,
+            ..
+        } = detect_rows(grid, deps, false);
         let mut verified = rustc_hash::FxHashMap::default();
         for cand in &cands {
             if let Some(i) = grid.cell_index(cand.row, cand.col) {
@@ -74,7 +78,15 @@ impl<'g> Totals<'g> {
                 verified.insert(i, v);
             }
         }
-        (Totals { grid, deps, keyword_rows, verified }, cands)
+        (
+            Totals {
+                grid,
+                deps,
+                keyword_rows,
+                verified,
+            },
+            cands,
+        )
     }
 
     /// The [`NAMES`] of cell `i` (index into `sheet.cells`), in order.
@@ -87,9 +99,13 @@ impl<'g> Totals<'g> {
             f[1] = p.kind.is_aggregate() as u8 as f32;
             let local: Vec<_> = p.refs.iter().filter(|r| r.is_local(&sheet.name)).collect();
             if !local.is_empty() {
-                f[2] = local.iter().all(|r| r.rect.left == c.col && r.rect.right == c.col && r.rect.bottom < c.row)
+                f[2] = local
+                    .iter()
+                    .all(|r| r.rect.left == c.col && r.rect.right == c.col && r.rect.bottom < c.row)
                     as u8 as f32;
-                f[3] = local.iter().all(|r| r.rect.top == c.row && r.rect.bottom == c.row && r.rect.right < c.col)
+                f[3] = local
+                    .iter()
+                    .all(|r| r.rect.top == c.row && r.rect.bottom == c.row && r.rect.right < c.col)
                     as u8 as f32;
             }
             f[4] = p.refs.len() as f32;

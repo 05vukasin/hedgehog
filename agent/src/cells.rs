@@ -1,7 +1,7 @@
 //! The `cells` tool: original source cells of a range, for citing exact values.
 
 use hh_core::model::{Value, Workbook};
-use hh_core::{a1, Grid};
+use hh_core::{Grid, a1};
 
 use crate::text::{num, parse_range, range_a1, sheet_ref, short};
 
@@ -21,15 +21,29 @@ fn value_text(v: &Value) -> String {
 /// `A1<TAB>value` lines for the non-empty cells of `range` on `sheet` (merged areas marked,
 /// formulas shown after the value).
 pub fn cells(wb: &Workbook, sheet: &str, range: &str) -> Result<String, String> {
-    let (in_ref, rect) = parse_range(range).ok_or_else(|| format!("bad range {range:?}; use A1 notation such as B3:F12 or B3"))?;
-    let wanted = in_ref.as_deref().filter(|s| !s.is_empty()).unwrap_or(sheet).trim();
+    let (in_ref, rect) = parse_range(range)
+        .ok_or_else(|| format!("bad range {range:?}; use A1 notation such as B3:F12 or B3"))?;
+    let wanted = in_ref
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(sheet)
+        .trim();
     let s = wb
         .sheets
         .iter()
         .find(|s| s.name == wanted)
-        .or_else(|| wb.sheets.iter().find(|s| s.name.trim().eq_ignore_ascii_case(wanted)))
+        .or_else(|| {
+            wb.sheets
+                .iter()
+                .find(|s| s.name.trim().eq_ignore_ascii_case(wanted))
+        })
         .ok_or_else(|| {
-            let names: Vec<String> = wb.sheets.iter().take(40).map(|s| format!("'{}'", s.name)).collect();
+            let names: Vec<String> = wb
+                .sheets
+                .iter()
+                .take(40)
+                .map(|s| format!("'{}'", s.name))
+                .collect();
             format!("no sheet {wanted:?}; sheets: {}", names.join(", "))
         })?;
     let area = u64::from(rect.bottom - rect.top + 1) * u64::from(rect.right - rect.left + 1);

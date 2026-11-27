@@ -3,9 +3,9 @@
 
 use std::path::{Path, PathBuf};
 
-use hh_core::eval::run::{evaluate, RunOptions};
+use hh_core::eval::run::{RunOptions, evaluate};
 use hh_core::eval::split::Split;
-use hh_core::eval::synthetic::{breakdown, load, parse_json, BreakdownOptions, J};
+use hh_core::eval::synthetic::{BreakdownOptions, J, breakdown, load, parse_json};
 use hh_core::eval::{baseline, metrics::role_index};
 use hh_core::{Rect, Role};
 use rust_xlsxwriter::{Formula, Workbook};
@@ -31,7 +31,8 @@ fn write_fixture(dir: &Path) {
     ws.write_string(4, 0, "South").unwrap();
     ws.write_string(4, 1, "-").unwrap();
     ws.write_string(5, 0, "Total").unwrap();
-    ws.write_formula(5, 1, Formula::new("=SUM(B4:B5)").set_result("1234.5")).unwrap();
+    ws.write_formula(5, 1, Formula::new("=SUM(B4:B5)").set_result("1234.5"))
+        .unwrap();
     ws.write_string(7, 0, "Source: fixture").unwrap();
     let e = wb.add_worksheet();
     e.set_name("Sheet2").unwrap();
@@ -80,19 +81,43 @@ fn loads_and_scores_fixture() {
     assert_eq!(f.sheets.len(), 1, "empty sheet without tables is skipped");
     let s = &f.sheets[0];
     assert_eq!(s.name, "Sales");
-    assert_eq!(s.tables, vec![Rect { top: 2, left: 0, bottom: 5, right: 1 }]);
+    assert_eq!(
+        s.tables,
+        vec![Rect {
+            top: 2,
+            left: 0,
+            bottom: 5,
+            right: 1
+        }]
+    );
     assert_eq!(s.cells.len(), 10);
     assert_eq!(s.cells[0].role, Role::Title);
     assert_eq!(s.cells.last().unwrap().role, Role::Note);
     assert_eq!(corpus.labels["total"].count, 2);
 
-    let opts = RunOptions { split: Split::All, ..RunOptions::default() };
+    let opts = RunOptions {
+        split: Split::All,
+        ..RunOptions::default()
+    };
     let rep = evaluate(&corpus, &baseline::analyze, "baseline", &opts);
     assert_eq!(rep.files_evaluated, 1);
     assert_eq!(rep.missing_cells(), 0, "every GT cell exists in the xlsx");
-    assert_eq!(rep.confusion.counts[role_index(Role::Data)].iter().sum::<u64>(), 4);
+    assert_eq!(
+        rep.confusion.counts[role_index(Role::Data)]
+            .iter()
+            .sum::<u64>(),
+        4
+    );
 
-    let bd = breakdown(&dir, &baseline::analyze, &BreakdownOptions { limit: None, values: true }).unwrap();
+    let bd = breakdown(
+        &dir,
+        &baseline::analyze,
+        &BreakdownOptions {
+            limit: None,
+            values: true,
+        },
+    )
+    .unwrap();
     assert_eq!(bd.by_profile["enron_like"].sheets, 1);
     assert_eq!(bd.by_boundary["sheet_start"].gt_tables, 1);
     assert_eq!(bd.by_table_op["locale_numbers"].gt_tables, 1);

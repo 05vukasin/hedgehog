@@ -4,11 +4,12 @@
 
 use std::path::PathBuf;
 
-use hh_core::{a1, layout, open, Grid, Rect, Role, Sheet, SheetLayout};
+use hh_core::{Grid, Rect, Role, Sheet, SheetLayout, a1, layout, open};
 use rust_xlsxwriter::{ExcelDateTime, Format, Formula, Workbook, Worksheet};
 
 fn fixture(name: &str, build: impl FnOnce(&mut Worksheet)) -> Sheet {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_stacked_{}_{name}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_stacked_{}_{name}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     build(wb.add_worksheet());
     wb.save(&path).unwrap();
@@ -27,23 +28,44 @@ fn run(sheet: &Sheet) -> SheetLayout {
 }
 
 fn role(sheet: &Sheet, l: &SheetLayout, row: u32, col: u32) -> Role {
-    let i = sheet.cells.iter().position(|c| c.row == row && c.col == col).expect("cell exists");
+    let i = sheet
+        .cells
+        .iter()
+        .position(|c| c.row == row && c.col == col)
+        .expect("cell exists");
     l.roles[i]
 }
 
 fn rect(top: u32, left: u32, bottom: u32, right: u32) -> Rect {
-    Rect { top, left, bottom, right }
+    Rect {
+        top,
+        left,
+        bottom,
+        right,
+    }
 }
 
 fn rects(l: &SheetLayout) -> Vec<String> {
-    l.tables.iter().map(|t| format!("{}:{}", a1(t.rect.top, t.rect.left), a1(t.rect.bottom, t.rect.right))).collect()
+    l.tables
+        .iter()
+        .map(|t| {
+            format!(
+                "{}:{}",
+                a1(t.rect.top, t.rect.left),
+                a1(t.rect.bottom, t.rect.right)
+            )
+        })
+        .collect()
 }
 
 /// Tiny deterministic generator.
 struct Rng(u64);
 impl Rng {
     fn next(&mut self) -> f64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((self.0 >> 33) as f64) / (1u64 << 31) as f64
     }
 }
@@ -63,17 +85,24 @@ enum Col {
 fn write_rows(ws: &mut Worksheet, row: u32, col: u16, cols: &[Col], n: u32, seed: u64) {
     let mut r = Rng(seed);
     let date = Format::new().set_num_format("yyyy-mm-dd");
-    let names = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Juliet"];
+    let names = [
+        "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "Juliet",
+    ];
     for i in 0..n {
         for (j, c) in cols.iter().enumerate() {
             let (rr, cc) = (row + i, col + j as u16);
             match c {
-                Col::Name => ws.write_string(rr, cc, format!("{} {}", names[(r.next() * 10.0) as usize % 10], i)),
+                Col::Name => ws.write_string(
+                    rr,
+                    cc,
+                    format!("{} {}", names[(r.next() * 10.0) as usize % 10], i),
+                ),
                 Col::Int => ws.write_number(rr, cc, (r.next() * 90.0).floor() + 1.0),
                 Col::Dec => ws.write_number(rr, cc, (r.next() * 1000.0).round() / 100.0),
                 Col::Big => ws.write_number(rr, cc, (r.next() * 1e7).round() / 100.0),
                 Col::Date => {
-                    let d = ExcelDateTime::from_ymd(2023, 1 + (i % 12) as u8, 1 + (i % 27) as u8).unwrap();
+                    let d = ExcelDateTime::from_ymd(2023, 1 + (i % 12) as u8, 1 + (i % 27) as u8)
+                        .unwrap();
                     ws.write_datetime_with_format(rr, cc, &d, &date)
                 }
                 Col::TextNum => {
@@ -81,7 +110,9 @@ fn write_rows(ws: &mut Worksheet, row: u32, col: u16, cols: &[Col], n: u32, seed
                     let s = format!("{:.2}", v).replace('.', ",");
                     ws.write_string(rr, cc, format!("{s} EUR"))
                 }
-                Col::Code => ws.write_string(rr, cc, format!("X-{}", (r.next() * 900.0) as u32 + 100)),
+                Col::Code => {
+                    ws.write_string(rr, cc, format!("X-{}", (r.next() * 900.0) as u32 + 100))
+                }
             }
             .unwrap();
         }
@@ -113,7 +144,14 @@ fn assert_two(l: &SheetLayout, a: Rect, b: Rect) {
 fn stack_a_no_gap_no_header() {
     let s = fixture("a", |ws| {
         first(ws);
-        write_rows(ws, 31, 0, &[Col::Date, Col::Code, Col::Big, Col::Name], 25, 2);
+        write_rows(
+            ws,
+            31,
+            0,
+            &[Col::Date, Col::Code, Col::Big, Col::Name],
+            25,
+            2,
+        );
     });
     let l = run(&s);
     assert_two(&l, rect(0, 0, 30, 3), rect(31, 0, 55, 3));
@@ -125,7 +163,14 @@ fn stack_b_wider() {
     let s = fixture("b", |ws| {
         first(ws);
         header(ws, 31, 0, &["Region", "Jan", "Feb", "Mar", "Apr", "May"]);
-        write_rows(ws, 32, 0, &[Col::Name, Col::Big, Col::Big, Col::Big, Col::Big, Col::Big], 20, 3);
+        write_rows(
+            ws,
+            32,
+            0,
+            &[Col::Name, Col::Big, Col::Big, Col::Big, Col::Big, Col::Big],
+            20,
+            3,
+        );
     });
     let l = run(&s);
     assert_two(&l, rect(0, 0, 30, 3), rect(31, 0, 51, 5));
@@ -197,7 +242,8 @@ fn date_header_repeats_by_its_dates() {
         let date = Format::new().set_num_format("yyyy-mm-dd");
         let head = |ws: &mut Worksheet, row: u32| {
             for d in 0..5u16 {
-                ws.write_number_with_format(row, d, 45292.0 + d as f64, &date).unwrap();
+                ws.write_number_with_format(row, d, 45292.0 + d as f64, &date)
+                    .unwrap();
             }
         };
         head(ws, 0);
@@ -208,7 +254,11 @@ fn date_header_repeats_by_its_dates() {
                 continue;
             }
             for d in 0..5u16 {
-                let v = if row == 1 { 0.0 } else { (r.next() * 1e5).round() };
+                let v = if row == 1 {
+                    0.0
+                } else {
+                    (r.next() * 1e5).round()
+                };
                 ws.write_number(row, d, v).unwrap();
             }
         }
@@ -225,8 +275,22 @@ fn date_header_repeats_by_its_dates() {
 fn text_numbers_do_not_split() {
     let s = fixture("textnum", |ws| {
         header(ws, 0, 0, &["Trader", "Deals", "Amount", "Trade date"]);
-        write_rows(ws, 1, 0, &[Col::Name, Col::Int, Col::Big, Col::Date], 25, 20);
-        write_rows(ws, 26, 0, &[Col::Name, Col::Int, Col::TextNum, Col::Date], 25, 21);
+        write_rows(
+            ws,
+            1,
+            0,
+            &[Col::Name, Col::Int, Col::Big, Col::Date],
+            25,
+            20,
+        );
+        write_rows(
+            ws,
+            26,
+            0,
+            &[Col::Name, Col::Int, Col::TextNum, Col::Date],
+            25,
+            21,
+        );
     });
     let l = run(&s);
     assert_eq!(l.tables.len(), 1, "{:?}", rects(&l));
@@ -237,13 +301,19 @@ fn text_numbers_do_not_split() {
 #[test]
 fn optional_column_does_not_split() {
     let s = fixture("optional", |ws| {
-        header(ws, 0, 0, &["Trader", "Deals", "Price", "Actual", "Trade date"]);
+        header(
+            ws,
+            0,
+            0,
+            &["Trader", "Deals", "Price", "Actual", "Trade date"],
+        );
         write_rows(ws, 1, 0, &[Col::Name, Col::Int, Col::Dec], 40, 30);
         let mut r = Rng(31);
         let date = Format::new().set_num_format("yyyy-mm-dd");
         for i in 0..40u32 {
             if i >= 25 {
-                ws.write_number(1 + i, 3, (r.next() * 100.0).round()).unwrap();
+                ws.write_number(1 + i, 3, (r.next() * 100.0).round())
+                    .unwrap();
             }
             let d = ExcelDateTime::from_ymd(2023, 1 + (i % 12) as u8, 1).unwrap();
             ws.write_datetime_with_format(1 + i, 4, &d, &date).unwrap();
@@ -258,13 +328,24 @@ fn optional_column_does_not_split() {
 #[test]
 fn row_label_column_with_spacer() {
     let s = fixture("labels", |ws| {
-        header(ws, 0, 6, &["Day Ahead", "ISO", "Services", "Total", "Payments", "Net"]);
-        let labels = ["Gas Annuity =", "Services Desk Annuity =", "Power Annuity:", "Other ="];
+        header(
+            ws,
+            0,
+            6,
+            &["Day Ahead", "ISO", "Services", "Total", "Payments", "Net"],
+        );
+        let labels = [
+            "Gas Annuity =",
+            "Services Desk Annuity =",
+            "Power Annuity:",
+            "Other =",
+        ];
         let mut r = Rng(40);
         for i in 0..12u32 {
             ws.write_string(2 + i, 4, labels[i as usize % 4]).unwrap();
             for c in 6..12u16 {
-                ws.write_number(2 + i, c, (r.next() * 1e6).round() / 100.0).unwrap();
+                ws.write_number(2 + i, c, (r.next() * 1e6).round() / 100.0)
+                    .unwrap();
             }
         }
     });
@@ -287,7 +368,8 @@ fn far_left_group_labels() {
             for i in 0..3 {
                 ws.write_string(row, 4, format!("Desk {i}")).unwrap();
                 for c in 5..8u16 {
-                    ws.write_number(row, c, (r.next() * 1e5).round() / 100.0).unwrap();
+                    ws.write_number(row, c, (r.next() * 1e5).round() / 100.0)
+                        .unwrap();
                 }
                 row += 1;
             }
@@ -305,22 +387,38 @@ fn far_left_group_labels() {
 /// data): one long sparse table G3:L54 with month groups in A, row labels in E, task notes in A,
 /// subtotal formulas and a grand-total row.
 fn true_up(ws: &mut Worksheet) {
-    ws.write_string(0, 0, "Harbor True-Up Action Items").unwrap();
-    header(ws, 2, 6, &["Day Ahead less Gas", "ISO", "Services Desk Profit", "Total", "Payments", "Net"]);
+    ws.write_string(0, 0, "Harbor True-Up Action Items")
+        .unwrap();
+    header(
+        ws,
+        2,
+        6,
+        &[
+            "Day Ahead less Gas",
+            "ISO",
+            "Services Desk Profit",
+            "Total",
+            "Payments",
+            "Net",
+        ],
+    );
     let mut r = Rng(60);
     let mut nums = |ws: &mut Worksheet, row: u32| {
         for c in 6..12u16 {
-            ws.write_number(row, c, (r.next() * 1e8).round() / 100.0).unwrap();
+            ws.write_number(row, c, (r.next() * 1e8).round() / 100.0)
+                .unwrap();
         }
     };
     let sub = |ws: &mut Worksheet, row: u32| {
         let f = format!("=SUM(G{}:G{})", row - 1, row);
-        ws.write_formula(row, 6, Formula::new(f).set_result("1349839.5")).unwrap();
+        ws.write_formula(row, 6, Formula::new(f).set_result("1349839.5"))
+            .unwrap();
     };
     let labels = |ws: &mut Worksheet, row: u32| {
         ws.write_string(row, 4, "Gas Annuity =").unwrap();
         ws.write_number(row, 6, 1336995.67).unwrap();
-        ws.write_string(row + 1, 4, "Services Desk Annuity =").unwrap();
+        ws.write_string(row + 1, 4, "Services Desk Annuity =")
+            .unwrap();
         ws.write_number(row + 1, 6, 12843.83).unwrap();
     };
     // July: label row, data row, two labelled rows, subtotal.
@@ -330,7 +428,8 @@ fn true_up(ws: &mut Worksheet) {
     sub(ws, 8);
     // Aug
     ws.write_string(9, 0, "Aug").unwrap();
-    ws.write_string(10, 0, "1.  Enter annuity deal for services desk").unwrap();
+    ws.write_string(10, 0, "1.  Enter annuity deal for services desk")
+        .unwrap();
     nums(ws, 10);
     labels(ws, 11);
     sub(ws, 13);
@@ -340,8 +439,10 @@ fn true_up(ws: &mut Worksheet) {
     nums(ws, 15);
     ws.write_string(16, 0, "    ISO deal").unwrap();
     labels(ws, 16);
-    ws.write_string(17, 0, "2.  Recalc Services Profit").unwrap();
-    ws.write_string(18, 0, "2.  Reverse annuity in October").unwrap();
+    ws.write_string(17, 0, "2.  Recalc Services Profit")
+        .unwrap();
+    ws.write_string(18, 0, "2.  Reverse annuity in October")
+        .unwrap();
     sub(ws, 18);
     ws.write_string(19, 0, "3.  Enter annuity deal").unwrap();
     // Oct .. Feb: month label on the data row or just above, then task notes.
@@ -352,13 +453,15 @@ fn true_up(ws: &mut Worksheet) {
         nums(ws, data);
         for t in 0..4 {
             let rr = row + 1 + t;
-            ws.write_string(rr, 0, format!("{}.  Pay Day Ahead Amount step {t}", t + 1)).unwrap();
+            ws.write_string(rr, 0, format!("{}.  Pay Day Ahead Amount step {t}", t + 1))
+                .unwrap();
         }
         row += 6 + (k as u32 % 2);
     }
     for (c, col) in ["G", "H", "I", "J", "K", "L"].iter().enumerate() {
         let f = format!("=SUM({col}6:{col}52)");
-        ws.write_formula(53, 6 + c as u16, Formula::new(f).set_result("100")).unwrap();
+        ws.write_formula(53, 6 + c as u16, Formula::new(f).set_result("100"))
+            .unwrap();
     }
 }
 
@@ -383,12 +486,16 @@ fn true_up_is_one_table() {
 /// and normalize fills them down instead of dropping their rows.
 #[test]
 fn outline_key_column_fills_down() {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_stacked_{}_outline.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_stacked_{}_outline.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     header(ws, 0, 0, &["Desk", "Trader", "Seat", "Phone"]);
     let mut row = 1;
-    for (g, desk) in ["Management", "Northeast", "Midwest", "Texas"].iter().enumerate() {
+    for (g, desk) in ["Management", "Northeast", "Midwest", "Texas"]
+        .iter()
+        .enumerate()
+    {
         for i in 0..3u32 {
             if i == 0 {
                 ws.write_string(row, 0, *desk).unwrap();
@@ -410,7 +517,11 @@ fn outline_key_column_fills_down() {
     let n = hh_core::normalize_workbook(&book, &hh_core::normalize::Options::default());
     let t = &n.tables[0];
     assert_eq!(t.src_rows.len(), 12, "every data row is kept");
-    let desk = t.columns.iter().find(|c| c.name == "Desk").expect("Desk column");
+    let desk = t
+        .columns
+        .iter()
+        .find(|c| c.name == "Desk")
+        .expect("Desk column");
     let text = |k: usize| match &desk.values[k] {
         hh_core::normalize::Out::Text(s) => s.clone(),
         other => format!("{other:?}"),

@@ -77,23 +77,52 @@ pub fn tokens(sql: &str) -> Vec<Token> {
                 i += 1;
             }
             let s = String::from_utf8_lossy(&s).into_owned();
-            let tok = if c == b'\'' { Tok::Str(s) } else { Tok::Ident { name: s, quoted: true } };
+            let tok = if c == b'\'' {
+                Tok::Str(s)
+            } else {
+                Tok::Ident {
+                    name: s,
+                    quoted: true,
+                }
+            };
             out.push(Token { tok, start, end: i });
-        } else if c.is_ascii_digit() || (c == b'.' && b.get(i + 1).is_some_and(u8::is_ascii_digit)) {
+        } else if c.is_ascii_digit() || (c == b'.' && b.get(i + 1).is_some_and(u8::is_ascii_digit))
+        {
             while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'.') {
                 i += 1;
             }
-            out.push(Token { tok: Tok::Num(sql[start..i].to_string()), start, end: i });
+            out.push(Token {
+                tok: Tok::Num(sql[start..i].to_string()),
+                start,
+                end: i,
+            });
         } else if c.is_ascii_alphabetic() || c == b'_' || c >= 0x80 {
-            while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_' || b[i] == b'$' || b[i] >= 0x80) {
+            while i < b.len()
+                && (b[i].is_ascii_alphanumeric() || b[i] == b'_' || b[i] == b'$' || b[i] >= 0x80)
+            {
                 i += 1;
             }
-            out.push(Token { tok: Tok::Ident { name: sql[start..i].to_string(), quoted: false }, start, end: i });
+            out.push(Token {
+                tok: Tok::Ident {
+                    name: sql[start..i].to_string(),
+                    quoted: false,
+                },
+                start,
+                end: i,
+            });
         } else {
             let two = sql.get(i..i + 2).unwrap_or("");
-            let op = if ["<>", "!=", "<=", ">=", "==", "||", "<<", ">>"].contains(&two) { two } else { &sql[i..i + 1] };
+            let op = if ["<>", "!=", "<=", ">=", "==", "||", "<<", ">>"].contains(&two) {
+                two
+            } else {
+                &sql[i..i + 1]
+            };
             i += op.len();
-            out.push(Token { tok: Tok::Op(op.to_string()), start, end: i });
+            out.push(Token {
+                tok: Tok::Op(op.to_string()),
+                start,
+                end: i,
+            });
         }
     }
     out
@@ -137,9 +166,20 @@ pub fn table_refs(toks: &[Token]) -> Vec<TableRef> {
                 i = next;
                 continue;
             }
-        } else if ["where", "group", "order", "having", "limit", "union", "except", "intersect", "window", "select"]
-            .iter()
-            .any(|k| t.is_kw(k))
+        } else if [
+            "where",
+            "group",
+            "order",
+            "having",
+            "limit",
+            "union",
+            "except",
+            "intersect",
+            "window",
+            "select",
+        ]
+        .iter()
+        .any(|k| t.is_kw(k))
         {
             in_from = false;
         }
@@ -151,7 +191,11 @@ pub fn table_refs(toks: &[Token]) -> Vec<TableRef> {
 /// `[schema .] name` at `i` (not a subquery, not a keyword), and the index after it.
 fn name_at(toks: &[Token], i: usize) -> Option<(TableRef, usize)> {
     let first = toks.get(i)?.ident()?;
-    if matches!(&toks[i].tok, Tok::Ident { quoted: false, .. }) && ["select", "with", "values", "lateral"].iter().any(|k| toks[i].is_kw(k)) {
+    if matches!(&toks[i].tok, Tok::Ident { quoted: false, .. })
+        && ["select", "with", "values", "lateral"]
+            .iter()
+            .any(|k| toks[i].is_kw(k))
+    {
         return None;
     }
     if toks.get(i + 1).is_some_and(|t| t.is_op(".")) {
@@ -160,12 +204,24 @@ fn name_at(toks: &[Token], i: usize) -> Option<(TableRef, usize)> {
         if toks.get(i + 3).is_some_and(|t| t.is_op("(")) {
             return None;
         }
-        return Some((TableRef { schema: Some(first.to_string()), name: second.to_string() }, i + 3));
+        return Some((
+            TableRef {
+                schema: Some(first.to_string()),
+                name: second.to_string(),
+            },
+            i + 3,
+        ));
     }
     if toks.get(i + 1).is_some_and(|t| t.is_op("(")) {
         return None;
     }
-    Some((TableRef { schema: None, name: first.to_string() }, i + 1))
+    Some((
+        TableRef {
+            schema: None,
+            name: first.to_string(),
+        },
+        i + 1,
+    ))
 }
 
 /// A text or number filter of a WHERE / ON / HAVING clause: `col = 'x'`, `'x' = col`,
@@ -192,7 +248,10 @@ fn column_before(toks: &[Token], i: usize) -> Option<(Option<String>, String)> {
     let mut j = i.checked_sub(1)?;
     if toks[j].is_op(")") {
         // f(col) — one column inside one call
-        let open = j.checked_sub(2).filter(|&k| toks[k].is_op("(")).or_else(|| j.checked_sub(4).filter(|&k| toks[k].is_op("(")))?;
+        let open = j
+            .checked_sub(2)
+            .filter(|&k| toks[k].is_op("("))
+            .or_else(|| j.checked_sub(4).filter(|&k| toks[k].is_op("(")))?;
         if !toks.get(open.checked_sub(1)?)?.ident().is_some() {
             return None;
         }
@@ -202,14 +261,21 @@ fn column_before(toks: &[Token], i: usize) -> Option<(Option<String>, String)> {
     if matches!(&toks[j].tok, Tok::Ident { quoted: false, .. }) && is_keyword(&name) {
         return None;
     }
-    let qual = j.checked_sub(2).filter(|&k| toks[k + 1].is_op(".")).and_then(|k| toks[k].ident()).map(str::to_string);
+    let qual = j
+        .checked_sub(2)
+        .filter(|&k| toks[k + 1].is_op("."))
+        .and_then(|k| toks[k].ident())
+        .map(str::to_string);
     Some((qual, name))
 }
 
 fn is_keyword(w: &str) -> bool {
-    ["and", "or", "not", "where", "select", "from", "on", "when", "then", "else", "case", "end", "null", "is", "between"]
-        .iter()
-        .any(|k| w.eq_ignore_ascii_case(k))
+    [
+        "and", "or", "not", "where", "select", "from", "on", "when", "then", "else", "case", "end",
+        "null", "is", "between",
+    ]
+    .iter()
+    .any(|k| w.eq_ignore_ascii_case(k))
 }
 
 fn lit(t: &Token) -> Option<Lit> {
@@ -265,7 +331,11 @@ pub fn filters(toks: &[Token], max: usize) -> Vec<Filter> {
                 let right = toks.get(i + 1).and_then(lit);
                 match right {
                     // a literal followed by an operator is part of an expression (`= 'a' || x`)
-                    Some(v) if !toks.get(i + 2).is_some_and(|t| matches!(&t.tok, Tok::Op(o) if o != ")" && o != ",")) => {
+                    Some(v)
+                        if !toks.get(i + 2).is_some_and(
+                            |t| matches!(&t.tok, Tok::Op(o) if o != ")" && o != ","),
+                        ) =>
+                    {
                         column_before(toks, i).map(|(q, c)| (q, c, vec![v]))
                     }
                     Some(_) => None,
@@ -274,8 +344,16 @@ pub fn filters(toks: &[Token], max: usize) -> Vec<Filter> {
                         let left = i.checked_sub(1).and_then(|k| lit(&toks[k]));
                         match (left, toks.get(i + 1).and_then(Token::ident)) {
                             (Some(v), Some(_)) => {
-                                let qual = toks.get(i + 2).filter(|t| t.is_op(".")).and_then(|_| toks[i + 1].ident()).map(str::to_string);
-                                let name = if qual.is_some() { toks.get(i + 3).and_then(Token::ident) } else { toks[i + 1].ident() };
+                                let qual = toks
+                                    .get(i + 2)
+                                    .filter(|t| t.is_op("."))
+                                    .and_then(|_| toks[i + 1].ident())
+                                    .map(str::to_string);
+                                let name = if qual.is_some() {
+                                    toks.get(i + 3).and_then(Token::ident)
+                                } else {
+                                    toks[i + 1].ident()
+                                };
                                 name.map(|n| (qual, n.to_string(), vec![v]))
                             }
                             _ => None,
@@ -286,7 +364,12 @@ pub fn filters(toks: &[Token], max: usize) -> Vec<Filter> {
             }
         };
         if let Some((qualifier, column, values)) = f {
-            let f = Filter { qualifier, column, op, values };
+            let f = Filter {
+                qualifier,
+                column,
+                op,
+                values,
+            };
             if !out.contains(&f) {
                 out.push(f);
             }
@@ -370,7 +453,11 @@ pub fn derived(sql: &str, toks: &[Token]) -> Vec<Derived> {
             for n in names {
                 out.push(Derived {
                     cte: true,
-                    columns_sql: format!("{} SELECT * FROM {}", &sql[..end], crate::text::quote_ident(&n)),
+                    columns_sql: format!(
+                        "{} SELECT * FROM {}",
+                        &sql[..end],
+                        crate::text::quote_ident(&n)
+                    ),
                     name: Some(n),
                 });
             }
@@ -381,32 +468,69 @@ pub fn derived(sql: &str, toks: &[Token]) -> Vec<Derived> {
         if !(toks[i].is_kw("from") || toks[i].is_kw("join") || (toks[i].is_op(",") && i > 0)) {
             continue;
         }
-        let Some(open) = toks.get(i + 1).filter(|t| t.is_op("(")).map(|_| i + 1) else { continue };
-        if !toks.get(open + 1).is_some_and(|t| t.is_kw("select") || t.is_kw("with") || t.is_kw("values")) {
+        let Some(open) = toks.get(i + 1).filter(|t| t.is_op("(")).map(|_| i + 1) else {
+            continue;
+        };
+        if !toks
+            .get(open + 1)
+            .is_some_and(|t| t.is_kw("select") || t.is_kw("with") || t.is_kw("values"))
+        {
             continue;
         }
-        let Some(c) = closing(toks, open) else { continue };
+        let Some(c) = closing(toks, open) else {
+            continue;
+        };
         let body = &sql[toks[open + 1].start..toks[c].start];
         let mut a = c + 1;
         if toks.get(a).is_some_and(|t| t.is_kw("as")) {
             a += 1;
         }
-        let name = toks.get(a).filter(|t| matches!(&t.tok, Tok::Ident { quoted: true, .. }) || !is_clause(t)).and_then(Token::ident);
+        let name = toks
+            .get(a)
+            .filter(|t| matches!(&t.tok, Tok::Ident { quoted: true, .. }) || !is_clause(t))
+            .and_then(Token::ident);
         // A CTE body above may be needed by the subquery: keep the WITH clause in front.
-        let with = out.iter().find_map(|d: &Derived| d.columns_sql.rfind(" SELECT * FROM ").map(|p| d.columns_sql[..p].to_string()));
+        let with = out.iter().find_map(|d: &Derived| {
+            d.columns_sql
+                .rfind(" SELECT * FROM ")
+                .map(|p| d.columns_sql[..p].to_string())
+        });
         let columns_sql = match with {
             Some(w) => format!("{w} SELECT * FROM ({body})"),
             None => format!("SELECT * FROM ({body})"),
         };
-        out.push(Derived { name: name.map(str::to_string), cte: false, columns_sql });
+        out.push(Derived {
+            name: name.map(str::to_string),
+            cte: false,
+            columns_sql,
+        });
     }
     out
 }
 
 fn is_clause(t: &Token) -> bool {
-    ["where", "group", "order", "having", "limit", "join", "left", "right", "inner", "outer", "cross", "natural", "on", "union", "except", "intersect", "window", "full"]
-        .iter()
-        .any(|k| t.is_kw(k))
+    [
+        "where",
+        "group",
+        "order",
+        "having",
+        "limit",
+        "join",
+        "left",
+        "right",
+        "inner",
+        "outer",
+        "cross",
+        "natural",
+        "on",
+        "union",
+        "except",
+        "intersect",
+        "window",
+        "full",
+    ]
+    .iter()
+    .any(|k| t.is_kw(k))
 }
 
 /// Columns added with `+` (`a + b`, `t."x" + coalesce(y, 0)`): the bare column names on either
@@ -431,7 +555,9 @@ pub fn plus_columns(toks: &[Token]) -> Vec<String> {
                 if let Some(n2) = toks.get(i + 3).and_then(Token::ident) {
                     push(n2);
                 }
-            } else if !toks.get(i + 2).is_some_and(|t| t.is_op("(")) && !(matches!(&toks[i + 1].tok, Tok::Ident { quoted: false, .. }) && is_keyword(n)) {
+            } else if !toks.get(i + 2).is_some_and(|t| t.is_op("("))
+                && !(matches!(&toks[i + 1].tok, Tok::Ident { quoted: false, .. }) && is_keyword(n))
+            {
                 push(n);
             }
         }
@@ -448,10 +574,20 @@ pub fn file_prefixes(toks: &[Token]) -> Vec<usize> {
         }
         // f2.T1.col is a column of an attached table; t.col (an alias) is not a schema: the
         // name after the dot must look like a table of ours (T<n>…, U<n>…).
-        let Some(name) = toks[i].ident() else { continue };
-        let Some(k) = name.strip_prefix(['f', 'F']).and_then(|d| d.parse::<usize>().ok()).filter(|&k| k >= 1) else { continue };
+        let Some(name) = toks[i].ident() else {
+            continue;
+        };
+        let Some(k) = name
+            .strip_prefix(['f', 'F'])
+            .and_then(|d| d.parse::<usize>().ok())
+            .filter(|&k| k >= 1)
+        else {
+            continue;
+        };
         let table = toks[i + 2].ident().unwrap_or_default();
-        let ours = table.strip_prefix(['T', 't', 'U', 'u']).is_some_and(|r| r.starts_with(|c: char| c.is_ascii_digit()));
+        let ours = table
+            .strip_prefix(['T', 't', 'U', 'u'])
+            .is_some_and(|r| r.starts_with(|c: char| c.is_ascii_digit()));
         if ours && !out.contains(&k) {
             out.push(k);
         }
@@ -467,18 +603,44 @@ mod tests {
     fn tokenizes_strings_names_and_comments() {
         let t = tokens("SELECT \"a \"\"b\"\" c\", 'it''s' -- x\n FROM [T1] /* y */ WHERE x <> 1.5");
         let toks: Vec<&Tok> = t.iter().map(|t| &t.tok).collect();
-        assert_eq!(toks[1], &Tok::Ident { name: "a \"b\" c".into(), quoted: true });
+        assert_eq!(
+            toks[1],
+            &Tok::Ident {
+                name: "a \"b\" c".into(),
+                quoted: true
+            }
+        );
         assert_eq!(toks[3], &Tok::Str("it's".into()));
-        assert_eq!(toks[5], &Tok::Ident { name: "T1".into(), quoted: true });
+        assert_eq!(
+            toks[5],
+            &Tok::Ident {
+                name: "T1".into(),
+                quoted: true
+            }
+        );
         assert_eq!(toks[8], &Tok::Op("<>".into()));
         assert_eq!(toks[9], &Tok::Num("1.5".into()));
     }
 
     #[test]
     fn finds_tables_and_prefixes() {
-        let t = tokens("SELECT * FROM f1.T1 o JOIN \"f2\".\"T1\" d ON o.id = d.id, T3_all WHERE x IN (SELECT y FROM T4)");
+        let t = tokens(
+            "SELECT * FROM f1.T1 o JOIN \"f2\".\"T1\" d ON o.id = d.id, T3_all WHERE x IN (SELECT y FROM T4)",
+        );
         let refs = table_refs(&t);
-        let names: Vec<String> = refs.iter().map(|r| format!("{}{}", r.schema.as_deref().map(|s| format!("{s}.")).unwrap_or_default(), r.name)).collect();
+        let names: Vec<String> = refs
+            .iter()
+            .map(|r| {
+                format!(
+                    "{}{}",
+                    r.schema
+                        .as_deref()
+                        .map(|s| format!("{s}."))
+                        .unwrap_or_default(),
+                    r.name
+                )
+            })
+            .collect();
         assert_eq!(names, ["f1.T1", "f2.T1", "T3_all", "T4"]);
         assert_eq!(file_prefixes(&t), [1, 2]);
         assert!(file_prefixes(&tokens("SELECT f1.x FROM T1 f1")).is_empty());
@@ -487,10 +649,24 @@ mod tests {
 
     #[test]
     fn finds_filters() {
-        let t = tokens("SELECT SUM(x) FROM T1 WHERE agency_name = 'NYPD' AND t.\"Country Name\" IN ('A', 'B') AND lower(c) LIKE 'x%' AND 'Q' = d AND y = 2020 AND z NOT IN ('n')");
+        let t = tokens(
+            "SELECT SUM(x) FROM T1 WHERE agency_name = 'NYPD' AND t.\"Country Name\" IN ('A', 'B') AND lower(c) LIKE 'x%' AND 'Q' = d AND y = 2020 AND z NOT IN ('n')",
+        );
         let f = filters(&t, 10);
-        let cols: Vec<(&str, &str, usize)> = f.iter().map(|f| (f.column.as_str(), f.op, f.values.len())).collect();
-        assert_eq!(cols, [("agency_name", "=", 1), ("Country Name", "in", 2), ("c", "like", 1), ("d", "=", 1), ("y", "=", 1)]);
+        let cols: Vec<(&str, &str, usize)> = f
+            .iter()
+            .map(|f| (f.column.as_str(), f.op, f.values.len()))
+            .collect();
+        assert_eq!(
+            cols,
+            [
+                ("agency_name", "=", 1),
+                ("Country Name", "in", 2),
+                ("c", "like", 1),
+                ("d", "=", 1),
+                ("y", "=", 1)
+            ]
+        );
         assert_eq!(f[1].qualifier.as_deref(), Some("t"));
         assert!(filters(&tokens("SELECT a FROM T1 WHERE a = 'x' || b"), 5).is_empty());
     }
@@ -501,9 +677,21 @@ mod tests {
         let d = derived(sql, &tokens(sql));
         assert_eq!(d.len(), 2);
         assert_eq!(d[0].name.as_deref(), Some("a"));
-        assert!(d[0].columns_sql.ends_with("GROUP BY x) SELECT * FROM \"a\""), "{}", d[0].columns_sql);
+        assert!(
+            d[0].columns_sql
+                .ends_with("GROUP BY x) SELECT * FROM \"a\""),
+            "{}",
+            d[0].columns_sql
+        );
         assert_eq!(d[1].name.as_deref(), Some("sub"));
-        assert!(d[1].columns_sql.starts_with("WITH a AS") && d[1].columns_sql.ends_with("SELECT * FROM (SELECT x AS z FROM a)"), "{}", d[1].columns_sql);
+        assert!(
+            d[1].columns_sql.starts_with("WITH a AS")
+                && d[1]
+                    .columns_sql
+                    .ends_with("SELECT * FROM (SELECT x AS z FROM a)"),
+            "{}",
+            d[1].columns_sql
+        );
     }
 
     #[test]

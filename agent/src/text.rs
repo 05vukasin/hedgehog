@@ -1,6 +1,6 @@
 //! Small text helpers shared by the tools: size caps, CSV, number and reference formatting.
 
-use hh_core::model::{a1, Rect};
+use hh_core::model::{Rect, a1};
 
 /// Hard cap of one tool result (~3k tokens).
 pub const MAX_CHARS: usize = 12_000;
@@ -21,13 +21,19 @@ pub fn cut(text: String, limit: usize, what: impl FnOnce(usize) -> String, how: 
         Some(nl) if nl > end / 2 => &keep[..nl],
         _ => keep,
     };
-    let omitted = text[keep.len()..].lines().filter(|l| !l.trim().is_empty()).count();
+    let omitted = text[keep.len()..]
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .count();
     format!("{keep}\n… cut: {}; ask for {how}", what(omitted))
 }
 
 /// Shortens `s` to `max` characters (with `…`), newlines and tabs as spaces.
 pub fn short(s: &str, max: usize) -> String {
-    let flat: String = s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let flat: String = s
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
     let flat = flat.trim();
     if flat.chars().count() <= max {
         return flat.to_string();
@@ -73,13 +79,22 @@ pub fn csv_field(s: &str) -> String {
 }
 
 pub fn csv_row<S: AsRef<str>>(fields: &[S]) -> String {
-    fields.iter().map(|f| csv_field(f.as_ref())).collect::<Vec<_>>().join(",")
+    fields
+        .iter()
+        .map(|f| csv_field(f.as_ref()))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 /// `Sheet1!B3` or `'My Sheet'!B3`.
 pub fn sheet_ref(sheet: &str, cell: &str) -> String {
-    let plain = sheet.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-        && sheet.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    let plain = sheet
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && sheet
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
     if plain {
         format!("{sheet}!{cell}")
     } else {
@@ -102,27 +117,167 @@ pub fn letter(col: u32) -> String {
 
 /// SQL identifier as the catalog shows it: bare when it is a plain identifier, else `"quoted"`.
 pub fn ident(name: &str) -> String {
-    let plain = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+    let plain = name
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-    if plain && !is_keyword(name) { name.to_string() } else { quote_ident(name) }
+    if plain && !is_keyword(name) {
+        name.to_string()
+    } else {
+        quote_ident(name)
+    }
 }
 
 /// SQLite keywords (lowercase); a column with such a name must be quoted.
 const KEYWORDS: &[&str] = &[
-    "abort", "action", "add", "after", "all", "alter", "always", "analyze", "and", "as", "asc", "attach",
-    "autoincrement", "before", "begin", "between", "by", "cascade", "case", "cast", "check", "collate", "column",
-    "commit", "conflict", "constraint", "create", "cross", "current", "current_date", "current_time",
-    "current_timestamp", "database", "default", "deferrable", "deferred", "delete", "desc", "detach", "distinct", "do",
-    "drop", "each", "else", "end", "escape", "except", "exclude", "exclusive", "exists", "explain", "fail", "filter",
-    "first", "following", "for", "foreign", "from", "full", "generated", "glob", "group", "groups", "having", "if",
-    "ignore", "immediate", "in", "index", "indexed", "initially", "inner", "insert", "instead", "intersect", "into",
-    "is", "isnull", "join", "key", "last", "left", "like", "limit", "match", "materialized", "natural", "no", "not",
-    "nothing", "notnull", "null", "nulls", "of", "offset", "on", "or", "order", "others", "outer", "over", "partition",
-    "plan", "pragma", "preceding", "primary", "query", "raise", "range", "recursive", "references", "regexp",
-    "reindex", "release", "rename", "replace", "restrict", "returning", "right", "rollback", "row", "rows",
-    "savepoint", "select", "set", "table", "temp", "temporary", "then", "ties", "to", "transaction", "trigger",
-    "unbounded", "union", "unique", "update", "using", "vacuum", "values", "view", "virtual", "when", "where",
-    "window", "with", "without",
+    "abort",
+    "action",
+    "add",
+    "after",
+    "all",
+    "alter",
+    "always",
+    "analyze",
+    "and",
+    "as",
+    "asc",
+    "attach",
+    "autoincrement",
+    "before",
+    "begin",
+    "between",
+    "by",
+    "cascade",
+    "case",
+    "cast",
+    "check",
+    "collate",
+    "column",
+    "commit",
+    "conflict",
+    "constraint",
+    "create",
+    "cross",
+    "current",
+    "current_date",
+    "current_time",
+    "current_timestamp",
+    "database",
+    "default",
+    "deferrable",
+    "deferred",
+    "delete",
+    "desc",
+    "detach",
+    "distinct",
+    "do",
+    "drop",
+    "each",
+    "else",
+    "end",
+    "escape",
+    "except",
+    "exclude",
+    "exclusive",
+    "exists",
+    "explain",
+    "fail",
+    "filter",
+    "first",
+    "following",
+    "for",
+    "foreign",
+    "from",
+    "full",
+    "generated",
+    "glob",
+    "group",
+    "groups",
+    "having",
+    "if",
+    "ignore",
+    "immediate",
+    "in",
+    "index",
+    "indexed",
+    "initially",
+    "inner",
+    "insert",
+    "instead",
+    "intersect",
+    "into",
+    "is",
+    "isnull",
+    "join",
+    "key",
+    "last",
+    "left",
+    "like",
+    "limit",
+    "match",
+    "materialized",
+    "natural",
+    "no",
+    "not",
+    "nothing",
+    "notnull",
+    "null",
+    "nulls",
+    "of",
+    "offset",
+    "on",
+    "or",
+    "order",
+    "others",
+    "outer",
+    "over",
+    "partition",
+    "plan",
+    "pragma",
+    "preceding",
+    "primary",
+    "query",
+    "raise",
+    "range",
+    "recursive",
+    "references",
+    "regexp",
+    "reindex",
+    "release",
+    "rename",
+    "replace",
+    "restrict",
+    "returning",
+    "right",
+    "rollback",
+    "row",
+    "rows",
+    "savepoint",
+    "select",
+    "set",
+    "table",
+    "temp",
+    "temporary",
+    "then",
+    "ties",
+    "to",
+    "transaction",
+    "trigger",
+    "unbounded",
+    "union",
+    "unique",
+    "update",
+    "using",
+    "vacuum",
+    "values",
+    "view",
+    "virtual",
+    "when",
+    "where",
+    "window",
+    "with",
+    "without",
 ];
 
 pub fn is_keyword(name: &str) -> bool {
@@ -140,7 +295,11 @@ pub fn parse_range(s: &str) -> Option<(Option<String>, Rect)> {
     let (sheet, rng) = match s.rfind('!') {
         Some(i) => {
             let sh = s[..i].trim();
-            let sh = sh.strip_prefix('\'').and_then(|x| x.strip_suffix('\'')).map(|x| x.replace("''", "'")).unwrap_or(sh.to_string());
+            let sh = sh
+                .strip_prefix('\'')
+                .and_then(|x| x.strip_suffix('\''))
+                .map(|x| x.replace("''", "'"))
+                .unwrap_or(sh.to_string());
             (Some(sh), &s[i + 1..])
         }
         None => (None, s),
@@ -157,7 +316,12 @@ pub fn parse_range(s: &str) -> Option<(Option<String>, Rect)> {
     }
     Some((
         sheet,
-        Rect { top: a.0.min(b.0), left: a.1.min(b.1), bottom: a.0.max(b.0), right: a.1.max(b.1) },
+        Rect {
+            top: a.0.min(b.0),
+            left: a.1.min(b.1),
+            bottom: a.0.max(b.0),
+            right: a.1.max(b.1),
+        },
     ))
 }
 
@@ -166,7 +330,8 @@ pub fn parse_cell(s: &str) -> Option<(u32, u32)> {
     let s = s.trim();
     let split = s.find(|c: char| c.is_ascii_digit())?;
     let (letters, digits) = s.split_at(split);
-    if letters.is_empty() || letters.len() > 3 || !letters.chars().all(|c| c.is_ascii_alphabetic()) {
+    if letters.is_empty() || letters.len() > 3 || !letters.chars().all(|c| c.is_ascii_alphabetic())
+    {
         return None;
     }
     let mut col: u32 = 0;
@@ -183,7 +348,12 @@ pub fn parse_cell(s: &str) -> Option<(u32, u32)> {
 /// Similarity of two names in 0..=1 for "did you mean" hints: case, spaces, punctuation and soft
 /// hyphens ignored; a containment counts high.
 pub fn similarity(a: &str, b: &str) -> f64 {
-    let norm = |s: &str| -> Vec<char> { s.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect() };
+    let norm = |s: &str| -> Vec<char> {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
     let (x, y) = (norm(a), norm(b));
     if x.is_empty() || y.is_empty() {
         return 0.0;
@@ -205,7 +375,9 @@ fn levenshtein(a: &[char], b: &[char]) -> usize {
     for (i, ca) in a.iter().enumerate() {
         cur[0] = i + 1;
         for (j, cb) in b.iter().enumerate() {
-            cur[j + 1] = (prev[j] + usize::from(ca != cb)).min(prev[j + 1] + 1).min(cur[j] + 1);
+            cur[j + 1] = (prev[j] + usize::from(ca != cb))
+                .min(prev[j + 1] + 1)
+                .min(cur[j] + 1);
         }
         std::mem::swap(&mut prev, &mut cur);
     }
@@ -213,9 +385,16 @@ fn levenshtein(a: &[char], b: &[char]) -> usize {
 }
 
 /// The `n` names most similar to `wanted` (similarity ≥ 0.5), best first.
-pub fn closest<'a>(wanted: &str, names: impl IntoIterator<Item = &'a str>, n: usize) -> Vec<&'a str> {
-    let mut scored: Vec<(f64, &str)> =
-        names.into_iter().map(|c| (similarity(wanted, c), c)).filter(|(s, _)| *s >= 0.5).collect();
+pub fn closest<'a>(
+    wanted: &str,
+    names: impl IntoIterator<Item = &'a str>,
+    n: usize,
+) -> Vec<&'a str> {
+    let mut scored: Vec<(f64, &str)> = names
+        .into_iter()
+        .map(|c| (similarity(wanted, c), c))
+        .filter(|(s, _)| *s >= 0.5)
+        .collect();
     scored.sort_by(|a, b| b.0.total_cmp(&a.0));
     let mut out: Vec<&str> = Vec::new();
     for (_, c) in scored {
@@ -232,7 +411,11 @@ pub fn closest<'a>(wanted: &str, names: impl IntoIterator<Item = &'a str>, n: us
 /// B161: the names most similar to `wanted` for a "did you mean", best first, compared with case,
 /// accents, spaces, punctuation and the catalog's grouping braces ignored; when one is clearly the
 /// closest (the same name that way, or well ahead of the next), only that one.
-pub fn clearly_closest<'a>(wanted: &str, names: impl IntoIterator<Item = &'a str>, n: usize) -> Vec<&'a str> {
+pub fn clearly_closest<'a>(
+    wanted: &str,
+    names: impl IntoIterator<Item = &'a str>,
+    n: usize,
+) -> Vec<&'a str> {
     let w = hh_core::values::norm_key(wanted);
     let mut scored: Vec<(f64, &str)> = Vec::new();
     for c in names {
@@ -258,10 +441,12 @@ pub fn years_in(s: &str) -> Vec<i32> {
     let mut i = 0;
     while i + 4 <= b.len() {
         if b[i..i + 4].iter().all(u8::is_ascii_digit) {
-            let before = i > 0 && (b[i - 1].is_ascii_digit() || b[i - 1] == b'.' || b[i - 1] == b',');
+            let before =
+                i > 0 && (b[i - 1].is_ascii_digit() || b[i - 1] == b'.' || b[i - 1] == b',');
             let after = i + 4 < b.len()
                 && (b[i + 4].is_ascii_digit()
-                    || ((b[i + 4] == b'.' || b[i + 4] == b',') && b.get(i + 5).is_some_and(u8::is_ascii_digit)));
+                    || ((b[i + 4] == b'.' || b[i + 4] == b',')
+                        && b.get(i + 5).is_some_and(u8::is_ascii_digit)));
             if !before && !after {
                 let y: i32 = s[i..i + 4].parse().unwrap_or(0);
                 if (1950..=2049).contains(&y) {
@@ -285,7 +470,10 @@ mod tests {
 
     #[test]
     fn cut_adds_line() {
-        let text = (0..2000).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let text = (0..2000)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let c = cut(text, 1000, |n| format!("{n} lines"), "a narrower range");
         assert!(c.len() <= 1000, "{}", c.len());
         assert!(c.lines().last().unwrap().starts_with("… cut: "));
@@ -316,7 +504,10 @@ mod tests {
     #[test]
     fn similar_names() {
         let names = ["De-zember / 20211)", "Oktober / 2022", "Region"];
-        assert_eq!(closest("Dezember / 2021", names, 2)[0], "De-zember / 20211)");
+        assert_eq!(
+            closest("Dezember / 2021", names, 2)[0],
+            "De-zember / 20211)"
+        );
         assert!(closest("xyz", names, 2).is_empty());
     }
 
@@ -329,7 +520,8 @@ mod tests {
             "RESTITUIÇÃO DO IMPOSTO / Associações e Corpos Bombeiros - DL n.º 84/2017, de 21/07",
         ];
         // Braces, accents and case aside it is the third column: only that one.
-        let w = "restituicao do imposto / {Forcas Armadas e de Seguranca - DL n.º 84/2017, de 21/07}";
+        let w =
+            "restituicao do imposto / {Forcas Armadas e de Seguranca - DL n.º 84/2017, de 21/07}";
         assert_eq!(clearly_closest(w, cols, 4), [cols[2]]);
         // No clear winner: the closest first, several.
         let names = ["Umsatz 2023", "Umsatz 2024", "Region"];
@@ -339,7 +531,10 @@ mod tests {
 
     #[test]
     fn years() {
-        assert_eq!(years_in("Bericht 2017, Werte 2011-2025"), vec![2017, 2011, 2025]);
+        assert_eq!(
+            years_in("Bericht 2017, Werte 2011-2025"),
+            vec![2017, 2011, 2025]
+        );
         assert!(years_in("12345 1,2017 3.2020").is_empty());
         assert_eq!(years_in("20211)"), Vec::<i32>::new());
     }

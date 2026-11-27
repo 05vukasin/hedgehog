@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use hh_core::normalize::{ColRole, Column, Dtype, Out, RowType, Table};
 
-use crate::catalog::{is_numeric, TotalEntry};
+use crate::catalog::{TotalEntry, is_numeric};
 use crate::text::{ident, num, short, thousands};
 
 /// Most key (label) columns a total row's key is made of.
@@ -45,10 +45,20 @@ pub fn key_columns(t: &Table) -> Vec<usize> {
     t.columns
         .iter()
         .enumerate()
-        .filter(|(_, c)| matches!(c.role, ColRole::Data | ColRole::Group) && c.dtype == Dtype::Text && !c.is_derived())
+        .filter(|(_, c)| {
+            matches!(c.role, ColRole::Data | ColRole::Group)
+                && c.dtype == Dtype::Text
+                && !c.is_derived()
+        })
         // A column with one value (a dataset code on every row) tells no rows apart.
         .filter(|(_, c)| {
-            let mut vals = c.values.iter().filter_map(|v| if let Out::Text(s) = v { Some(s.trim()) } else { None });
+            let mut vals = c.values.iter().filter_map(|v| {
+                if let Out::Text(s) = v {
+                    Some(s.trim())
+                } else {
+                    None
+                }
+            });
             vals.next().is_some_and(|first| vals.any(|v| v != first))
         })
         .map(|(i, _)| i)
@@ -110,7 +120,11 @@ fn adds_up(a: f64, parts: &[f64]) -> bool {
     }
     // Published figures are rounded: within half a unit of the last digit per part, when that is
     // small next to the value.
-    let d = std::iter::once(a).chain(parts.iter().copied()).map(decimals).max().unwrap_or(0);
+    let d = std::iter::once(a)
+        .chain(parts.iter().copied())
+        .map(decimals)
+        .max()
+        .unwrap_or(0);
     let unit = 10f64.powi(-d);
     a.abs() >= 50.0 * unit && diff <= 0.51 * unit * parts.len() as f64
 }
@@ -119,7 +133,12 @@ fn adds_up(a: f64, parts: &[f64]) -> bool {
 /// other codes (each once), the code's row is the sum of the others' rows. (groups checked, the
 /// other codes, the code's rows) when it holds; None when it does not, or a group has the code
 /// twice.
-fn check_code(col: &Column, nums: &[&Column], groups: &[Vec<usize>], code: &str) -> Option<(usize, Vec<String>, Vec<usize>)> {
+fn check_code(
+    col: &Column,
+    nums: &[&Column],
+    groups: &[Vec<usize>],
+    code: &str,
+) -> Option<(usize, Vec<String>, Vec<usize>)> {
     let (mut checked, mut nonzero) = (0usize, 0usize);
     let mut parts: Vec<&str> = Vec::new();
     let mut rows: Vec<usize> = Vec::new();
@@ -127,12 +146,20 @@ fn check_code(col: &Column, nums: &[&Column], groups: &[Vec<usize>], code: &str)
     let mut held = vec![0usize; nums.len()];
     let mut broke = vec![0usize; nums.len()];
     for g in groups {
-        let at_code: Vec<usize> = g.iter().copied().filter(|&r| text_at(col, r) == Some(code)).collect();
+        let at_code: Vec<usize> = g
+            .iter()
+            .copied()
+            .filter(|&r| text_at(col, r) == Some(code))
+            .collect();
         if at_code.len() > 1 {
             return None;
         }
         rows.extend(&at_code);
-        let others: Vec<usize> = g.iter().copied().filter(|&r| text_at(col, r) != Some(code)).collect();
+        let others: Vec<usize> = g
+            .iter()
+            .copied()
+            .filter(|&r| text_at(col, r) != Some(code))
+            .collect();
         let mut seen: Vec<&str> = Vec::new();
         for &r in &others {
             if let Some(s) = text_at(col, r)
@@ -147,7 +174,13 @@ fn check_code(col: &Column, nums: &[&Column], groups: &[Vec<usize>], code: &str)
         checked += 1;
         let mut any = false;
         for (k, c) in nums.iter().enumerate() {
-            let (Some(a), Some(ps)) = (num_at(c, at_code[0]), others.iter().map(|&r| num_at(c, r)).collect::<Option<Vec<f64>>>()) else {
+            let (Some(a), Some(ps)) = (
+                num_at(c, at_code[0]),
+                others
+                    .iter()
+                    .map(|&r| num_at(c, r))
+                    .collect::<Option<Vec<f64>>>(),
+            ) else {
                 continue;
             };
             if adds_up(a, &ps) {
@@ -168,7 +201,9 @@ fn check_code(col: &Column, nums: &[&Column], groups: &[Vec<usize>], code: &str)
     }
     // Columns where the code is the sum in every group, and those where it is not (rates,
     // averages): the sums must hold in most columns, in two groups with numbers or more.
-    let good = (0..nums.len()).filter(|&k| held[k] > 0 && broke[k] == 0).count();
+    let good = (0..nums.len())
+        .filter(|&k| held[k] > 0 && broke[k] == 0)
+        .count();
     let bad = (0..nums.len()).filter(|&k| broke[k] > 0).count();
     if checked < 2 || nonzero < 2 || good == 0 || bad > good {
         return None;
@@ -183,7 +218,11 @@ pub fn total_codes(t: &Table) -> Vec<TotalCode> {
         return Vec::new();
     }
     let keys = key_columns(t);
-    let nums: Vec<&Column> = t.columns.iter().filter(|c| c.role == ColRole::Data && is_numeric(c.dtype)).collect();
+    let nums: Vec<&Column> = t
+        .columns
+        .iter()
+        .filter(|c| c.role == ColRole::Data && is_numeric(c.dtype))
+        .collect();
     if nums.is_empty() {
         return Vec::new();
     }
@@ -209,7 +248,9 @@ pub fn total_codes(t: &Table) -> Vec<TotalCode> {
             continue;
         }
         let by: Vec<usize> = keys.iter().copied().filter(|&k| k != d).collect();
-        let key_of = |r: usize| -> Vec<Option<&str>> { by.iter().map(|&k| text_at(&t.columns[k], r)).collect() };
+        let key_of = |r: usize| -> Vec<Option<&str>> {
+            by.iter().map(|&k| text_at(&t.columns[k], r)).collect()
+        };
         // The rows of each group (the other key columns' values), in table order; and the same
         // with a group per run of consecutive rows, for stacked blocks that repeat their labels.
         let (mut groups, mut runs): (Vec<Vec<usize>>, Vec<Vec<usize>>) = (Vec::new(), Vec::new());
@@ -221,7 +262,9 @@ pub fn total_codes(t: &Table) -> Vec<TotalCode> {
             }
             let key = key_of(r);
             // A new run where the key changes or a code comes again.
-            let again = runs.last().is_some_and(|run| run.iter().any(|&x| text_at(col, x) == text_at(col, r)));
+            let again = runs
+                .last()
+                .is_some_and(|run| run.iter().any(|&x| text_at(col, x) == text_at(col, r)));
             if last.as_ref() != Some(&key) || again {
                 runs.push(Vec::new());
             }
@@ -237,7 +280,9 @@ pub fn total_codes(t: &Table) -> Vec<TotalCode> {
         // Codes are short (`T`, `Total`, `Insgesamt`, `Todos os sexos`); a long label that adds up
         // its group (`Goodwill, Ending Balance`) is a total row of a statement, not a code.
         for &code in values.iter().filter(|v| v.chars().count() <= MAX_CODE_LEN) {
-            let Some((checked, parts, rows)) = check_code(col, &nums, &groups, code).or_else(|| check_code(col, &nums, &runs, code)) else {
+            let Some((checked, parts, rows)) = check_code(col, &nums, &groups, code)
+                .or_else(|| check_code(col, &nums, &runs, code))
+            else {
                 continue;
             };
             if parts.iter().any(|p| p.chars().count() > MAX_CODE_LEN) {
@@ -245,25 +290,42 @@ pub fn total_codes(t: &Table) -> Vec<TotalCode> {
             }
             // A code on one row only is a plain total row (the catalog says so already), unless
             // it stays in the data.
-            let in_data = rows.iter().any(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data));
+            let in_data = rows
+                .iter()
+                .any(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data));
             if rows.len() < 2 && !in_data {
                 continue;
             }
             if best.as_ref().is_none_or(|b| checked > b.groups) {
-                best = Some(TotalCode { col: d, code: code.to_string(), parts, by: by.clone(), groups: checked });
+                best = Some(TotalCode {
+                    col: d,
+                    code: code.to_string(),
+                    parts,
+                    by: by.clone(),
+                    groups: checked,
+                });
             }
         }
         out.extend(best);
     }
     // The code with the fewest parts first (`Sexo 'T' = M + F` before "the rest").
     // On a tie the column nearer the numbers (the inner split, `Sexo` after `Relação`).
-    out.sort_by_key(|c| (c.parts.len(), std::cmp::Reverse(c.groups), std::cmp::Reverse(c.col)));
+    out.sort_by_key(|c| {
+        (
+            c.parts.len(),
+            std::cmp::Reverse(c.groups),
+            std::cmp::Reverse(c.col),
+        )
+    });
     out
 }
 
 /// The full key of row `r`: every key column's value, joined with `/` (`Total/M`).
 pub fn row_key(t: &Table, keys: &[usize], r: usize) -> Option<String> {
-    let parts: Vec<&str> = keys.iter().filter_map(|&k| text_at(&t.columns[k], r)).collect();
+    let parts: Vec<&str> = keys
+        .iter()
+        .filter_map(|&k| text_at(&t.columns[k], r))
+        .collect();
     (parts.len() >= 2).then(|| parts.join("/"))
 }
 
@@ -288,7 +350,12 @@ fn col_name(names: &[String], i: usize) -> String {
 
 /// The short form for a table listed in one line: `Sexo 'T' = M + F: don't add`.
 pub fn brief_note(code: &TotalCode, names: &[String]) -> String {
-    format!("{} '{}' = {}: don't add", col_name(names, code.col), short(&code.code, 20), parts_text(code))
+    format!(
+        "{} '{}' = {}: don't add",
+        col_name(names, code.col),
+        short(&code.code, 20),
+        parts_text(code)
+    )
 }
 
 /// A value for the catalog: integers with thousands separators, else as stored.
@@ -304,10 +371,32 @@ fn value_text(v: f64) -> String {
 /// The column whose values a "grand total by" phrase shows: the one named total (`TOTAL`,
 /// `(EM DIAS) / TOTAL`), else the only numeric one.
 fn value_column(t: &Table) -> Option<usize> {
-    let nums: Vec<usize> = (0..t.columns.len()).filter(|&i| t.columns[i].role == ColRole::Data && is_numeric(t.columns[i].dtype)).collect();
+    let nums: Vec<usize> = (0..t.columns.len())
+        .filter(|&i| t.columns[i].role == ColRole::Data && is_numeric(t.columns[i].dtype))
+        .collect();
     let named = nums.iter().copied().find(|&i| {
-        let n = t.columns[i].name.rsplit(" / ").next().unwrap_or("").trim().to_lowercase();
-        matches!(n.as_str(), "total" | "totals" | "totais" | "gesamt" | "insgesamt" | "summe" | "ukupno" | "svega" | "totale" | "totaal" | "ensemble" | "sum")
+        let n = t.columns[i]
+            .name
+            .rsplit(" / ")
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_lowercase();
+        matches!(
+            n.as_str(),
+            "total"
+                | "totals"
+                | "totais"
+                | "gesamt"
+                | "insgesamt"
+                | "summe"
+                | "ukupno"
+                | "svega"
+                | "totale"
+                | "totaal"
+                | "ensemble"
+                | "sum"
+        )
     });
     named.or_else(|| (nums.len() == 1).then(|| nums[0]))
 }
@@ -317,7 +406,12 @@ fn value_column(t: &Table) -> Option<usize> {
 /// total rows, for the caller to list as usual). None without a code.
 /// `grand total 'Total' by Sexo @8–10: M 4,233 · F 3,245 · T 7,478 in TOTAL (T = M + F: don't
 /// add); subtotals (_row_type 'subtotal') Sexo 'T' @13/16/19/22/25`.
-pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entries: &[TotalEntry]) -> Option<(String, Vec<u32>)> {
+pub(crate) fn coded_totals(
+    t: &Table,
+    names: &[String],
+    code: &TotalCode,
+    entries: &[TotalEntry],
+) -> Option<(String, Vec<u32>)> {
     let col = &t.columns[code.col];
     let row_of = |src: u32| t.src_rows.iter().position(|s| s + 1 == src);
     let d = col_name(names, code.col);
@@ -325,16 +419,24 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
     let mut out: Vec<String> = Vec::new();
     // The grand total: the group whose rows are all total rows (not subtotals) and hold the code
     // and its parts.
-    let group_of = |r: usize| -> Vec<Option<&str>> { code.by.iter().map(|&k| text_at(&t.columns[k], r)).collect() };
-    let totals: Vec<(&TotalEntry, usize)> =
-        entries.iter().filter(|e| e.kind == RowType::Total).filter_map(|e| row_of(e.row).map(|r| (e, r))).collect();
+    let group_of = |r: usize| -> Vec<Option<&str>> {
+        code.by.iter().map(|&k| text_at(&t.columns[k], r)).collect()
+    };
+    let totals: Vec<(&TotalEntry, usize)> = entries
+        .iter()
+        .filter(|e| e.kind == RowType::Total)
+        .filter_map(|e| row_of(e.row).map(|r| (e, r)))
+        .collect();
     let mut grand: Option<Vec<(&TotalEntry, usize)>> = None;
     for (_, r) in &totals {
         let g = group_of(*r);
         // The first block of the group: each code once (a stacked table below repeats them).
         let mut members: Vec<(&TotalEntry, usize)> = Vec::new();
         for &(e, x) in totals.iter().filter(|(_, x)| group_of(*x) == g) {
-            if members.iter().any(|(_, y)| text_at(col, *y) == text_at(col, x)) {
+            if members
+                .iter()
+                .any(|(_, y)| text_at(col, *y) == text_at(col, x))
+            {
                 break;
             }
             members.push((e, x));
@@ -345,19 +447,42 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
             break;
         }
     }
-    let codes_line = format!("{} = {}: don't add", short(&code.code, 20), parts_text(code));
+    let codes_line = format!(
+        "{} = {}: don't add",
+        short(&code.code, 20),
+        parts_text(code)
+    );
     if let Some(members) = &grand {
         let vc = value_column(t);
         let mut order: Vec<&str> = code.parts.iter().map(String::as_str).collect();
         order.push(&code.code);
         let rows: Vec<u32> = members.iter().map(|(e, _)| e.row).collect();
-        let (lo, hi) = (rows.iter().min().copied().unwrap_or(0), rows.iter().max().copied().unwrap_or(0));
-        let at = if hi == lo + rows.len() as u32 - 1 && rows.len() > 1 { format!("@{lo}–{hi}") } else {
-            format!("@{}", rows.iter().map(|r| r.to_string()).collect::<Vec<_>>().join("/"))
+        let (lo, hi) = (
+            rows.iter().min().copied().unwrap_or(0),
+            rows.iter().max().copied().unwrap_or(0),
+        );
+        let at = if hi == lo + rows.len() as u32 - 1 && rows.len() > 1 {
+            format!("@{lo}–{hi}")
+        } else {
+            format!(
+                "@{}",
+                rows.iter()
+                    .map(|r| r.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            )
         };
         // The group's own label ('Total' in "Relação Jurídica").
-        let label: Vec<String> = group_of(members[0].1).into_iter().flatten().map(|v| short(v, 30)).collect();
-        let label = if label.is_empty() { String::new() } else { format!(" '{}'", label.join("/")) };
+        let label: Vec<String> = group_of(members[0].1)
+            .into_iter()
+            .flatten()
+            .map(|v| short(v, 30))
+            .collect();
+        let label = if label.is_empty() {
+            String::new()
+        } else {
+            format!(" '{}'", label.join("/"))
+        };
         let values: Vec<String> = order
             .iter()
             .filter_map(|v| {
@@ -373,14 +498,23 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
                 })
             })
             .collect();
-        let inn = vc.filter(|_| values.iter().all(|v| !v.starts_with('\''))).map(|i| format!(" in {}", col_name(names, i))).unwrap_or_default();
-        out.push(format!("grand total{label} by {d} {at}: {}{inn} ({codes_line})", values.join(" · ")));
+        let inn = vc
+            .filter(|_| values.iter().all(|v| !v.starts_with('\'')))
+            .map(|i| format!(" in {}", col_name(names, i)))
+            .unwrap_or_default();
+        out.push(format!(
+            "grand total{label} by {d} {at}: {}{inn} ({codes_line})",
+            values.join(" · ")
+        ));
         covered.extend(rows);
     }
     // The code's rows in the other groups: one subtotal per group.
     let subs: Vec<&TotalEntry> = entries
         .iter()
-        .filter(|e| !covered.contains(&e.row) && row_of(e.row).is_some_and(|r| text_at(col, r) == Some(code.code.as_str())))
+        .filter(|e| {
+            !covered.contains(&e.row)
+                && row_of(e.row).is_some_and(|r| text_at(col, r) == Some(code.code.as_str()))
+        })
         .collect();
     if !subs.is_empty() {
         let kinds: Vec<&str> = {
@@ -388,16 +522,38 @@ pub(crate) fn coded_totals(t: &Table, names: &[String], code: &TotalCode, entrie
             k.dedup();
             k
         };
-        let kind = if kinds.len() == 1 && kinds[0] == "subtotal" { "subtotals (_row_type 'subtotal')".to_string() } else { "total rows".to_string() };
+        let kind = if kinds.len() == 1 && kinds[0] == "subtotal" {
+            "subtotals (_row_type 'subtotal')".to_string()
+        } else {
+            "total rows".to_string()
+        };
         let rows: Vec<String> = subs.iter().map(|e| e.row.to_string()).collect();
-        let tail = if grand.is_none() { format!(" ({codes_line})") } else { String::new() };
-        out.push(format!("{kind} {d} '{}' @{}{tail}", short(&code.code, 20), rows.join("/")));
+        let tail = if grand.is_none() {
+            format!(" ({codes_line})")
+        } else {
+            String::new()
+        };
+        out.push(format!(
+            "{kind} {d} '{}' @{}{tail}",
+            short(&code.code, 20),
+            rows.join("/")
+        ));
         covered.extend(subs.iter().map(|e| e.row));
     }
     // Code rows that stay in the data view would be added in.
-    let kept: usize = (0..t.rows()).filter(|&r| t.row_types.get(r).is_none_or(|x| *x == RowType::Data) && text_at(col, r) == Some(code.code.as_str())).count();
+    let kept: usize = (0..t.rows())
+        .filter(|&r| {
+            t.row_types.get(r).is_none_or(|x| *x == RowType::Data)
+                && text_at(col, r) == Some(code.code.as_str())
+        })
+        .count();
     if kept > 0 {
-        out.push(format!("{kept} '{}' rows stay in {}: filter {d} <> '{}' before summing", short(&code.code, 20), t.id(), code.code.replace('\'', "''")));
+        out.push(format!(
+            "{kept} '{}' rows stay in {}: filter {d} <> '{}' before summing",
+            short(&code.code, 20),
+            t.id(),
+            code.code.replace('\'', "''")
+        ));
     }
     (!out.is_empty()).then(|| (out.join("; "), covered))
 }
@@ -411,9 +567,21 @@ mod tests {
 
     fn table(rows: &[Row], kinds: &[RowType]) -> Table {
         let text = |f: for<'a> fn(&'a Row<'a>) -> &'a str| -> Vec<Out> {
-            rows.iter().map(|r| if f(r).is_empty() { Out::Null } else { Out::Text(f(r).to_string()) }).collect()
+            rows.iter()
+                .map(|r| {
+                    if f(r).is_empty() {
+                        Out::Null
+                    } else {
+                        Out::Text(f(r).to_string())
+                    }
+                })
+                .collect()
         };
-        let nums = |f: fn(&Row) -> Option<f64>| -> Vec<Out> { rows.iter().map(|r| f(r).map_or(Out::Null, Out::Num)).collect() };
+        let nums = |f: fn(&Row) -> Option<f64>| -> Vec<Out> {
+            rows.iter()
+                .map(|r| f(r).map_or(Out::Null, Out::Num))
+                .collect()
+        };
         let col = |name: &str, dtype: Dtype, values: Vec<Out>, k: u32| Column {
             name: name.into(),
             role: ColRole::Data,
@@ -432,7 +600,12 @@ mod tests {
             n: 1,
             sheet: "T1_s".into(),
             source_sheet: "S".into(),
-            rect: hh_core::Rect { top: 5, left: 0, bottom: 6 + rows.len() as u32, right: 3 },
+            rect: hh_core::Rect {
+                top: 5,
+                left: 0,
+                bottom: 6 + rows.len() as u32,
+                right: 3,
+            },
             header_top: 5,
             header_rows: 1,
             title: None,
@@ -481,11 +654,22 @@ mod tests {
         assert_eq!(codes[0].by, [0]);
         assert_eq!(codes[0].groups, 3);
         // "Relação" 'Total' is the sum of the other groups too (per Sexo).
-        assert!(codes.iter().any(|c| c.col == 0 && c.code == "Total"), "{codes:?}");
+        assert!(
+            codes.iter().any(|c| c.col == 0 && c.code == "Total"),
+            "{codes:?}"
+        );
         let names: Vec<String> = t.columns.iter().map(|c| c.name.clone()).collect();
         let entries: Vec<TotalEntry> = [(7, T), (8, T), (9, T), (12, S), (15, S)]
             .iter()
-            .map(|&(row, kind)| TotalEntry { label: String::new(), row, kind, kept: false, scope: Vec::new(), grand: false, balance_of: None })
+            .map(|&(row, kind)| TotalEntry {
+                label: String::new(),
+                row,
+                kind,
+                kept: false,
+                scope: Vec::new(),
+                grand: false,
+                balance_of: None,
+            })
             .collect();
         let (text, covered) = coded_totals(&t, &names, &codes[0], &entries).unwrap();
         assert_eq!(
@@ -512,10 +696,19 @@ mod tests {
             ],
             &[D; 6],
         );
-        assert!(total_codes(&t).iter().all(|c| c.col != 1), "{:?}", total_codes(&t));
+        assert!(
+            total_codes(&t).iter().all(|c| c.col != 1),
+            "{:?}",
+            total_codes(&t)
+        );
         // One group that happens to add up is not enough either.
         let t = table(
-            &[("A", "M", None, Some(1.0)), ("A", "F", None, Some(2.0)), ("A", "T", None, Some(3.0)), ("B", "M", None, Some(4.0))],
+            &[
+                ("A", "M", None, Some(1.0)),
+                ("A", "F", None, Some(2.0)),
+                ("A", "T", None, Some(3.0)),
+                ("B", "M", None, Some(4.0)),
+            ],
             &[D; 4],
         );
         assert!(total_codes(&t).is_empty(), "{:?}", total_codes(&t));
@@ -537,9 +730,19 @@ mod tests {
         );
         let codes = total_codes(&t);
         assert_eq!(codes.len(), 1, "{codes:?}");
-        assert_eq!((codes[0].col, codes[0].code.as_str(), codes[0].groups), (1, "T", 2));
+        assert_eq!(
+            (codes[0].col, codes[0].code.as_str(), codes[0].groups),
+            (1, "T", 2)
+        );
         // A dimension that is not a code column (a value on one row only) is not checked.
-        let t = table(&[("A", "M", None, Some(1.0)), ("A", "F", None, Some(2.0)), ("A", "T", None, Some(3.0))], &[D, D, T]);
+        let t = table(
+            &[
+                ("A", "M", None, Some(1.0)),
+                ("A", "F", None, Some(2.0)),
+                ("A", "T", None, Some(3.0)),
+            ],
+            &[D, D, T],
+        );
         assert!(total_codes(&t).is_empty());
     }
 
@@ -552,9 +755,20 @@ mod tests {
         let names: Vec<String> = t.columns.iter().map(|c| c.name.clone()).collect();
         let entries: Vec<TotalEntry> = [7, 8, 9]
             .iter()
-            .map(|&row| TotalEntry { label: String::new(), row, kind: T, kept: false, scope: Vec::new(), grand: false, balance_of: None })
+            .map(|&row| TotalEntry {
+                label: String::new(),
+                row,
+                kind: T,
+                kept: false,
+                scope: Vec::new(),
+                grand: false,
+                balance_of: None,
+            })
             .collect();
         let (text, _) = coded_totals(&t, &names, &codes[0], &entries).unwrap();
-        assert!(text.ends_with("2 'T' rows stay in T1: filter Sexo <> 'T' before summing"), "{text}");
+        assert!(
+            text.ends_with("2 'T' rows stay in T1: filter Sexo <> 'T' before summing"),
+            "{text}"
+        );
     }
 }

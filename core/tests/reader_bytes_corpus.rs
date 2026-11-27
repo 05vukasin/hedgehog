@@ -7,20 +7,28 @@
 //! are skipped, default 64). Files are untrusted and only parsed.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use hh_core::reader::{open_bytes_with, open_with, ReadOptions};
+use hh_core::reader::{ReadOptions, open_bytes_with, open_with};
 
-const EXTENSIONS: [&str; 9] = ["xlsx", "xlsm", "xlsb", "xls", "ods", "csv", "tsv", "txt", "asp"];
+const EXTENSIONS: [&str; 9] = [
+    "xlsx", "xlsm", "xlsb", "xls", "ods", "csv", "tsv", "txt", "asp",
+];
 
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in rd.flatten() {
         let p = e.path();
         if p.is_dir() {
             walk(&p, out);
-        } else if p.extension().and_then(|x| x.to_str()).is_some_and(|x| EXTENSIONS.contains(&x.to_ascii_lowercase().as_str())) {
+        } else if p
+            .extension()
+            .and_then(|x| x.to_str())
+            .is_some_and(|x| EXTENSIONS.contains(&x.to_ascii_lowercase().as_str()))
+        {
             out.push(p);
         }
     }
@@ -28,7 +36,12 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 
 fn files() -> Vec<PathBuf> {
     if let Ok(list) = std::env::var("READ_LIST") {
-        return std::fs::read_to_string(list).unwrap().lines().filter(|l| !l.trim().is_empty()).map(PathBuf::from).collect();
+        return std::fs::read_to_string(list)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(PathBuf::from)
+            .collect();
     }
     let data = std::env::var("HEDGEHOG_DATA").unwrap_or_else(|_| "../../testdata".into());
     let mut v = Vec::new();
@@ -49,10 +62,21 @@ fn outcome(r: Result<hh_core::Workbook, hh_core::Error>) -> String {
 #[ignore]
 fn bytes_read_like_files() {
     let files = files();
-    let threads: usize = std::env::var("READ_THREADS").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
-    let max = std::env::var("READ_MAX_MB").ok().and_then(|s| s.parse::<u64>().ok()).unwrap_or(64) << 20;
+    let threads: usize = std::env::var("READ_THREADS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2);
+    let max = std::env::var("READ_MAX_MB")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(64)
+        << 20;
     let next = AtomicUsize::new(0);
-    let (checked, skipped, errors) = (AtomicUsize::new(0), AtomicUsize::new(0), AtomicUsize::new(0));
+    let (checked, skipped, errors) = (
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+        AtomicUsize::new(0),
+    );
     let diffs = Mutex::new(Vec::new());
     std::thread::scope(|s| {
         for _ in 0..threads {
@@ -99,5 +123,9 @@ fn bytes_read_like_files() {
     for d in diffs.iter().take(20) {
         eprintln!("  {d}");
     }
-    assert!(diffs.is_empty(), "{} files read differently from memory", diffs.len());
+    assert!(
+        diffs.is_empty(),
+        "{} files read differently from memory",
+        diffs.len()
+    );
 }

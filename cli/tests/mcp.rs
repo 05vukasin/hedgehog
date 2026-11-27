@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use rust_xlsxwriter::{Format, Formula, Workbook};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 struct Server {
     child: Child,
@@ -20,7 +20,10 @@ impl Server {
             .args(["mcp", "--root"])
             .arg(root)
             // A private disk cache next to the fixtures, never the user's.
-            .env("HEDGEHOG_CACHE_DIR", root.parent().unwrap_or(root).join("cache"))
+            .env(
+                "HEDGEHOG_CACHE_DIR",
+                root.parent().unwrap_or(root).join("cache"),
+            )
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -28,7 +31,12 @@ impl Server {
             .expect("spawn hedgehog mcp");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        Server { child, stdin, stdout, next: 1 }
+        Server {
+            child,
+            stdin,
+            stdout,
+            next: 1,
+        }
     }
 
     fn send_raw(&mut self, line: &str) {
@@ -47,7 +55,9 @@ impl Server {
     fn request(&mut self, method: &str, params: Value) -> Value {
         let id = self.next;
         self.next += 1;
-        self.send_raw(&json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string());
+        self.send_raw(
+            &json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}).to_string(),
+        );
         let r = self.recv();
         assert_eq!(r["jsonrpc"], "2.0");
         assert_eq!(r["id"], id, "{r}");
@@ -67,7 +77,11 @@ impl Server {
         assert_eq!(content.len(), 1);
         assert_eq!(content[0]["type"], "text");
         let text = content[0]["text"].as_str().unwrap().to_string();
-        assert!(text.len() <= 12_000, "result over 12,000 chars: {}", text.len());
+        assert!(
+            text.len() <= 12_000,
+            "result over 12,000 chars: {}",
+            text.len()
+        );
         (text, res["isError"].as_bool().unwrap())
     }
 
@@ -96,11 +110,20 @@ fn fixtures(tag: &str) -> PathBuf {
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet();
     ws.set_name("Sales").unwrap();
-    ws.merge_range(0, 0, 0, 3, "Sales report 2023", &Format::new()).unwrap();
-    for (c, h) in ["City", "Units", "Revenue Q1", "Revenue Q2"].iter().enumerate() {
+    ws.merge_range(0, 0, 0, 3, "Sales report 2023", &Format::new())
+        .unwrap();
+    for (c, h) in ["City", "Units", "Revenue Q1", "Revenue Q2"]
+        .iter()
+        .enumerate()
+    {
         ws.write_string(2, c as u16, *h).unwrap();
     }
-    let rows = [("Beograd", 10.0, 1200.5, 1300.0), ("Niš", 7.0, 800.0, 950.25), ("Novi Sad", 8.0, 640.0, 700.0), ("Subotica", 3.0, 210.0, 190.0)];
+    let rows = [
+        ("Beograd", 10.0, 1200.5, 1300.0),
+        ("Niš", 7.0, 800.0, 950.25),
+        ("Novi Sad", 8.0, 640.0, 700.0),
+        ("Subotica", 3.0, 210.0, 190.0),
+    ];
     for (i, (city, units, q1, q2)) in rows.iter().enumerate() {
         let r = 3 + i as u32;
         ws.write_string(r, 0, *city).unwrap();
@@ -109,9 +132,12 @@ fn fixtures(tag: &str) -> PathBuf {
         ws.write_number(r, 3, *q2).unwrap();
     }
     ws.write_string(7, 0, "Total").unwrap();
-    ws.write_formula(7, 1, Formula::new("=SUM(B4:B7)").set_result("28")).unwrap();
-    ws.write_formula(7, 2, Formula::new("=SUM(C4:C7)").set_result("2850.5")).unwrap();
-    ws.write_formula(7, 3, Formula::new("=SUM(D4:D7)").set_result("3140.25")).unwrap();
+    ws.write_formula(7, 1, Formula::new("=SUM(B4:B7)").set_result("28"))
+        .unwrap();
+    ws.write_formula(7, 2, Formula::new("=SUM(C4:C7)").set_result("2850.5"))
+        .unwrap();
+    ws.write_formula(7, 3, Formula::new("=SUM(D4:D7)").set_result("3140.25"))
+        .unwrap();
     wb.save(dir.join("root/sales.xlsx")).unwrap();
 
     let mut csv = String::from("Date,Product,Price\n");
@@ -146,24 +172,43 @@ fn mcp_session_end_to_end() {
     let list = s.request("tools/list", json!({}));
     let tools = list["result"]["tools"].as_array().unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["open_file", "describe_table", "query", "cells", "totals", "list_files"]);
+    assert_eq!(
+        names,
+        [
+            "open_file",
+            "describe_table",
+            "query",
+            "cells",
+            "totals",
+            "list_files"
+        ]
+    );
     for t in tools {
         assert_eq!(t["inputSchema"]["type"], "object", "{t}");
         assert!(t["description"].as_str().unwrap().len() > 40);
     }
     let query_desc = tools[2]["description"].as_str().unwrap();
-    assert!(query_desc.contains("SQLite") && query_desc.contains("strftime('%m', d)"), "{query_desc}");
+    assert!(
+        query_desc.contains("SQLite") && query_desc.contains("strftime('%m', d)"),
+        "{query_desc}"
+    );
 
     // open_file on the xlsx
     let cat = s.ok("open_file", json!({"path": "sales.xlsx"}));
     assert!(cat.starts_with("FILE sales.xlsx · 1 sheet"), "{cat}");
     assert!(cat.contains("TIME 2023"), "{cat}");
     assert!(cat.contains("T1 "), "{cat}");
-    assert!(cat.contains("'Total'@8"), "total row label and row in the catalog:\n{cat}");
+    assert!(
+        cat.contains("'Total'@8"),
+        "total row label and row in the catalog:\n{cat}"
+    );
     assert!(cat.contains("\"Revenue Q1\"[210..2850]"), "{cat}");
     // a small table: its rows inline, the total row marked; how to select total rows
     assert!(cat.contains("all 5 rows (CSV, as in T1_all; rows with _row_type total/subtotal are not in T1):\n    City,Units,Revenue Q1,Revenue Q2,_row_type\n    Beograd,10,1200.5,1300,data\n"), "{cat}");
-    assert!(cat.contains("\n    Total,28,2850.5,3140.25,total\n"), "{cat}");
+    assert!(
+        cat.contains("\n    Total,28,2850.5,3140.25,total\n"),
+        "{cat}"
+    );
     assert!(cat.contains("total rows: SELECT … FROM T1_all WHERE _row_type = 'total' — labels in City: grand total 'Total'@8 (= rows 4–7)"), "{cat}");
 
     // query: data rows, sorted
@@ -176,60 +221,113 @@ fn mcp_session_end_to_end() {
     // the total row is in T1_all only
     let t = s.ok("query", json!({"path": "sales.xlsx", "sql": "SELECT \"Revenue Q1\" FROM T1_all WHERE _row_type = 'total'"}));
     assert!(t.contains("2850.5") && t.ends_with("(1 row)"), "{t}");
-    let sum = s.ok("query", json!({"path": "sales.xlsx", "sql": "SELECT sum(\"Revenue Q2\") AS s FROM T1"}));
+    let sum = s.ok(
+        "query",
+        json!({"path": "sales.xlsx", "sql": "SELECT sum(\"Revenue Q2\") AS s FROM T1"}),
+    );
     assert!(sum.contains("3140.25"), "{sum}");
     // limit
-    let lim = s.ok("query", json!({"path": "sales.xlsx", "sql": "SELECT City FROM T1", "limit": 2}));
+    let lim = s.ok(
+        "query",
+        json!({"path": "sales.xlsx", "sql": "SELECT City FROM T1", "limit": 2}),
+    );
     assert!(lim.ends_with("(4 rows, showing first 2)"), "{lim}");
     // unknown column → closest names
-    let (e, err) = s.tool("query", json!({"path": "sales.xlsx", "sql": "SELECT \"Revenue / Q1\" FROM T1"}));
-    assert!(err && e.contains("no such column") && e.contains("T1.\"Revenue Q1\""), "{e}");
+    let (e, err) = s.tool(
+        "query",
+        json!({"path": "sales.xlsx", "sql": "SELECT \"Revenue / Q1\" FROM T1"}),
+    );
+    assert!(
+        err && e.contains("no such column") && e.contains("T1.\"Revenue Q1\""),
+        "{e}"
+    );
     // writes and file access are refused
-    for sql in ["DELETE FROM T1_all", "ATTACH DATABASE 'x.db' AS x", "PRAGMA query_only=OFF", "SELECT 1; DROP TABLE T1_all"] {
+    for sql in [
+        "DELETE FROM T1_all",
+        "ATTACH DATABASE 'x.db' AS x",
+        "PRAGMA query_only=OFF",
+        "SELECT 1; DROP TABLE T1_all",
+    ] {
         let (e, err) = s.tool("query", json!({"path": "sales.xlsx", "sql": sql}));
         assert!(err, "{sql} was accepted: {e}");
     }
-    let n = s.ok("query", json!({"path": "sales.xlsx", "sql": "SELECT count(*) FROM T1_all"}));
+    let n = s.ok(
+        "query",
+        json!({"path": "sales.xlsx", "sql": "SELECT count(*) FROM T1_all"}),
+    );
     assert!(n.starts_with("count(*)\n5"), "{n}");
 
     // describe_table
-    let d = s.ok("describe_table", json!({"path": "sales.xlsx", "table": "T1"}));
+    let d = s.ok(
+        "describe_table",
+        json!({"path": "sales.xlsx", "table": "T1"}),
+    );
     assert!(d.starts_with("T1 = Sales!"), "{d}");
     assert!(d.contains("total rows (only in T1_all"), "{d}");
     assert!(d.contains("first 4 rows"), "{d}");
-    let (e, err) = s.tool("describe_table", json!({"path": "sales.xlsx", "table": "T9"}));
+    let (e, err) = s.tool(
+        "describe_table",
+        json!({"path": "sales.xlsx", "table": "T9"}),
+    );
     assert!(err && e.contains("tables are T1"), "{e}");
 
     // cells: source values, merged title, formula
-    let c = s.ok("cells", json!({"path": "sales.xlsx", "sheet": "Sales", "range": "A1:D8"}));
+    let c = s.ok(
+        "cells",
+        json!({"path": "sales.xlsx", "sheet": "Sales", "range": "A1:D8"}),
+    );
     assert!(c.contains("A1\tSales report 2023\t[merged A1:D1]"), "{c}");
     assert!(c.contains("B1\t[merged into A1]"), "{c}");
     assert!(c.contains("C8\t2850.5\t=SUM(C4:C7)"), "{c}");
-    let (e, err) = s.tool("cells", json!({"path": "sales.xlsx", "sheet": "Sales", "range": "A1:Z100"}));
+    let (e, err) = s.tool(
+        "cells",
+        json!({"path": "sales.xlsx", "sheet": "Sales", "range": "A1:Z100"}),
+    );
     assert!(err && e.contains("at most 200"), "{e}");
-    let (e, err) = s.tool("cells", json!({"path": "sales.xlsx", "sheet": "Nope", "range": "A1"}));
+    let (e, err) = s.tool(
+        "cells",
+        json!({"path": "sales.xlsx", "sheet": "Nope", "range": "A1"}),
+    );
     assert!(err && e.contains("'Sales'"), "{e}");
 
     // totals
     let tot = s.ok("totals", json!({"path": "sales.xlsx"}));
     assert!(tot.starts_with("TOTALS: "), "{tot}");
-    assert!(s.tool("totals", json!({"path": "sales.xlsx", "status": "bogus"})).1);
+    assert!(
+        s.tool("totals", json!({"path": "sales.xlsx", "status": "bogus"}))
+            .1
+    );
 
     // CSV
     let cat = s.ok("open_file", json!({"path": "data/prices.csv"}));
     assert!(cat.starts_with("FILE data/prices.csv"), "{cat}");
-    assert!(cat.contains("TIME 2024-01–2024-12 (month, from columns T1.Date)"), "{cat}");
+    assert!(
+        cat.contains("TIME 2024-01–2024-12 (month, from columns T1.Date)"),
+        "{cat}"
+    );
     // 24 rows × 3 columns: inline (the values to filter on are in the rows)
-    assert!(cat.contains("all 24 rows (CSV):\n    Date,Product,Price\n"), "{cat}");
+    assert!(
+        cat.contains("all 24 rows (CSV):\n    Date,Product,Price\n"),
+        "{cat}"
+    );
     assert!(cat.contains(",Milk,") && cat.contains(",Bread,"), "{cat}");
     let q = s.ok("query", json!({"path": "data/prices.csv", "sql": "SELECT Product, count(*) AS n, min(Date) AS first FROM T1 GROUP BY Product ORDER BY Product"}));
-    assert_eq!(q, "Product,n,first\nBread,12,2024-01-01\nMilk,12,2024-01-01\n(2 rows)");
+    assert_eq!(
+        q,
+        "Product,n,first\nBread,12,2024-01-01\nMilk,12,2024-01-01\n(2 rows)"
+    );
 
     // list_files
     let l = s.ok("list_files", json!({}));
     assert!(l.starts_with("2 spreadsheet files under ."), "{l}");
-    assert!(l.contains("data/prices.csv") && l.contains("sales.xlsx"), "{l}");
-    assert!(s.ok("list_files", json!({"pattern": "*.csv"})).contains("1 spreadsheet file"));
+    assert!(
+        l.contains("data/prices.csv") && l.contains("sales.xlsx"),
+        "{l}"
+    );
+    assert!(
+        s.ok("list_files", json!({"pattern": "*.csv"}))
+            .contains("1 spreadsheet file")
+    );
 
     // path bounds
     let (e, err) = s.tool("open_file", json!({"path": "../outside/secret.csv"}));
@@ -267,7 +365,10 @@ fn allow_paths_from_initialize_and_old_protocol() {
     let cat = s.ok("open_file", json!({"path": abs.to_str().unwrap()}));
     assert!(cat.starts_with("FILE "), "{cat}");
     // the allowed file only, not its folder
-    let (_, err) = s.tool("list_files", json!({"folder": dir.join("outside").to_str().unwrap()}));
+    let (_, err) = s.tool(
+        "list_files",
+        json!({"folder": dir.join("outside").to_str().unwrap()}),
+    );
     assert!(err);
     drop(s);
     let _ = std::fs::remove_dir_all(&dir);
@@ -280,7 +381,8 @@ fn calls_run_off_the_reading_thread_and_cancel() {
     s.request("initialize", json!({"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}));
     s.ok("open_file", json!({"path": "data/prices.csv"}));
     // An endless query (the 2 s limit would stop it), then a ping: the ping is answered first.
-    let endless = "WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM r) SELECT count(*) FROM r";
+    let endless =
+        "WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM r) SELECT count(*) FROM r";
     let call = |id: i64, sql: &str| {
         json!({"jsonrpc": "2.0", "id": id, "method": "tools/call",
                "params": {"name": "query", "arguments": {"path": "data/prices.csv", "sql": sql}}})
@@ -290,15 +392,24 @@ fn calls_run_off_the_reading_thread_and_cancel() {
     s.send_raw(&call(100, endless));
     s.send_raw(&json!({"jsonrpc": "2.0", "id": 101, "method": "ping"}).to_string());
     assert_eq!(s.recv()["id"], 101);
-    assert!(t0.elapsed() < std::time::Duration::from_millis(1500), "the ping waited for the query");
+    assert!(
+        t0.elapsed() < std::time::Duration::from_millis(1500),
+        "the ping waited for the query"
+    );
     // Cancel it and one still queued behind it: neither gets a response; the next call works.
     s.send_raw(&call(102, "SELECT 1"));
     s.send_raw(&json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 102}}).to_string());
     s.send_raw(&json!({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 100, "reason": "user"}}).to_string());
     s.next = 103;
-    let text = s.ok("query", json!({"path": "data/prices.csv", "sql": "SELECT count(*) FROM T1"}));
+    let text = s.ok(
+        "query",
+        json!({"path": "data/prices.csv", "sql": "SELECT count(*) FROM T1"}),
+    );
     assert!(text.starts_with("count(*)\n24"), "{text}");
-    assert!(t0.elapsed() < std::time::Duration::from_millis(1900), "the cancel did not stop the query");
+    assert!(
+        t0.elapsed() < std::time::Duration::from_millis(1900),
+        "the cancel did not stop the query"
+    );
     drop(s);
     let _ = std::fs::remove_dir_all(&dir);
 }

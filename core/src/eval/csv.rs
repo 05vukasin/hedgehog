@@ -9,7 +9,10 @@ pub struct CsvReader<R: BufRead> {
 
 impl<R: BufRead> CsvReader<R> {
     pub fn new(r: R) -> Self {
-        CsvReader { r, line: String::new() }
+        CsvReader {
+            r,
+            line: String::new(),
+        }
     }
 
     /// Reads the next record into `out` (cleared first). Returns `false` at end of input.

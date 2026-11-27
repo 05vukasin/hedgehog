@@ -57,11 +57,17 @@ pub struct NumberHint {
 
 impl NumberHint {
     pub fn with_decimal(decimal: Option<DecimalSep>) -> Self {
-        NumberHint { decimal, currency_context: false }
+        NumberHint {
+            decimal,
+            currency_context: false,
+        }
     }
 
     pub fn with_currency_context(self, currency_context: bool) -> Self {
-        NumberHint { currency_context, ..self }
+        NumberHint {
+            currency_context,
+            ..self
+        }
     }
 }
 
@@ -197,7 +203,11 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
             _ => {
                 let end = rest
                     .char_indices()
-                    .find(|&(_, c)| is_space(c) || c.is_ascii_digit() || matches!(c, '-' | '−' | '–' | '+' | '(' | ')'))
+                    .find(|&(_, c)| {
+                        is_space(c)
+                            || c.is_ascii_digit()
+                            || matches!(c, '-' | '−' | '–' | '+' | '(' | ')')
+                    })
                     .map_or(rest.len(), |(i, _)| i);
                 if end == 0 || p.currency.is_some() {
                     return None;
@@ -206,7 +216,9 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 let m = currency_match(word)?;
                 // A letter-only code glued to the digits is an ID ("AOA2182.06", "FT-1").
                 let glued = rest[end..].chars().next().is_some_and(|c| !is_space(c));
-                if (glued && word.chars().all(char::is_alphabetic)) || (m.wordlike && !hint.currency_context) {
+                if (glued && word.chars().all(char::is_alphabetic))
+                    || (m.wordlike && !hint.currency_context)
+                {
                     return None;
                 }
                 p.currency = Some(m.code);
@@ -242,7 +254,8 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
             i += 1;
             continue;
         }
-        let is_sep = matches!(c, '.' | ',' | '\'' | '’') || (is_space(c) && c != '\t' && c != '\n' && c != '\r');
+        let is_sep = matches!(c, '.' | ',' | '\'' | '’')
+            || (is_space(c) && c != '\t' && c != '\n' && c != '\r');
         if !is_sep {
             break;
         }
@@ -251,7 +264,9 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         if is_space(c) {
             for _ in 0..2 {
                 match rest[i + sep_len..].chars().next() {
-                    Some(n) if is_space(n) && !matches!(n, '\t' | '\n' | '\r') => sep_len += n.len_utf8(),
+                    Some(n) if is_space(n) && !matches!(n, '\t' | '\n' | '\r') => {
+                        sep_len += n.len_utf8()
+                    }
                     _ => break,
                 }
             }
@@ -276,7 +291,13 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
         if ng == MAX_GROUPS {
             return None;
         }
-        seps[ng - 1] = if is_space(c) { ' ' } else if c == '’' { '\'' } else { c };
+        seps[ng - 1] = if is_space(c) {
+            ' '
+        } else if c == '’' {
+            '\''
+        } else {
+            c
+        };
         ng += 1;
         i += sep_len;
     }
@@ -331,7 +352,8 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 p.percent = true;
                 rest = &rest[1..];
             }
-            '*' | '†' | '‡' | '⁰' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' => {
+            '*' | '†' | '‡' | '⁰' | '¹' | '²' | '³' | '⁴' | '⁵' | '⁶' | '⁷' | '⁸' | '⁹' =>
+            {
                 note_mark(&mut p, at, at + c.len_utf8());
                 rest = &rest[c.len_utf8()..];
             }
@@ -339,7 +361,10 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                 // Footnote like "(a)" or "(1)".
                 let close = rest.find(')')?;
                 let inner = &rest[1..close];
-                if inner.is_empty() || inner.chars().count() > 2 || !inner.chars().all(|c| c.is_alphanumeric()) {
+                if inner.is_empty()
+                    || inner.chars().count() > 2
+                    || !inner.chars().all(|c| c.is_alphanumeric())
+                {
                     return None;
                 }
                 note_mark(&mut p, at, at + close + 1);
@@ -362,7 +387,11 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
                     let w = word.as_bytes();
                     let flag = w.iter().all(|b| FLAG_LETTERS.contains(b))
                         && w.windows(2).all(|p| p[0] < p[1])
-                        && if spaced { w.len() <= 3 } else { matches!(word, "e" | "p" | "r") };
+                        && if spaced {
+                            w.len() <= 3
+                        } else {
+                            matches!(word, "e" | "p" | "r")
+                        };
                     if !flag {
                         return None;
                     }
@@ -390,17 +419,26 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
     let seps = &seps[..ng - 1];
     let hint = match dash_sep {
         // "1.200,-": the separator before the dash is the decimal one.
-        Some(c) => NumberHint::with_decimal(Some(if c == ',' { DecimalSep::Comma } else { DecimalSep::Dot })),
+        Some(c) => NumberHint::with_decimal(Some(if c == ',' {
+            DecimalSep::Comma
+        } else {
+            DecimalSep::Dot
+        })),
         None => hint,
     };
     // Without a column hint, the currency's customary convention breaks the tie
     // ("1.200 RSD" → 1200, "$1,200" → 1200, "1.200 €" stays a guess: the euro area is mixed).
-    let currency_hint = if p.currency_ambiguous { None } else { p.currency.and_then(decimal_convention) };
+    let currency_hint = if p.currency_ambiguous {
+        None
+    } else {
+        p.currency.and_then(decimal_convention)
+    };
     let hint_used = match hint.decimal {
         None if currency_hint.is_some() => NumberHint::with_decimal(currency_hint),
         _ => hint,
     };
-    let (thousands, decimal_at, mut ambiguous) = resolve_separators(groups, seps, digits[0] == b'0', hint_used)?;
+    let (thousands, decimal_at, mut ambiguous) =
+        resolve_separators(groups, seps, digits[0] == b'0', hint_used)?;
     if hint_used != hint {
         ambiguous = resolve_separators(groups, seps, digits[0] == b'0', hint).is_some_and(|r| r.2);
     }
@@ -440,7 +478,10 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
     }
     p.leading_zero = decimal_at.is_none() && int_digits > 1 && digits[0] == b'0';
     // "($000)", "(000$)", "000 €": a scale marker in a header ("in thousands"), not a value.
-    if p.leading_zero && digits[..nd].iter().all(|&d| d == b'0') && (p.currency.is_some() || p.negative == Some(NegativeStyle::Parens)) {
+    if p.leading_zero
+        && digits[..nd].iter().all(|&d| d == b'0')
+        && (p.currency.is_some() || p.negative == Some(NegativeStyle::Parens))
+    {
         return None;
     }
     let text = std::str::from_utf8(&buf[..n]).ok()?;
@@ -457,7 +498,12 @@ pub fn parse_number(s: &str, hint: NumberHint) -> Option<ParsedNumber> {
 
 /// Decides which separators are thousands and which (if any) is the decimal point.
 /// Returns (thousands separator, index into `seps` of the decimal separator, ambiguous).
-fn resolve_separators(groups: &[u8], seps: &[char], lead_zero: bool, hint: NumberHint) -> Option<(Option<char>, Option<usize>, bool)> {
+fn resolve_separators(
+    groups: &[u8],
+    seps: &[char],
+    lead_zero: bool,
+    hint: NumberHint,
+) -> Option<(Option<char>, Option<usize>, bool)> {
     if seps.is_empty() {
         return Some((None, None, false));
     }
@@ -539,7 +585,10 @@ fn resolve_separators(groups: &[u8], seps: &[char], lead_zero: bool, hint: Numbe
 }
 
 fn lookup(word: &str, table: &[(&'static str, &[&str])]) -> Option<&'static str> {
-    table.iter().find(|(_, aliases)| aliases.iter().any(|a| eq_fold(word, a))).map(|(code, _)| *code)
+    table
+        .iter()
+        .find(|(_, aliases)| aliases.iter().any(|a| eq_fold(word, a)))
+        .map(|(code, _)| *code)
 }
 
 const UNITS: &[(&str, &[&str])] = &[
@@ -555,12 +604,21 @@ const UNITS: &[(&str, &[&str])] = &[
     ("m3", &["m3", "m³", "м3", "м³"]),
     ("km2", &["km2", "km²", "км2", "км²"]),
     ("ha", &["ha", "hektar", "hektara", "ха"]),
-    ("l", &["l", "lit", "lit.", "litar", "litara", "liter", "liters", "litre", "litres", "л"]),
+    (
+        "l",
+        &[
+            "l", "lit", "lit.", "litar", "litara", "liter", "liters", "litre", "litres", "л",
+        ],
+    ),
     ("ml", &["ml"]),
-    ("pcs", &[
-        "kom", "kom.", "komada", "komad", "pcs", "pc", "pcs.", "pieces", "kos", "ком", "ком.", "stk", "stk.", "stück",
-        "uds", "uds.", "ud", "ud.", "unidades", "pz", "pz.", "pezzi", "szt", "szt.", "st.", "stuks", "pièces",
-    ]),
+    (
+        "pcs",
+        &[
+            "kom", "kom.", "komada", "komad", "pcs", "pc", "pcs.", "pieces", "kos", "ком", "ком.",
+            "stk", "stk.", "stück", "uds", "uds.", "ud", "ud.", "unidades", "pz", "pz.", "pezzi",
+            "szt", "szt.", "st.", "stuks", "pièces",
+        ],
+    ),
     ("lb", &["lb", "lbs", "lb."]),
     ("oz", &["oz"]),
     ("ft", &["ft", "ft."]),
@@ -589,20 +647,90 @@ pub fn unit(word: &str) -> Option<&'static str> {
 }
 
 const SCALES: &[(f64, &[&str])] = &[
-    (1e3, &[
-        "k", "thousand", "thousands", "hilj", "hilj.", "hiljada", "hiljade", "hiljadu", "tis", "tis.", "хиљ", "хиљ.",
-        "хиљада", "хиљаде", "tsd", "tsd.", "tausend", "mille", "tys", "tys.",
-    ]),
-    (1e6, &[
-        "mil", "mil.", "mln", "mln.", "mn", "mio", "mio.", "milion", "miliona", "milioni", "million", "millions", "мил",
-        "мил.", "милион", "милиона", "millionen", "millón", "millones", "milione", "miljoen", "milhão",
-        "milhões", "milionów",
-    ]),
-    (1e9, &[
-        "bn", "bln", "mlrd", "mlrd.", "milijarda", "milijarde", "milijardi", "billion", "billions", "млрд", "млрд.",
-        "милијарди", "милијарда", "mrd", "mrd.", "milliarde", "milliarden", "milliard", "milliards", "md", "mld", "mld.",
-        "miliardi", "miljard", "mds",
-    ]),
+    (
+        1e3,
+        &[
+            "k",
+            "thousand",
+            "thousands",
+            "hilj",
+            "hilj.",
+            "hiljada",
+            "hiljade",
+            "hiljadu",
+            "tis",
+            "tis.",
+            "хиљ",
+            "хиљ.",
+            "хиљада",
+            "хиљаде",
+            "tsd",
+            "tsd.",
+            "tausend",
+            "mille",
+            "tys",
+            "tys.",
+        ],
+    ),
+    (
+        1e6,
+        &[
+            "mil",
+            "mil.",
+            "mln",
+            "mln.",
+            "mn",
+            "mio",
+            "mio.",
+            "milion",
+            "miliona",
+            "milioni",
+            "million",
+            "millions",
+            "мил",
+            "мил.",
+            "милион",
+            "милиона",
+            "millionen",
+            "millón",
+            "millones",
+            "milione",
+            "miljoen",
+            "milhão",
+            "milhões",
+            "milionów",
+        ],
+    ),
+    (
+        1e9,
+        &[
+            "bn",
+            "bln",
+            "mlrd",
+            "mlrd.",
+            "milijarda",
+            "milijarde",
+            "milijardi",
+            "billion",
+            "billions",
+            "млрд",
+            "млрд.",
+            "милијарди",
+            "милијарда",
+            "mrd",
+            "mrd.",
+            "milliarde",
+            "milliarden",
+            "milliard",
+            "milliards",
+            "md",
+            "mld",
+            "mld.",
+            "miliardi",
+            "miljard",
+            "mds",
+        ],
+    ),
 ];
 
 /// Multiplier for a scale word (`k`, `mil.`, `mln`, `hiljada`, `million`, `mlrd`, …).
@@ -615,7 +743,10 @@ pub fn scale(word: &str) -> Option<f64> {
         "m" | "mm" | "b" => return None,
         _ => {}
     }
-    SCALES.iter().find(|(_, words)| words.iter().any(|w| eq_fold(word, w))).map(|(f, _)| *f)
+    SCALES
+        .iter()
+        .find(|(_, words)| words.iter().any(|w| eq_fold(word, w)))
+        .map(|(f, _)| *f)
 }
 
 fn classify_suffix(word: &str, p: &mut ParsedNumber, currency_context: bool) -> Option<()> {
@@ -627,7 +758,11 @@ fn classify_suffix(word: &str, p: &mut ParsedNumber, currency_context: bool) -> 
     if matches!(word, "MM" | "B") && p.currency.is_none() {
         return None;
     }
-    let as_scale = if matches!(word, "m" | "MM") && p.currency.is_some() { Some(1e6) } else { scale(word) };
+    let as_scale = if matches!(word, "m" | "MM") && p.currency.is_some() {
+        Some(1e6)
+    } else {
+        scale(word)
+    };
     if let Some(f) = as_scale {
         (p.scale == 1.0).then(|| p.scale = f)
     } else if let Some(m) = currency_match(word).filter(|m| !m.wordlike || currency_context) {
@@ -703,10 +838,14 @@ impl NativeNumbers {
 fn dotted_date(s: &str) -> bool {
     let t = s.strip_suffix('.').unwrap_or(s);
     let mut parts = t.split('.');
-    let (Some(d), Some(m), Some(y), None) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
+    let (Some(d), Some(m), Some(y), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
         return false;
     };
-    let digits = |p: &str, lo: usize, hi: usize| (lo..=hi).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit());
+    let digits = |p: &str, lo: usize, hi: usize| {
+        (lo..=hi).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_digit())
+    };
     if !(digits(d, 1, 2) && digits(m, 1, 2) && (y.len() == 2 || y.len() == 4) && digits(y, 2, 4)) {
         return false;
     }
@@ -781,7 +920,11 @@ impl DecimalVotes {
         let one_kind = amb > 0 && (self.ambiguous_dot == 0 || self.ambiguous_comma == 0);
         let convention = |thousands: bool| {
             let dot_sep = self.ambiguous_dot > 0;
-            Some(if dot_sep == thousands { DecimalSep::Comma } else { DecimalSep::Dot })
+            Some(if dot_sep == thousands {
+                DecimalSep::Comma
+            } else {
+                DecimalSep::Dot
+            })
         };
         if one_kind && native.count >= 2 && native.log_n > 0 {
             let m_amb = self.ambiguous_log_milli as f64 / f64::from(amb) / 1000.0;
@@ -867,14 +1010,22 @@ mod tests {
         assert_eq!(val("1'234'567.50"), Some(1234567.5));
         assert_eq!(val("1’234.50"), Some(1234.5));
         let p = auto("1.200,50").unwrap();
-        assert_eq!((p.thousands_sep, p.decimal_sep, p.ambiguous), (Some('.'), Some(','), false));
+        assert_eq!(
+            (p.thousands_sep, p.decimal_sep, p.ambiguous),
+            (Some('.'), Some(','), false)
+        );
         let p = auto("1 200").unwrap();
         assert_eq!(p.thousands_sep, Some(' '));
         // A regional currency resolves the ambiguous case towards the comma convention.
         let p = auto("1.200 RSD").unwrap();
         assert_eq!((p.value, p.ambiguous), (1200.0, true));
         assert_eq!(auto("1.200 EUR").unwrap().value, 1.2);
-        assert_eq!(parse_number("1.200 RSD", NumberHint::with_decimal(Some(DecimalSep::Dot))).unwrap().value, 1.2);
+        assert_eq!(
+            parse_number("1.200 RSD", NumberHint::with_decimal(Some(DecimalSep::Dot)))
+                .unwrap()
+                .value,
+            1.2
+        );
     }
 
     #[test]
@@ -889,7 +1040,11 @@ mod tests {
         assert_eq!(with("1.200", DecimalSep::Dot), Some(1.2));
         assert_eq!(with("1,200", DecimalSep::Comma), Some(1.2));
         assert_eq!(with("1,200", DecimalSep::Dot), Some(1200.0));
-        assert!(!parse_number("1.200", NumberHint::with_decimal(Some(DecimalSep::Comma))).unwrap().ambiguous);
+        assert!(
+            !parse_number("1.200", NumberHint::with_decimal(Some(DecimalSep::Comma)))
+                .unwrap()
+                .ambiguous
+        );
         // Structure beats the hint.
         assert_eq!(with("1,5", DecimalSep::Dot), Some(1.5));
         assert_eq!(with("1.200,50", DecimalSep::Dot), Some(1200.5));
@@ -901,7 +1056,19 @@ mod tests {
 
     #[test]
     fn bad_grouping_rejected() {
-        for s in ["1,00,000", "12.03.2024", "1.2.3", "1,2,3.4.5", "1.200.300,5,6", "1 2", "1..2", "1.", "1,", "12 34", "1.200 300"] {
+        for s in [
+            "1,00,000",
+            "12.03.2024",
+            "1.2.3",
+            "1,2,3.4.5",
+            "1.200.300,5,6",
+            "1 2",
+            "1..2",
+            "1.",
+            "1,",
+            "12 34",
+            "1.200 300",
+        ] {
             assert_eq!(val(s), None, "{s:?}");
         }
     }
@@ -915,7 +1082,10 @@ mod tests {
         assert_eq!(val("( 1.200,50 )"), Some(-1200.5));
         assert_eq!(val("500-"), Some(-500.0));
         assert_eq!(auto("(500)").unwrap().negative, Some(NegativeStyle::Parens));
-        assert_eq!(auto("500-").unwrap().negative, Some(NegativeStyle::TrailingMinus));
+        assert_eq!(
+            auto("500-").unwrap().negative,
+            Some(NegativeStyle::TrailingMinus)
+        );
         assert_eq!(auto("-5").unwrap().negative, Some(NegativeStyle::Minus));
         for s in ["-(5)", "(5", "5)", "--5", "-5-", "+-5"] {
             assert_eq!(val(s), None, "{s:?}");
@@ -961,14 +1131,26 @@ mod tests {
         }
         assert_eq!(val("$$5"), None);
         // Audit of the Enron sample: IDs and header markers are not amounts.
-        for s in ["AOA2182.06", "FT-1", "NGN2", "SDG1", "JPY4512201", "($000)", "(000$)", "000 $", "5 ft"] {
+        for s in [
+            "AOA2182.06",
+            "FT-1",
+            "NGN2",
+            "SDG1",
+            "JPY4512201",
+            "($000)",
+            "(000$)",
+            "000 $",
+            "5 ft",
+        ] {
             assert_eq!(auto(s).and_then(|p| p.currency), None, "{s:?}");
         }
         assert_eq!(val("$2M"), Some(2e6));
         assert_eq!(val("$0.50 MM"), Some(5e5));
         assert_eq!(val("$             0.00"), Some(0.0));
         // Word-like codes need column evidence.
-        for s in ["TOP 10", "ALL 5", "CUP 3", "5 PEN", "BOB 2", "MOP 1", "GEL 4"] {
+        for s in [
+            "TOP 10", "ALL 5", "CUP 3", "5 PEN", "BOB 2", "MOP 1", "GEL 4",
+        ] {
             assert_eq!(auto(s), None, "{s:?}");
         }
         let ctx = NumberHint::default().with_currency_context(true);
@@ -1086,10 +1268,15 @@ mod tests {
         }
         // Not marks: exponents, units, other letters, letters glued that are not e / p / r.
         let p = auto("1e5").unwrap();
-        assert_eq!((p.value, p.footnote, p.footnote_mark("1e5")), (100000.0, false, None));
+        assert_eq!(
+            (p.value, p.footnote, p.footnote_mark("1e5")),
+            (100000.0, false, None)
+        );
         assert_eq!(auto("5 s").unwrap().unit, Some("s"));
         assert!(!auto("5 s").unwrap().footnote);
-        for s in ["12b", "12 x", "12 pq", "12 bepr", "e", "12 e5", "100 pen", "3 bed", "5 pp"] {
+        for s in [
+            "12b", "12 x", "12 pq", "12 bepr", "e", "12 e5", "100 pen", "3 bed", "5 pp",
+        ] {
             assert_eq!(auto(s), None, "{s:?}");
         }
     }
@@ -1097,8 +1284,30 @@ mod tests {
     #[test]
     fn not_numbers() {
         for s in [
-            "", " ", "-", "abc", "1a", "a1", "2024-03-12", "12/03/2024", "10:30", "+381 11 123 4567", "1-2", "Q3 2024",
-            "1.2.3.4", "ABC-123", "e5", "1e+", "N/A", "5 - 6", "(a)", "12 abc", "x", "$", "%", "1,2,3",
+            "",
+            " ",
+            "-",
+            "abc",
+            "1a",
+            "a1",
+            "2024-03-12",
+            "12/03/2024",
+            "10:30",
+            "+381 11 123 4567",
+            "1-2",
+            "Q3 2024",
+            "1.2.3.4",
+            "ABC-123",
+            "e5",
+            "1e+",
+            "N/A",
+            "5 - 6",
+            "(a)",
+            "12 abc",
+            "x",
+            "$",
+            "%",
+            "1,2,3",
         ] {
             assert_eq!(auto(s), None, "{s:?}");
         }
@@ -1120,32 +1329,65 @@ mod tests {
         // Percentages with up to 3 decimals (CSV: 12.3 is a number, 40.805 stays text).
         let v = votes(&["40.805", "12.125"]);
         assert_eq!(v.decision(), None);
-        assert_eq!(v.decision_with(&natives(&[12.3, 8.4, 0.5, -3.25, 20.1])), Some(DecimalSep::Dot));
+        assert_eq!(
+            v.decision_with(&natives(&[12.3, 8.4, 0.5, -3.25, 20.1])),
+            Some(DecimalSep::Dot)
+        );
         // EU thousands next to typed integers.
-        assert_eq!(votes(&["4.405"]).decision_with(&natives(&[3178.0, 2411.0, 512.0])), Some(DecimalSep::Comma));
-        assert_eq!(votes(&["1,200"]).decision_with(&natives(&[3178.0, 2411.0])), Some(DecimalSep::Dot));
+        assert_eq!(
+            votes(&["4.405"]).decision_with(&natives(&[3178.0, 2411.0, 512.0])),
+            Some(DecimalSep::Comma)
+        );
+        assert_eq!(
+            votes(&["1,200"]).decision_with(&natives(&[3178.0, 2411.0])),
+            Some(DecimalSep::Dot)
+        );
         // Small whole numbers next to x.xxx: sizes say decimal.
-        assert_eq!(votes(&["1.500"]).decision_with(&natives(&[1.0, 2.0, 3.0])), Some(DecimalSep::Dot));
+        assert_eq!(
+            votes(&["1.500"]).decision_with(&natives(&[1.0, 2.0, 3.0])),
+            Some(DecimalSep::Dot)
+        );
         // Fractions of the thousands size: thousands.
-        assert_eq!(votes(&["4.405"]).decision_with(&natives(&[3178.5, 2411.25])), Some(DecimalSep::Comma));
+        assert_eq!(
+            votes(&["4.405"]).decision_with(&natives(&[3178.5, 2411.25])),
+            Some(DecimalSep::Comma)
+        );
         // One native number is not enough; unambiguous text still wins.
         assert_eq!(votes(&["4.405"]).decision_with(&natives(&[3178.0])), None);
-        assert_eq!(votes(&["4.405", "1,5"]).decision_with(&natives(&[3178.0, 1.0])), Some(DecimalSep::Comma));
+        assert_eq!(
+            votes(&["4.405", "1,5"]).decision_with(&natives(&[3178.0, 1.0])),
+            Some(DecimalSep::Comma)
+        );
     }
 
     #[test]
     fn decimal_votes() {
-        assert_eq!(infer_decimal(["1.200,50", "3,5", "1.200"]), Some(DecimalSep::Comma));
-        assert_eq!(infer_decimal(["1,200.50", "3.5", "1,200"]), Some(DecimalSep::Dot));
-        assert_eq!(infer_decimal(["1.200", "500", "12.500"]), Some(DecimalSep::Comma));
+        assert_eq!(
+            infer_decimal(["1.200,50", "3,5", "1.200"]),
+            Some(DecimalSep::Comma)
+        );
+        assert_eq!(
+            infer_decimal(["1,200.50", "3.5", "1,200"]),
+            Some(DecimalSep::Dot)
+        );
+        assert_eq!(
+            infer_decimal(["1.200", "500", "12.500"]),
+            Some(DecimalSep::Comma)
+        );
         assert_eq!(infer_decimal(["1,200", "500"]), Some(DecimalSep::Dot));
         assert_eq!(infer_decimal(["1.200", "2.500"]), None);
         assert_eq!(infer_decimal(["abc", "500"]), None);
-        assert_eq!(infer_decimal(["1.200.000", "1.500"]), Some(DecimalSep::Comma));
+        assert_eq!(
+            infer_decimal(["1.200.000", "1.500"]),
+            Some(DecimalSep::Comma)
+        );
         // Integers with leading zeros (IDs) do not support a thousands reading.
         assert_eq!(infer_decimal(["01234567", "1.200"]), None);
         // Day-first dates with dots mean a decimal comma when no number decides.
-        assert_eq!(infer_decimal(["31.12.2024", "1.200"]), Some(DecimalSep::Comma));
+        assert_eq!(
+            infer_decimal(["31.12.2024", "1.200"]),
+            Some(DecimalSep::Comma)
+        );
         assert_eq!(infer_decimal(["31.12.2024", "1.5"]), Some(DecimalSep::Dot));
         let mut a = DecimalVotes::default();
         a.add("3,14");

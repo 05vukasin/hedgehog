@@ -8,8 +8,8 @@ use std::io::{Cursor, Read, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use hh_core::reader::{open_bytes_with, open_with, Limits, ReadOptions};
 use hh_core::model::Value;
+use hh_core::reader::{Limits, ReadOptions, open_bytes_with, open_with};
 
 fn tmp(name: &str) -> PathBuf {
     // One folder per call: tests run in parallel and several use the same file name.
@@ -30,7 +30,8 @@ fn base_xlsx() -> Vec<u8> {
     ws.write(1, 1, 10.0).unwrap();
     ws.write(2, 0, "South").unwrap();
     ws.write(2, 1, 20.0).unwrap();
-    ws.merge_range(4, 0, 4, 1, "note", &rust_xlsxwriter::Format::new()).unwrap();
+    ws.merge_range(4, 0, 4, 1, "note", &rust_xlsxwriter::Format::new())
+        .unwrap();
     wb.add_worksheet().write(0, 0, "x").unwrap();
     wb.save_to_buffer().unwrap()
 }
@@ -49,7 +50,8 @@ fn parts(zip: &[u8]) -> Vec<(String, Vec<u8>)> {
 
 fn zip_of(parts: &[(String, Vec<u8>)]) -> Vec<u8> {
     let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
-    let o = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let o = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
     for (n, d) in parts {
         w.start_file(n.as_str(), o).unwrap();
         w.write_all(d).unwrap();
@@ -60,7 +62,10 @@ fn zip_of(parts: &[(String, Vec<u8>)]) -> Vec<u8> {
 /// `base_xlsx` with `edit` applied to the text of part `name`.
 fn xlsx_with(name: &str, edit: impl Fn(&str) -> String) -> Vec<u8> {
     let mut p = parts(&base_xlsx());
-    let part = p.iter_mut().find(|(n, _)| n == name).unwrap_or_else(|| panic!("no part {name}"));
+    let part = p
+        .iter_mut()
+        .find(|(n, _)| n == name)
+        .unwrap_or_else(|| panic!("no part {name}"));
     let text = String::from_utf8(part.1.clone()).unwrap();
     let new = edit(&text);
     assert_ne!(new, text, "edit of {name} changed nothing");
@@ -70,7 +75,11 @@ fn xlsx_with(name: &str, edit: impl Fn(&str) -> String) -> Vec<u8> {
 
 /// Opens `bytes` as a file named `name`, and in memory with `name` as the hint: both must give
 /// the same workbook or the same error, so every test here also covers `open_bytes_with`.
-fn open_bytes(name: &str, bytes: &[u8], opts: ReadOptions) -> Result<hh_core::Workbook, hh_core::Error> {
+fn open_bytes(
+    name: &str,
+    bytes: &[u8],
+    opts: ReadOptions,
+) -> Result<hh_core::Workbook, hh_core::Error> {
     let p = tmp(name);
     std::fs::write(&p, bytes).unwrap();
     let r = open_with(&p, opts);
@@ -79,7 +88,11 @@ fn open_bytes(name: &str, bytes: &[u8], opts: ReadOptions) -> Result<hh_core::Wo
         std::fs::remove_dir(d).ok();
     }
     let mem = open_bytes_with(bytes, Some(name), opts);
-    assert_eq!(outcome(&mem), outcome(&r), "{name}: open_bytes_with differs from open_with");
+    assert_eq!(
+        outcome(&mem),
+        outcome(&r),
+        "{name}: open_bytes_with differs from open_with"
+    );
     r
 }
 
@@ -110,18 +123,26 @@ fn shared_string_count_is_not_trusted() {
 
 #[test]
 fn overlong_cell_references_are_errors_not_wraparounds() {
-    let b = xlsx_with("xl/worksheets/sheet1.xml", |s| s.replacen("r=\"B2\"", "r=\"B99999999999\"", 1));
+    let b = xlsx_with("xl/worksheets/sheet1.xml", |s| {
+        s.replacen("r=\"B2\"", "r=\"B99999999999\"", 1)
+    });
     let e = open_default("ref.xlsx", &b).unwrap_err();
     assert!(e.to_string().contains("overflow"), "{e}");
     assert!(!e.to_string().contains('\n'));
-    let b = xlsx_with("xl/worksheets/sheet1.xml", |s| s.replacen("r=\"B2\"", "r=\"ZZZZZZZZB2\"", 1));
+    let b = xlsx_with("xl/worksheets/sheet1.xml", |s| {
+        s.replacen("r=\"B2\"", "r=\"ZZZZZZZZB2\"", 1)
+    });
     assert!(open_default("col.xlsx", &b).is_err());
 }
 
 #[test]
 fn inverted_dimension_and_merge() {
     let b = xlsx_with("xl/worksheets/sheet1.xml", |s| {
-        let s = s.replacen("<dimension ref=\"A1:B5\"/>", "<dimension ref=\"B5:A1\"/>", 1);
+        let s = s.replacen(
+            "<dimension ref=\"A1:B5\"/>",
+            "<dimension ref=\"B5:A1\"/>",
+            1,
+        );
         s.replacen("ref=\"A5:B5\"", "ref=\"B5:A5\"", 1)
     });
     let wb = open_default("inv.xlsx", &b).unwrap();
@@ -136,7 +157,11 @@ fn sheet_wide_merge_and_far_cells_stay_fast() {
     // not the area (a table over the merge had 16k equal header names, made unique in O(n²)).
     let b = xlsx_with("xl/worksheets/sheet1.xml", |s| {
         let s = s.replacen("ref=\"A5:B5\"", "ref=\"C1:XFD1048576\"", 1);
-        s.replacen("</sheetData>", "<row r=\"1048576\"><c r=\"XFD1048576\"><v>1</v></c></row></sheetData>", 1)
+        s.replacen(
+            "</sheetData>",
+            "<row r=\"1048576\"><c r=\"XFD1048576\"><v>1</v></c></row></sheetData>",
+            1,
+        )
     });
     let t = Instant::now();
     let wb = open_default("wide.xlsx", &b).unwrap();
@@ -152,14 +177,40 @@ fn many_equal_headers_are_renamed_in_linear_time() {
     let mut cells = Vec::new();
     for row in 0..4u32 {
         for col in 0..n {
-            let value = if row == 0 { Value::Text("Amount".into()) } else { Value::Number((row * col) as f64) };
-            cells.push(Cell { row, col, value: Some(value), formula: None });
+            let value = if row == 0 {
+                Value::Text("Amount".into())
+            } else {
+                Value::Number((row * col) as f64)
+            };
+            cells.push(Cell {
+                row,
+                col,
+                value: Some(value),
+                formula: None,
+            });
         }
     }
-    let wb = Workbook { sheets: vec![Sheet { name: "S".into(), cells, merges: vec![], formats: vec![] }] };
+    let wb = Workbook {
+        sheets: vec![Sheet {
+            name: "S".into(),
+            cells,
+            merges: vec![],
+            formats: vec![],
+        }],
+    };
     let t = Instant::now();
-    let norm = hh_core::normalize_workbook(&wb, &hh_core::NormalizeOptions { rules_only: true, ..Default::default() });
-    let names: std::collections::HashSet<&str> = norm.tables[0].columns.iter().map(|c| c.name.as_str()).collect();
+    let norm = hh_core::normalize_workbook(
+        &wb,
+        &hh_core::NormalizeOptions {
+            rules_only: true,
+            ..Default::default()
+        },
+    );
+    let names: std::collections::HashSet<&str> = norm.tables[0]
+        .columns
+        .iter()
+        .map(|c| c.name.as_str())
+        .collect();
     assert_eq!(names.len(), norm.tables[0].columns.len());
     assert!(t.elapsed() < Duration::from_secs(60), "{:?}", t.elapsed());
 }
@@ -169,26 +220,80 @@ fn many_equal_headers_are_renamed_in_linear_time() {
 #[test]
 fn limits_refuse_with_clear_errors() {
     let b = base_xlsx();
-    let with = |l: Limits| ReadOptions { limits: l, ..Default::default() };
-    let e = open_bytes("z.xlsx", &b, with(Limits { max_decompressed_bytes: 1000, ..Default::default() })).unwrap_err();
-    assert!(e.is_limit() && e.to_string().contains("decompresses to"), "{e}");
-    let e = open_bytes("c.xlsx", &b, with(Limits { max_cells: 3, ..Default::default() })).unwrap_err();
-    assert!(e.is_limit() && e.to_string().contains("more than 3 cells"), "{e}");
-    let e = open_bytes("s.xlsx", &b, with(Limits { max_shared_strings: 1, ..Default::default() })).unwrap_err();
-    assert!(e.is_limit() && e.to_string().contains("shared strings"), "{e}");
+    let with = |l: Limits| ReadOptions {
+        limits: l,
+        ..Default::default()
+    };
+    let e = open_bytes(
+        "z.xlsx",
+        &b,
+        with(Limits {
+            max_decompressed_bytes: 1000,
+            ..Default::default()
+        }),
+    )
+    .unwrap_err();
+    assert!(
+        e.is_limit() && e.to_string().contains("decompresses to"),
+        "{e}"
+    );
+    let e = open_bytes(
+        "c.xlsx",
+        &b,
+        with(Limits {
+            max_cells: 3,
+            ..Default::default()
+        }),
+    )
+    .unwrap_err();
+    assert!(
+        e.is_limit() && e.to_string().contains("more than 3 cells"),
+        "{e}"
+    );
+    let e = open_bytes(
+        "s.xlsx",
+        &b,
+        with(Limits {
+            max_shared_strings: 1,
+            ..Default::default()
+        }),
+    )
+    .unwrap_err();
+    assert!(
+        e.is_limit() && e.to_string().contains("shared strings"),
+        "{e}"
+    );
     let past = Instant::now().checked_sub(Duration::from_secs(1));
-    let e = open_bytes("t.xlsx", &b, with(Limits { deadline: past, ..Default::default() })).unwrap_err();
+    let e = open_bytes(
+        "t.xlsx",
+        &b,
+        with(Limits {
+            deadline: past,
+            ..Default::default()
+        }),
+    )
+    .unwrap_err();
     assert!(e.is_limit() && e.to_string().contains("time limit"), "{e}");
     // CSV counts cells too.
     let p = tmp("c.csv");
     std::fs::write(&p, "a,b\n1,2\n3,4\n").unwrap();
-    let e = open_with(&p, with(Limits { max_cells: 4, ..Default::default() })).unwrap_err();
+    let e = open_with(
+        &p,
+        with(Limits {
+            max_cells: 4,
+            ..Default::default()
+        }),
+    )
+    .unwrap_err();
     assert!(e.is_limit(), "{e}");
     assert!(open_with(&p, ReadOptions::default()).is_ok());
     std::fs::remove_file(&p).ok();
     // Normalizing stops at the deadline too.
     let wb = open_default("n.xlsx", &b).unwrap();
-    let opts = hh_core::NormalizeOptions { deadline: past, ..Default::default() };
+    let opts = hh_core::NormalizeOptions {
+        deadline: past,
+        ..Default::default()
+    };
     assert!(hh_core::try_normalize_workbook(&wb, &opts).is_err());
     assert!(hh_core::try_normalize_workbook(&wb, &Default::default()).is_ok());
 }
@@ -205,7 +310,10 @@ fn ods(content: &str, manifest_extra: &str) -> Vec<u8> {
          <office:body><office:spreadsheet><table:table table:name=\"S\">{content}</table:table></office:spreadsheet></office:body></office:document-content>"
     );
     zip_of(&[
-        ("mimetype".into(), b"application/vnd.oasis.opendocument.spreadsheet".to_vec()),
+        (
+            "mimetype".into(),
+            b"application/vnd.oasis.opendocument.spreadsheet".to_vec(),
+        ),
         ("META-INF/manifest.xml".into(), manifest.into_bytes()),
         ("content.xml".into(), content.into_bytes()),
     ])
@@ -214,7 +322,10 @@ fn ods(content: &str, manifest_extra: &str) -> Vec<u8> {
 #[test]
 fn ods_repeat_bomb_is_refused_before_parsing() {
     let cell = "<table:table-cell office:value-type=\"float\" office:value=\"1\"><text:p>1</text:p></table:table-cell>";
-    let ok = ods(&format!("<table:table-row>{cell}{cell}</table:table-row>"), "");
+    let ok = ods(
+        &format!("<table:table-row>{cell}{cell}</table:table-row>"),
+        "",
+    );
     let wb = open_default("ok.ods", &ok).unwrap();
     assert_eq!(wb.sheets[0].cells.len(), 2);
     // A few hundred bytes asking for 16384 × 1,048,576 cells.
@@ -226,7 +337,10 @@ fn ods_repeat_bomb_is_refused_before_parsing() {
     let e = open_default("bomb.ods", &bomb).unwrap_err();
     assert!(e.is_limit() && e.to_string().contains("cells"), "{e}");
     assert!(t.elapsed() < Duration::from_secs(10));
-    let enc = ods(&format!("<table:table-row>{cell}</table:table-row>"), "<manifest:encryption-data manifest:checksum-type=\"SHA1\"/>");
+    let enc = ods(
+        &format!("<table:table-row>{cell}</table:table-row>"),
+        "<manifest:encryption-data manifest:checksum-type=\"SHA1\"/>",
+    );
     let e = open_default("enc.ods", &enc).unwrap_err();
     assert!(e.to_string().contains("password-protected"), "{e}");
 }
@@ -236,15 +350,24 @@ fn ods_with_backslash_entry_names_opens() {
     // B52: some Windows tools write `META-INF\manifest.xml` (uk_gov RTS accompanying tables).
     let cell = "<table:table-cell office:value-type=\"float\" office:value=\"1\"><text:p>1</text:p></table:table-cell>";
     let backslash = |bytes: Vec<u8>| {
-        let p: Vec<(String, Vec<u8>)> = parts(&bytes).into_iter().map(|(n, d)| (n.replace('/', "\\"), d)).collect();
+        let p: Vec<(String, Vec<u8>)> = parts(&bytes)
+            .into_iter()
+            .map(|(n, d)| (n.replace('/', "\\"), d))
+            .collect();
         assert!(p.iter().any(|(n, _)| n == "META-INF\\manifest.xml"));
         zip_of(&p)
     };
-    let ok = backslash(ods(&format!("<table:table-row>{cell}{cell}</table:table-row>"), ""));
+    let ok = backslash(ods(
+        &format!("<table:table-row>{cell}{cell}</table:table-row>"),
+        "",
+    ));
     let wb = open_default("ok.ods", &ok).unwrap();
     assert_eq!(wb.sheets[0].cells.len(), 2);
     // The password check still reads the manifest.
-    let enc = backslash(ods(&format!("<table:table-row>{cell}</table:table-row>"), "<manifest:encryption-data manifest:checksum-type=\"SHA1\"/>"));
+    let enc = backslash(ods(
+        &format!("<table:table-row>{cell}</table:table-row>"),
+        "<manifest:encryption-data manifest:checksum-type=\"SHA1\"/>",
+    ));
     let e = open_default("enc.ods", &enc).unwrap_err();
     assert!(e.to_string().contains("password-protected"), "{e}");
 }
@@ -280,7 +403,11 @@ fn cfb(name: &str, stream: &[u8], fat_edit: impl Fn(&mut Vec<u32>)) -> Vec<u8> {
     fat[0] = 0xFFFF_FFFD;
     fat[1] = ENDOFCHAIN;
     for i in 0..n {
-        fat[2 + i] = if i + 1 == n { ENDOFCHAIN } else { (3 + i) as u32 };
+        fat[2 + i] = if i + 1 == n {
+            ENDOFCHAIN
+        } else {
+            (3 + i) as u32
+        };
     }
     fat_edit(&mut fat);
     let mut out = h;
@@ -288,19 +415,24 @@ fn cfb(name: &str, stream: &[u8], fat_edit: impl Fn(&mut Vec<u32>)) -> Vec<u8> {
         out.extend_from_slice(&v.to_le_bytes());
     }
     let mut dir = vec![0u8; 512];
-    let entry = |dir: &mut Vec<u8>, at: usize, name: &str, typ: u8, child: u32, start: u32, size: u32| {
-        let e = &mut dir[at * 128..at * 128 + 128];
-        let utf16: Vec<u8> = name.encode_utf16().chain([0]).flat_map(|u| u.to_le_bytes()).collect();
-        e[..utf16.len()].copy_from_slice(&utf16);
-        e[64..66].copy_from_slice(&(utf16.len() as u16).to_le_bytes());
-        e[66] = typ;
-        e[67] = 1;
-        e[68..72].copy_from_slice(&FREESECT.to_le_bytes());
-        e[72..76].copy_from_slice(&FREESECT.to_le_bytes());
-        e[76..80].copy_from_slice(&child.to_le_bytes());
-        e[116..120].copy_from_slice(&start.to_le_bytes());
-        e[120..124].copy_from_slice(&size.to_le_bytes());
-    };
+    let entry =
+        |dir: &mut Vec<u8>, at: usize, name: &str, typ: u8, child: u32, start: u32, size: u32| {
+            let e = &mut dir[at * 128..at * 128 + 128];
+            let utf16: Vec<u8> = name
+                .encode_utf16()
+                .chain([0])
+                .flat_map(|u| u.to_le_bytes())
+                .collect();
+            e[..utf16.len()].copy_from_slice(&utf16);
+            e[64..66].copy_from_slice(&(utf16.len() as u16).to_le_bytes());
+            e[66] = typ;
+            e[67] = 1;
+            e[68..72].copy_from_slice(&FREESECT.to_le_bytes());
+            e[72..76].copy_from_slice(&FREESECT.to_le_bytes());
+            e[76..80].copy_from_slice(&child.to_le_bytes());
+            e[116..120].copy_from_slice(&start.to_le_bytes());
+            e[120..124].copy_from_slice(&size.to_le_bytes());
+        };
     entry(&mut dir, 0, "Root Entry", 5, 1, ENDOFCHAIN, 0);
     entry(&mut dir, 1, name, 2, FREESECT, 2, stream.len() as u32);
     out.extend_from_slice(&dir);
@@ -364,7 +496,14 @@ fn xls_formula_reading_past_its_record_is_an_unreadable_formula() {
     let wb = open_default("f.xls", &b).unwrap();
     let cells = &wb.sheets[0].cells;
     assert_eq!(cells.len(), 2, "{cells:?}");
-    assert!(cells[1].formula.as_deref().unwrap_or("").starts_with("Unrecognised formula"), "{cells:?}");
+    assert!(
+        cells[1]
+            .formula
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("Unrecognised formula"),
+        "{cells:?}"
+    );
     // Truncated tokens: PtgArea3d needs 10 bytes after its id.
     let b = cfb("Workbook", &biff_with_formula(&[3, 0, 0x3B, 1, 0]), |_| {});
     assert!(open_default("g.xls", &b).is_ok());
@@ -378,7 +517,11 @@ fn xls_formula_reading_past_its_record_is_an_unreadable_formula() {
 fn xls_short_records_do_not_panic() {
     // Records cut short: an empty EXTERNSHEET, a BoundSheet-like empty MERGECELLS count, a short
     // defined name (Lbl). Each used to index past its data.
-    for extra in [record(0x0017, &[]), record(0x0018, &[0, 0, 0, 9]), record(0x0018, &[0; 15])] {
+    for extra in [
+        record(0x0017, &[]),
+        record(0x0018, &[0, 0, 0, 9]),
+        record(0x0018, &[0; 15]),
+    ] {
         let b = cfb("Workbook", &biff_with(&extra, &[3, 0, 0x1E, 7, 0]), |_| {});
         let _ = open_default("short.xls", &b);
     }
@@ -419,7 +562,10 @@ fn garbage_and_empty_files_are_one_line_errors() {
         ("junk.ods", &b"not a zip"[..]),
     ] {
         let e = open_default(name, bytes).unwrap_err();
-        assert!(!e.to_string().is_empty() && !e.to_string().contains('\n'), "{name}: {e}");
+        assert!(
+            !e.to_string().is_empty() && !e.to_string().contains('\n'),
+            "{name}: {e}"
+        );
     }
 }
 
@@ -440,15 +586,32 @@ fn many_sheets_xlsx(n: usize) -> Vec<u8> {
         ct.push_str(&format!(
             "<Override PartName=\"/xl/worksheets/sheet{i}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
         ));
-        sheets.push_str(&format!("<sheet name=\"S{i}\" sheetId=\"{i}\" r:id=\"rId{i}\"/>"));
+        sheets.push_str(&format!(
+            "<sheet name=\"S{i}\" sheetId=\"{i}\" r:id=\"rId{i}\"/>"
+        ));
         rels.push_str(&format!("<Relationship Id=\"rId{i}\" Type=\"{REL}/worksheet\" Target=\"worksheets/sheet{i}.xml\"/>"));
-        let text = |r: String, v: &str| format!("<c r=\"{r}\" t=\"inlineStr\"><is><t>{v}</t></is></c>");
-        let mut rows = format!("<row r=\"1\">{}{}</row>", text("A1".into(), "City"), text("B1".into(), "Amount"));
-        for (k, (city, v)) in [("North", 10), ("South", 20), ("East", 30)].iter().enumerate() {
+        let text =
+            |r: String, v: &str| format!("<c r=\"{r}\" t=\"inlineStr\"><is><t>{v}</t></is></c>");
+        let mut rows = format!(
+            "<row r=\"1\">{}{}</row>",
+            text("A1".into(), "City"),
+            text("B1".into(), "Amount")
+        );
+        for (k, (city, v)) in [("North", 10), ("South", 20), ("East", 30)]
+            .iter()
+            .enumerate()
+        {
             let r = k + 2;
-            rows.push_str(&format!("<row r=\"{r}\">{}<c r=\"B{r}\"><v>{v}</v></c></row>", text(format!("A{r}"), city)));
+            rows.push_str(&format!(
+                "<row r=\"{r}\">{}<c r=\"B{r}\"><v>{v}</v></c></row>",
+                text(format!("A{r}"), city)
+            ));
         }
-        parts.push((format!("xl/worksheets/sheet{i}.xml"), format!("<worksheet xmlns=\"{MAIN}\"><sheetData>{rows}</sheetData></worksheet>").into_bytes()));
+        parts.push((
+            format!("xl/worksheets/sheet{i}.xml"),
+            format!("<worksheet xmlns=\"{MAIN}\"><sheetData>{rows}</sheetData></worksheet>")
+                .into_bytes(),
+        ));
     }
     ct.push_str("</Types>");
     parts.push(("[Content_Types].xml".into(), ct.into_bytes()));
@@ -458,9 +621,15 @@ fn many_sheets_xlsx(n: usize) -> Vec<u8> {
     ));
     parts.push((
         "xl/workbook.xml".into(),
-        format!("<workbook xmlns=\"{MAIN}\" xmlns:r=\"{REL}\"><sheets>{sheets}</sheets></workbook>").into_bytes(),
+        format!(
+            "<workbook xmlns=\"{MAIN}\" xmlns:r=\"{REL}\"><sheets>{sheets}</sheets></workbook>"
+        )
+        .into_bytes(),
     ));
-    parts.push(("xl/_rels/workbook.xml.rels".into(), format!("<Relationships xmlns=\"{PKG}\">{rels}</Relationships>").into_bytes()));
+    parts.push((
+        "xl/_rels/workbook.xml.rels".into(),
+        format!("<Relationships xmlns=\"{PKG}\">{rels}</Relationships>").into_bytes(),
+    ));
     zip_of(&parts)
 }
 
@@ -512,10 +681,18 @@ fn xls_biff8_strings_ignore_a_cp1252_codepage() {
     label.extend_from_slice(&[4, 0, 0, b'P', b'o', b'p', 0xe9]); // cch 4, compressed
     let mut wide = vec![1, 0, 0, 0, 0, 0];
     wide.extend_from_slice(&[2, 0, 1, b'O', 0, 0x0e, 0x04]); // cch 2, UTF-16: "OЎ"
-    let b = cfb("Workbook", &biff_sheet(&codepage, &[record(0x0204, &label), record(0x0204, &wide)]), |_| {});
+    let b = cfb(
+        "Workbook",
+        &biff_sheet(&codepage, &[record(0x0204, &label), record(0x0204, &wide)]),
+        |_| {},
+    );
     let wb = open_default("cp1252.xls", &b).unwrap();
     let cells = &wb.sheets[0].cells;
-    assert_eq!(cells[0].value, Some(Value::Text("Popé".into())), "{cells:?}");
+    assert_eq!(
+        cells[0].value,
+        Some(Value::Text("Popé".into())),
+        "{cells:?}"
+    );
     assert_eq!(cells[1].value, Some(Value::Text("OЎ".into())), "{cells:?}");
 }
 
@@ -524,13 +701,21 @@ fn xls_1904_dates_are_1900_serials() {
     // A 1904 workbook (DATEMODE 1) counts days from 1904-01-01: its serial 45292 is 2028-01-02,
     // which is 46754 in the 1900 system hedgehog uses. It was read as 2024-01-01, four years and
     // a day early. A time of day (serial < 1) stays a time.
-    let globals = [record(0x0022, &1u16.to_le_bytes()), record(0x00E0, &[0, 0, 14, 0])].concat();
+    let globals = [
+        record(0x0022, &1u16.to_le_bytes()),
+        record(0x00E0, &[0, 0, 14, 0]),
+    ]
+    .concat();
     let num = |col: u8, x: f64| {
         let mut d = vec![0, 0, col, 0, 0, 0];
         d.extend_from_slice(&x.to_le_bytes());
         record(0x0203, &d)
     };
-    let b = cfb("Workbook", &biff_sheet(&globals, &[num(0, 45292.0), num(1, 0.5)]), |_| {});
+    let b = cfb(
+        "Workbook",
+        &biff_sheet(&globals, &[num(0, 45292.0), num(1, 0.5)]),
+        |_| {},
+    );
     let wb = open_default("d1904.xls", &b).unwrap();
     let cells = &wb.sheets[0].cells;
     assert_eq!(cells[0].value, Some(Value::DateTime(46754.0)), "{cells:?}");
@@ -550,19 +735,41 @@ fn rich_xlsx() -> Vec<u8> {
     ws.write_string_with_format(1, 1, "Date", &bold).unwrap();
     ws.write_string_with_format(1, 2, "Amount", &bold).unwrap();
     for r in 0..3u32 {
-        ws.write(2 + r, 0, ["Beograd", "Niš", "Zürich"][r as usize]).unwrap();
-        ws.write_number_with_format(2 + r, 1, 45_292.0 + r as f64, &Format::new().set_num_format("dd.mm.yyyy")).unwrap();
-        ws.write_number_with_format(2 + r, 2, 1000.5 * (r + 1) as f64, &Format::new().set_num_format("#,##0.00")).unwrap();
+        ws.write(2 + r, 0, ["Beograd", "Niš", "Zürich"][r as usize])
+            .unwrap();
+        ws.write_number_with_format(
+            2 + r,
+            1,
+            45_292.0 + r as f64,
+            &Format::new().set_num_format("dd.mm.yyyy"),
+        )
+        .unwrap();
+        ws.write_number_with_format(
+            2 + r,
+            2,
+            1000.5 * (r + 1) as f64,
+            &Format::new().set_num_format("#,##0.00"),
+        )
+        .unwrap();
     }
     ws.write_string_with_format(5, 0, "Total", &bold).unwrap();
-    ws.write_formula(5, 2, Formula::new("SUM(C3:C5)").set_result("6003")).unwrap();
-    wb.add_worksheet().set_name("Notes").unwrap().write(0, 0, "Source: test").unwrap();
+    ws.write_formula(5, 2, Formula::new("SUM(C3:C5)").set_result("6003"))
+        .unwrap();
+    wb.add_worksheet()
+        .set_name("Notes")
+        .unwrap()
+        .write(0, 0, "Source: test")
+        .unwrap();
     wb.save_to_buffer().unwrap()
 }
 
 /// One BIFF12 record (xlsb): variable-length type and size, then the data.
 fn rec12(typ: u16, data: &[u8]) -> Vec<u8> {
-    let mut r = if typ < 0x80 { vec![typ as u8] } else { vec![(typ & 0x7F) as u8 | 0x80, (typ >> 7) as u8] };
+    let mut r = if typ < 0x80 {
+        vec![typ as u8]
+    } else {
+        vec![(typ & 0x7F) as u8 | 0x80, (typ >> 7) as u8]
+    };
     let mut n = data.len();
     loop {
         let b = (n & 0x7F) as u8;
@@ -612,7 +819,10 @@ fn xlsb_workbook_one_sheet() -> Vec<u8> {
 
 /// A worksheet part: BrtWsDim A1:B2, then `cells` (BrtRowHdr and cell records) as sheet data.
 fn xlsb_sheet(cells: &[Vec<u8>]) -> Vec<u8> {
-    let dims: Vec<u8> = [0u32, 1, 0, 1].iter().flat_map(|v| v.to_le_bytes()).collect();
+    let dims: Vec<u8> = [0u32, 1, 0, 1]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect();
     xlsb_sheet_with_dims(&dims, cells)
 }
 
@@ -689,13 +899,21 @@ fn xls() -> Vec<u8> {
     label.extend_from_slice(b"Region");
     let mut num = vec![0, 0, 1, 0, 0, 0];
     num.extend_from_slice(&2.5f64.to_le_bytes());
-    cfb("Workbook", &biff_sheet(&[], &[record(0x0204, &label), record(0x0203, &num)]), |_| {})
+    cfb(
+        "Workbook",
+        &biff_sheet(&[], &[record(0x0204, &label), record(0x0203, &num)]),
+        |_| {},
+    )
 }
 
 fn ods_fixture() -> Vec<u8> {
-    let text = "<table:table-cell office:value-type=\"string\"><text:p>Region</text:p></table:table-cell>";
+    let text =
+        "<table:table-cell office:value-type=\"string\"><text:p>Region</text:p></table:table-cell>";
     let num = "<table:table-cell office:value-type=\"float\" office:value=\"2.5\"><text:p>2.5</text:p></table:table-cell>";
-    ods(&format!("<table:table-row>{text}{num}</table:table-row>"), "")
+    ods(
+        &format!("<table:table-row>{text}{num}</table:table-row>"),
+        "",
+    )
 }
 
 /// Delimited text in the encodings and shapes the CSV reader treats differently, with the file
@@ -707,10 +925,20 @@ fn csv_fixtures() -> Vec<(&'static str, Vec<u8>)> {
     }
     assert!(long.len() > 64 << 10, "crosses the 64 KiB head");
     let mut utf16 = vec![0xFF, 0xFE];
-    utf16.extend("Region\tAmount\r\nNorth\t1\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()));
+    utf16.extend(
+        "Region\tAmount\r\nNorth\t1\r\n"
+            .encode_utf16()
+            .flat_map(|u| u.to_le_bytes()),
+    );
     vec![
-        ("comma.csv", b"Region,Amount\nNorth,10\nSouth,\"1,000\"\n".to_vec()),
-        ("decimal_comma.csv", b"Grad;Iznos\nBeograd;1.200,50\nNis;-0,5\n".to_vec()),
+        (
+            "comma.csv",
+            b"Region,Amount\nNorth,10\nSouth,\"1,000\"\n".to_vec(),
+        ),
+        (
+            "decimal_comma.csv",
+            b"Grad;Iznos\nBeograd;1.200,50\nNis;-0,5\n".to_vec(),
+        ),
         ("bom.csv", b"\xEF\xBB\xBFa,b\n1,2\n".to_vec()),
         ("cp1250.csv", b"Ra\xE8un,Iznos\n\xC8a\xE8ak,2\n".to_vec()),
         ("utf16.txt", utf16),
@@ -737,11 +965,17 @@ fn every_format() -> Vec<(&'static str, Vec<u8>)> {
 #[test]
 fn bytes_and_path_agree_for_every_format() {
     for formats in [false, true] {
-        let opts = ReadOptions { formats, ..Default::default() };
+        let opts = ReadOptions {
+            formats,
+            ..Default::default()
+        };
         for (name, bytes) in every_format() {
             let wb = open_bytes(name, &bytes, opts).unwrap_or_else(|e| panic!("{name}: {e}"));
             if name != "empty.csv" {
-                assert!(wb.sheets.iter().any(|s| !s.cells.is_empty()), "{name}: no cells");
+                assert!(
+                    wb.sheets.iter().any(|s| !s.cells.is_empty()),
+                    "{name}: no cells"
+                );
             }
         }
     }
@@ -760,16 +994,35 @@ fn bytes_and_path_agree_for_every_format() {
     assert_eq!(wb.sheets[0].cells[1].value, Some(Value::Number(2.5)));
     let wb = mem("rich.xlsx", &rich_xlsx());
     assert_eq!(wb.sheets.len(), 2);
-    assert!(!wb.sheets[0].merges.is_empty() && !wb.sheets[0].formats.is_empty(), "small files get formats");
+    assert!(
+        !wb.sheets[0].merges.is_empty() && !wb.sheets[0].formats.is_empty(),
+        "small files get formats"
+    );
     let wb = mem("x/cp1250.csv", &csv_fixtures()[3].1);
     assert_eq!(wb.sheets[0].name, "cp1250");
-    assert_eq!(wb.sheets[0].cells[0].value, Some(Value::Text("Račun".into())));
+    assert_eq!(
+        wb.sheets[0].cells[0].value,
+        Some(Value::Text("Račun".into()))
+    );
 }
 
 #[test]
 fn open_bytes_detects_workbooks_by_content_whatever_the_hint() {
-    let hints = [None, Some(""), Some("upload"), Some("x.csv"), Some("x.bin"), Some("x.xlsx"), Some("x.XLS"), Some("x.ods"), Some("x.xlsb"), Some("dir/")];
-    let workbooks = every_format().into_iter().filter(|(n, _)| !n.ends_with(".csv") && !n.ends_with(".txt") && !n.ends_with(".tsv"));
+    let hints = [
+        None,
+        Some(""),
+        Some("upload"),
+        Some("x.csv"),
+        Some("x.bin"),
+        Some("x.xlsx"),
+        Some("x.XLS"),
+        Some("x.ods"),
+        Some("x.xlsb"),
+        Some("dir/"),
+    ];
+    let workbooks = every_format()
+        .into_iter()
+        .filter(|(n, _)| !n.ends_with(".csv") && !n.ends_with(".txt") && !n.ends_with(".tsv"));
     for (name, bytes) in workbooks {
         let want = outcome(&hh_core::open_bytes(&bytes, Some(name)));
         assert!(!want.starts_with("error"), "{name}: {want}");
@@ -787,20 +1040,35 @@ fn open_bytes_detects_workbooks_by_content_whatever_the_hint() {
 #[test]
 fn open_bytes_reads_text_by_the_hint_like_a_file_name() {
     let text = b"a;b\tc\n1;2\t3\n";
-    let sheet = |hint: Option<&str>| hh_core::open_bytes(text, hint).map(|wb| (wb.sheets[0].name.clone(), wb.sheets[0].cells.len()));
+    let sheet = |hint: Option<&str>| {
+        hh_core::open_bytes(text, hint)
+            .map(|wb| (wb.sheets[0].name.clone(), wb.sheets[0].cells.len()))
+    };
     // No name, or one without an extension: CSV; without a name the sheet is called Sheet1.
     assert_eq!(sheet(None).unwrap(), ("Sheet1".into(), 4));
     assert_eq!(sheet(Some("")).unwrap(), ("Sheet1".into(), 4));
-    assert_eq!(sheet(Some("s3/bucket/report")).unwrap(), ("report".into(), 4));
+    assert_eq!(
+        sheet(Some("s3/bucket/report")).unwrap(),
+        ("report".into(), 4)
+    );
     assert_eq!(sheet(Some("data.txt")).unwrap(), ("data".into(), 4));
     // `.tsv` means tab-separated, as for a file.
     let tsv = hh_core::open_bytes(text, Some("data.tsv")).unwrap();
-    assert_eq!(tsv.sheets[0].cells[0].value, Some(Value::Text("a;b".into())));
-    assert_eq!(open_default("data.tsv", text).unwrap().sheets[0].cells, tsv.sheets[0].cells);
+    assert_eq!(
+        tsv.sheets[0].cells[0].value,
+        Some(Value::Text("a;b".into()))
+    );
+    assert_eq!(
+        open_default("data.tsv", text).unwrap().sheets[0].cells,
+        tsv.sheets[0].cells
+    );
     // A workbook extension on text is a broken workbook, as for a file: an error, no guess.
     for hint in ["data.xlsx", "data.xls", "data.ods", "data.xlsb"] {
         let e = open_default(hint, text).unwrap_err();
-        assert!(!e.is_limit() && !e.to_string().contains('\n'), "{hint}: {e}");
+        assert!(
+            !e.is_limit() && !e.to_string().contains('\n'),
+            "{hint}: {e}"
+        );
     }
 }
 
@@ -830,11 +1098,19 @@ fn truncated_and_damaged_bytes_are_errors_not_panics() {
         let _ = open_default(name, &damaged);
         let _ = hh_core::open_bytes(&damaged, None);
     }
-    let junk: [&[u8]; 4] = [b"PK\x03\x04", b"PK\x05\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1\0\0\0\0", b"\0\0\0\0"];
+    let junk: [&[u8]; 4] = [
+        b"PK\x03\x04",
+        b"PK\x05\x06\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+        b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1\0\0\0\0",
+        b"\0\0\0\0",
+    ];
     for bytes in junk {
         for hint in [None, Some("x.xlsx"), Some("x.csv")] {
             if let Err(e) = hh_core::open_bytes(bytes, hint) {
-                assert!(!e.to_string().is_empty() && !e.to_string().contains('\n'), "{e}");
+                assert!(
+                    !e.to_string().is_empty() && !e.to_string().contains('\n'),
+                    "{e}"
+                );
             }
         }
     }
@@ -842,17 +1118,29 @@ fn truncated_and_damaged_bytes_are_errors_not_panics() {
 
 #[test]
 fn limits_apply_to_bytes_as_to_files() {
-    let with = |l: Limits| ReadOptions { limits: l, ..Default::default() };
+    let with = |l: Limits| ReadOptions {
+        limits: l,
+        ..Default::default()
+    };
     let refused = |name: &str, b: &[u8], l: Limits, what: &str| {
         for hint in [Some(name), None] {
             let e = open_bytes_with(b, hint, with(l)).unwrap_err();
-            assert!(e.is_limit() && e.to_string().contains(what), "{name} ({hint:?}): {e}");
+            assert!(
+                e.is_limit() && e.to_string().contains(what),
+                "{name} ({hint:?}): {e}"
+            );
         }
         // The same as the file (`open_bytes` compares the two).
         let _ = open_bytes(name, b, with(l));
     };
-    let one_cell = Limits { max_cells: 1, ..Default::default() };
-    for (name, b) in every_format().into_iter().filter(|(n, _)| *n != "empty.csv") {
+    let one_cell = Limits {
+        max_cells: 1,
+        ..Default::default()
+    };
+    for (name, b) in every_format()
+        .into_iter()
+        .filter(|(n, _)| *n != "empty.csv")
+    {
         refused(name, &b, one_cell, "cells");
     }
     // A zip bomb: a part of 64 MB of zeros, a few kB compressed.
@@ -860,36 +1148,75 @@ fn limits_apply_to_bytes_as_to_files() {
     p.push(("xl/media/zeros.bin".into(), vec![0u8; 64 << 20]));
     let bomb = zip_of(&p);
     assert!(bomb.len() < 1 << 20);
-    refused("bomb.xlsx", &bomb, Limits { max_decompressed_bytes: 32 << 20, ..Default::default() }, "decompresses to");
-    assert!(hh_core::open_bytes(&bomb, None).is_ok(), "under the default limit");
+    refused(
+        "bomb.xlsx",
+        &bomb,
+        Limits {
+            max_decompressed_bytes: 32 << 20,
+            ..Default::default()
+        },
+        "decompresses to",
+    );
+    assert!(
+        hh_core::open_bytes(&bomb, None).is_ok(),
+        "under the default limit"
+    );
     // A shared string table larger than allowed.
-    let mut xml = String::from("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+    let mut xml =
+        String::from("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
     for i in 0..5000 {
         xml.push_str(&format!("<si><t>{i}</t></si>"));
     }
     xml.push_str("</sst>");
     let mut p = parts(&base_xlsx());
-    p.iter_mut().find(|(n, _)| n == "xl/sharedStrings.xml").unwrap().1 = xml.into_bytes();
-    refused("strings.xlsx", &zip_of(&p), Limits { max_shared_strings: 100, ..Default::default() }, "shared strings");
+    p.iter_mut()
+        .find(|(n, _)| n == "xl/sharedStrings.xml")
+        .unwrap()
+        .1 = xml.into_bytes();
+    refused(
+        "strings.xlsx",
+        &zip_of(&p),
+        Limits {
+            max_shared_strings: 100,
+            ..Default::default()
+        },
+        "shared strings",
+    );
     // The deadline, and the ODS repeat bomb.
     let past = Instant::now().checked_sub(Duration::from_secs(1));
-    refused("t.xlsx", &rich_xlsx(), Limits { deadline: past, ..Default::default() }, "time limit");
+    refused(
+        "t.xlsx",
+        &rich_xlsx(),
+        Limits {
+            deadline: past,
+            ..Default::default()
+        },
+        "time limit",
+    );
     let bomb = ods(
         "<table:table-row table:number-rows-repeated=\"1048576\"><table:table-cell table:number-columns-repeated=\"16384\" office:value-type=\"float\" office:value=\"1\"/></table:table-row>",
         "",
     );
     refused("bomb.ods", &bomb, Limits::default(), "cells");
     // Encrypted packages are refused the same way.
-    let e = hh_core::open_bytes(&cfb("EncryptedPackage", &vec![0u8; 4096], |_| {}), None).unwrap_err();
+    let e =
+        hh_core::open_bytes(&cfb("EncryptedPackage", &vec![0u8; 4096], |_| {}), None).unwrap_err();
     assert!(e.to_string().contains("password-protected"), "{e}");
 }
 
 #[test]
 fn small_byte_buffers_get_formats_like_small_files() {
     // FORMATS_MAX_BYTES applies to the buffer's length.
-    let off = ReadOptions { formats: false, ..Default::default() };
+    let off = ReadOptions {
+        formats: false,
+        ..Default::default()
+    };
     let small = rich_xlsx();
-    assert!(!open_bytes_with(&small, None, off).unwrap().sheets[0].formats.is_empty());
+    assert!(
+        !open_bytes_with(&small, None, off).unwrap().sheets[0]
+            .formats
+            .is_empty()
+    );
     // Incompressible padding past 2 MiB.
     let mut x = 0x2545_f491_4f6c_dd1du64;
     let noise: Vec<u8> = (0..3 << 20)
@@ -904,10 +1231,21 @@ fn small_byte_buffers_get_formats_like_small_files() {
     p.push(("xl/media/noise.bin".into(), noise));
     let large = zip_of(&p);
     assert!(large.len() as u64 > hh_core::reader::FORMATS_MAX_BYTES);
-    assert!(open_bytes_with(&large, None, off).unwrap().sheets[0].formats.is_empty());
+    assert!(
+        open_bytes_with(&large, None, off).unwrap().sheets[0]
+            .formats
+            .is_empty()
+    );
     let _ = open_bytes("large.xlsx", &large, off);
-    let on = ReadOptions { formats: true, ..Default::default() };
-    assert!(!open_bytes_with(&large, None, on).unwrap().sheets[0].formats.is_empty());
+    let on = ReadOptions {
+        formats: true,
+        ..Default::default()
+    };
+    assert!(
+        !open_bytes_with(&large, None, on).unwrap().sheets[0]
+            .formats
+            .is_empty()
+    );
 }
 
 // -- xlsb --------------------------------------------------------------------------------------
@@ -917,7 +1255,10 @@ fn small_byte_buffers_get_formats_like_small_files() {
 /// Opens `b` as an xlsb file and expects an error (not a limit) that mentions `what`.
 fn xlsb_error(b: &[u8], what: &str) {
     let e = open_default("bad.xlsb", b).unwrap_err();
-    assert!(!e.is_limit() && e.to_string().contains(what), "want {what:?}, got: {e}");
+    assert!(
+        !e.is_limit() && e.to_string().contains(what),
+        "want {what:?}, got: {e}"
+    );
 }
 
 /// An xlsb whose sheet "Data" holds `cells`.
@@ -936,10 +1277,15 @@ fn brt_name(rgce: &[u8]) -> Vec<u8> {
 
 #[test]
 fn xlsb_short_workbook_records_are_errors() {
-    let one_sheet = |sheets: &[Vec<u8>], names: &[Vec<u8>]| xlsb_package(xlsb_workbook(sheets, names), xlsb_sheet(&[]), Vec::new());
+    let one_sheet = |sheets: &[Vec<u8>], names: &[Vec<u8>]| {
+        xlsb_package(xlsb_workbook(sheets, names), xlsb_sheet(&[]), Vec::new())
+    };
     let data = bundle_sh("rId1", "Data");
     // An empty BrtWbProp (`buf[0]`) and a BrtBundleSh shorter than its 8 fixed bytes.
-    xlsb_error(&one_sheet(&[rec12(0x99, &[]), data.clone()], &[]), "BrtWbProp");
+    xlsb_error(
+        &one_sheet(&[rec12(0x99, &[]), data.clone()], &[]),
+        "BrtWbProp",
+    );
     xlsb_error(&one_sheet(&[rec12(0x9C, &[0; 4])], &[]), "BrtBundleSh");
     // A relationship id longer than the record, and one the workbook's relationships lack
     // (`relationships[&relid]` panicked).
@@ -953,60 +1299,119 @@ fn xlsb_short_workbook_records_are_errors() {
     xtis.extend([0u8; 16]);
     xlsb_error(&one_sheet(&[], &[rec12(0x16A, &xtis)]), "XTI");
     // A BrtName shorter than its 9 fixed bytes, and one whose formula is longer than the record.
-    xlsb_error(&one_sheet(std::slice::from_ref(&data), &[rec12(0x27, &[0])]), "BrtName");
+    xlsb_error(
+        &one_sheet(std::slice::from_ref(&data), &[rec12(0x27, &[0])]),
+        "BrtName",
+    );
     let mut name = vec![0u8; 9];
     name.extend(wide("N"));
     name.extend(4096u32.to_le_bytes());
-    xlsb_error(&one_sheet(std::slice::from_ref(&data), &[rec12(0x27, &name)]), "BrtName.rgce");
+    xlsb_error(
+        &one_sheet(std::slice::from_ref(&data), &[rec12(0x27, &name)]),
+        "BrtName.rgce",
+    );
     // A valid defined name still reads: the workbook opens.
     assert!(open_default("name.xlsb", &one_sheet(&[data], &[brt_name(&[0x1E, 7, 0])])).is_ok());
 }
 
 #[test]
 fn xlsb_short_shared_string_and_style_records_are_errors() {
-    let with = |name: &str, part: Vec<u8>| xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(&[]), vec![(name.into(), part)]);
+    let with = |name: &str, part: Vec<u8>| {
+        xlsb_package(
+            xlsb_workbook_one_sheet(),
+            xlsb_sheet(&[]),
+            vec![(name.into(), part)],
+        )
+    };
     let sst_begin = |n: u32| rec12(0x9F, &[&n.to_le_bytes()[..], &n.to_le_bytes()].concat());
     let sst_item = |s: &str| rec12(0x13, &[&[0u8][..], &wide(s)].concat());
     // An empty BrtBeginSst (`buf[4..8]`).
-    xlsb_error(&with("xl/sharedStrings.bin", rec12(0x9F, &[])), "BrtBeginSst");
+    xlsb_error(
+        &with("xl/sharedStrings.bin", rec12(0x9F, &[])),
+        "BrtBeginSst",
+    );
     // An empty BrtSSTItem after a string: it was read from the bytes the buffer kept of the
     // previous record, a copy of that string for two bytes of input.
     let sst = [sst_begin(2), sst_item("Hello"), rec12(0x13, &[])].concat();
     xlsb_error(&with("xl/sharedStrings.bin", sst), "BrtSSTItem");
     // styles.bin: a count of one format / one XF in a one-byte record, then the record empty
     // (`buf[2..]`, `buf[2..4]`).
-    xlsb_error(&with("xl/styles.bin", [rec12(0x267, &[1]), rec12(0x2C, &[])].concat()), "BrtFmt");
-    xlsb_error(&with("xl/styles.bin", [rec12(0x269, &[1]), rec12(0x2F, &[])].concat()), "BrtXF");
+    xlsb_error(
+        &with(
+            "xl/styles.bin",
+            [rec12(0x267, &[1]), rec12(0x2C, &[])].concat(),
+        ),
+        "BrtFmt",
+    );
+    xlsb_error(
+        &with(
+            "xl/styles.bin",
+            [rec12(0x269, &[1]), rec12(0x2F, &[])].concat(),
+        ),
+        "BrtXF",
+    );
     // A valid table: the shared string reads.
     let sst = [sst_begin(1), sst_item("Hello")].concat();
     let isst = rec12(0x07, &xcell(0, &0u32.to_le_bytes()));
-    let b = xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(&[xrow(0), isst]), vec![("xl/sharedStrings.bin".into(), sst)]);
+    let b = xlsb_package(
+        xlsb_workbook_one_sheet(),
+        xlsb_sheet(&[xrow(0), isst]),
+        vec![("xl/sharedStrings.bin".into(), sst)],
+    );
     let wb = open_default("sst.xlsb", &b).unwrap();
-    assert_eq!(wb.sheets[0].cells[0].value, Some(Value::Text("Hello".into())));
+    assert_eq!(
+        wb.sheets[0].cells[0].value,
+        Some(Value::Text("Hello".into()))
+    );
 }
 
 #[test]
 fn xlsb_short_cell_records_are_errors() {
     // A BrtWsDim of 4 bytes (`buf[..16]`).
-    let b = xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet_with_dims(&[0; 4], &[]), Vec::new());
+    let b = xlsb_package(
+        xlsb_workbook_one_sheet(),
+        xlsb_sheet_with_dims(&[0; 4], &[]),
+        Vec::new(),
+    );
     xlsb_error(&b, "BrtWsDim");
     // A shared string index without a shared string table (`strings[isst]`).
-    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x07, &xcell(0, &5u32.to_le_bytes()))]), "shared strings");
+    xlsb_error(
+        &xlsb_cells_of(&[xrow(0), rec12(0x07, &xcell(0, &5u32.to_le_bytes()))]),
+        "shared strings",
+    );
     // Formula token counts past the record: BrtFmlaString, BrtFmlaNum, BrtFmlaBool.
     let past = 1000u32.to_le_bytes();
     let fmla_str = [&wide("x")[..], &[0, 0], &past].concat();
-    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x08, &xcell(0, &fmla_str))]), "BrtFmlaString.rgce");
+    xlsb_error(
+        &xlsb_cells_of(&[xrow(0), rec12(0x08, &xcell(0, &fmla_str))]),
+        "BrtFmlaString.rgce",
+    );
     let fmla = [&5.0f64.to_le_bytes()[..], &[0, 0], &past].concat();
-    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &fmla))]), "BrtFmlaNum.rgce");
+    xlsb_error(
+        &xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &fmla))]),
+        "BrtFmlaNum.rgce",
+    );
     let fmla_bool = [&[1u8, 0, 0][..], &past].concat();
-    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x0A, &xcell(0, &fmla_bool))]), "BrtFmlaBool.rgce");
+    xlsb_error(
+        &xlsb_cells_of(&[xrow(0), rec12(0x0A, &xcell(0, &fmla_bool))]),
+        "BrtFmlaBool.rgce",
+    );
     // A BrtFmlaNum of 16 bytes: no grbitFlags or cce (`buf[18..]`).
-    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &5.0f64.to_le_bytes()))]), "BrtFmlaNum");
+    xlsb_error(
+        &xlsb_cells_of(&[xrow(0), rec12(0x09, &xcell(0, &5.0f64.to_le_bytes()))]),
+        "BrtFmlaNum",
+    );
     // A short BrtCellRk, and an empty BrtCellSt after a longer string record: both were read
     // from the bytes the buffer kept of earlier records.
-    xlsb_error(&xlsb_cells_of(&[xrow(0), rec12(0x02, &[0; 4])]), "BrtCellRk");
+    xlsb_error(
+        &xlsb_cells_of(&[xrow(0), rec12(0x02, &[0; 4])]),
+        "BrtCellRk",
+    );
     let st = rec12(0x06, &xcell(0, &wide("a long string kept in the buffer")));
-    xlsb_error(&xlsb_cells_of(&[xrow(0), st, rec12(0x06, &[])]), "BrtCellSt");
+    xlsb_error(
+        &xlsb_cells_of(&[xrow(0), st, rec12(0x06, &[])]),
+        "BrtCellSt",
+    );
     // A column past Excel's 16,384 (u32::MAX overflowed A1 addresses and the layout).
     let far = rec12(0x05, &xcell(u32::MAX, &1.0f64.to_le_bytes()));
     xlsb_error(&xlsb_cells_of(&[xrow(0), far]), "Cell.column");
@@ -1021,29 +1426,72 @@ fn xlsb_hostile_formula_tokens_are_errors_not_panics() {
     // Each token cut short (`rgce[0]`, `rgce[0..2]`, `rgce[4]`, `rgce[..cce]`, ...), an unknown
     // function index (FTAB[32767]) and the index one past FTAB_ARGC (485, the bound was `>`).
     let cut: [&[u8]; 29] = [
-        &[0x3A], &[0x3B, 0, 0], &[0x3C], &[0x3D], &[0x01], &[0x17, 5, 0, b'a', 0], &[0x18], &[0x18, 0x19], &[0x18, 0x1D],
-        &[0x19], &[0x19, 0x01], &[0x19, 0x04], &[0x19, 0x10], &[0x1C], &[0x1D], &[0x1E, 1], &[0x1F, 0, 0], &[0x20],
-        &[0x21, 1], &[0x22, 1], &[0x1E, 1, 0, 0x22, 1, 0xFF, 0x7F], &[0x21, 0xE5, 0x01], &[0x23, 0], &[0x24, 0, 0, 0, 0],
-        &[0x25], &[0x2A], &[0x2B], &[0x29, 0x10, 0], &[0x39],
+        &[0x3A],
+        &[0x3B, 0, 0],
+        &[0x3C],
+        &[0x3D],
+        &[0x01],
+        &[0x17, 5, 0, b'a', 0],
+        &[0x18],
+        &[0x18, 0x19],
+        &[0x18, 0x1D],
+        &[0x19],
+        &[0x19, 0x01],
+        &[0x19, 0x04],
+        &[0x19, 0x10],
+        &[0x1C],
+        &[0x1D],
+        &[0x1E, 1],
+        &[0x1F, 0, 0],
+        &[0x20],
+        &[0x21, 1],
+        &[0x22, 1],
+        &[0x1E, 1, 0, 0x22, 1, 0xFF, 0x7F],
+        &[0x21, 0xE5, 0x01],
+        &[0x23, 0],
+        &[0x24, 0, 0, 0, 0],
+        &[0x25],
+        &[0x2A],
+        &[0x2B],
+        &[0x29, 0x10, 0],
+        &[0x39],
     ];
     for rgce in cut {
         let b = xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)]);
         let e = open_default("f.xlsb", &b).unwrap_err();
         assert!(!e.is_limit(), "{rgce:?}: {e}");
         // The same token array in a defined name.
-        let b = xlsb_package(xlsb_workbook(&[bundle_sh("rId1", "Data")], &[brt_name(rgce)]), xlsb_sheet(&[]), Vec::new());
+        let b = xlsb_package(
+            xlsb_workbook(&[bundle_sh("rId1", "Data")], &[brt_name(rgce)]),
+            xlsb_sheet(&[]),
+            Vec::new(),
+        );
         assert!(open_default("n.xlsb", &b).is_err(), "{rgce:?}");
     }
     let formula = |rgce: &[u8]| {
-        let wb = open_default("f.xlsb", &xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)])).unwrap_or_else(|e| panic!("{rgce:?}: {e}"));
+        let wb = open_default("f.xlsb", &xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)]))
+            .unwrap_or_else(|e| panic!("{rgce:?}: {e}"));
         wb.sheets[0].cells[0].formula.clone()
     };
     // A 3D reference to an XTI the workbook does not list (`sheets[ixti]`) is `#REF`, as in xls.
-    assert_eq!(formula(&[0x3A, 7, 0, 0, 0, 0, 0, 0, 0]).as_deref(), Some("#REF!$A$1"));
-    assert_eq!(formula(&[0x3C, 7, 0, 0, 0, 0, 0, 0, 0]).as_deref(), Some("#REF!#REF!"));
+    assert_eq!(
+        formula(&[0x3A, 7, 0, 0, 0, 0, 0, 0, 0]).as_deref(),
+        Some("#REF!$A$1")
+    );
+    assert_eq!(
+        formula(&[0x3C, 7, 0, 0, 0, 0, 0, 0, 0]).as_deref(),
+        Some("#REF!#REF!")
+    );
     // Name index 0 (one-based) and row u32::MAX overflowed; they wrap as in a release build.
-    assert_eq!(formula(&[0x23, 0, 0, 0, 0]), None, "no such name: an empty formula");
-    assert_eq!(formula(&[0x24, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0xC0]).as_deref(), Some("A0"));
+    assert_eq!(
+        formula(&[0x23, 0, 0, 0, 0]),
+        None,
+        "no such name: an empty formula"
+    );
+    assert_eq!(
+        formula(&[0x24, 0xFF, 0xFF, 0xFF, 0xFF, 0, 0xC0]).as_deref(),
+        Some("A0")
+    );
 }
 
 /// PtgMemFunc nested `depth` deep around PtgInt 7.
@@ -1061,7 +1509,12 @@ fn nested_mem_func(depth: usize) -> Vec<u8> {
 #[test]
 fn xlsb_formula_nesting_and_length_are_bounded() {
     let open = |rgce: &[u8]| open_default("f.xlsb", &xlsb_cells_of(&[xrow(0), fmla_num(0, rgce)]));
-    assert_eq!(open(&nested_mem_func(30)).unwrap().sheets[0].cells[0].formula.as_deref(), Some("7"));
+    assert_eq!(
+        open(&nested_mem_func(30)).unwrap().sheets[0].cells[0]
+            .formula
+            .as_deref(),
+        Some("7")
+    );
     // Nested ~20,000 deep, each level a recursive call: an error, not a stack overflow.
     for depth in [40, 20_000] {
         let e = open(&nested_mem_func(depth)).unwrap_err();
@@ -1071,9 +1524,19 @@ fn xlsb_formula_nesting_and_length_are_bounded() {
     // 64 KiB bound on the text and the stack.
     let mut parens = vec![0x1E, 7, 0];
     parens.extend(std::iter::repeat_n(0x15, 40_000));
-    assert!(open(&parens).unwrap_err().to_string().contains("longer than"));
+    assert!(
+        open(&parens)
+            .unwrap_err()
+            .to_string()
+            .contains("longer than")
+    );
     let operands = vec![0x16; 70_000];
-    assert!(open(&operands).unwrap_err().to_string().contains("longer than"));
+    assert!(
+        open(&operands)
+            .unwrap_err()
+            .to_string()
+            .contains("longer than")
+    );
 }
 
 #[test]
@@ -1082,20 +1545,42 @@ fn xlsb_declared_record_length_is_not_allocated_up_front() {
     // buffer was zero-filled to the declared length before the read failed.
     let mut sheet = xlsb_sheet(&[]);
     let end = sheet.len() - 6; // before BrtEndSheetData, BrtEndSheet (3 bytes each)
-    sheet.splice(end..end, [0x05, 0xFF, 0xFF, 0xFF, 0x7F, 0, 0, 0, 0, 0, 0, 0, 0]);
+    sheet.splice(
+        end..end,
+        [0x05, 0xFF, 0xFF, 0xFF, 0x7F, 0, 0, 0, 0, 0, 0, 0, 0],
+    );
     let b = xlsb_package(xlsb_workbook_one_sheet(), sheet, Vec::new());
     xlsb_error(&b, "failed to fill whole buffer");
 }
 
 #[test]
 fn xlsb_shared_string_limit_applies() {
-    let mut sst = rec12(0x9F, &[&300u32.to_le_bytes()[..], &300u32.to_le_bytes()].concat());
+    let mut sst = rec12(
+        0x9F,
+        &[&300u32.to_le_bytes()[..], &300u32.to_le_bytes()].concat(),
+    );
     for i in 0..300 {
         sst.extend(rec12(0x13, &[&[0u8][..], &wide(&format!("s{i}"))].concat()));
     }
-    let b = xlsb_package(xlsb_workbook_one_sheet(), xlsb_sheet(&[]), vec![("xl/sharedStrings.bin".into(), sst)]);
-    let opts = ReadOptions { limits: Limits { max_shared_strings: 100, ..Default::default() }, ..Default::default() };
+    let b = xlsb_package(
+        xlsb_workbook_one_sheet(),
+        xlsb_sheet(&[]),
+        vec![("xl/sharedStrings.bin".into(), sst)],
+    );
+    let opts = ReadOptions {
+        limits: Limits {
+            max_shared_strings: 100,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
     let e = open_bytes("strings.xlsb", &b, opts).unwrap_err();
-    assert!(e.is_limit() && e.to_string().contains("shared strings"), "{e}");
-    assert!(open_default("strings.xlsb", &b).is_ok(), "under the default limit");
+    assert!(
+        e.is_limit() && e.to_string().contains("shared strings"),
+        "{e}"
+    );
+    assert!(
+        open_default("strings.xlsb", &b).is_ok(),
+        "under the default limit"
+    );
 }

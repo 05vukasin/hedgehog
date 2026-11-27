@@ -1,14 +1,18 @@
 //! Table-driven tests per locale preset: numbers and dates as people write them in the US, UK,
 //! Germany, France, Spain, Italy, the Netherlands, Switzerland and Serbia.
 
-use hh_core::values::{parse_date, parse_number, parse_time, DatePrecision, Locale};
+use hh_core::values::{DatePrecision, Locale, parse_date, parse_number, parse_time};
 
 fn check_numbers(loc: Locale, cases: &[(&str, f64, Option<&str>)]) {
     assert!(cases.len() >= 15, "{loc:?}: need ≥15 number cases");
     for &(s, want, cur) in cases {
-        let p = parse_number(s, loc.number_hint()).unwrap_or_else(|| panic!("{loc:?}: {s:?} not parsed"));
+        let p = parse_number(s, loc.number_hint())
+            .unwrap_or_else(|| panic!("{loc:?}: {s:?} not parsed"));
         let got = p.normalized();
-        assert!((got - want).abs() <= 1e-9 * want.abs().max(1.0), "{loc:?}: {s:?} → {got}, want {want}");
+        assert!(
+            (got - want).abs() <= 1e-9 * want.abs().max(1.0),
+            "{loc:?}: {s:?} → {got}, want {want}"
+        );
         if let Some(c) = cur {
             assert_eq!(p.currency, Some(c), "{loc:?}: {s:?} currency");
         }
@@ -19,9 +23,13 @@ fn check_numbers(loc: Locale, cases: &[(&str, f64, Option<&str>)]) {
 fn check_dates(loc: Locale, cases: &[(&str, i32, u8, u8)]) {
     assert!(cases.len() >= 15, "{loc:?}: need ≥15 date cases");
     for &(s, y, m, d) in cases {
-        let p = parse_date(s, loc.date_order()).unwrap_or_else(|| panic!("{loc:?}: {s:?} not parsed"));
+        let p =
+            parse_date(s, loc.date_order()).unwrap_or_else(|| panic!("{loc:?}: {s:?} not parsed"));
         assert_eq!((p.year, p.month, p.day), (y, m, d), "{loc:?}: {s:?}");
-        assert!(!p.ambiguous, "{loc:?}: {s:?} flagged ambiguous despite locale");
+        assert!(
+            !p.ambiguous,
+            "{loc:?}: {s:?} flagged ambiguous despite locale"
+        );
     }
 }
 
@@ -72,7 +80,12 @@ fn us() {
             ("Mar 1st 2024", 2024, 3, 1),
         ],
     );
-    assert_eq!(parse_date("12/31/2024 6:00 PM", Locale::Us.date_order()).unwrap().time, Some(18 * 3600));
+    assert_eq!(
+        parse_date("12/31/2024 6:00 PM", Locale::Us.date_order())
+            .unwrap()
+            .time,
+        Some(18 * 3600)
+    );
 }
 
 #[test]
@@ -213,7 +226,12 @@ fn fr() {
             ("15 aout 2024", 2024, 8, 15),
         ],
     );
-    assert_eq!(parse_date("31/12/2024 18h30", Locale::Fr.date_order()).unwrap().time, Some(18 * 3600 + 1800));
+    assert_eq!(
+        parse_date("31/12/2024 18h30", Locale::Fr.date_order())
+            .unwrap()
+            .time,
+        Some(18 * 3600 + 1800)
+    );
 }
 
 #[test]
@@ -500,7 +518,17 @@ fn times() {
     ] {
         assert_eq!(parse_time(s), Some(secs), "{s:?}");
     }
-    for s in ["24:00", "6:60", "13:00 PM", "6", "abc", "1:2", "2024-12-31", "6:00:00:00", "h30"] {
+    for s in [
+        "24:00",
+        "6:60",
+        "13:00 PM",
+        "6",
+        "abc",
+        "1:2",
+        "2024-12-31",
+        "6:00:00:00",
+        "h30",
+    ] {
         assert_eq!(parse_time(s), None, "{s:?}");
     }
 }
@@ -513,21 +541,67 @@ fn ambiguity_is_symmetric_and_flagged() {
     let p = parse_number("1,200", Default::default()).unwrap();
     assert!(p.ambiguous);
     // Evidence in either direction is decisive.
-    assert_eq!(parse_number("1.200", Locale::De.number_hint()).unwrap().value, 1200.0);
-    assert_eq!(parse_number("1.200", Locale::Us.number_hint()).unwrap().value, 1.2);
-    assert_eq!(parse_number("1,200", Locale::De.number_hint()).unwrap().value, 1.2);
-    assert_eq!(parse_number("1,200", Locale::Us.number_hint()).unwrap().value, 1200.0);
+    assert_eq!(
+        parse_number("1.200", Locale::De.number_hint())
+            .unwrap()
+            .value,
+        1200.0
+    );
+    assert_eq!(
+        parse_number("1.200", Locale::Us.number_hint())
+            .unwrap()
+            .value,
+        1.2
+    );
+    assert_eq!(
+        parse_number("1,200", Locale::De.number_hint())
+            .unwrap()
+            .value,
+        1.2
+    );
+    assert_eq!(
+        parse_number("1,200", Locale::Us.number_hint())
+            .unwrap()
+            .value,
+        1200.0
+    );
     // Currency with a single convention breaks the tie in both directions; € does not.
-    assert_eq!(parse_number("1.200 RSD", Default::default()).unwrap().value, 1200.0);
-    assert_eq!(parse_number("$1.200", Default::default()).unwrap().value, 1.2);
-    assert_eq!(parse_number("1,200 zł", Default::default()).unwrap().value, 1.2);
-    assert_eq!(parse_number("£1,200", Default::default()).unwrap().value, 1200.0);
-    assert!(parse_number("1.200 €", Default::default()).unwrap().ambiguous);
+    assert_eq!(
+        parse_number("1.200 RSD", Default::default()).unwrap().value,
+        1200.0
+    );
+    assert_eq!(
+        parse_number("$1.200", Default::default()).unwrap().value,
+        1.2
+    );
+    assert_eq!(
+        parse_number("1,200 zł", Default::default()).unwrap().value,
+        1.2
+    );
+    assert_eq!(
+        parse_number("£1,200", Default::default()).unwrap().value,
+        1200.0
+    );
+    assert!(
+        parse_number("1.200 €", Default::default())
+            .unwrap()
+            .ambiguous
+    );
     // Dates: both orders under a hint, flagged without one.
     let d = parse_date("03/04/2024", None).unwrap();
     assert!(d.ambiguous);
-    assert_eq!(parse_date("03/04/2024", Locale::Us.date_order()).unwrap().month, 3);
-    assert_eq!(parse_date("03/04/2024", Locale::Uk.date_order()).unwrap().month, 4);
+    assert_eq!(
+        parse_date("03/04/2024", Locale::Us.date_order())
+            .unwrap()
+            .month,
+        3
+    );
+    assert_eq!(
+        parse_date("03/04/2024", Locale::Uk.date_order())
+            .unwrap()
+            .month,
+        4
+    );
 }
 
 #[test]

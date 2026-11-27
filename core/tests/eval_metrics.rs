@@ -1,9 +1,14 @@
-use hh_core::eval::metrics::{eob, iou, table_matches, Confusion, FileMacro, Prf, TableCriterion};
-use hh_core::eval::split::{split_of, Split};
+use hh_core::eval::metrics::{Confusion, FileMacro, Prf, TableCriterion, eob, iou, table_matches};
+use hh_core::eval::split::{Split, split_of};
 use hh_core::{Rect, Role};
 
 fn r(top: u32, left: u32, bottom: u32, right: u32) -> Rect {
-    Rect { top, left, bottom, right }
+    Rect {
+        top,
+        left,
+        bottom,
+        right,
+    }
 }
 
 fn close(a: f64, b: f64) -> bool {
@@ -29,14 +34,26 @@ fn table_matching_is_one_to_one_and_thresholded() {
     let gt = [r(0, 0, 9, 9), r(20, 0, 29, 9)];
     // Exact copy of table 1, a slightly short table 2 (one row missing → IoU 0.9, EoB 1),
     // a duplicate of table 1 (must not match twice), and junk.
-    let pred = [r(0, 0, 9, 9), r(20, 0, 28, 9), r(0, 0, 9, 9), r(50, 50, 50, 51)];
+    let pred = [
+        r(0, 0, 9, 9),
+        r(20, 0, 28, 9),
+        r(0, 0, 9, 9),
+        r(50, 50, 50, 51),
+    ];
     assert_eq!(table_matches(&gt, &pred, TableCriterion::Iou(0.5)), 2);
     assert_eq!(table_matches(&gt, &pred, TableCriterion::Iou(0.8)), 2);
     assert_eq!(table_matches(&gt, &pred, TableCriterion::Iou(1.0)), 1);
     assert_eq!(table_matches(&gt, &pred, TableCriterion::Eob(0)), 1);
     assert_eq!(table_matches(&gt, &pred, TableCriterion::Eob(2)), 2);
     let p = Prf::from_matches(2, gt.len(), pred.len());
-    assert_eq!(p, Prf { tp: 2, fp: 2, fn_: 0 });
+    assert_eq!(
+        p,
+        Prf {
+            tp: 2,
+            fp: 2,
+            fn_: 0
+        }
+    );
     assert!(close(p.precision(), 0.5));
     assert!(close(p.recall(), 1.0));
     assert!(close(p.f1().unwrap(), 4.0 / 6.0));
@@ -65,9 +82,23 @@ fn confusion_per_class_and_macro() {
     }
     c.add(Role::Data, Role::Header);
     let h = c.class(Role::Header);
-    assert_eq!(h, Prf { tp: 2, fp: 1, fn_: 1 });
+    assert_eq!(
+        h,
+        Prf {
+            tp: 2,
+            fp: 1,
+            fn_: 1
+        }
+    );
     let d = c.class(Role::Data);
-    assert_eq!(d, Prf { tp: 4, fp: 1, fn_: 1 });
+    assert_eq!(
+        d,
+        Prf {
+            tp: 4,
+            fp: 1,
+            fn_: 1
+        }
+    );
     let f1 = c.class_f1();
     assert!(close(f1[1].unwrap(), 4.0 / 6.0));
     assert!(close(f1[2].unwrap(), 8.0 / 10.0));
@@ -114,8 +145,13 @@ fn file_macro_averages_sheets_then_files() {
 
 #[test]
 fn split_is_deterministic_and_roughly_70_30() {
-    assert_eq!(split_of("andrea_ring__30__ENRONGAS(1200).xlsx"), split_of("andrea_ring__30__ENRONGAS(1200).xlsx"));
-    let dev = (0..2000).filter(|i| split_of(&format!("file_{i}.xlsx")) == Split::Dev).count();
+    assert_eq!(
+        split_of("andrea_ring__30__ENRONGAS(1200).xlsx"),
+        split_of("andrea_ring__30__ENRONGAS(1200).xlsx")
+    );
+    let dev = (0..2000)
+        .filter(|i| split_of(&format!("file_{i}.xlsx")) == Split::Dev)
+        .count();
     assert!((1300..1500).contains(&dev), "dev share {dev}/2000");
     assert!(Split::All.contains("x"));
     assert_eq!("test".parse::<Split>().unwrap(), Split::Test);

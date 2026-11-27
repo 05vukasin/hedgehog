@@ -15,8 +15,8 @@ use std::time::Instant;
 
 use memchr::memmem;
 
-use super::merges::{local, tags};
 use super::Error;
+use super::merges::{local, tags};
 
 /// Limits on one file. The defaults allow every real file we know of and stop the files built to
 /// exhaust memory; [`Limits::deadline`] is off by default (the MCP server sets one).
@@ -53,7 +53,9 @@ impl Limits {
     /// `Err` once the deadline has passed.
     pub fn check_time(&self) -> Result<(), Error> {
         match self.deadline {
-            Some(d) if Instant::now() >= d => Err(Error::limit("reading took longer than the time limit")),
+            Some(d) if Instant::now() >= d => {
+                Err(Error::limit("reading took longer than the time limit"))
+            }
             _ => Ok(()),
         }
     }
@@ -67,7 +69,11 @@ impl Limits {
 }
 
 pub(super) fn too_many_cells(max: u64) -> Error {
-    Error::limit(format!("the workbook has more than {} cells (limit {})", thousands(max), thousands(max)))
+    Error::limit(format!(
+        "the workbook has more than {} cells (limit {})",
+        thousands(max),
+        thousands(max)
+    ))
 }
 
 pub(super) fn thousands(n: u64) -> String {
@@ -86,14 +92,16 @@ fn mb(n: u64) -> String {
     format!("{:.0} MB", n as f64 / 1_048_576.0)
 }
 
-const PASSWORD: &str =
-    "the file is password-protected (encrypted); hedgehog cannot read encrypted workbooks — save a copy without a password";
+const PASSWORD: &str = "the file is password-protected (encrypted); hedgehog cannot read encrypted workbooks — save a copy without a password";
 
 /// An OLE container holding an `EncryptedPackage` stream is an encrypted xlsx / xlsb (Office's
 /// "Encrypt with password"); calamine would report it as a broken xls.
 pub(super) fn check_ole(file: impl Read) -> Result<(), Error> {
     // The directory entry's name, UTF-16LE.
-    let name: Vec<u8> = "EncryptedPackage".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+    let name: Vec<u8> = "EncryptedPackage"
+        .encode_utf16()
+        .flat_map(|u| u.to_le_bytes())
+        .collect();
     let finder = memmem::Finder::new(&name);
     let mut f = BufReader::with_capacity(1 << 20, file);
     let mut buf = vec![0u8; 1 << 20];
@@ -157,7 +165,11 @@ pub(super) fn check_zip(file: impl Read + Seek, limits: &Limits) -> Result<(), E
         && size / if bin { 7 } else { 5 } > limits.max_shared_strings
     {
         let f = zip.by_index(i).map_err(|e| Error(e.to_string()))?;
-        let n = if bin { count_xlsb_shared_strings(f, limits)? } else { count_shared_strings(f, limits)? };
+        let n = if bin {
+            count_xlsb_shared_strings(f, limits)?
+        } else {
+            count_shared_strings(f, limits)?
+        };
         if n > limits.max_shared_strings {
             return Err(Error::limit(format!(
                 "the file has more than {} shared strings (limit {})",
@@ -168,7 +180,11 @@ pub(super) fn check_zip(file: impl Read + Seek, limits: &Limits) -> Result<(), E
     }
     if ods {
         // B52: some writers store `META-INF\manifest.xml` with a backslash.
-        let manifest = if zip.index_for_name("META-INF/manifest.xml").is_some() { "META-INF/manifest.xml" } else { "META-INF\\manifest.xml" };
+        let manifest = if zip.index_for_name("META-INF/manifest.xml").is_some() {
+            "META-INF/manifest.xml"
+        } else {
+            "META-INF\\manifest.xml"
+        };
         if let Ok(m) = zip.by_name(manifest) {
             let mut s = Vec::new();
             let _ = m.take(4 << 20).read_to_end(&mut s);
@@ -186,7 +202,11 @@ pub(super) fn check_zip(file: impl Read + Seek, limits: &Limits) -> Result<(), E
 
 /// Calls `each` on the complete tags of a streamed XML part (a tag cut by a chunk boundary is
 /// carried to the next chunk). Stops early when `each` returns `false`.
-fn scan_tags(mut r: impl Read, limits: &Limits, mut each: impl FnMut(&super::merges::Tag) -> bool) -> Result<(), Error> {
+fn scan_tags(
+    mut r: impl Read,
+    limits: &Limits,
+    mut each: impl FnMut(&super::merges::Tag) -> bool,
+) -> Result<(), Error> {
     let mut buf: Vec<u8> = Vec::with_capacity(1 << 20);
     let mut chunk = vec![0u8; 1 << 20];
     loop {
@@ -291,7 +311,9 @@ fn ods_cells(r: impl Read, limits: &Limits) -> Result<u64, Error> {
     }
     impl Sheet {
         fn cells(&self) -> u64 {
-            let dense = self.first.map_or(0, |f| self.last_end.saturating_sub(f).saturating_mul(self.width));
+            let dense = self.first.map_or(0, |f| {
+                self.last_end.saturating_sub(f).saturating_mul(self.width)
+            });
             dense.max(self.listed)
         }
     }
@@ -300,7 +322,10 @@ fn ods_cells(r: impl Read, limits: &Limits) -> Result<u64, Error> {
     let (mut row_rep, mut pos, mut row_w) = (1u64, 0u64, 0u64);
     let max = limits.max_cells;
     let num = |v: Option<&[u8]>, cap: u64| -> u64 {
-        v.and_then(|v| std::str::from_utf8(v).ok()).and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(1).min(cap)
+        v.and_then(|v| std::str::from_utf8(v).ok())
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .unwrap_or(1)
+            .min(cap)
     };
     scan_tags(r, limits, |t| {
         match (local(t.name), t.closing) {
@@ -319,7 +344,9 @@ fn ods_cells(r: impl Read, limits: &Limits) -> Result<u64, Error> {
             (b"table-cell" | b"covered-table-cell", false) => {
                 let rep = num(t.attr(b"table:number-columns-repeated"), ODS_MAX_COLUMNS);
                 pos = (pos + rep).min(ODS_MAX_COLUMNS);
-                let filled = !t.self_closing || t.attr(b"office:value-type").is_some() || t.attr(b"table:formula").is_some();
+                let filled = !t.self_closing
+                    || t.attr(b"office:value-type").is_some()
+                    || t.attr(b"table:formula").is_some();
                 if filled {
                     row_w = pos;
                 }
@@ -346,13 +373,17 @@ mod tests {
     use super::*;
 
     fn ods_content(body: &str) -> String {
-        format!("<office:document-content><office:body><office:spreadsheet><table:table table:name=\"S\">{body}</table:table></office:spreadsheet></office:body></office:document-content>")
+        format!(
+            "<office:document-content><office:body><office:spreadsheet><table:table table:name=\"S\">{body}</table:table></office:spreadsheet></office:body></office:document-content>"
+        )
     }
 
     #[test]
     fn ods_cell_estimate() {
         let l = Limits::default();
-        let one = ods_content("<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"1\"/></table:table-row>");
+        let one = ods_content(
+            "<table:table-row><table:table-cell office:value-type=\"float\" office:value=\"1\"/></table:table-row>",
+        );
         assert_eq!(ods_cells(one.as_bytes(), &l).unwrap(), 1);
         // Trailing empty cells and rows (common in real files) cost nothing.
         let trailing = ods_content(
@@ -381,9 +412,15 @@ mod tests {
             xml.push_str(&format!("<si><t>{i}</t></si>"));
         }
         xml.push_str("</sst>");
-        let l = Limits { max_shared_strings: 1_000_000, ..Default::default() };
+        let l = Limits {
+            max_shared_strings: 1_000_000,
+            ..Default::default()
+        };
         assert_eq!(count_shared_strings(xml.as_bytes(), &l).unwrap(), 300_000);
-        let l = Limits { max_shared_strings: 1000, ..Default::default() };
+        let l = Limits {
+            max_shared_strings: 1000,
+            ..Default::default()
+        };
         assert_eq!(count_shared_strings(xml.as_bytes(), &l).unwrap(), 1001);
     }
 

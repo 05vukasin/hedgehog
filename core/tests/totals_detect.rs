@@ -4,14 +4,15 @@
 use std::path::PathBuf;
 
 use hh_core::totals::{
-    self, detect, verify, CheckReason, DependencyIndex, Direction, Evidence, FormulaKind, IncidentalRows, TotalCandidate,
-    TotalLevel, TotalOrigin,
+    self, CheckReason, DependencyIndex, Direction, Evidence, FormulaKind, IncidentalRows,
+    TotalCandidate, TotalLevel, TotalOrigin, detect, verify,
 };
-use hh_core::{open, Cell, Features, Grid, Rect, Sheet, Value};
+use hh_core::{Cell, Features, Grid, Rect, Sheet, Value, open};
 use rust_xlsxwriter::{Formula, Workbook, Worksheet};
 
 fn fixture(name: &str, build: impl FnOnce(&mut Worksheet)) -> Sheet {
-    let path: PathBuf = std::env::temp_dir().join(format!("hh_totals_{}_{name}.xlsx", std::process::id()));
+    let path: PathBuf =
+        std::env::temp_dir().join(format!("hh_totals_{}_{name}.xlsx", std::process::id()));
     let mut wb = Workbook::new();
     let ws = wb.add_worksheet().set_name("Data").unwrap();
     build(ws);
@@ -22,7 +23,12 @@ fn fixture(name: &str, build: impl FnOnce(&mut Worksheet)) -> Sheet {
 }
 
 fn f(ws: &mut Worksheet, row: u32, col: u16, formula: &str, result: f64) {
-    ws.write_formula(row, col, Formula::new(formula).set_result(result.to_string())).unwrap();
+    ws.write_formula(
+        row,
+        col,
+        Formula::new(formula).set_result(result.to_string()),
+    )
+    .unwrap();
 }
 
 /// Writes rows of (label, numbers…) starting at `row`.
@@ -37,11 +43,18 @@ fn rows(ws: &mut Worksheet, row: u32, data: &[(&str, &[f64])]) {
 }
 
 fn at(c: &[TotalCandidate], row: u32, col: u32) -> &TotalCandidate {
-    c.iter().find(|x| (x.row, x.col) == (row, col)).unwrap_or_else(|| panic!("no total at ({row},{col}): {c:#?}"))
+    c.iter()
+        .find(|x| (x.row, x.col) == (row, col))
+        .unwrap_or_else(|| panic!("no total at ({row},{col}): {c:#?}"))
 }
 
 fn rect(top: u32, left: u32, bottom: u32, right: u32) -> Rect {
-    Rect { top, left, bottom, right }
+    Rect {
+        top,
+        left,
+        bottom,
+        right,
+    }
 }
 
 #[test]
@@ -50,7 +63,15 @@ fn formula_column_totals_and_a_wrong_cached_value() {
         ws.write_string(0, 0, "City").unwrap();
         ws.write_string(0, 1, "Budget").unwrap();
         ws.write_string(0, 2, "Cost").unwrap();
-        rows(ws, 1, &[("Beograd", &[100.0, 10.0]), ("Novi Sad", &[200.0, 20.0]), ("Niš", &[300.5, 30.0])]);
+        rows(
+            ws,
+            1,
+            &[
+                ("Beograd", &[100.0, 10.0]),
+                ("Novi Sad", &[200.0, 20.0]),
+                ("Niš", &[300.5, 30.0]),
+            ],
+        );
         ws.write_string(4, 0, "Ukupno").unwrap();
         f(ws, 4, 1, "=SUM(B2:B4)", 600.5);
         f(ws, 4, 2, "=SUM(C2:C4)", 70.0); // wrong: should be 60
@@ -59,16 +80,25 @@ fn formula_column_totals_and_a_wrong_cached_value() {
     let c = detect(&grid);
     assert_eq!(c.len(), 2, "{c:#?}");
     let b = at(&c, 4, 1);
-    assert_eq!((b.origin, b.direction, b.level), (TotalOrigin::Formula, Direction::Vertical, TotalLevel::Total));
+    assert_eq!(
+        (b.origin, b.direction, b.level),
+        (TotalOrigin::Formula, Direction::Vertical, TotalLevel::Total)
+    );
     assert_eq!(b.ranges, vec![rect(1, 1, 3, 1)]);
     assert_eq!(b.label, Some((4, 0)));
     assert!(b.evidence.contains(&Evidence::Formula(FormulaKind::Sum)));
     assert!(b.evidence.iter().any(|e| matches!(e, Evidence::Keyword(_))));
     let ok = verify(&grid, b);
-    assert_eq!((ok.ok, ok.reason, ok.summed), (Some(true), CheckReason::Match, 3));
+    assert_eq!(
+        (ok.ok, ok.reason, ok.summed),
+        (Some(true), CheckReason::Match, 3)
+    );
     let bad = verify(&grid, at(&c, 4, 2));
     assert_eq!((bad.ok, bad.reason), (Some(false), CheckReason::Mismatch));
-    assert_eq!((bad.expected, bad.actual, bad.diff), (Some(60.0), Some(70.0), Some(10.0)));
+    assert_eq!(
+        (bad.expected, bad.actual, bad.diff),
+        (Some(60.0), Some(70.0), Some(10.0))
+    );
 }
 
 #[test]
@@ -89,7 +119,11 @@ fn formula_row_totals_and_addition_chain() {
         assert_eq!(t.label, Some((0, 4)));
         assert_eq!(verify(&grid, t).ok, Some(true));
     }
-    assert!(at(&c, 2, 4).evidence.contains(&Evidence::Formula(FormulaKind::AdditionChain)));
+    assert!(
+        at(&c, 2, 4)
+            .evidence
+            .contains(&Evidence::Formula(FormulaKind::AdditionChain))
+    );
     assert_eq!(at(&c, 2, 4).ranges.len(), 3);
 }
 
@@ -102,18 +136,29 @@ fn typed_total_row_with_one_wrong_number() {
         rows(
             ws,
             1,
-            &[("North", &[10.0, 11.0]), ("South", &[20.0, 21.0]), ("East", &[30.0, 31.0]), ("Total", &[60.0, 64.0])],
+            &[
+                ("North", &[10.0, 11.0]),
+                ("South", &[20.0, 21.0]),
+                ("East", &[30.0, 31.0]),
+                ("Total", &[60.0, 64.0]),
+            ],
         );
     });
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
     assert_eq!(c.len(), 2, "{c:#?}");
     let good = at(&c, 4, 1);
-    assert_eq!((good.origin, good.direction), (TotalOrigin::Typed, Direction::Vertical));
+    assert_eq!(
+        (good.origin, good.direction),
+        (TotalOrigin::Typed, Direction::Vertical)
+    );
     assert_eq!(good.ranges, vec![rect(1, 1, 3, 1)]);
     assert_eq!(verify(&grid, good).ok, Some(true));
     let bad = verify(&grid, at(&c, 4, 2));
-    assert_eq!((bad.ok, bad.expected, bad.actual), (Some(false), Some(63.0), Some(64.0)));
+    assert_eq!(
+        (bad.ok, bad.expected, bad.actual),
+        (Some(false), Some(63.0), Some(64.0))
+    );
 }
 
 #[test]
@@ -124,7 +169,16 @@ fn typed_total_over_missing_tokens() {
         for (j, h) in ["Region", "2023", "2024"].iter().enumerate() {
             ws.write_string(0, j as u16, *h).unwrap();
         }
-        rows(ws, 1, &[("North", &[10.0, 11.0]), ("South", &[]), ("East", &[30.0, 31.0]), ("West", &[40.0])]);
+        rows(
+            ws,
+            1,
+            &[
+                ("North", &[10.0, 11.0]),
+                ("South", &[]),
+                ("East", &[30.0, 31.0]),
+                ("West", &[40.0]),
+            ],
+        );
         ws.write_string(2, 1, "n/a").unwrap();
         ws.write_string(2, 2, "-").unwrap();
         ws.write_string(4, 2, "N/A").unwrap();
@@ -137,7 +191,11 @@ fn typed_total_over_missing_tokens() {
         let t = at(&c, 5, col);
         assert_eq!(t.ranges, vec![rect(1, col, 4, col)], "{t:#?}");
         let chk = verify(&grid, t);
-        assert_eq!((chk.ok, chk.reason), (Some(true), CheckReason::Match), "{chk:#?}");
+        assert_eq!(
+            (chk.ok, chk.reason),
+            (Some(true), CheckReason::Match),
+            "{chk:#?}"
+        );
     }
 }
 
@@ -192,7 +250,15 @@ fn subtotals_grand_total_and_double_counting() {
     let sum = at(&c, 7, 2);
     assert_eq!(sum.double_counted, vec![(3, 2), (6, 2)]);
     let chk = verify(&grid, sum);
-    assert_eq!((chk.ok, chk.reason, chk.expected, chk.actual), (Some(false), CheckReason::DoubleCounted, Some(10.0), Some(20.0)));
+    assert_eq!(
+        (chk.ok, chk.reason, chk.expected, chk.actual),
+        (
+            Some(false),
+            CheckReason::DoubleCounted,
+            Some(10.0),
+            Some(20.0)
+        )
+    );
 
     let sub = at(&c, 7, 3);
     assert_eq!(sub.exclude, vec![(3, 3), (6, 3)]);
@@ -206,16 +272,36 @@ fn typed_subtotals_and_grand_total() {
         ws.write_string(0, 0, "Opština").unwrap();
         ws.write_string(0, 1, "Stanovnika").unwrap();
         ws.write_string(1, 0, "Vojvodina").unwrap(); // group header row, no number
-        rows(ws, 2, &[("Novi Sad", &[350.0]), ("Subotica", &[140.0]), ("Ukupno Vojvodina", &[490.0])]);
+        rows(
+            ws,
+            2,
+            &[
+                ("Novi Sad", &[350.0]),
+                ("Subotica", &[140.0]),
+                ("Ukupno Vojvodina", &[490.0]),
+            ],
+        );
         ws.write_string(5, 0, "Šumadija").unwrap();
-        rows(ws, 6, &[("Kragujevac", &[180.0]), ("Aranđelovac", &[45.0]), ("Ukupno Šumadija", &[225.0])]);
+        rows(
+            ws,
+            6,
+            &[
+                ("Kragujevac", &[180.0]),
+                ("Aranđelovac", &[45.0]),
+                ("Ukupno Šumadija", &[225.0]),
+            ],
+        );
         rows(ws, 9, &[("Sveukupno", &[715.0])]);
     });
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
     assert_eq!(c.len(), 3, "{c:#?}");
     let first = at(&c, 4, 1);
-    assert_eq!(first.ranges, vec![rect(1, 1, 3, 1)], "from the group label row");
+    assert_eq!(
+        first.ranges,
+        vec![rect(1, 1, 3, 1)],
+        "from the group label row"
+    );
     let second = at(&c, 8, 1);
     assert_eq!(second.ranges, vec![rect(5, 1, 7, 1)], "group \"Šumadija\"");
     assert_eq!(second.level, TotalLevel::Subtotal);
@@ -230,13 +316,19 @@ fn typed_subtotals_and_grand_total() {
 #[test]
 fn typed_total_column_needs_arithmetic_support() {
     let sheet = fixture("typed_col", |ws| {
-        for (j, h) in ["Code", "Name", "Jan", "Feb", "Mar", "Ukupno"].iter().enumerate() {
+        for (j, h) in ["Code", "Name", "Jan", "Feb", "Mar", "Ukupno"]
+            .iter()
+            .enumerate()
+        {
             ws.write_string(0, j as u16, *h).unwrap();
         }
-        for (i, (code, vals, tot)) in
-            [(101.0, [1.0, 2.0, 3.0], 6.0), (102.0, [4.0, 5.0, 6.0], 15.0), (103.0, [7.0, 8.0, 9.0], 25.0)]
-                .iter()
-                .enumerate()
+        for (i, (code, vals, tot)) in [
+            (101.0, [1.0, 2.0, 3.0], 6.0),
+            (102.0, [4.0, 5.0, 6.0], 15.0),
+            (103.0, [7.0, 8.0, 9.0], 25.0),
+        ]
+        .iter()
+        .enumerate()
         {
             let r = 1 + i as u32;
             ws.write_number(r, 0, *code).unwrap();
@@ -250,7 +342,10 @@ fn typed_total_column_needs_arithmetic_support() {
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
     assert_eq!(c.len(), 3, "{c:#?}");
-    assert!(c.iter().all(|t| t.direction == Direction::Horizontal && t.ranges[0].left == 2));
+    assert!(
+        c.iter()
+            .all(|t| t.direction == Direction::Horizontal && t.ranges[0].left == 2)
+    );
     let oks: Vec<_> = c.iter().map(|t| verify(&grid, t).ok).collect();
     assert_eq!(oks, vec![Some(true), Some(true), Some(false)]);
 
@@ -259,7 +354,15 @@ fn typed_total_column_needs_arithmetic_support() {
         for (j, h) in ["Rep", "Region code", "Total sales"].iter().enumerate() {
             ws.write_string(0, j as u16, *h).unwrap();
         }
-        rows(ws, 1, &[("Ann", &[3.0, 120.0]), ("Bob", &[4.0, 90.0]), ("Cid", &[5.0, 70.0])]);
+        rows(
+            ws,
+            1,
+            &[
+                ("Ann", &[3.0, 120.0]),
+                ("Bob", &[4.0, 90.0]),
+                ("Cid", &[5.0, 70.0]),
+            ],
+        );
     });
     assert!(detect(&Grid::new(&sheet)).is_empty());
 }
@@ -280,7 +383,10 @@ fn numbers_as_text_are_noted_not_summed() {
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
     let sum = verify(&grid, at(&c, 4, 1));
-    assert_eq!((sum.ok, sum.summed, sum.numbers_as_text.clone()), (Some(true), 2, vec![(3, 1)]));
+    assert_eq!(
+        (sum.ok, sum.summed, sum.numbers_as_text.clone()),
+        (Some(true), 2, vec![(3, 1)])
+    );
     let chain = verify(&grid, at(&c, 5, 1));
     assert_eq!((chain.ok, chain.expected), (Some(true), Some(60.0)));
 }
@@ -297,7 +403,10 @@ fn header_row_with_total_column_is_not_a_total_row() {
     assert!(totals::keyword_rows(&grid).is_empty());
     let c = detect(&grid);
     assert_eq!(c.len(), 2);
-    assert!(c.iter().all(|t| t.direction == Direction::Horizontal && verify(&grid, t).ok == Some(true)));
+    assert!(
+        c.iter()
+            .all(|t| t.direction == Direction::Horizontal && verify(&grid, t).ok == Some(true))
+    );
 }
 
 #[test]
@@ -315,11 +424,21 @@ fn other_sheet_and_non_sum_formulas_are_not_totals() {
 }
 
 fn synthetic(cells: Vec<Cell>) -> Sheet {
-    Sheet { name: "S".into(), cells, merges: vec![], formats: vec![] }
+    Sheet {
+        name: "S".into(),
+        cells,
+        merges: vec![],
+        formats: vec![],
+    }
 }
 
 fn num(row: u32, col: u32, v: f64) -> Cell {
-    Cell { row, col, value: Some(Value::Number(v)), formula: None }
+    Cell {
+        row,
+        col,
+        value: Some(Value::Number(v)),
+        formula: None,
+    }
 }
 
 #[test]
@@ -327,21 +446,52 @@ fn missing_cached_values_are_unknown() {
     let sheet = synthetic(vec![
         num(0, 0, 1.0),
         num(1, 0, 2.0),
-        Cell { row: 2, col: 0, value: None, formula: Some("SUM(A1:A2)".into()) },
+        Cell {
+            row: 2,
+            col: 0,
+            value: None,
+            formula: Some("SUM(A1:A2)".into()),
+        },
         num(0, 1, 1.0),
-        Cell { row: 1, col: 1, value: None, formula: Some("B1*2".into()) },
-        Cell { row: 2, col: 1, value: Some(Value::Number(3.0)), formula: Some("SUM(B1:B2)".into()) },
+        Cell {
+            row: 1,
+            col: 1,
+            value: None,
+            formula: Some("B1*2".into()),
+        },
+        Cell {
+            row: 2,
+            col: 1,
+            value: Some(Value::Number(3.0)),
+            formula: Some("SUM(B1:B2)".into()),
+        },
         num(0, 2, 1.0),
-        Cell { row: 1, col: 2, value: Some(Value::Error("#DIV/0!".into())), formula: None },
-        Cell { row: 2, col: 2, value: Some(Value::Error("#DIV/0!".into())), formula: Some("SUM(C1:C2)".into()) },
+        Cell {
+            row: 1,
+            col: 2,
+            value: Some(Value::Error("#DIV/0!".into())),
+            formula: None,
+        },
+        Cell {
+            row: 2,
+            col: 2,
+            value: Some(Value::Error("#DIV/0!".into())),
+            formula: Some("SUM(C1:C2)".into()),
+        },
     ]);
     let mut sheet = sheet;
     sheet.cells.sort_by_key(|c| (c.row, c.col));
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
     assert_eq!(c.len(), 3);
-    assert_eq!(verify(&grid, at(&c, 2, 0)).reason, CheckReason::NoCachedValue);
-    assert_eq!(verify(&grid, at(&c, 2, 1)).reason, CheckReason::MissingSourceValue);
+    assert_eq!(
+        verify(&grid, at(&c, 2, 0)).reason,
+        CheckReason::NoCachedValue
+    );
+    assert_eq!(
+        verify(&grid, at(&c, 2, 1)).reason,
+        CheckReason::MissingSourceValue
+    );
     assert_eq!(verify(&grid, at(&c, 2, 2)).reason, CheckReason::NotNumeric);
     assert!(c.iter().all(|t| verify(&grid, t).ok.is_none()));
 }
@@ -428,7 +578,17 @@ fn pivot_style_group_totals() {
         for (r, c, t) in data {
             ws.write_string(r, c, t).unwrap();
         }
-        for (r, v) in [(1, 1.0), (2, 2.0), (3, 3.0), (4, 4.0), (5, 4.0), (6, 7.0), (7, 5.0), (8, 6.0), (9, 13.0)] {
+        for (r, v) in [
+            (1, 1.0),
+            (2, 2.0),
+            (3, 3.0),
+            (4, 4.0),
+            (5, 4.0),
+            (6, 7.0),
+            (7, 5.0),
+            (8, 6.0),
+            (9, 13.0),
+        ] {
             ws.write_number(r, 3, v).unwrap();
         }
         ws.write_string(1, 2, "a").unwrap();
@@ -446,7 +606,11 @@ fn pivot_style_group_totals() {
     assert!(east.evidence.contains(&Evidence::GroupLabel(1, 0)));
     let west = at(&c, 8, 3);
     assert_eq!(west.ranges, vec![rect(7, 3, 7, 3)]);
-    assert_eq!(verify(&grid, west).ok, Some(false), "West Total 6 ≠ 5, supported by the matching siblings");
+    assert_eq!(
+        verify(&grid, west).ok,
+        Some(false),
+        "West Total 6 ≠ 5, supported by the matching siblings"
+    );
     assert_eq!(at(&c, 3, 3).ranges, vec![rect(1, 3, 2, 3)]);
     assert_eq!(at(&c, 9, 3).level, TotalLevel::GrandTotal);
     for (r, ok) in [(3, true), (5, true), (6, true)] {
@@ -469,7 +633,10 @@ fn stray_keyword_above_a_sum_is_not_a_total() {
     let c = detect(&grid);
     assert_eq!(c.len(), 1, "{c:#?}");
     let chk = verify(&grid, &c[0]);
-    assert_eq!((c[0].row, chk.ok, c[0].double_counted.len()), (4, Some(true), 0));
+    assert_eq!(
+        (c[0].row, chk.ok, c[0].double_counted.len()),
+        (4, Some(true), 0)
+    );
 }
 
 #[test]
@@ -477,7 +644,15 @@ fn collapsed_list_of_group_totals_has_no_visible_source() {
     let sheet = fixture("collapsed", |ws| {
         ws.write_string(0, 0, "Group").unwrap();
         ws.write_string(0, 1, "Value").unwrap();
-        rows(ws, 1, &[("East Total", &[10.0]), ("West Total", &[20.0]), ("North Total", &[7.0])]);
+        rows(
+            ws,
+            1,
+            &[
+                ("East Total", &[10.0]),
+                ("West Total", &[20.0]),
+                ("North Total", &[7.0]),
+            ],
+        );
     });
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
@@ -494,16 +669,32 @@ fn register(
     extra: impl FnOnce(&mut Worksheet),
 ) -> Sheet {
     fixture(name, |ws| {
-        for (j, h) in ["id", "type", "description", "supplier", "price"].iter().enumerate() {
+        for (j, h) in ["id", "type", "description", "supplier", "price"]
+            .iter()
+            .enumerate()
+        {
             ws.write_string(0, j as u16, *h).unwrap();
         }
         for r in 1..=n {
             ws.write_number(r, 0, 6_000_000.0 + r as f64).unwrap();
-            ws.write_string(r, 1, if r % 3 == 0 { "Aquisição de serviços" } else { "Aquisição de bens móveis" })
+            ws.write_string(
+                r,
+                1,
+                if r % 3 == 0 {
+                    "Aquisição de serviços"
+                } else {
+                    "Aquisição de bens móveis"
+                },
+            )
+            .unwrap();
+            ws.write_string(
+                r,
+                2,
+                desc(r).map_or_else(|| format!("Fornecimento de material {r}"), str::to_string),
+            )
+            .unwrap();
+            ws.write_string(r, 3, format!("50{r:07} - Fornecedor {r} Lda"))
                 .unwrap();
-            ws.write_string(r, 2, desc(r).map_or_else(|| format!("Fornecimento de material {r}"), str::to_string))
-                .unwrap();
-            ws.write_string(r, 3, format!("50{r:07} - Fornecedor {r} Lda")).unwrap();
             ws.write_number(r, 4, price(r)).unwrap();
         }
         extra(ws);
@@ -530,7 +721,13 @@ fn total_word_in_a_register_description_is_not_a_total() {
     let c = detect(&grid);
     assert!(c.is_empty(), "{c:#?}");
     assert!(totals::keyword_rows(&grid).is_empty());
-    assert_eq!(totals::incidental_rows(&grid), IncidentalRows { records: vec![40, 120, 200], totals: vec![] });
+    assert_eq!(
+        totals::incidental_rows(&grid),
+        IncidentalRows {
+            records: vec![40, 120, 200],
+            totals: vec![]
+        }
+    );
     // The rule layout keeps them as data rows.
     let lay = hh_core::layout::analyze(&grid);
     for (i, cell) in sheet.cells.iter().enumerate() {
@@ -546,7 +743,8 @@ fn register_keeps_its_labelled_total_row() {
     let sheet = register("register_total", 260, pt_desc, |ws| {
         ws.write_string(261, 1, "Contratos 2020").unwrap();
         ws.write_string(261, 2, "Total").unwrap();
-        ws.write_number(261, 4, (1..=260).map(price).sum::<f64>()).unwrap();
+        ws.write_number(261, 4, (1..=260).map(price).sum::<f64>())
+            .unwrap();
     });
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
@@ -556,8 +754,14 @@ fn register_keeps_its_labelled_total_row() {
     assert_eq!(t.ranges, vec![rect(1, 4, 260, 4)]);
     assert_eq!(verify(&grid, t).ok, Some(true));
     let lay = hh_core::layout::analyze(&grid);
-    assert_eq!(lay.roles[grid.cell_index(261, 2).unwrap()], hh_core::Role::Total);
-    assert_eq!(lay.roles[grid.cell_index(40, 2).unwrap()], hh_core::Role::Data);
+    assert_eq!(
+        lay.roles[grid.cell_index(261, 2).unwrap()],
+        hh_core::Role::Total
+    );
+    assert_eq!(
+        lay.roles[grid.cell_index(40, 2).unwrap()],
+        hh_core::Role::Data
+    );
 }
 
 #[test]
@@ -566,14 +770,22 @@ fn incidental_total_word_that_adds_up_is_a_total() {
     // confirms the total.
     let sheet = register("register_sum", 260, pt_desc, |ws| {
         ws.write_string(261, 1, "Contratos 2020").unwrap();
-        ws.write_string(261, 2, "Valor total dos contratos de 2020").unwrap();
-        ws.write_number(261, 4, (1..=260).map(price).sum::<f64>()).unwrap();
+        ws.write_string(261, 2, "Valor total dos contratos de 2020")
+            .unwrap();
+        ws.write_number(261, 4, (1..=260).map(price).sum::<f64>())
+            .unwrap();
     });
     let grid = Grid::new(&sheet);
     let c = detect(&grid);
     assert_eq!(c.len(), 1, "{c:#?}");
     assert_eq!(verify(&grid, at(&c, 261, 4)).ok, Some(true));
-    assert_eq!(totals::incidental_rows(&grid), IncidentalRows { records: vec![40, 120, 200], totals: vec![261] });
+    assert_eq!(
+        totals::incidental_rows(&grid),
+        IncidentalRows {
+            records: vec![40, 120, 200],
+            totals: vec![261]
+        }
+    );
     let d = totals::detect_rows(&grid, &DependencyIndex::new(&grid), true);
     assert_eq!(d.keyword_rows.keys().collect::<Vec<_>>(), vec![&261]);
 }
@@ -582,7 +794,12 @@ fn incidental_total_word_that_adds_up_is_a_total() {
 fn short_sheets_keep_total_words_in_descriptions() {
     // Below the register length a total word right of other text still labels a total row (a
     // report: "Region | Total for the region | numbers").
-    let sheet = register("short_report", 20, |r| (r == 10).then_some("Prótese total anca tumural"), |_| {});
+    let sheet = register(
+        "short_report",
+        20,
+        |r| (r == 10).then_some("Prótese total anca tumural"),
+        |_| {},
+    );
     let grid = Grid::new(&sheet);
     assert!(totals::keyword_rows(&grid).contains_key(&10));
     assert_eq!(totals::incidental_rows(&grid), IncidentalRows::default());
@@ -594,7 +811,10 @@ fn total_label_recurring_as_a_category_stays_a_total() {
     // are suppressed, so the sums cannot be checked. The label recurs as a category of its
     // column and starts with the total word: a label, not free text.
     let sheet = fixture("category", |ws| {
-        for (j, h) in ["Statistik", "Wirtschaftszweig", "Warenart", "Wert"].iter().enumerate() {
+        for (j, h) in ["Statistik", "Wirtschaftszweig", "Warenart", "Wert"]
+            .iter()
+            .enumerate()
+        {
             ws.write_string(0, j as u16, *h).unwrap();
         }
         let mut r = 1;
@@ -603,7 +823,16 @@ fn total_label_recurring_as_a_category_stays_a_total() {
                 ws.write_string(r, 0, "Material- und Wareneingang").unwrap();
                 ws.write_string(r, 1, format!("Industrie {k}")).unwrap();
                 ws.write_string(r, 2, item).unwrap();
-                ws.write_number(r, 3, if item == "Holz" { 0.0 } else { 100.0 + r as f64 }).unwrap();
+                ws.write_number(
+                    r,
+                    3,
+                    if item == "Holz" {
+                        0.0
+                    } else {
+                        100.0 + r as f64
+                    },
+                )
+                .unwrap();
                 r += 1;
             }
         }
@@ -658,32 +887,67 @@ fn incidental_total_that_closes_its_group_is_a_total() {
         ws.write_string(21, 2, "OTHER CORP").unwrap();
     });
     let grid = Grid::new(&sheet);
-    assert_eq!(totals::incidental_rows(&grid), IncidentalRows { records: vec![], totals: vec![20] });
+    assert_eq!(
+        totals::incidental_rows(&grid),
+        IncidentalRows {
+            records: vec![],
+            totals: vec![20]
+        }
+    );
     assert!(detect(&grid).iter().any(|c| (c.row, c.col) == (20, 3)));
     let lay = hh_core::layout::analyze(&grid);
-    assert_eq!(lay.roles[grid.cell_index(20, 2).unwrap()], hh_core::Role::Total);
+    assert_eq!(
+        lay.roles[grid.cell_index(20, 2).unwrap()],
+        hh_core::Role::Total
+    );
 }
-
 
 #[test]
 fn formula_verification_keeps_sources_above_first_unsorted_cell() {
     for duplicate in [false, true] {
         let mut cells = vec![
-            Cell { row: 2, col: 1, value: Some(Value::Number(30.0)), formula: Some("SUM(B1:B2)".into()) },
-            Cell { row: 0, col: 1, value: Some(Value::Number(10.0)), formula: None },
-            Cell { row: 1, col: 1, value: Some(Value::Number(if duplicate { 999.0 } else { 20.0 })), formula: None },
+            Cell {
+                row: 2,
+                col: 1,
+                value: Some(Value::Number(30.0)),
+                formula: Some("SUM(B1:B2)".into()),
+            },
+            Cell {
+                row: 0,
+                col: 1,
+                value: Some(Value::Number(10.0)),
+                formula: None,
+            },
+            Cell {
+                row: 1,
+                col: 1,
+                value: Some(Value::Number(if duplicate { 999.0 } else { 20.0 })),
+                formula: None,
+            },
         ];
         if duplicate {
             // Grid's fallback index keeps the last cell at a duplicate position.
-            cells.push(Cell { row: 1, col: 1, value: Some(Value::Number(20.0)), formula: None });
+            cells.push(Cell {
+                row: 1,
+                col: 1,
+                value: Some(Value::Number(20.0)),
+                formula: None,
+            });
         }
-        let sheet = Sheet { name: "Unsorted".into(), cells, ..Sheet::default() };
+        let sheet = Sheet {
+            name: "Unsorted".into(),
+            cells,
+            ..Sheet::default()
+        };
         let grid = Grid::new(&sheet);
         let candidates = detect(&grid);
         let total = at(&candidates, 2, 1);
         assert_eq!(total.ranges, vec![rect(0, 1, 1, 1)]);
         let checked = verify(&grid, total);
-        assert_eq!((checked.ok, checked.reason, checked.summed), (Some(true), CheckReason::Match, 2));
+        assert_eq!(
+            (checked.ok, checked.reason, checked.summed),
+            (Some(true), CheckReason::Match, 2)
+        );
         assert_eq!((checked.actual, checked.expected), (Some(30.0), Some(30.0)));
     }
 }

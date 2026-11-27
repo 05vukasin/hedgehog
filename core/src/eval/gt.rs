@@ -77,6 +77,10 @@ impl Corpus {
     }
 
     pub fn unmapped_count(&self) -> u64 {
-        self.labels.values().filter(|l| l.role.is_none()).map(|l| l.count).sum()
+        self.labels
+            .values()
+            .filter(|l| l.role.is_none())
+            .map(|l| l.count)
+            .sum()
     }
 }

@@ -16,14 +16,15 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use super::{Dtype, Out, Transforms, T};
-use crate::model::{a1, Value};
+use super::{Dtype, Out, T, Transforms};
+use crate::model::{Value, a1};
 use crate::values::date::is_plausible_serial;
-use crate::values::{
-    numeric_annotation, parse_bool, table_missing_token, parse_date, parse_number, serial_to_ymd, ColumnHints, DateOrder,
-    DecimalSep, MissingKind, NativeNumbers, NegativeStyle, ParsedDate, ParsedNumber,
-};
 use crate::values::text::{clean, may_end_in_footnote, split_label_footnote};
+use crate::values::{
+    ColumnHints, DateOrder, DecimalSep, MissingKind, NativeNumbers, NegativeStyle, ParsedDate,
+    ParsedNumber, numeric_annotation, parse_bool, parse_date, parse_number, serial_to_ymd,
+    table_missing_token,
+};
 
 /// Excel's cell text limit.
 pub(super) const MAX_TEXT: usize = 32_767;
@@ -90,15 +91,27 @@ pub fn fmt_num(v: f64) -> String {
 pub fn iso(serial: f64) -> String {
     if (0.0..1.0).contains(&serial) {
         let secs = ((serial * 86400.0).round() as u32).min(86399);
-        return format!("{:02}:{:02}:{:02}", secs / 3600 % 24, secs / 60 % 60, secs % 60);
+        return format!(
+            "{:02}:{:02}:{:02}",
+            secs / 3600 % 24,
+            secs / 60 % 60,
+            secs % 60
+        );
     }
-    let Some((y, m, d)) = serial_to_ymd(serial) else { return fmt_num(serial) };
+    let Some((y, m, d)) = serial_to_ymd(serial) else {
+        return fmt_num(serial);
+    };
     let frac = serial - serial.floor();
     if frac.abs() < 1e-9 {
         format!("{y:04}-{m:02}-{d:02}")
     } else {
         let secs = (frac * 86400.0).round() as u32;
-        format!("{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}", secs / 3600 % 24, secs / 60 % 60, secs % 60)
+        format!(
+            "{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}",
+            secs / 3600 % 24,
+            secs / 60 % 60,
+            secs % 60
+        )
     }
 }
 
@@ -129,7 +142,12 @@ fn most_common(counts: &HashMap<&'static str, usize>) -> Option<(&'static str, u
 }
 
 fn list(addrs: &[String]) -> String {
-    let mut s = addrs.iter().take(MAX_LISTED).cloned().collect::<Vec<_>>().join(", ");
+    let mut s = addrs
+        .iter()
+        .take(MAX_LISTED)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
     if addrs.len() > MAX_LISTED {
         s.push_str(&format!(" … (+{})", addrs.len() - MAX_LISTED));
     }
@@ -163,7 +181,10 @@ fn parse_num_lenient(t: &str, nh: crate::values::NumberHint) -> (Option<ParsedNu
         return (Some(p), false);
     }
     let s = t.trim();
-    let lone = s.strip_prefix('(').is_some_and(|r| r.trim_start().starts_with(|c: char| c.is_ascii_digit())) && !s.contains(')');
+    let lone = s
+        .strip_prefix('(')
+        .is_some_and(|r| r.trim_start().starts_with(|c: char| c.is_ascii_digit()))
+        && !s.contains(')');
     if !lone {
         return (None, false);
     }
@@ -181,8 +202,21 @@ fn date_header(name: &str) -> bool {
         return true;
     }
     last.split(|c: char| !c.is_alphanumeric()).any(|w| {
-        matches!(w, "date" | "dates" | "datum" | "fecha" | "data" | "dato" | "dátum" | "datė" | "tarih" | "päivämäärä" | "дата" | "датум")
-            || (w.len() > 6 && w.ends_with("datum"))
+        matches!(
+            w,
+            "date"
+                | "dates"
+                | "datum"
+                | "fecha"
+                | "data"
+                | "dato"
+                | "dátum"
+                | "datė"
+                | "tarih"
+                | "päivämäärä"
+                | "дата"
+                | "датум"
+        ) || (w.len() > 6 && w.ends_with("datum"))
     })
 }
 
@@ -197,14 +231,18 @@ fn serial_values(slots: &[Slot], missing: &[Option<bool>]) -> bool {
             _ => {}
         }
     }
-    xs.len() >= 2 && xs.iter().all(|&x| is_plausible_serial(x)) && crate::values::date::looks_like_serial_column(&xs)
+    xs.len() >= 2
+        && xs.iter().all(|&x| is_plausible_serial(x))
+        && crate::values::date::looks_like_serial_column(&xs)
 }
 
 /// `(4)`: a number of one to three digits in parentheses and nothing else, read as negative.
 fn is_bare_paren(t: &str, p: &ParsedNumber) -> bool {
     let s = t.trim();
     p.negative == Some(NegativeStyle::Parens)
-        && s.strip_prefix('(').and_then(|r| r.strip_suffix(')')).is_some_and(|d| (1..=3).contains(&d.len()) && d.bytes().all(|b| b.is_ascii_digit()))
+        && s.strip_prefix('(')
+            .and_then(|r| r.strip_suffix(')'))
+            .is_some_and(|d| (1..=3).contains(&d.len()) && d.bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// Types one column. `rows[i]` is the source row of `slots[i]`, `col` the source column (both
@@ -266,7 +304,11 @@ fn type_column_untimed(
             }
         }
     }
-    let n = slots.iter().zip(&missing).filter(|(s, m)| matches!(s, Slot::Val(_)) && m.is_none()).count();
+    let n = slots
+        .iter()
+        .zip(&missing)
+        .filter(|(s, m)| matches!(s, Slot::Val(_)) && m.is_none())
+        .count();
     // A kind is out once its misses exceed what the 90 % rule allows.
     let allowed = n - (TYPE_SHARE * n as f64).ceil() as usize;
     let allowed_num = n - (WORDS_NUM_SHARE * n as f64).ceil() as usize;
@@ -363,8 +405,16 @@ fn type_column_untimed(
             num_miss += 1;
             words_only &= matches!(v, Value::Text(_));
         }
-        if is_date { date_ok += 1 } else { date_miss += 1 }
-        if is_bool { bool_ok += 1 } else { bool_miss += 1 }
+        if is_date {
+            date_ok += 1
+        } else {
+            date_miss += 1
+        }
+        if is_bool {
+            bool_ok += 1
+        } else {
+            bool_miss += 1
+        }
     }
     // Without such evidence `(4)` is no amount: it stays text (and counts against a numeric
     // column like any other text).
@@ -383,7 +433,8 @@ fn type_column_untimed(
     // A few distinct words among many numbers (one `approx.` in a short column) keep it numeric too.
     let num_share = num_ok > 0 && (num_ok > annotations || num_miss == 0) && {
         let hard = (n - annotations) as f64;
-        let words_ok = words_only && num_ok >= 3 * num_miss && num_ok as f64 >= WORDS_NUM_SHARE * hard;
+        let words_ok =
+            words_only && num_ok >= 3 * num_miss && num_ok as f64 >= WORDS_NUM_SHARE * hard;
         num_ok as f64 >= TYPE_SHARE * hard || words_ok
     };
     #[derive(PartialEq)]
@@ -408,7 +459,11 @@ fn type_column_untimed(
 
     // Excel dates stored without a date format (plain serials 44301, 44302, …): a date column
     // only when its header says date and every value is such a serial.
-    let kind = if kind == Kind::Num && date_header(name) && serial_values(slots, &missing) { Kind::Date } else { kind };
+    let kind = if kind == Kind::Num && date_header(name) && serial_values(slots, &missing) {
+        Kind::Date
+    } else {
+        kind
+    };
 
     // Pass 2 (numeric / date columns): final hints; re-parse only if they can change a value.
     let mut hints = first;
@@ -429,7 +484,9 @@ fn type_column_untimed(
                 let nh = hints.number_hint();
                 let mut old = std::mem::take(&mut cands).into_iter().peekable();
                 for (i, s) in slots.iter().enumerate() {
-                    let (Slot::Val(Value::Text(t)), None) = (s, missing[i]) else { continue };
+                    let (Slot::Val(Value::Text(t)), None) = (s, missing[i]) else {
+                        continue;
+                    };
                     let mut c = match old.next_if(|x| x.0 == i as u32) {
                         Some((_, c)) => c,
                         None => Cand::default(),
@@ -486,7 +543,8 @@ fn type_column_untimed(
         for (s, m) in slots.iter().zip(&missing) {
             if let (Slot::Val(Value::Text(t)), None) = (s, m) {
                 texts += 1;
-                marked += (may_end_in_footnote(t) && split_label_footnote(&clean(t)).is_some()) as usize;
+                marked +=
+                    (may_end_in_footnote(t) && split_label_footnote(&clean(t)).is_some()) as usize;
             }
         }
         marked > 0 && 2 * marked <= texts
@@ -510,8 +568,7 @@ fn type_column_untimed(
     };
     // `N.B.` (New Brunswick) and `N.V.` among labels are names too; the German "nicht bekannt" /
     // "nicht verfügbar" marks are missing values only in a column of numbers.
-    let is_category_word =
-        |v: &Value| matches!(v, Value::Text(t) if matches!(crate::values::norm_key(t).as_str(), "none" | "unknown" | "n.b." | "n.v."));
+    let is_category_word = |v: &Value| matches!(v, Value::Text(t) if matches!(crate::values::norm_key(t).as_str(), "none" | "unknown" | "n.b." | "n.v."));
     // The previous slot's value: a label filled down from it (same cell) records its mark once.
     let mut last_val: Option<&Value> = None;
     let no_reading = Cand::default();
@@ -539,7 +596,14 @@ fn type_column_untimed(
                     continue;
                 }
                 if let Some(is_err) = c.0 {
-                    tr.add(if is_err { T::ErrorsToNull } else { T::MissingToNull }, 1);
+                    tr.add(
+                        if is_err {
+                            T::ErrorsToNull
+                        } else {
+                            T::MissingToNull
+                        },
+                        1,
+                    );
                     values.push(Out::Null);
                     continue;
                 }
@@ -568,7 +632,10 @@ fn type_column_untimed(
                             tr.add(T::ScaleApplied, (p.scale != 1.0) as usize);
                             tr.add(
                                 T::AccountingNegatives,
-                                matches!(p.negative, Some(NegativeStyle::Parens | NegativeStyle::TrailingMinus)) as usize,
+                                matches!(
+                                    p.negative,
+                                    Some(NegativeStyle::Parens | NegativeStyle::TrailingMinus)
+                                ) as usize,
                             );
                             ambiguous += p.ambiguous as usize;
                             if c.1.lone_paren {
@@ -604,7 +671,11 @@ fn type_column_untimed(
                         if cl.len() != t.len() {
                             tr.add(T::WhitespaceTrimmed, 1);
                         }
-                        let split = if strip_labels && may_end_in_footnote(&cl) { split_label_footnote(&cl) } else { None };
+                        let split = if strip_labels && may_end_in_footnote(&cl) {
+                            split_label_footnote(&cl)
+                        } else {
+                            None
+                        };
                         match split {
                             Some((body, m)) => {
                                 if !prev.is_some_and(|p| std::ptr::eq(p, *v)) {
@@ -643,13 +714,24 @@ fn type_column_untimed(
         Kind::Num if all_int => Dtype::Integer,
         Kind::Num => Dtype::Number,
     };
-    let currency = if cur_n * 2 > num_ok && kind == Kind::Num { most_common(&curs).map(|c| c.0.to_string()) } else { None };
+    let currency = if cur_n * 2 > num_ok && kind == Kind::Num {
+        most_common(&curs).map(|c| c.0.to_string())
+    } else {
+        None
+    };
     if curs.len() > 1 {
         let mut codes: Vec<_> = curs.keys().copied().collect();
         codes.sort_unstable();
-        warnings.push(format!("column '{name}': mixed currencies {}", codes.join(", ")));
+        warnings.push(format!(
+            "column '{name}': mixed currencies {}",
+            codes.join(", ")
+        ));
     }
-    let unit = if unit_n * 2 > num_ok && kind == Kind::Num { most_common(&units).map(|u| u.0.to_string()) } else { None };
+    let unit = if unit_n * 2 > num_ok && kind == Kind::Num {
+        most_common(&units).map(|u| u.0.to_string())
+    } else {
+        None
+    };
     if !unparsed.is_empty() {
         let what = match dtype {
             Dtype::Date | Dtype::Datetime => "dates",
@@ -664,9 +746,14 @@ fn type_column_untimed(
         ));
     }
     if !annotated.is_empty() {
-        let kinds = if slots.iter().any(|s| matches!(s, Slot::Val(Value::Text(t)) if t.trim() == "N.S.")) {
+        let kinds = if slots
+            .iter()
+            .any(|s| matches!(s, Slot::Val(Value::Text(t)) if t.trim() == "N.S."))
+        {
             "censored, suppressed, see-note or non-significant"
-        } else { "censored, suppressed or see-note" };
+        } else {
+            "censored, suppressed or see-note"
+        };
         warnings.push(format!(
             "column '{name}' ({}): {} {kinds} value(s) kept as text: {}",
             dtype.as_str(),
@@ -711,16 +798,30 @@ mod tests {
             let slots: Vec<_> = values.iter().map(Slot::Val).collect();
             let rows: Vec<_> = (0..values.len() as u32).collect();
             let mut tr = Transforms::default();
-            type_column("Correlation", 0, &slots, &rows, ColumnHints::default(), &mut |_, _, _| ColumnHints::default(), &mut tr)
+            type_column(
+                "Correlation",
+                0,
+                &slots,
+                &rows,
+                ColumnHints::default(),
+                &mut |_, _, _| ColumnHints::default(),
+                &mut tr,
+            )
         };
         let text = |s: &str| Value::Text(s.into());
         let typed = run(&[Value::Number(0.71), Value::Number(-0.26), text("N.S.")]);
         assert_eq!(typed.dtype, Dtype::Number);
-        assert_eq!(typed.values, vec![Out::Num(0.71), Out::Num(-0.26), Out::Text("N.S.".into())]);
+        assert_eq!(
+            typed.values,
+            vec![Out::Num(0.71), Out::Num(-0.26), Out::Text("N.S.".into())]
+        );
         assert!(typed.warnings.iter().any(|s| s.contains("non-significant")));
-        for values in [vec![text("N.S.")], vec![text("N.S."), text("Alice"), text("Bob")],
+        for values in [
+            vec![text("N.S.")],
+            vec![text("N.S."), text("Alice"), text("Bob")],
             vec![text("001"), Value::Number(0.71), text("N.S.")],
-            vec![Value::Number(0.71), Value::Number(-0.26), text("N.S")]] {
+            vec![Value::Number(0.71), Value::Number(-0.26), text("N.S")],
+        ] {
             let typed = run(&values);
             assert_eq!(typed.dtype, Dtype::Text, "{values:?}");
             assert_eq!(typed.values[0], Out::Text(display(&values[0])));

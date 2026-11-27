@@ -14,11 +14,11 @@
 //! query runs under a time limit and the SQLite heap under a hard limit.
 
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use hh_core::normalize::{iso, ColRole, Dtype, Normalized, Out, Table};
+use hh_core::normalize::{ColRole, Dtype, Normalized, Out, Table, iso};
 use rusqlite::config::DbConfig;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use rusqlite::limits::Limit;
@@ -45,7 +45,14 @@ const MAX_VALUE_BYTES: i32 = 1_000_000;
 const HEAP_HEADROOM: i64 = 512 << 20;
 
 /// Functions a query may not call even if the build has them.
-const DENIED_FUNCTIONS: &[&str] = &["load_extension", "fts3_tokenizer", "readfile", "writefile", "edit", "sqlite_dbpage"];
+const DENIED_FUNCTIONS: &[&str] = &[
+    "load_extension",
+    "fts3_tokenizer",
+    "readfile",
+    "writefile",
+    "edit",
+    "sqlite_dbpage",
+];
 /// Read-only pragmas allowed (schema introspection).
 const ALLOWED_PRAGMAS: &[&str] = &["table_info", "table_xinfo", "table_list"];
 
@@ -94,7 +101,9 @@ fn sql_value(v: &Out, d: Dtype) -> Value {
     match v {
         Out::Null => Value::Null,
         Out::Num(x) if matches!(d, Dtype::Date | Dtype::Datetime) => Value::Text(iso(*x)),
-        Out::Num(x) if matches!(d, Dtype::Integer | Dtype::Bool) && x.fract() == 0.0 && x.abs() < 9e15 => {
+        Out::Num(x)
+            if matches!(d, Dtype::Integer | Dtype::Bool) && x.fract() == 0.0 && x.abs() < 9e15 =>
+        {
             Value::Integer(*x as i64)
         }
         Out::Num(x) => Value::Real(*x),
@@ -105,7 +114,12 @@ fn sql_value(v: &Out, d: Dtype) -> Value {
 }
 
 /// Binds `v` as [`sql_value`] converts it, without building a [`Value`] for text.
-fn bind_value(ins: &mut rusqlite::Statement<'_>, at: usize, v: &Out, d: Dtype) -> rusqlite::Result<()> {
+fn bind_value(
+    ins: &mut rusqlite::Statement<'_>,
+    at: usize,
+    v: &Out,
+    d: Dtype,
+) -> rusqlite::Result<()> {
     match v {
         Out::Text(s) => ins.raw_bind_parameter(at, s.as_str()),
         Out::Null => ins.raw_bind_parameter(at, Null),
@@ -122,13 +136,26 @@ impl Db {
         // A named in-memory database in shared-cache mode, so a multi-file query can attach it
         // (B76); the name is unique to this process and load.
         static NEXT: AtomicU64 = AtomicU64::new(1);
-        let uri = format!("file:hh-mem-{}-{}?mode=memory&cache=shared", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed));
-        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let uri = format!(
+            "file:hh-mem-{}-{}?mode=memory&cache=shared",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        );
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_CREATE
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX;
         let conn = Connection::open_with_flags(&uri, flags)?;
         let (skipped_columns, entities) = fill(&conn, norm)?;
         lock_down(&conn)?;
         set_heap_limit(memory_used() + HEAP_HEADROOM);
-        Ok(Db { conn, skipped_columns, entities, cancel: Arc::default(), uri })
+        Ok(Db {
+            conn,
+            skipped_columns,
+            entities,
+            cancel: Arc::default(),
+            uri,
+        })
     }
 
     /// Writes every table of `norm` into a new database file (the disk cache's copy); returns
@@ -151,7 +178,13 @@ impl Db {
         conn.query_row("SELECT count(*) FROM sqlite_schema", [], |_| Ok(()))?;
         lock_down(&conn)?;
         let uri = format!("{}?mode=ro", file_uri(path));
-        Ok(Db { conn, skipped_columns: Vec::new(), entities: Vec::new(), cancel: Arc::default(), uri })
+        Ok(Db {
+            conn,
+            skipped_columns: Vec::new(),
+            entities: Vec::new(),
+            cancel: Arc::default(),
+            uri,
+        })
     }
 
     /// A connection for a query across files (B76): an empty main database with each of
@@ -159,16 +192,28 @@ impl Db {
     /// the others (no more ATTACH). Unqualified names (`T1`) find the first attached file's
     /// tables; `f2.T1` names a file's table.
     pub fn join(files: &[(String, String)]) -> rusqlite::Result<Db> {
-        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_MEMORY;
+        let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_MEMORY;
         let conn = Connection::open_with_flags(":memory:", flags)?;
         for (schema, uri) in files {
             conn.execute("ATTACH DATABASE ?1 AS ?2", rusqlite::params![uri, schema])?;
             if uri.contains("mode=ro") {
-                conn.execute_batch(&format!("PRAGMA {}.mmap_size = 4294967296;", quote_ident(schema)))?;
+                conn.execute_batch(&format!(
+                    "PRAGMA {}.mmap_size = 4294967296;",
+                    quote_ident(schema)
+                ))?;
             }
         }
         lock_down(&conn)?;
-        Ok(Db { conn, skipped_columns: Vec::new(), entities: Vec::new(), cancel: Arc::default(), uri: String::new() })
+        Ok(Db {
+            conn,
+            skipped_columns: Vec::new(),
+            entities: Vec::new(),
+            cancel: Arc::default(),
+            uri: String::new(),
+        })
     }
 
     /// A flag that, once set, stops the running query (the caller resets it).
@@ -201,7 +246,10 @@ fn file_uri(path: &Path) -> String {
 fn table_plan(t: &Table) -> (Vec<usize>, usize, Vec<Entity>) {
     let (keep, skipped) = kept_columns(t);
     // Entity columns get their ID and name parts right after them.
-    let ents: Vec<Entity> = entity::detect(t).into_iter().filter(|e| keep.contains(&e.col)).collect();
+    let ents: Vec<Entity> = entity::detect(t)
+        .into_iter()
+        .filter(|e| keep.contains(&e.col))
+        .collect();
     (keep, skipped, ents)
 }
 
@@ -221,7 +269,11 @@ fn kept_columns(t: &Table) -> (Vec<usize>, usize) {
 
 /// Columns left out per table (table id, count) because SQLite allows at most 2000.
 pub fn skipped_columns(norm: &Normalized) -> Vec<(String, usize)> {
-    norm.tables.iter().map(|t| (t.id(), kept_columns(t).1)).filter(|x| x.1 > 0).collect()
+    norm.tables
+        .iter()
+        .map(|t| (t.id(), kept_columns(t).1))
+        .filter(|x| x.1 > 0)
+        .collect()
 }
 
 /// Skipped columns (table id, count) and entity columns (table number, entities) of a file.
@@ -246,7 +298,9 @@ pub fn plan(norm: &Normalized) -> Plan {
 /// Creates and fills the tables and views of `norm` in `conn` (one transaction, rows streamed
 /// through a prepared insert).
 fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
-    conn.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=MEMORY;")?;
+    conn.execute_batch(
+        "PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=MEMORY;",
+    )?;
     let mut skipped_columns = Vec::new();
     let mut entities = Vec::new();
     let tx = conn.unchecked_transaction()?;
@@ -278,19 +332,33 @@ fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
         let defs: Vec<String> = slots
             .iter()
             .map(|s| {
-                let ty = if let Slot::Col(i) = *s { sql_type(t.columns[i].dtype) } else { "TEXT" };
+                let ty = if let Slot::Col(i) = *s {
+                    sql_type(t.columns[i].dtype)
+                } else {
+                    "TEXT"
+                };
                 format!("{} {ty}", quote_ident(&slot_name(s)))
             })
             .collect();
         let base = if has_type { all.clone() } else { id.clone() };
-        tx.execute_batch(&format!("CREATE TABLE {} ({})", quote_ident(&base), defs.join(", ")))?;
+        tx.execute_batch(&format!(
+            "CREATE TABLE {} ({})",
+            quote_ident(&base),
+            defs.join(", ")
+        ))?;
         let t_rows = Instant::now();
         {
             let marks = vec!["?"; slots.len()].join(",");
-            let mut ins = tx.prepare(&format!("INSERT INTO {} VALUES ({marks})", quote_ident(&base)))?;
+            let mut ins = tx.prepare(&format!(
+                "INSERT INTO {} VALUES ({marks})",
+                quote_ident(&base)
+            ))?;
             let mut parts: Vec<(Option<String>, Option<String>)> = vec![(None, None); ents.len()];
             // B18: one name per ID in `<col>_name`, so grouping by the name does not split an entity.
-            let canon: Vec<_> = ents.iter().map(|e| entity::canonical_names(&t.columns[e.col])).collect();
+            let canon: Vec<_> = ents
+                .iter()
+                .map(|e| entity::canonical_names(&t.columns[e.col]))
+                .collect();
             // Values are bound in place (text borrowed, not copied into a row of `Value`s first).
             for r in 0..t.rows() {
                 for (k, e) in ents.iter().enumerate() {
@@ -355,7 +423,6 @@ fn fill(conn: &Connection, norm: &Normalized) -> rusqlite::Result<Plan> {
 }
 
 impl Db {
-
     /// Runs one read-only statement; returns up to `limit` rows (cells cut to 80 characters) and
     /// the number of rows the query produced.
     pub fn query(&self, sql: &str, limit: usize, timeout: Duration) -> Result<QueryResult, String> {
@@ -367,14 +434,21 @@ impl Db {
         if !matches!(first.as_str(), "select" | "with" | "values") {
             return Err(format!(
                 "read-only: only SELECT / WITH queries are allowed (got {})",
-                if first.is_empty() { "nothing".to_string() } else { first.to_uppercase() }
+                if first.is_empty() {
+                    "nothing".to_string()
+                } else {
+                    first.to_uppercase()
+                }
             ));
         }
         let t0 = Instant::now();
         let deadline = t0 + timeout;
         let cancel = self.cancel.clone();
         self.conn
-            .progress_handler(1000, Some(move || cancel.load(Ordering::Relaxed) || Instant::now() > deadline))
+            .progress_handler(
+                1000,
+                Some(move || cancel.load(Ordering::Relaxed) || Instant::now() > deadline),
+            )
             .map_err(|e| e.to_string())?;
         let mut stmt = self.conn.prepare(q).map_err(|e| match e {
             rusqlite::Error::MultipleStatement => "only one statement per query".to_string(),
@@ -409,7 +483,9 @@ impl Db {
                     }
                 }
                 Ok(None) => break,
-                Err(e) if is_interrupt(&e) && self.cancel.load(Ordering::Relaxed) => return Err(CANCELLED.into()),
+                Err(e) if is_interrupt(&e) && self.cancel.load(Ordering::Relaxed) => {
+                    return Err(CANCELLED.into());
+                }
                 Err(e) if is_interrupt(&e) && !rows_out.is_empty() => {
                     complete = false;
                     break;
@@ -423,7 +499,14 @@ impl Db {
                 Err(e) => return Err(sql_error(&e)),
             }
         }
-        Ok(QueryResult { header, rows: rows_out, total, complete, ms: t0.elapsed().as_secs_f64() * 1000.0, cut_values })
+        Ok(QueryResult {
+            header,
+            rows: rows_out,
+            total,
+            complete,
+            ms: t0.elapsed().as_secs_f64() * 1000.0,
+            cut_values,
+        })
     }
 }
 
@@ -431,7 +514,8 @@ impl Db {
     /// The column names `sql` would return (prepared, not run); None when it does not prepare.
     pub fn columns(&self, sql: &str) -> Option<Vec<String>> {
         let stmt = self.conn.prepare(sql).ok()?;
-        stmt.readonly().then(|| stmt.column_names().iter().map(|s| s.to_string()).collect())
+        stmt.readonly()
+            .then(|| stmt.column_names().iter().map(|s| s.to_string()).collect())
     }
 }
 
@@ -441,7 +525,9 @@ fn is_interrupt(e: &rusqlite::Error) -> bool {
 
 fn sql_error(e: &rusqlite::Error) -> String {
     match e {
-        rusqlite::Error::SqliteFailure(f, Some(msg)) if f.code == rusqlite::ErrorCode::AuthorizationForStatementDenied => {
+        rusqlite::Error::SqliteFailure(f, Some(msg))
+            if f.code == rusqlite::ErrorCode::AuthorizationForStatementDenied =>
+        {
             format!("not allowed: {msg} (read-only: SELECT over the tables only)")
         }
         rusqlite::Error::SqliteFailure(_, Some(msg)) => msg.clone(),
@@ -463,7 +549,10 @@ fn first_keyword(q: &str) -> String {
             break;
         }
     }
-    s.chars().take_while(|c| c.is_ascii_alphabetic()).collect::<String>().to_ascii_lowercase()
+    s.chars()
+        .take_while(|c| c.is_ascii_alphabetic())
+        .collect::<String>()
+        .to_ascii_lowercase()
 }
 
 /// The text of one result value and whether it was cut. Text is kept exactly (the CSV quotes
@@ -477,7 +566,16 @@ fn cell_text(v: ValueRef<'_>) -> (String, bool) {
         ValueRef::Real(x) => (num(x), false),
         ValueRef::Text(t) => {
             let s = String::from_utf8_lossy(t);
-            let s: String = s.chars().map(|c| if c.is_control() && c != '\n' && c != '\t' { ' ' } else { c }).collect();
+            let s: String = s
+                .chars()
+                .map(|c| {
+                    if c.is_control() && c != '\n' && c != '\t' {
+                        ' '
+                    } else {
+                        c
+                    }
+                })
+                .collect();
             let n = s.chars().count();
             if n <= MAX_CELL_CHARS {
                 return (s, false);
@@ -492,7 +590,9 @@ fn cell_text(v: ValueRef<'_>) -> (String, bool) {
 
 fn authorize(ctx: AuthContext<'_>) -> Authorization {
     match ctx.action {
-        AuthAction::Select | AuthAction::Read { .. } | AuthAction::Recursive => Authorization::Allow,
+        AuthAction::Select | AuthAction::Read { .. } | AuthAction::Recursive => {
+            Authorization::Allow
+        }
         AuthAction::Function { function_name } => {
             if DENIED_FUNCTIONS.contains(&function_name.to_ascii_lowercase().as_str()) {
                 Authorization::Deny
@@ -541,8 +641,8 @@ fn set_heap_limit(bytes: i64) {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use hh_core::normalize::{Column, Normalized, RowType, Table, Transforms};
     use hh_core::Rect;
+    use hh_core::normalize::{Column, Normalized, RowType, Table, Transforms};
 
     fn col(name: &str, role: ColRole, dtype: Dtype, values: Vec<Out>) -> Column {
         Column {
@@ -567,30 +667,68 @@ pub(crate) mod tests {
             n: 1,
             sheet: "T1_x".into(),
             source_sheet: "Sheet1".into(),
-            rect: Rect { top: 0, left: 0, bottom: n as u32 + 1, right: 2 },
+            rect: Rect {
+                top: 0,
+                left: 0,
+                bottom: n as u32 + 1,
+                right: 2,
+            },
             header_top: 0,
             header_rows: 1,
             title: None,
             notes: vec![],
             confidence: 0.9,
             columns: vec![
-                col("City", ColRole::Data, Dtype::Text, (0..n).map(|i| Out::Text(format!("c{i}"))).collect()),
-                col("Revenue / Q1", ColRole::Data, Dtype::Number, (0..n).map(|i| Out::Num(i as f64 + 0.5)).collect()),
-                col("Day", ColRole::Data, Dtype::Date, (0..n).map(|i| Out::Date(45000.0 + i as f64)).collect()),
-                col("_src_row", ColRole::SrcRow, Dtype::Integer, (0..n).map(|i| Out::Num(i as f64 + 2.0)).collect()),
+                col(
+                    "City",
+                    ColRole::Data,
+                    Dtype::Text,
+                    (0..n).map(|i| Out::Text(format!("c{i}"))).collect(),
+                ),
+                col(
+                    "Revenue / Q1",
+                    ColRole::Data,
+                    Dtype::Number,
+                    (0..n).map(|i| Out::Num(i as f64 + 0.5)).collect(),
+                ),
+                col(
+                    "Day",
+                    ColRole::Data,
+                    Dtype::Date,
+                    (0..n).map(|i| Out::Date(45000.0 + i as f64)).collect(),
+                ),
+                col(
+                    "_src_row",
+                    ColRole::SrcRow,
+                    Dtype::Integer,
+                    (0..n).map(|i| Out::Num(i as f64 + 2.0)).collect(),
+                ),
                 col(
                     "_row_type",
                     ColRole::RowType,
                     Dtype::Text,
-                    (0..n).map(|i| Out::Text(if i == n - 1 { "total" } else { "data" }.into())).collect(),
+                    (0..n)
+                        .map(|i| Out::Text(if i == n - 1 { "total" } else { "data" }.into()))
+                        .collect(),
                 ),
             ],
             src_rows: (1..=n as u32).collect(),
-            row_types: (0..n).map(|i| if i == n - 1 { RowType::Total } else { RowType::Data }).collect(),
+            row_types: (0..n)
+                .map(|i| {
+                    if i == n - 1 {
+                        RowType::Total
+                    } else {
+                        RowType::Data
+                    }
+                })
+                .collect(),
             transforms: Transforms::default(),
             warnings: vec![],
         };
-        Normalized { tables: vec![t], ..Default::default() }
+        Normalized {
+            tables: vec![t],
+            ..Default::default()
+        }
     }
 
     fn db() -> Db {
@@ -600,15 +738,33 @@ pub(crate) mod tests {
     #[test]
     fn select_works_and_counts() {
         let d = db();
-        let r = d.query("SELECT City, \"Revenue / Q1\", Day FROM T1", 5, DEFAULT_TIMEOUT).unwrap();
+        let r = d
+            .query(
+                "SELECT City, \"Revenue / Q1\", Day FROM T1",
+                5,
+                DEFAULT_TIMEOUT,
+            )
+            .unwrap();
         assert_eq!(r.header, ["City", "Revenue / Q1", "Day"]);
         assert_eq!(r.rows.len(), 5);
         assert_eq!(r.total, 299);
         assert!(r.complete);
         assert_eq!(r.rows[0], ["c0", "0.5", "2023-03-15"]);
-        let all = d.query("select count(*) from T1_all where _row_type = 'total'", 5, DEFAULT_TIMEOUT).unwrap();
+        let all = d
+            .query(
+                "select count(*) from T1_all where _row_type = 'total'",
+                5,
+                DEFAULT_TIMEOUT,
+            )
+            .unwrap();
         assert_eq!(all.rows[0][0], "1");
-        let w = d.query("WITH x AS (SELECT 1 AS a) SELECT a FROM x;", 5, DEFAULT_TIMEOUT).unwrap();
+        let w = d
+            .query(
+                "WITH x AS (SELECT 1 AS a) SELECT a FROM x;",
+                5,
+                DEFAULT_TIMEOUT,
+            )
+            .unwrap();
         assert_eq!(w.rows[0][0], "1");
     }
 
@@ -630,22 +786,40 @@ pub(crate) mod tests {
             "SELECT load_extension('/tmp/x')",
             "WITH x AS (SELECT 1) DELETE FROM T1_all",
         ] {
-            assert!(d.query(q, 5, DEFAULT_TIMEOUT).is_err(), "{q} should be rejected");
+            assert!(
+                d.query(q, 5, DEFAULT_TIMEOUT).is_err(),
+                "{q} should be rejected"
+            );
         }
         // Even if the keyword check is bypassed, the authorizer denies.
         assert!(d.conn.execute("DELETE FROM T1_all", []).is_err());
-        assert!(d.conn.execute_batch("ATTACH DATABASE ':memory:' AS x").is_err());
+        assert!(
+            d.conn
+                .execute_batch("ATTACH DATABASE ':memory:' AS x")
+                .is_err()
+        );
         assert!(d.conn.execute_batch("PRAGMA query_only = OFF").is_err());
-        let n = d.query("SELECT count(*) FROM T1_all", 5, DEFAULT_TIMEOUT).unwrap();
+        let n = d
+            .query("SELECT count(*) FROM T1_all", 5, DEFAULT_TIMEOUT)
+            .unwrap();
         assert_eq!(n.rows[0][0], "300");
         // read-only pragma functions are fine
-        assert!(d.query("SELECT name FROM pragma_table_info('T1')", 50, DEFAULT_TIMEOUT).is_ok());
+        assert!(
+            d.query(
+                "SELECT name FROM pragma_table_info('T1')",
+                50,
+                DEFAULT_TIMEOUT
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn unknown_column_is_an_error_not_a_string() {
         let d = db();
-        let e = d.query("SELECT \"Revenue Q1\" FROM T1", 5, DEFAULT_TIMEOUT).unwrap_err();
+        let e = d
+            .query("SELECT \"Revenue Q1\" FROM T1", 5, DEFAULT_TIMEOUT)
+            .unwrap_err();
         assert!(e.contains("no such column"), "{e}");
     }
 
@@ -660,10 +834,17 @@ pub(crate) mod tests {
             )
             .unwrap_err();
         assert!(e.contains("time limit"), "{e}");
-        assert!(d.query("SELECT length(zeroblob(100000000))", 5, DEFAULT_TIMEOUT).is_err());
+        assert!(
+            d.query("SELECT length(zeroblob(100000000))", 5, DEFAULT_TIMEOUT)
+                .is_err()
+        );
         // Endless rows: shown rows come back, the count stops.
         let r = d
-            .query("WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM r) SELECT i FROM r", 3, Duration::from_millis(200))
+            .query(
+                "WITH RECURSIVE r(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM r) SELECT i FROM r",
+                3,
+                Duration::from_millis(200),
+            )
             .unwrap();
         assert_eq!(r.rows.len(), 3);
         assert!(!r.complete);
@@ -672,7 +853,9 @@ pub(crate) mod tests {
     #[test]
     fn row_cap() {
         let d = db();
-        let r = d.query("SELECT * FROM T1_all", 200, DEFAULT_TIMEOUT).unwrap();
+        let r = d
+            .query("SELECT * FROM T1_all", 200, DEFAULT_TIMEOUT)
+            .unwrap();
         assert_eq!(r.rows.len(), 200);
         assert_eq!(r.total, 300);
     }
@@ -681,16 +864,35 @@ pub(crate) mod tests {
     fn long_values_are_kept_up_to_the_cell_limit() {
         // B47: a group_concat list must come back whole so it can be reused.
         let d = db();
-        let r = d.query("SELECT group_concat(City, ', ') FROM (SELECT City FROM T1 LIMIT 150)", 5, DEFAULT_TIMEOUT).unwrap();
+        let r = d
+            .query(
+                "SELECT group_concat(City, ', ') FROM (SELECT City FROM T1 LIMIT 150)",
+                5,
+                DEFAULT_TIMEOUT,
+            )
+            .unwrap();
         let v = &r.rows[0][0];
-        assert!(v.chars().count() > 80 && v.chars().count() <= MAX_CELL_CHARS, "{}", v.len());
+        assert!(
+            v.chars().count() > 80 && v.chars().count() <= MAX_CELL_CHARS,
+            "{}",
+            v.len()
+        );
         assert!(!v.contains('…') && v.ends_with("c149"));
         assert_eq!(r.cut_values, 0);
         let q = "SELECT group_concat(City || '-' || Day, ', ') AS x FROM T1_all";
         let long = d.query(q, 5, DEFAULT_TIMEOUT).unwrap();
-        let full: usize = d.query(&format!("SELECT length(x) FROM ({q})"), 5, DEFAULT_TIMEOUT).unwrap().rows[0][0].parse().unwrap();
+        let full: usize = d
+            .query(&format!("SELECT length(x) FROM ({q})"), 5, DEFAULT_TIMEOUT)
+            .unwrap()
+            .rows[0][0]
+            .parse()
+            .unwrap();
         let v = &long.rows[0][0];
         assert_eq!(long.cut_values, 1);
-        assert!(v.ends_with(&format!("…[+{} chars]", full - MAX_CELL_CHARS)), "{}", &v[v.len() - 30..]);
+        assert!(
+            v.ends_with(&format!("…[+{} chars]", full - MAX_CELL_CHARS)),
+            "{}",
+            &v[v.len() - 30..]
+        );
     }
 }

@@ -21,16 +21,19 @@
 
 use crate::analysis::{Role, SheetLayout};
 use crate::context::{Context, Cursor};
-use crate::eval::export::{LayoutTotals, LAYOUT_TOTALS};
+use crate::eval::export::{LAYOUT_TOTALS, LayoutTotals};
 use crate::grid::Grid;
 use crate::totals::features::Totals;
 use crate::values::features::Values;
 
-use super::{RowModel, Scratch, Segment, BLOCK, GEOMETRY, GUARD_FEATURES, MAX_GAP};
+use super::{BLOCK, GEOMETRY, GUARD_FEATURES, MAX_GAP, RowModel, Scratch, Segment};
 
 /// Cell features, in the order the materialized path adds them: context, values, totals, then
 /// layout and total context.
-const NB: usize = crate::context::N + crate::values::FEATURES.len() + crate::totals::features::NAMES.len() + LAYOUT_TOTALS.len();
+const NB: usize = crate::context::N
+    + crate::values::FEATURES.len()
+    + crate::totals::features::NAMES.len()
+    + LAYOUT_TOTALS.len();
 /// Segment features: geometry, then the mean (`m_`), first cell (`f_`), row above (`u_`) and row
 /// below (`d_`) of every cell feature.
 const W: usize = GEOMETRY.len() + 4 * NB;
@@ -49,13 +52,18 @@ fn position(name: &str, base: &rustc_hash::FxHashMap<&str, usize>) -> Option<usi
     if let Some(g) = GEOMETRY.iter().position(|g| *g == name) {
         return Some(g);
     }
-    let p = ["m_", "f_", "u_", "d_"].iter().position(|p| name.starts_with(p))?;
+    let p = ["m_", "f_", "u_", "d_"]
+        .iter()
+        .position(|p| name.starts_with(p))?;
     Some(GEOMETRY.len() + p * NB + base.get(&name[2..])?)
 }
 
 /// Whether [`run`] can take `grid`'s sheet: cells strictly in (row, column) order.
 pub(super) fn eligible(grid: &Grid) -> bool {
-    grid.sheet.cells.windows(2).all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col))
+    grid.sheet
+        .cells
+        .windows(2)
+        .all(|w| (w[0].row, w[0].col) < (w[1].row, w[1].col))
 }
 
 /// Row segments, the model's raw role per segment and the mid-table guard's inputs per segment
@@ -72,51 +80,67 @@ pub(super) struct Streamed {
 pub(super) fn run(grid: &Grid, model: &RowModel) -> (SheetLayout, Option<Streamed>) {
     let trace = crate::normalize::trace_ms;
     let n = grid.sheet.cells.len();
-    let (lay, ctx, values, (totals, cands)) = if n < crate::eval::export::PARALLEL_MIN_CELLS || !crate::threads::parallel() {
-        let t = std::time::Instant::now();
-        let lay = crate::layout::analyze_for_model(grid);
-        trace("M.layout", t.elapsed());
-        let t = std::time::Instant::now();
-        let ctx = Context::new(grid);
-        let values = Values::new(grid, None);
-        let totals = Totals::new(grid);
-        trace("M.pass1", t.elapsed());
-        (lay, ctx, values, totals)
-    } else {
-        std::thread::scope(|s| {
-            let lay = crate::threads::spawn(s, || {
-                let t = std::time::Instant::now();
-                let lay = crate::layout::analyze_for_model(grid);
-                (lay, t.elapsed())
-            });
-            let values = crate::threads::spawn(s, || {
-                let t = std::time::Instant::now();
-                (Values::new(grid, None), t.elapsed())
-            });
-            let totals = crate::threads::spawn(s, || {
-                let t = std::time::Instant::now();
-                (Totals::new(grid), t.elapsed())
-            });
+    let (lay, ctx, values, (totals, cands)) =
+        if n < crate::eval::export::PARALLEL_MIN_CELLS || !crate::threads::parallel() {
+            let t = std::time::Instant::now();
+            let lay = crate::layout::analyze_for_model(grid);
+            trace("M.layout", t.elapsed());
             let t = std::time::Instant::now();
             let ctx = Context::new(grid);
-            let tc = t.elapsed();
-            let (lay, tl) = join(lay.join());
-            let (values, tv) = join(values.join());
-            let (totals, tt) = join(totals.join());
-            trace("M.layout", tl);
-            trace("M.context", tc);
-            trace("M.values", tv);
-            trace("M.totals", tt);
+            let values = Values::new(grid, None);
+            let totals = Totals::new(grid);
+            trace("M.pass1", t.elapsed());
             (lay, ctx, values, totals)
-        })
-    };
+        } else {
+            std::thread::scope(|s| {
+                let lay = crate::threads::spawn(s, || {
+                    let t = std::time::Instant::now();
+                    let lay = crate::layout::analyze_for_model(grid);
+                    (lay, t.elapsed())
+                });
+                let values = crate::threads::spawn(s, || {
+                    let t = std::time::Instant::now();
+                    (Values::new(grid, None), t.elapsed())
+                });
+                let totals = crate::threads::spawn(s, || {
+                    let t = std::time::Instant::now();
+                    (Totals::new(grid), t.elapsed())
+                });
+                let t = std::time::Instant::now();
+                let ctx = Context::new(grid);
+                let tc = t.elapsed();
+                let (lay, tl) = join(lay.join());
+                let (values, tv) = join(values.join());
+                let (totals, tt) = join(totals.join());
+                trace("M.layout", tl);
+                trace("M.context", tc);
+                trace("M.values", tv);
+                trace("M.totals", tt);
+                (lay, ctx, values, totals)
+            })
+        };
     let t = std::time::Instant::now();
     let lt = LayoutTotals::new(grid, &lay, &cands);
     drop(cands);
     trace("M.layout_totals", t.elapsed());
     let t = std::time::Instant::now();
-    let threads = crate::threads::cap(std::thread::available_parallelism().map_or(1, |n| n.get()).min(MAX_THREADS));
-    let out = stream(grid, model, &ctx, &values, &totals, &lt, threads, CHUNK_MIN_CELLS, false).map(|(s, _)| s);
+    let threads = crate::threads::cap(
+        std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(MAX_THREADS),
+    );
+    let out = stream(
+        grid,
+        model,
+        &ctx,
+        &values,
+        &totals,
+        &lt,
+        threads,
+        CHUNK_MIN_CELLS,
+        false,
+    )
+    .map(|(s, _)| s);
     trace("M.stream", t.elapsed());
     drop(lt);
     (lay, out)
@@ -154,14 +178,28 @@ fn stream<'g>(
 ) -> Option<(Streamed, Vec<u64>)> {
     let names = base_names();
     debug_assert_eq!(names.len(), NB);
-    let base: rustc_hash::FxHashMap<&str, usize> = names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
-    let pos = |m: &super::TreeModel| m.used.iter().map(|&k| position(&m.features[k], &base)).collect::<Option<Vec<_>>>();
+    let base: rustc_hash::FxHashMap<&str, usize> =
+        names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
+    let pos = |m: &super::TreeModel| {
+        m.used
+            .iter()
+            .map(|&k| position(&m.features[k], &base))
+            .collect::<Option<Vec<_>>>()
+    };
     let (coarse, fine) = (pos(&model.coarse)?, pos(&model.fine)?);
     let mut guard = [0usize; 6];
     for (g, name) in guard.iter_mut().zip(GUARD_FEATURES) {
         *g = position(name, &base)?;
     }
-    let src = Sources { grid, ctx, totals, lt, coarse, fine, guard };
+    let src = Sources {
+        grid,
+        ctx,
+        totals,
+        lt,
+        coarse,
+        fine,
+        guard,
+    };
 
     // Rows as ranges of cell indices (the sheet is row-major).
     let cells = &grid.sheet.cells;
@@ -189,9 +227,19 @@ fn stream<'g>(
     // Each chunk walks one row before and after the rows it emits.
     let spans: Vec<(usize, usize, usize, usize)> = cuts
         .windows(2)
-        .map(|w| (w[0].saturating_sub(1), w[0], w[1], (w[1] + 1).min(rows.len())))
+        .map(|w| {
+            (
+                w[0].saturating_sub(1),
+                w[0],
+                w[1],
+                (w[1] + 1).min(rows.len()),
+            )
+        })
         .collect();
-    let starts: Vec<usize> = spans.iter().map(|s| rows.get(s.0).map_or(cells.len(), |r| r.0)).collect();
+    let starts: Vec<usize> = spans
+        .iter()
+        .map(|s| rows.get(s.0).map_or(cells.len(), |r| r.0))
+        .collect();
     let cursors = ctx.cursors(&starts);
     let rows = &rows;
     let src = &src;
@@ -211,7 +259,11 @@ fn stream<'g>(
             handles.into_iter().map(|h| join(h.join())).collect()
         })
     };
-    let mut all = Streamed { segs: Vec::new(), pred: Vec::new(), guard: Vec::new() };
+    let mut all = Streamed {
+        segs: Vec::new(),
+        pred: Vec::new(),
+        guard: Vec::new(),
+    };
     let mut kept = Vec::new();
     for (o, k) in outs {
         all.segs.extend(o.segs);
@@ -236,7 +288,12 @@ struct RowFeats {
     mean: Vec<f32>,
 }
 
-fn row_feats<'g>(src: &Sources<'_, 'g>, values: &mut Values<'g>, cur: &mut Cursor, (start, end): (usize, usize)) -> RowFeats {
+fn row_feats<'g>(
+    src: &Sources<'_, 'g>,
+    values: &mut Values<'g>,
+    cur: &mut Cursor,
+    (start, end): (usize, usize),
+) -> RowFeats {
     let cells = &src.grid.sheet.cells;
     let mut feats = vec![0f32; (end - start) * NB];
     let mut c = [0f32; crate::context::N];
@@ -260,7 +317,13 @@ fn row_feats<'g>(src: &Sources<'_, 'g>, values: &mut Values<'g>, cur: &mut Curso
     }
     let n = (end - start).max(1) as f32;
     mean.iter_mut().for_each(|x| *x /= n);
-    RowFeats { row: cells[start].row, start, end, feats, mean }
+    RowFeats {
+        row: cells[start].row,
+        start,
+        end,
+        feats,
+        mean,
+    }
 }
 
 /// Walks rows `a..d` of `rows` (span `(a, b, c, d)`), emitting and scoring the segments of rows
@@ -279,7 +342,10 @@ fn walk<'g>(
     let mut prev: Option<RowFeats> = None;
     let mut here: Option<RowFeats> = None;
     for ri in a..=d {
-        let next = rows.get(ri).filter(|_| ri < d).map(|&r| row_feats(src, &mut values, &mut cur, r));
+        let next = rows
+            .get(ri)
+            .filter(|_| ri < d)
+            .map(|&r| row_feats(src, &mut values, &mut cur, r));
         // `here` is row ri - 1.
         if let Some(h) = &here
             && ri >= 1
@@ -295,13 +361,23 @@ fn walk<'g>(
 }
 
 /// The segments of `row` (as `segment_features_where` splits and describes them) into `sink`.
-fn emit(src: &Sources<'_, '_>, row: &RowFeats, prev: Option<&RowFeats>, next: Option<&RowFeats>, sink: &mut Sink) {
+fn emit(
+    src: &Sources<'_, '_>,
+    row: &RowFeats,
+    prev: Option<&RowFeats>,
+    next: Option<&RowFeats>,
+    sink: &mut Sink,
+) {
     let cells = &src.grid.sheet.cells;
     let r = row.row;
     let gap_above = prev.map_or(50, |p| (r - p.row).min(50));
     let gap_below = next.map_or(50, |q| (q.row - r).min(50));
-    let up = prev.filter(|p| r.checked_sub(1) == Some(p.row)).map(|p| &p.mean[..]);
-    let down = next.filter(|q| r.checked_add(1) == Some(q.row)).map(|q| &q.mean[..]);
+    let up = prev
+        .filter(|p| r.checked_sub(1) == Some(p.row))
+        .map(|p| &p.mean[..]);
+    let down = next
+        .filter(|q| r.checked_add(1) == Some(q.row))
+        .map(|q| &q.mean[..]);
     let len = row.end - row.start;
     let mut parts = Vec::new();
     let mut start = 0;
@@ -343,7 +419,12 @@ fn emit(src: &Sources<'_, '_>, row: &RowFeats, prev: Option<&RowFeats>, next: Op
             v[g + 2 * NB + k] = up.map_or(0.0, |m| m[k]);
             v[g + 3 * NB + k] = down.map_or(0.0, |m| m[k]);
         }
-        sink.push(Segment { row: r, left, right, members });
+        sink.push(Segment {
+            row: r,
+            left,
+            right,
+            members,
+        });
     }
 }
 
@@ -368,7 +449,11 @@ impl<'m, 's> Sink<'m, 's> {
             scratch: Scratch::new(model),
             vecs: vec![0.0; BLOCK * W],
             pending: 0,
-            out: Streamed { segs: Vec::new(), pred: Vec::new(), guard: Vec::new() },
+            out: Streamed {
+                segs: Vec::new(),
+                pred: Vec::new(),
+                guard: Vec::new(),
+            },
             keep: None,
         }
     }
@@ -406,7 +491,8 @@ impl<'m, 's> Sink<'m, 's> {
                 self.scratch.xf[b * pf.len() + c] = v[p];
             }
         }
-        self.model.predict_block(&mut self.scratch, n, &mut self.out.pred);
+        self.model
+            .predict_block(&mut self.scratch, n, &mut self.out.pred);
         self.pending = 0;
     }
 }
@@ -431,12 +517,16 @@ fn vector_hash(v: &[f32]) -> u64 {
 /// segments compared, or the first difference. Sheets the stream does not take (not row-major)
 /// only compare the layouts.
 pub fn equivalence(grid: &Grid, model: &RowModel, threads: &[usize]) -> Result<usize, String> {
-    use super::{analyze_on, segment_features, Input, RefineSteps};
+    use super::{Input, RefineSteps, analyze_on, segment_features};
     // The rules' table confidence averages column purities in hash-map order, so its last bits
     // vary from run to run whatever the path (the manifest rounds it to three decimals): it is
     // compared with a tolerance, everything else exactly.
     let shape = |l: &SheetLayout| {
-        let t: Vec<_> = l.tables.iter().map(|t| (t.rect, t.header_top, t.header_rows)).collect();
+        let t: Vec<_> = l
+            .tables
+            .iter()
+            .map(|t| (t.rect, t.header_top, t.header_rows))
+            .collect();
         format!("{t:?} {:?}", l.roles)
     };
     let full = analyze_on(grid, model, RefineSteps::ALL, Input::Materialized);
@@ -444,10 +534,16 @@ pub fn equivalence(grid: &Grid, model: &RowModel, threads: &[usize]) -> Result<u
     if shape(&full) != shape(&fast) {
         return Err("layouts differ".into());
     }
-    if let Some((a, b)) =
-        full.tables.iter().zip(&fast.tables).find(|(a, b)| (a.confidence - b.confidence).abs() > 1e-5)
+    if let Some((a, b)) = full
+        .tables
+        .iter()
+        .zip(&fast.tables)
+        .find(|(a, b)| (a.confidence - b.confidence).abs() > 1e-5)
     {
-        return Err(format!("table confidence differs: {} materialized, {} streamed", a.confidence, b.confidence));
+        return Err(format!(
+            "table confidence differs: {} materialized, {} streamed",
+            a.confidence, b.confidence
+        ));
     }
     drop((full, fast));
     if !eligible(grid) || model.reads_formats() {
@@ -458,7 +554,8 @@ pub fn equivalence(grid: &Grid, model: &RowModel, threads: &[usize]) -> Result<u
     drop(f);
     // The materialized segment vectors, hashed in segment-vector order.
     let names = base_names();
-    let base: rustc_hash::FxHashMap<&str, usize> = names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
+    let base: rustc_hash::FxHashMap<&str, usize> =
+        names.iter().enumerate().map(|(i, n)| (*n, i)).collect();
     let mut at = vec![usize::MAX; W];
     for (j, name) in sf.names().iter().enumerate() {
         at[position(name, &base).ok_or(format!("no position for `{name}`"))?] = j;
@@ -479,8 +576,15 @@ pub fn equivalence(grid: &Grid, model: &RowModel, threads: &[usize]) -> Result<u
     // The lockstep tree evaluation against the plain walk, every class score bit for bit.
     for (name, m) in [("coarse", &model.coarse), ("fine", &model.fine)] {
         let (a, b) = (m.scores(&sf)?, m.scores_reference(&sf)?);
-        if let Some(k) = a.iter().zip(&b).position(|(x, y)| x.to_bits() != y.to_bits()) {
-            return Err(format!("{name} score {k}: {} lockstep, {} plain walk", a[k], b[k]));
+        if let Some(k) = a
+            .iter()
+            .zip(&b)
+            .position(|(x, y)| x.to_bits() != y.to_bits())
+        {
+            return Err(format!(
+                "{name} score {k}: {} lockstep, {} plain walk",
+                a[k], b[k]
+            ));
         }
     }
     drop(sf);
@@ -493,7 +597,11 @@ pub fn equivalence(grid: &Grid, model: &RowModel, threads: &[usize]) -> Result<u
             return Err("stream refused the model".into());
         };
         if s.segs.len() != segs.len() {
-            return Err(format!("{t} chunks: {} segments streamed, {} materialized", s.segs.len(), segs.len()));
+            return Err(format!(
+                "{t} chunks: {} segments streamed, {} materialized",
+                s.segs.len(),
+                segs.len()
+            ));
         }
         for (k, (a, b)) in s.segs.iter().zip(&segs).enumerate() {
             if (a.row, a.left, a.right, &a.members) != (b.row, b.left, b.right, &b.members) {
@@ -501,7 +609,10 @@ pub fn equivalence(grid: &Grid, model: &RowModel, threads: &[usize]) -> Result<u
             }
         }
         if let Some(k) = (0..segs.len()).find(|&k| hashes[k] != want_hash[k]) {
-            return Err(format!("{t} chunks: features of segment {k} (row {}, col {}) differ", segs[k].row, segs[k].left));
+            return Err(format!(
+                "{t} chunks: features of segment {k} (row {}, col {}) differ",
+                segs[k].row, segs[k].left
+            ));
         }
         if want != s.pred {
             return Err(format!("{t} chunks: roles differ"));

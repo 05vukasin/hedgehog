@@ -39,7 +39,10 @@ impl Ref {
         !self.external
             && match &self.sheet {
                 None => true,
-                Some(s) => s.eq_ignore_ascii_case(sheet_name) || s.to_lowercase() == sheet_name.to_lowercase(),
+                Some(s) => {
+                    s.eq_ignore_ascii_case(sheet_name)
+                        || s.to_lowercase() == sheet_name.to_lowercase()
+                }
             }
     }
 
@@ -50,7 +53,8 @@ impl Ref {
 
     /// Number of cells covered (u64: whole columns are large).
     pub fn area(&self) -> u64 {
-        (self.rect.bottom - self.rect.top + 1) as u64 * (self.rect.right - self.rect.left + 1) as u64
+        (self.rect.bottom - self.rect.top + 1) as u64
+            * (self.rect.right - self.rect.left + 1) as u64
     }
 }
 
@@ -74,7 +78,10 @@ pub enum FormulaKind {
 impl FormulaKind {
     /// Formula whose value should equal the sum of its [`ParsedFormula::sum_refs`].
     pub fn is_sum(self) -> bool {
-        matches!(self, FormulaKind::Sum | FormulaKind::Subtotal | FormulaKind::AdditionChain)
+        matches!(
+            self,
+            FormulaKind::Sum | FormulaKind::Subtotal | FormulaKind::AdditionChain
+        )
     }
 
     /// Any recognised aggregate (sum, average, count, min, max).
@@ -146,7 +153,9 @@ fn parse_row(s: &str) -> Option<u32> {
 /// `$C$5` → Cell, `$C` → Col, `5` → Row.
 fn parse_part(s: &str) -> Option<Part> {
     let s = s.strip_prefix('$').unwrap_or(s);
-    let split = s.find(|c: char| !c.is_ascii_alphabetic()).unwrap_or(s.len());
+    let split = s
+        .find(|c: char| !c.is_ascii_alphabetic())
+        .unwrap_or(s.len());
     let (letters, rest) = s.split_at(split);
     let digits = rest.strip_prefix('$').unwrap_or(rest);
     match (letters.is_empty(), digits.is_empty()) {
@@ -158,7 +167,12 @@ fn parse_part(s: &str) -> Option<Part> {
 }
 
 fn rect(r1: u32, c1: u32, r2: u32, c2: u32) -> Rect {
-    Rect { top: r1.min(r2), left: c1.min(c2), bottom: r1.max(r2), right: c1.max(c2) }
+    Rect {
+        top: r1.min(r2),
+        left: c1.min(c2),
+        bottom: r1.max(r2),
+        right: c1.max(c2),
+    }
 }
 
 fn is_word_char(c: char) -> bool {
@@ -256,7 +270,9 @@ fn tokenize(f: &str) -> Vec<Tok> {
             '#' => {
                 // Error literal: #REF!, #N/A, #DIV/0!, #NULL!, #VALUE!, #NAME?, #NUM!
                 i += 1;
-                while i < n && (chars[i].is_ascii_alphanumeric() || matches!(chars[i], '/' | '!' | '?')) {
+                while i < n
+                    && (chars[i].is_ascii_alphanumeric() || matches!(chars[i], '/' | '!' | '?'))
+                {
                     let stop = matches!(chars[i], '!' | '?');
                     i += 1;
                     if stop {
@@ -315,13 +331,22 @@ fn tokenize(f: &str) -> Vec<Tok> {
                             (Part::Cell(r1, c1), Some(Part::Cell(r2, c2))) => {
                                 Some((rect(*r1, *c1, r2, c2), RefKind::Range))
                             }
-                            (Part::Col(c1), Some(Part::Col(c2))) => Some((rect(0, *c1, MAX_ROW, c2), RefKind::Columns)),
-                            (Part::Row(r1), Some(Part::Row(r2))) => Some((rect(*r1, 0, r2, MAX_COL), RefKind::Rows)),
+                            (Part::Col(c1), Some(Part::Col(c2))) => {
+                                Some((rect(0, *c1, MAX_ROW, c2), RefKind::Columns))
+                            }
+                            (Part::Row(r1), Some(Part::Row(r2))) => {
+                                Some((rect(*r1, 0, r2, MAX_COL), RefKind::Rows))
+                            }
                             _ => None,
                         };
                         if let Some((rect, kind)) = r {
                             i = k2;
-                            tok = Some(Tok::Ref(Ref { sheet: sheet.take(), external, rect, kind }));
+                            tok = Some(Tok::Ref(Ref {
+                                sheet: sheet.take(),
+                                external,
+                                rect,
+                                kind,
+                            }));
                         }
                     } else if let Part::Cell(r, c) = p1 {
                         tok = Some(Tok::Ref(Ref {
@@ -336,7 +361,10 @@ fn tokenize(f: &str) -> Vec<Tok> {
                     // Number literal (with exponent sign split off by the word reader).
                     if word.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
                         let mut w = word.clone();
-                        if (w.ends_with('E') || w.ends_with('e')) && i < n && matches!(chars[i], '+' | '-') {
+                        if (w.ends_with('E') || w.ends_with('e'))
+                            && i < n
+                            && matches!(chars[i], '+' | '-')
+                        {
                             let (exp, j) = read_word(i + 1);
                             w = format!("{w}{}{exp}", chars[i]);
                             i = j;
@@ -443,7 +471,9 @@ fn term(toks: &[Tok]) -> Term {
                 "COUNT" | "COUNTA" => (Some(FormulaKind::Count), &args[..]),
                 "MIN" | "MINA" => (Some(FormulaKind::Min), &args[..]),
                 "MAX" | "MAXA" => (Some(FormulaKind::Max), &args[..]),
-                "SUBTOTAL" if args.len() >= 2 => (num(args[0]).and_then(|c| code_kind(c, true)), &args[1..]),
+                "SUBTOTAL" if args.len() >= 2 => {
+                    (num(args[0]).and_then(|c| code_kind(c, true)), &args[1..])
+                }
                 // AGGREGATE(function, options, ref1, …) — reference form only.
                 "AGGREGATE" if args.len() >= 3 && num(args[1]).is_some() => {
                     (num(args[0]).and_then(|c| code_kind(c, false)), &args[2..])
@@ -467,7 +497,10 @@ fn classify(toks: &[Tok]) -> (FormulaKind, Vec<Ref>) {
     if toks.is_empty() {
         return (FormulaKind::Other, Vec::new());
     }
-    let terms: Vec<Term> = split_top(toks, |t| matches!(t, Tok::Op('+'))).into_iter().map(term).collect();
+    let terms: Vec<Term> = split_top(toks, |t| matches!(t, Tok::Op('+')))
+        .into_iter()
+        .map(term)
+        .collect();
     if terms.len() == 1 {
         return match terms.into_iter().next().unwrap() {
             Term::Ref(r) if r.kind == RefKind::Cell => (FormulaKind::Reference, Vec::new()),
@@ -484,7 +517,10 @@ fn classify(toks: &[Tok]) -> (FormulaKind, Vec<Ref>) {
     for t in terms {
         match t {
             Term::Ref(r) => sum_refs.push(r),
-            Term::Call { kind: k @ (FormulaKind::Sum | FormulaKind::Subtotal), refs } => {
+            Term::Call {
+                kind: k @ (FormulaKind::Sum | FormulaKind::Subtotal),
+                refs,
+            } => {
                 calls += 1;
                 subtotal_calls += (k == FormulaKind::Subtotal) as usize;
                 sum_refs.extend(refs);
@@ -516,7 +552,13 @@ pub fn parse(formula: &str) -> ParsedFormula {
         }
     }
     // An error literal inside an aggregate (`SUM(#REF!)`) already made it `Other`.
-    ParsedFormula { kind, refs, sum_refs, functions, has_error }
+    ParsedFormula {
+        kind,
+        refs,
+        sum_refs,
+        functions,
+        has_error,
+    }
 }
 
 #[cfg(test)]
@@ -524,7 +566,12 @@ mod tests {
     use super::*;
 
     fn r(t: u32, l: u32, b: u32, rt: u32) -> Rect {
-        Rect { top: t, left: l, bottom: b, right: rt }
+        Rect {
+            top: t,
+            left: l,
+            bottom: b,
+            right: rt,
+        }
     }
 
     fn one(f: &str) -> Ref {
@@ -548,17 +595,28 @@ mod tests {
         let row = one("SUM(5:5)");
         assert_eq!((row.kind, row.rect), (RefKind::Rows, r(4, 0, 4, MAX_COL)));
         let s = one("Sheet2!B3");
-        assert_eq!((s.sheet.as_deref(), s.rect), (Some("Sheet2"), r(2, 1, 2, 1)));
+        assert_eq!(
+            (s.sheet.as_deref(), s.rect),
+            (Some("Sheet2"), r(2, 1, 2, 1))
+        );
         assert!(!s.is_local("Sheet1") && s.is_local("sheet2"));
         let q = one("SUM('My Sheet'!B3:B9)");
-        assert_eq!((q.sheet.as_deref(), q.rect), (Some("My Sheet"), r(2, 1, 8, 1)));
+        assert_eq!(
+            (q.sheet.as_deref(), q.rect),
+            (Some("My Sheet"), r(2, 1, 8, 1))
+        );
         let esc = one("'Bob''s'!A1");
         assert_eq!(esc.sheet.as_deref(), Some("Bob's"));
         let ext = one("[1]Sheet1!A1");
         assert!(ext.external && ext.sheet.as_deref() == Some("Sheet1"));
         let ext2 = one("'C:\\x\\[Book.xlsx]Data'!$A$1:$A$3");
-        assert!(ext2.external && ext2.sheet.as_deref() == Some("Data") && ext2.kind == RefKind::Range);
-        assert_eq!(one("XFD1048576").rect, r(MAX_ROW, MAX_COL, MAX_ROW, MAX_COL));
+        assert!(
+            ext2.external && ext2.sheet.as_deref() == Some("Data") && ext2.kind == RefKind::Range
+        );
+        assert_eq!(
+            one("XFD1048576").rect,
+            r(MAX_ROW, MAX_COL, MAX_ROW, MAX_COL)
+        );
         assert_eq!(one("AA10").rect, r(9, 26, 9, 26));
         assert_eq!(one("Sheet1!A1:Sheet1!B2").rect, r(0, 0, 1, 1));
         assert_eq!(one("Data_2!A1").sheet.as_deref(), Some("Data_2"));
@@ -624,7 +682,23 @@ mod tests {
 
     #[test]
     fn garbage_does_not_panic() {
-        for f in ["(((", ")))", "SUM(", "'unterminated", "\"open", "A1:", ":B2", "[1", "#", "$", "$$A$$1", "Ä1+ö2", "1E", "SUM(,,)", "{1,2;3,4}"] {
+        for f in [
+            "(((",
+            ")))",
+            "SUM(",
+            "'unterminated",
+            "\"open",
+            "A1:",
+            ":B2",
+            "[1",
+            "#",
+            "$",
+            "$$A$$1",
+            "Ä1+ö2",
+            "1E",
+            "SUM(,,)",
+            "{1,2;3,4}",
+        ] {
             let _ = parse(f);
         }
     }
@@ -632,29 +706,75 @@ mod tests {
     #[test]
     fn classification_preserves_all_tokens_after_an_unsupported_term() {
         let reference = |sheet: Option<&str>, rect, kind| Ref {
-            sheet: sheet.map(str::to_string), external: false, rect, kind,
+            sheet: sheet.map(str::to_string),
+            external: false,
+            rect,
+            kind,
         };
         let a1 = reference(None, r(0, 0, 0, 0), RefKind::Cell);
         let local_range = reference(None, r(0, 0, 1, 0), RefKind::Range);
         let later = reference(Some("Later"), r(0, 3, 1, 3), RefKind::Range);
         let cases = [
-            ("SUM(A1:A2)", FormulaKind::Sum, vec![local_range.clone()], vec!["SUM"], false),
-            ("A1+A1", FormulaKind::AdditionChain, vec![a1.clone(), a1.clone()], vec![], false),
-            ("A1:A2", FormulaKind::Other, vec![local_range], vec![], false),
-            ("IF(A1>0,B1,C1)+SUM('Later'!D1:D2)+#REF!", FormulaKind::Other,
-                vec![a1.clone(), reference(None, r(0, 1, 0, 1), RefKind::Cell),
-                    reference(None, r(0, 2, 0, 2), RefKind::Cell), later.clone()],
-                vec!["IF", "SUM"], true),
-            ("A1+1+SUM('Later'!D1:D2)", FormulaKind::Other,
-                vec![a1.clone(), later], vec!["SUM"], false),
-            ("A1++SUM(B1:B2)", FormulaKind::Other,
-                vec![a1, reference(None, r(0, 1, 1, 1), RefKind::Range)], vec!["SUM"], false),
+            (
+                "SUM(A1:A2)",
+                FormulaKind::Sum,
+                vec![local_range.clone()],
+                vec!["SUM"],
+                false,
+            ),
+            (
+                "A1+A1",
+                FormulaKind::AdditionChain,
+                vec![a1.clone(), a1.clone()],
+                vec![],
+                false,
+            ),
+            (
+                "A1:A2",
+                FormulaKind::Other,
+                vec![local_range],
+                vec![],
+                false,
+            ),
+            (
+                "IF(A1>0,B1,C1)+SUM('Later'!D1:D2)+#REF!",
+                FormulaKind::Other,
+                vec![
+                    a1.clone(),
+                    reference(None, r(0, 1, 0, 1), RefKind::Cell),
+                    reference(None, r(0, 2, 0, 2), RefKind::Cell),
+                    later.clone(),
+                ],
+                vec!["IF", "SUM"],
+                true,
+            ),
+            (
+                "A1+1+SUM('Later'!D1:D2)",
+                FormulaKind::Other,
+                vec![a1.clone(), later],
+                vec!["SUM"],
+                false,
+            ),
+            (
+                "A1++SUM(B1:B2)",
+                FormulaKind::Other,
+                vec![a1, reference(None, r(0, 1, 1, 1), RefKind::Range)],
+                vec!["SUM"],
+                false,
+            ),
         ];
         for (formula, kind, refs, functions, has_error) in cases {
-            let sum_refs = if kind.is_sum() { refs.clone() } else { Vec::new() };
+            let sum_refs = if kind.is_sum() {
+                refs.clone()
+            } else {
+                Vec::new()
+            };
             let expected = ParsedFormula {
-                kind, refs, sum_refs,
-                functions: functions.into_iter().map(str::to_string).collect(), has_error,
+                kind,
+                refs,
+                sum_refs,
+                functions: functions.into_iter().map(str::to_string).collect(),
+                has_error,
             };
             assert_eq!(parse(formula), expected, "{formula}");
         }

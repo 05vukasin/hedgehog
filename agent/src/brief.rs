@@ -17,7 +17,16 @@ pub const LEGEND: &str = "a / {b, c} = \"a / b\", \"a / c\"";
 /// a plain name bare, anything else quoted.
 pub fn compress_names(names: &[String]) -> Vec<String> {
     let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    groups(&refs).into_iter().map(|g| if g.contains('{') { format!("\"{g}\"") } else { ident(&g) }).collect()
+    groups(&refs)
+        .into_iter()
+        .map(|g| {
+            if g.contains('{') {
+                format!("\"{g}\"")
+            } else {
+                ident(&g)
+            }
+        })
+        .collect()
 }
 
 /// Is there a `, ` outside braces (a member that would need `; ` between members)?
@@ -36,7 +45,11 @@ fn top_comma(s: &str) -> bool {
 }
 
 fn join(items: &[String]) -> String {
-    items.join(if items.iter().any(|x| top_comma(x)) { "; " } else { ", " })
+    items.join(if items.iter().any(|x| top_comma(x)) {
+        "; "
+    } else {
+        ", "
+    })
 }
 
 /// The grouped texts (unquoted) of consecutive names.
@@ -56,16 +69,30 @@ fn groups(names: &[&str]) -> Vec<String> {
         let jp = run(head, |n| n.split_once(SEP).map(|x| x.0));
         let js = run(tail, |n| n.rsplit_once(SEP).map(|x| x.1));
         if jp - i >= 2 && jp >= js {
-            let rests: Vec<&str> = names[i..jp].iter().filter_map(|n| n.split_once(SEP).map(|x| x.1)).collect();
+            let rests: Vec<&str> = names[i..jp]
+                .iter()
+                .filter_map(|n| n.split_once(SEP).map(|x| x.1))
+                .collect();
             let inner = groups(&rests);
             let head = head.unwrap_or_default();
-            out.push(if inner.len() == 1 { format!("{head}{SEP}{}", inner[0]) } else { format!("{head}{SEP}{{{}}}", join(&inner)) });
+            out.push(if inner.len() == 1 {
+                format!("{head}{SEP}{}", inner[0])
+            } else {
+                format!("{head}{SEP}{{{}}}", join(&inner))
+            });
             i = jp;
         } else if js - i >= 2 {
-            let fronts: Vec<&str> = names[i..js].iter().filter_map(|n| n.rsplit_once(SEP).map(|x| x.0)).collect();
+            let fronts: Vec<&str> = names[i..js]
+                .iter()
+                .filter_map(|n| n.rsplit_once(SEP).map(|x| x.0))
+                .collect();
             let inner = groups(&fronts);
             let tail = tail.unwrap_or_default();
-            out.push(if inner.len() == 1 { format!("{}{SEP}{tail}", inner[0]) } else { format!("{{{}}}{SEP}{tail}", join(&inner)) });
+            out.push(if inner.len() == 1 {
+                format!("{}{SEP}{tail}", inner[0])
+            } else {
+                format!("{{{}}}{SEP}{tail}", join(&inner))
+            });
             i = js;
         } else {
             out.push(names[i].to_string());
@@ -90,15 +117,26 @@ pub fn derived(b: &[String], a: &[String], a_id: &str) -> Option<String> {
     let first = rest[0].as_str();
     for (at, _) in first.match_indices(SEP) {
         let (front, suffix) = (&first[..at], &first[at + SEP.len()..]);
-        let Some(p) = a.iter().position(|x| x == front) else { continue };
+        let Some(p) = a.iter().position(|x| x == front) else {
+            continue;
+        };
         if p + rest.len() > a.len() {
             continue;
         }
-        if rest.iter().zip(&a[p..]).all(|(n, x)| n.strip_suffix(suffix).and_then(|n| n.strip_suffix(SEP)) == Some(x.as_str())) {
+        if rest.iter().zip(&a[p..]).all(|(n, x)| {
+            n.strip_suffix(suffix).and_then(|n| n.strip_suffix(SEP)) == Some(x.as_str())
+        }) {
             let keys: Vec<String> = b[..k].iter().map(|x| ident(x)).collect();
-            let keys = if keys.is_empty() { String::new() } else { format!("{} + ", keys.join(" ")) };
+            let keys = if keys.is_empty() {
+                String::new()
+            } else {
+                format!("{} + ", keys.join(" "))
+            };
             let q = p + rest.len() - 1;
-            return Some(format!("{keys}{a_id}'s \"{}\"..\"{}\", each + \" / {suffix}\"", a[p], a[q]));
+            return Some(format!(
+                "{keys}{a_id}'s \"{}\"..\"{}\", each + \" / {suffix}\"",
+                a[p], a[q]
+            ));
         }
     }
     None
@@ -115,27 +153,55 @@ pub struct RunMember<'a> {
 /// `2022`), else their sheet names. `('Ankünfte … Juli 2026', ["T2 Burgenland", …])`; the pattern
 /// is the first title with its differing words as `…`.
 pub fn member_names(members: &[RunMember]) -> (Option<String>, Vec<String>) {
-    let titles: Vec<String> = members.iter().filter_map(|m| m.title.map(String::from)).collect();
+    let titles: Vec<String> = members
+        .iter()
+        .filter_map(|m| m.title.map(String::from))
+        .collect();
     if titles.len() == members.len() && titles.len() >= 2 {
         let parts = crate::unions::differing_parts(&titles);
         let distinct: std::collections::HashSet<&String> = parts.iter().collect();
         if distinct.len() == parts.len() && parts.iter().all(|p| !p.is_empty()) {
             // The words all titles share in front and at the end, the rest as `…`.
-            let words: Vec<Vec<&str>> = titles.iter().map(|t| t.split_whitespace().collect()).collect();
+            let words: Vec<Vec<&str>> = titles
+                .iter()
+                .map(|t| t.split_whitespace().collect())
+                .collect();
             let min = words.iter().map(Vec::len).min().unwrap_or(0);
-            let pre = (0..min).take_while(|&i| words.iter().all(|w| w[i] == words[0][i])).count();
-            let suf = (0..min - pre).take_while(|&i| words.iter().all(|w| w[w.len() - 1 - i] == words[0][words[0].len() - 1 - i])).count();
+            let pre = (0..min)
+                .take_while(|&i| words.iter().all(|w| w[i] == words[0][i]))
+                .count();
+            let suf = (0..min - pre)
+                .take_while(|&i| {
+                    words
+                        .iter()
+                        .all(|w| w[w.len() - 1 - i] == words[0][words[0].len() - 1 - i])
+                })
+                .count();
             let w0 = &words[0];
-            let pattern = [w0[..pre].join(" "), "…".to_string(), w0[w0.len() - suf..].join(" ")]
-                .into_iter()
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ");
-            let items = members.iter().zip(&parts).map(|(m, p)| format!("{} {}", m.id, short(p, 40))).collect();
+            let pattern = [
+                w0[..pre].join(" "),
+                "…".to_string(),
+                w0[w0.len() - suf..].join(" "),
+            ]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+            let items = members
+                .iter()
+                .zip(&parts)
+                .map(|(m, p)| format!("{} {}", m.id, short(p, 40)))
+                .collect();
             return (Some(short(&pattern, 90)), items);
         }
     }
-    (None, members.iter().map(|m| format!("{} {}", m.id, short(m.sheet, 30))).collect())
+    (
+        None,
+        members
+            .iter()
+            .map(|m| format!("{} {}", m.id, short(m.sheet, 30)))
+            .collect(),
+    )
 }
 
 /// The line for a run of consecutive tables that repeat the columns of an earlier table `first`:
@@ -202,7 +268,9 @@ fn top_level(s: &str, sep: &str) -> bool {
 /// "a / c / e / f" (the catalog's shorthand, [`compress_names`]). A text without braces is itself;
 /// unbalanced braces give nothing.
 pub fn expand(s: &str) -> Vec<String> {
-    let Some(i) = s.find('{') else { return vec![s.to_string()] };
+    let Some(i) = s.find('{') else {
+        return vec![s.to_string()];
+    };
     let mut depth = 0i32;
     let mut close = None;
     for (k, c) in s[i..].char_indices() {
@@ -237,16 +305,31 @@ pub fn expand(s: &str) -> Vec<String> {
 /// with its braces expanded, or with them dropped (a member with a comma of its own), compared
 /// with the columns exactly (case-insensitively, as SQLite does). None when the name has no
 /// braces, or when it fits no column or more than one: exact only, never a guess.
-pub fn resolve_grouped<'a>(written: &str, columns: impl IntoIterator<Item = &'a str>) -> Option<&'a str> {
+pub fn resolve_grouped<'a>(
+    written: &str,
+    columns: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
     if !written.contains('{') && !written.contains('}') {
         return None;
     }
     let mut cands: Vec<String> = expand(written);
     cands.push(written.replace(['{', '}'], ""));
     // A member's `[kind]` (`{b[rate], c}`) is not part of its name.
-    let unkinded: Vec<String> = cands.iter().filter_map(|c| c.rsplit_once('[').filter(|(_, k)| k.ends_with(']')).map(|(n, _)| n.trim_end().to_string())).collect();
+    let unkinded: Vec<String> = cands
+        .iter()
+        .filter_map(|c| {
+            c.rsplit_once('[')
+                .filter(|(_, k)| k.ends_with(']'))
+                .map(|(n, _)| n.trim_end().to_string())
+        })
+        .collect();
     cands.extend(unkinded);
-    let key = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase();
+    let key = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
     let cands: Vec<String> = cands.iter().map(|c| key(c)).collect();
     let mut hit: Option<&str> = None;
     for c in columns {
@@ -266,14 +349,28 @@ mod tests {
 
     #[test]
     fn grouped_names_read_back() {
-        assert_eq!(expand("a / {b, c / {d, e}} / f"), ["a / b / f", "a / c / d / f", "a / c / e / f"]);
+        assert_eq!(
+            expand("a / {b, c / {d, e}} / f"),
+            ["a / b / f", "a / c / d / f", "a / c / e / f"]
+        );
         assert_eq!(expand("A / {x, y; z}"), ["A / x, y", "A / z"]);
         assert_eq!(expand("{a, b} / c"), ["a / c", "b / c"]);
         assert_eq!(expand("plain"), ["plain"]);
         assert!(expand("a / {b").is_empty());
         // Every grouped text compress_names writes expands to its names.
-        let n = v(&["Jahr", "P / U / Mrd. EUR", "P / U / %", "Q, r / U / 2020 = 100", "Q, r / U / %", "A / x, y", "A / z"]);
-        let back: Vec<String> = compress_names(&n).iter().flat_map(|g| expand(g.trim_matches('"'))).collect();
+        let n = v(&[
+            "Jahr",
+            "P / U / Mrd. EUR",
+            "P / U / %",
+            "Q, r / U / 2020 = 100",
+            "Q, r / U / %",
+            "A / x, y",
+            "A / z",
+        ]);
+        let back: Vec<String> = compress_names(&n)
+            .iter()
+            .flat_map(|g| expand(g.trim_matches('"')))
+            .collect();
         assert_eq!(back, n);
     }
 
@@ -286,17 +383,37 @@ mod tests {
             "RESTITUIÇÃO DO IMPOSTO / Associações e Corpos Bombeiros - DL n.º 84/2017, de 21/07",
         ];
         // One member copied with its braces (it has a comma of its own): the braces dropped.
-        let w = "RESTITUIÇÃO DO IMPOSTO / {Forças Armadas e de Segurança - DL n.º 84/2017, de 21/07}";
+        let w =
+            "RESTITUIÇÃO DO IMPOSTO / {Forças Armadas e de Segurança - DL n.º 84/2017, de 21/07}";
         assert_eq!(resolve_grouped(w, cols), Some(cols[2]));
         // Nested groups, other case.
-        let cols2 = ["Isenção / IABA / Álcool", "Isenção / IABA / Cerveja", "Isenção / ISP / Gás"];
-        assert_eq!(resolve_grouped("isenção / {IABA / {Cerveja}}", cols2), Some(cols2[1]));
-        assert_eq!(resolve_grouped("Isenção / {IABA / {Álcool[rate]}}", cols2), Some(cols2[0]));
+        let cols2 = [
+            "Isenção / IABA / Álcool",
+            "Isenção / IABA / Cerveja",
+            "Isenção / ISP / Gás",
+        ];
+        assert_eq!(
+            resolve_grouped("isenção / {IABA / {Cerveja}}", cols2),
+            Some(cols2[1])
+        );
+        assert_eq!(
+            resolve_grouped("Isenção / {IABA / {Álcool[rate]}}", cols2),
+            Some(cols2[0])
+        );
         // Two columns: not one name, no answer.
-        assert_eq!(resolve_grouped("Isenção / IABA / {Álcool, Cerveja}", cols2), None);
+        assert_eq!(
+            resolve_grouped("Isenção / IABA / {Álcool, Cerveja}", cols2),
+            None
+        );
         // Close is not enough: exact only.
         assert_eq!(resolve_grouped("Isenção / {IABA / Cervejas}", cols2), None);
-        assert_eq!(resolve_grouped("RESTITUIÇÃO DO IMPOSTO / {Forcas Armadas e de Seguranca - DL n.º 84/2017, de 21/07}", cols), None);
+        assert_eq!(
+            resolve_grouped(
+                "RESTITUIÇÃO DO IMPOSTO / {Forcas Armadas e de Seguranca - DL n.º 84/2017, de 21/07}",
+                cols
+            ),
+            None
+        );
         // No braces: nothing to resolve.
         assert_eq!(resolve_grouped("DESIGNAÇÃO SOCIAL", cols), None);
     }
@@ -323,8 +440,16 @@ mod tests {
             ]
         );
         // A shared last level: `{a, b} / c`.
-        let n = v(&["Jahr", "Einnahmen / % des BIP", "Ausgaben / % des BIP", "Saldo / % des BIP"]);
-        assert_eq!(compress_names(&n), ["Jahr", "\"{Einnahmen, Ausgaben, Saldo} / % des BIP\""]);
+        let n = v(&[
+            "Jahr",
+            "Einnahmen / % des BIP",
+            "Ausgaben / % des BIP",
+            "Saldo / % des BIP",
+        ]);
+        assert_eq!(
+            compress_names(&n),
+            ["Jahr", "\"{Einnahmen, Ausgaben, Saldo} / % des BIP\""]
+        );
         // Members with commas: `; ` between members.
         let n = v(&["A / x, y", "A / z"]);
         assert_eq!(compress_names(&n), ["\"A / {x, y; z}\""]);
@@ -334,8 +459,19 @@ mod tests {
 
     #[test]
     fn columns_of_an_earlier_table_with_one_more_level() {
-        let a = v(&["group", "Jahr", "Einnahmen / insgesamt", "Ausgaben / insgesamt", "Saldo"]);
-        let b = v(&["Jahr", "Einnahmen / insgesamt / % des BIP", "Ausgaben / insgesamt / % des BIP", "Saldo / % des BIP"]);
+        let a = v(&[
+            "group",
+            "Jahr",
+            "Einnahmen / insgesamt",
+            "Ausgaben / insgesamt",
+            "Saldo",
+        ]);
+        let b = v(&[
+            "Jahr",
+            "Einnahmen / insgesamt / % des BIP",
+            "Ausgaben / insgesamt / % des BIP",
+            "Saldo / % des BIP",
+        ]);
         assert_eq!(
             derived(&b, &a, "T27").as_deref(),
             Some("Jahr + T27's \"Einnahmen / insgesamt\"..\"Saldo\", each + \" / % des BIP\"")
@@ -348,7 +484,11 @@ mod tests {
 
     #[test]
     fn runs_named_by_their_titles() {
-        let m = |id: &str, t: &'static str, s: &'static str| RunMember { id: id.into(), title: Some(t), sheet: s };
+        let m = |id: &str, t: &'static str, s: &'static str| RunMember {
+            id: id.into(),
+            title: Some(t),
+            sheet: s,
+        };
         let ms = [
             m("T2", "Nächte in Burgenland – Juli 2026", "Bgld"),
             m("T3", "Nächte in Kärnten – Juli 2026", "Ktn"),
@@ -358,7 +498,21 @@ mod tests {
             run_line(&ms, "T1", " · 72 rows each"),
             "T2..T4 same columns as T1 · 72 rows each · titles 'Nächte in … – Juli 2026': T2 Burgenland, T3 Kärnten, T4 Tirol"
         );
-        let ms = [RunMember { id: "T2".into(), title: None, sheet: "2022" }, RunMember { id: "T3".into(), title: None, sheet: "2021" }];
-        assert_eq!(run_line(&ms, "T1", ""), "T2..T3 same columns as T1 · sheets: T2 2022, T3 2021");
+        let ms = [
+            RunMember {
+                id: "T2".into(),
+                title: None,
+                sheet: "2022",
+            },
+            RunMember {
+                id: "T3".into(),
+                title: None,
+                sheet: "2021",
+            },
+        ];
+        assert_eq!(
+            run_line(&ms, "T1", ""),
+            "T2..T3 same columns as T1 · sheets: T2 2022, T3 2021"
+        );
     }
 }

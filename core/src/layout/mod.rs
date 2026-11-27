@@ -10,8 +10,8 @@
 //! All thresholds live in [`params`]. Cost is O(cells + merge perimeters), never O(used range area).
 
 mod blocks;
-mod changepoint;
 mod cells;
+mod changepoint;
 pub mod params;
 mod repeat;
 mod tables;
@@ -20,9 +20,11 @@ use crate::analysis::{Role, SheetLayout};
 use crate::grid::Grid;
 use crate::model::Sheet;
 
+use cells::{Kind, is_aggregate_formula, is_total_label, text_of};
 pub(crate) use cells::{is_note_label, is_rule_text, is_unit_text};
-use cells::{is_aggregate_formula, is_total_label, text_of, Kind};
-use params::{LOOSE_AGGREGATES_AS_TOTAL, LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP};
+use params::{
+    LOOSE_AGGREGATES_AS_TOTAL, LOOSE_MAX_ROWS, NOTE_MAX_GAP, NOTE_MIN_LEN, TITLE_MAX_GAP,
+};
 use tables::Out;
 
 /// Sheets with at least this many cells detect total rows and blocks on two threads.
@@ -47,7 +49,11 @@ fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLay
     let trace = crate::normalize::trace_ms;
     let totals = || {
         let t = std::time::Instant::now();
-        let rows = if registers { crate::totals::labelled_rows(grid) } else { Vec::new() };
+        let rows = if registers {
+            crate::totals::labelled_rows(grid)
+        } else {
+            Vec::new()
+        };
         trace("layout.totals", t.elapsed());
         rows
     };
@@ -59,15 +65,19 @@ fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLay
     };
     // The total rows and the blocks are independent reads of the grid: on a large sheet they
     // run side by side (B120).
-    let (labelled_totals, regions) = if registers && sheet.cells.len() >= PARALLEL_MIN_CELLS && crate::threads::parallel() {
-        std::thread::scope(|s| {
-            let h = crate::threads::spawn(s, totals);
-            let regions = blocks();
-            (h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)), regions)
-        })
-    } else {
-        (totals(), blocks())
-    };
+    let (labelled_totals, regions) =
+        if registers && sheet.cells.len() >= PARALLEL_MIN_CELLS && crate::threads::parallel() {
+            std::thread::scope(|s| {
+                let h = crate::threads::spawn(s, totals);
+                let regions = blocks();
+                (
+                    h.join().unwrap_or_else(|e| std::panic::resume_unwind(e)),
+                    regions,
+                )
+            })
+        } else {
+            (totals(), blocks())
+        };
     let mut out = Out {
         roles: vec![Role::Other; sheet.cells.len()],
         tables: Vec::new(),
@@ -90,7 +100,10 @@ fn analyze_inner(grid: &Grid, column_numbers: bool, registers: bool) -> SheetLay
     classify_loose(sheet, &mut out);
     out.tables.sort_by_key(|t| (t.rect.top, t.rect.left));
     trace("layout.loose", t.elapsed());
-    SheetLayout { tables: out.tables, roles: out.roles }
+    SheetLayout {
+        tables: out.tables,
+        roles: out.roles,
+    }
 }
 
 /// Used by the model path (`learned::tables`) so its tables never overlap: where two rectangles do
@@ -110,25 +123,52 @@ pub(crate) fn separate_tables(tables: &mut [crate::analysis::DetectedTable]) {
             let mut cuts: Vec<(usize, Rect)> = Vec::new();
             for (k, x, y) in [(i, a, b), (j, b, a)] {
                 if y.top > x.top {
-                    cuts.push((k, Rect { bottom: y.top - 1, ..x }));
+                    cuts.push((
+                        k,
+                        Rect {
+                            bottom: y.top - 1,
+                            ..x
+                        },
+                    ));
                 }
                 if y.bottom < x.bottom {
-                    cuts.push((k, Rect { top: y.bottom + 1, ..x }));
+                    cuts.push((
+                        k,
+                        Rect {
+                            top: y.bottom + 1,
+                            ..x
+                        },
+                    ));
                 }
                 if y.left > x.left {
-                    cuts.push((k, Rect { right: y.left - 1, ..x }));
+                    cuts.push((
+                        k,
+                        Rect {
+                            right: y.left - 1,
+                            ..x
+                        },
+                    ));
                 }
                 if y.right < x.right {
-                    cuts.push((k, Rect { left: y.right + 1, ..x }));
+                    cuts.push((
+                        k,
+                        Rect {
+                            left: y.right + 1,
+                            ..x
+                        },
+                    ));
                 }
             }
             // A cut that takes a table's header away from it comes last.
             let lost = |&(k, r): &(usize, Rect)| {
                 let t = &tables[k];
-                let headless = t.header_rows > 0 && !(r.top <= t.header_top && t.header_top <= r.bottom);
+                let headless =
+                    t.header_rows > 0 && !(r.top <= t.header_top && t.header_top <= r.bottom);
                 (headless, area(t.rect) - area(r))
             };
-            let Some((k, r)) = cuts.iter().min_by_key(|c| lost(c)).copied() else { continue };
+            let Some((k, r)) = cuts.iter().min_by_key(|c| lost(c)).copied() else {
+                continue;
+            };
             let t = &mut tables[k];
             t.rect = r;
             t.header_top = t.header_top.clamp(r.top, r.bottom);
@@ -147,7 +187,9 @@ fn column_number(v: &crate::model::Value) -> Option<i64> {
             let t = t.trim();
             let t = t.strip_prefix(['(', '[']).unwrap_or(t);
             let t = t.strip_suffix([')', ']', '.']).unwrap_or(t);
-            (!t.is_empty() && t.len() <= 3 && t.bytes().all(|b| b.is_ascii_digit())).then(|| t.parse().ok()).flatten()
+            (!t.is_empty() && t.len() <= 3 && t.bytes().all(|b| b.is_ascii_digit()))
+                .then(|| t.parse().ok())
+                .flatten()
         }
         _ => None,
     }
@@ -160,7 +202,9 @@ pub fn column_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value
     let mut prev: Option<i64> = None;
     let mut n = 0;
     for v in values {
-        let Some(k) = column_number(v) else { return false };
+        let Some(k) = column_number(v) else {
+            return false;
+        };
         if prev.map_or(k < 1, |p| k != p + 1) {
             return false;
         }
@@ -178,7 +222,8 @@ pub fn column_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value
 pub fn labelled_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Value>) -> bool {
     let v: Vec<&crate::model::Value> = values.collect();
     let label = |x: &&crate::model::Value| {
-        matches!(x, crate::model::Value::Text(t) if !t.trim().is_empty()) && column_number(x).is_none()
+        matches!(x, crate::model::Value::Text(t) if !t.trim().is_empty())
+            && column_number(x).is_none()
     };
     let lead = v.iter().take_while(|x| label(x)).count();
     let tail = v.iter().rev().take_while(|x| label(x)).count();
@@ -189,7 +234,9 @@ pub fn labelled_numbering<'a>(values: impl Iterator<Item = &'a crate::model::Val
 }
 
 /// [`labelled_numbering`] with exactly one label, before the numbers (`Year | 1 | 2 | 3 | …`).
-pub fn labelled_numbering_single<'a>(values: impl Iterator<Item = &'a crate::model::Value>) -> bool {
+pub fn labelled_numbering_single<'a>(
+    values: impl Iterator<Item = &'a crate::model::Value>,
+) -> bool {
     let mut it = values.peekable();
     matches!(it.next(), Some(crate::model::Value::Text(t)) if !t.trim().is_empty() && column_number(&crate::model::Value::Text(t.clone())).is_none())
         && column_numbering(it)
@@ -224,13 +271,21 @@ fn classify_loose(sheet: &Sheet, out: &mut Out) {
                 let Some(i) = e.cell else { continue };
                 let cell = &sheet.cells[i];
                 out.roles[i] = match e.kind {
-                    _ if LOOSE_AGGREGATES_AS_TOTAL && cell.formula.as_deref().is_some_and(is_aggregate_formula) => {
+                    _ if LOOSE_AGGREGATES_AS_TOTAL
+                        && cell.formula.as_deref().is_some_and(is_aggregate_formula) =>
+                    {
                         Role::Total
                     }
-                    Kind::Text if LOOSE_AGGREGATES_AS_TOTAL && is_total_label(text_of(cell).unwrap_or("")) => Role::Total,
+                    Kind::Text
+                        if LOOSE_AGGREGATES_AS_TOTAL
+                            && is_total_label(text_of(cell).unwrap_or("")) =>
+                    {
+                        Role::Total
+                    }
                     Kind::Text => {
                         let t = text_of(cell).unwrap_or("");
-                        if is_note_label(t) || (!above && t.trim().chars().count() >= NOTE_MIN_LEN) {
+                        if is_note_label(t) || (!above && t.trim().chars().count() >= NOTE_MIN_LEN)
+                        {
                             Role::Note
                         } else if above {
                             Role::Title
@@ -258,7 +313,10 @@ mod tests {
         let n = |xs: &[&str]| {
             let v: Vec<Value> = xs
                 .iter()
-                .map(|x| x.parse::<f64>().map_or_else(|_| Value::Text(x.to_string()), Value::Number))
+                .map(|x| {
+                    x.parse::<f64>()
+                        .map_or_else(|_| Value::Text(x.to_string()), Value::Number)
+                })
                 .collect();
             column_numbering(v.iter())
         };
@@ -270,11 +328,24 @@ mod tests {
         assert!(!n(&["0", "1", "2"]), "starts at 0");
         assert!(!n(&["1.5", "2.5", "3.5"]));
         assert!(!n(&["Year", "1", "2", "3"]));
-        assert!(!n(&["2019", "2020", "2021"]), "years are a header of their own, not numbers");
+        assert!(
+            !n(&["2019", "2020", "2021"]),
+            "years are a header of their own, not numbers"
+        );
     }
 
     fn t(top: u32, left: u32, bottom: u32, right: u32) -> DetectedTable {
-        DetectedTable { rect: Rect { top, left, bottom, right }, header_top: top, header_rows: 1, confidence: 1.0 }
+        DetectedTable {
+            rect: Rect {
+                top,
+                left,
+                bottom,
+                right,
+            },
+            header_top: top,
+            header_rows: 1,
+            confidence: 1.0,
+        }
     }
 
     #[test]
@@ -282,12 +353,44 @@ mod tests {
         // A table hanging over the next one (Finanzstatistik T2 A17:IB43 over T3 A31:HO43).
         let mut v = vec![t(16, 0, 42, 235), t(30, 0, 42, 222)];
         separate_tables(&mut v);
-        assert_eq!(v[0].rect, Rect { top: 16, left: 0, bottom: 29, right: 235 });
-        assert_eq!(v[1].rect, Rect { top: 30, left: 0, bottom: 42, right: 222 });
+        assert_eq!(
+            v[0].rect,
+            Rect {
+                top: 16,
+                left: 0,
+                bottom: 29,
+                right: 235
+            }
+        );
+        assert_eq!(
+            v[1].rect,
+            Rect {
+                top: 30,
+                left: 0,
+                bottom: 42,
+                right: 222
+            }
+        );
         // A narrow table sharing one column with a wide one gives up that column.
         let mut v = vec![t(7, 2, 108, 10), t(21, 0, 60, 2)];
         separate_tables(&mut v);
-        assert_eq!(v[0].rect, Rect { top: 7, left: 2, bottom: 108, right: 10 });
-        assert_eq!(v[1].rect, Rect { top: 21, left: 0, bottom: 60, right: 1 });
+        assert_eq!(
+            v[0].rect,
+            Rect {
+                top: 7,
+                left: 2,
+                bottom: 108,
+                right: 10
+            }
+        );
+        assert_eq!(
+            v[1].rect,
+            Rect {
+                top: 21,
+                left: 0,
+                bottom: 60,
+                right: 1
+            }
+        );
     }
 }
