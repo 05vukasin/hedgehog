@@ -561,6 +561,7 @@ fn core_options(o: Option<NormalizeOptions>) -> Result<hh_core::NormalizeOptions
         model_max_cells: o.model_max_cells.map(|n| n as usize),
         deadline: None,
         threads: None,
+        shapes_only: false,
     })
 }
 

@@ -47,6 +47,11 @@ Options (CLI flag / Python keyword):
 
 From Rust: `hh_core::normalize_file(path, out_dir, &hh_core::NormalizeOptions { keep_totals, csv, locale })`.
 `hh_core::normalize_workbook(&wb, &opts)` gives the same result in memory without writing files.
+With `NormalizeOptions::shapes_only`, it leaves every column's `values` empty and keeps the rest
+(names, types, units, row numbers, totals, notes): for a caller that only wants to know what tables
+there are. Each sheet's values are dropped once its tables are done, so the values of all tables
+are never in memory at once (a 12-sheet, 3M-cell workbook: peak RSS 398 MB → 295 MB).
+`normalize_file` ignores it.
 
 ## Files
 

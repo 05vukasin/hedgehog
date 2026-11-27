@@ -433,6 +433,7 @@ fn normalize<'py>(
         model_max_cells,
         deadline: None,
         threads: None,
+        shapes_only: false,
     };
     let (path, out_dir) = (path.to_string(), out_dir.to_string());
     let out = py.detach(move || {

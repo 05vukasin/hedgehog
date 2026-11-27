@@ -55,6 +55,14 @@ pub struct Options {
     /// the calling thread. None: up to 4 (fewer on fewer CPUs). The output is the
     /// same for every thread count.
     pub threads: Option<usize>,
+    /// Shapes only: leave every [`Column::values`] empty. Each sheet's tables are built, typed
+    /// and given their derived columns as usual, then their values are dropped before the next
+    /// sheet starts, so the values of all tables are never held at once. Every other field of
+    /// [`Normalized`] is the same as without it (types, units, counts, row numbers, totals,
+    /// notes). For callers that only want to know what tables there are; what reads the values
+    /// ([`time_coverages`], [`table_totals`]' periods, the writers) sees empty columns.
+    /// [`normalize_file`] ignores it, since it writes the values.
+    pub shapes_only: bool,
 }
 
 /// Default for [`Options::model_max_cells`].
@@ -694,7 +702,9 @@ fn normalize_workbook_inner(wb: &Workbook, opts: &Options) -> Normalized {
                 if past(opts.deadline) {
                     break;
                 }
+                let first = out.tables.len();
                 extract::process_sheet(&crate::grid::Grid::new(sheet), opts, lay, &mut out);
+                drop_values(opts, &mut out.tables[first..]);
             }
         }
         // One sheet at a time: its grid (cell index, row and column lines, total detection)
@@ -706,8 +716,10 @@ fn normalize_workbook_inner(wb: &Workbook, opts: &Options) -> Normalized {
                 }
                 let grid = crate::grid::Grid::new(sheet);
                 let (lay, warning) = sheet_layout(&grid, opts);
+                let first = out.tables.len();
                 extract::process_sheet(&grid, opts, (lay, warning, None), &mut out);
                 drop(grid);
+                drop_values(opts, &mut out.tables[first..]);
                 if sheet.cells.len() >= PREFETCH_TOTALS_MIN_CELLS {
                     release_free_memory();
                 }
@@ -715,12 +727,28 @@ fn normalize_workbook_inner(wb: &Workbook, opts: &Options) -> Normalized {
         }
     }
     key_value_tables_last(&mut out);
-    let t0 = std::time::Instant::now();
-    for t in &mut out.tables {
-        derive::add_columns(t);
+    if !opts.shapes_only {
+        let t0 = std::time::Instant::now();
+        for t in &mut out.tables {
+            derive::add_columns(t);
+        }
+        trace("derive", t0);
     }
-    trace("derive", t0);
     out
+}
+
+/// With [`Options::shapes_only`]: the derived columns of one sheet's new tables (they are read
+/// from the values; each table's own, so the same as after all sheets), then the values dropped.
+fn drop_values(opts: &Options, tables: &mut [Table]) {
+    if !opts.shapes_only {
+        return;
+    }
+    for t in tables {
+        derive::add_columns(t);
+        for c in &mut t.columns {
+            c.values = Vec::new();
+        }
+    }
 }
 
 /// The tables of key/value cells ([`Table::is_key_value`]) take the last numbers of the file,
@@ -954,7 +982,13 @@ pub fn normalize_file(
     let wb = crate::reader::open_with(path, read)
         .map_err(|e| Error(format!("{}: {e}", path.display())))?;
     trace("open", t0);
-    let norm = try_normalize_workbook(&wb, opts)?;
+    let norm = try_normalize_workbook(
+        &wb,
+        &Options {
+            shapes_only: false,
+            ..*opts
+        },
+    )?;
     trace("analyze", t0);
     drop(wb);
     std::fs::create_dir_all(out_dir).map_err(|e| Error(format!("{}: {e}", out_dir.display())))?;
