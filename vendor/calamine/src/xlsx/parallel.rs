@@ -78,14 +78,46 @@ pub fn set_parallel_read_for_tests(settings: Option<(usize, usize, u64)>) {
     SETTINGS.with(|s| s.set(settings));
 }
 
-/// Threads for one parallel read: the available CPUs (CPU affinity respected), at most 4.
-pub fn parallel_read_threads() -> usize {
-    if let Some((threads, _, _)) = SETTINGS.with(|s| s.get()) {
-        return threads;
+thread_local! {
+    /// The host's budget for this thread's reads ([`with_parallel_read_threads`]).
+    static LIMIT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    /// Parallel reads this thread started (worker threads spawned).
+    static STARTED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Runs `f` with this thread's parallel reads (sheets, shared strings, ODS tables) on at most
+/// `limit` threads (`Some(1)` or `Some(0)`: one thread, no workers; `None`: the default),
+/// restoring the previous budget after, also on a panic. The results never depend on it.
+pub fn with_parallel_read_threads<R>(limit: Option<usize>, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<usize>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            LIMIT.with(|l| l.set(self.0));
+        }
     }
-    std::thread::available_parallelism()
-        .map_or(1, |n| n.get())
-        .min(4)
+    let _restore = Restore(LIMIT.with(|l| l.replace(limit)));
+    f()
+}
+
+/// Threads for one parallel read: the available CPUs (CPU affinity respected), at most 4, and
+/// at most the budget of [`with_parallel_read_threads`].
+pub fn parallel_read_threads() -> usize {
+    let threads = match SETTINGS.with(|s| s.get()) {
+        Some((threads, _, _)) => threads,
+        None => std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(4),
+    };
+    LIMIT
+        .with(|l| l.get())
+        .map_or(threads, |l| threads.min(l.max(1)))
+}
+
+/// Parallel reads this thread has started so far (each spawned worker threads). A host compares
+/// it before and after a read to know whether worker threads ran (and freed memory in their
+/// allocator arenas).
+pub fn parallel_reads_started() -> usize {
+    STARTED.with(|c| c.get())
 }
 
 pub(crate) fn chunk_bytes() -> usize {
@@ -218,6 +250,7 @@ pub(crate) fn run_chunks<O, E>(
 where
     O: Send,
 {
+    STARTED.with(|c| c.set(c.get() + 1));
     let (job_tx, job_rx) = mpsc::sync_channel::<(usize, Vec<u8>, bool)>(threads);
     let job_rx = Mutex::new(job_rx);
     let (res_tx, res_rx) = mpsc::channel::<(usize, O)>();

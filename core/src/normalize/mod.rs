@@ -50,8 +50,9 @@ pub struct Options {
     /// stops reading) returns an error; sheets not started by then are skipped.
     pub deadline: Option<std::time::Instant>,
     /// Threads that analyze sheets in parallel, and the most threads any step inside one sheet
-    /// uses (totals beside the layout, the model's passes, column typing); `Some(1)` runs
-    /// everything on the calling thread. None: up to 4 (fewer on fewer CPUs). The output is the
+    /// uses (totals beside the layout, the model's passes, column typing; in [`normalize_file`]
+    /// also the read, [`crate::reader::ReadOptions::threads`]); `Some(1)` runs everything on
+    /// the calling thread. None: up to 4 (fewer on fewer CPUs). The output is the
     /// same for every thread count.
     pub threads: Option<usize>,
 }
@@ -949,6 +950,7 @@ pub fn normalize_file(
     let t0 = std::time::Instant::now();
     let mut read = crate::reader::ReadOptions::default();
     read.limits.deadline = opts.deadline;
+    read.threads = opts.threads;
     let wb = crate::reader::open_with(path, read)
         .map_err(|e| Error(format!("{}: {e}", path.display())))?;
     trace("open", t0);

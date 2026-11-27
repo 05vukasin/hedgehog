@@ -259,6 +259,11 @@ pub struct ReadOptions {
     pub formats: bool,
     /// Size, cell and time limits for untrusted files.
     pub limits: Limits,
+    /// The most threads a large sheet, shared string table or ODS `content.xml` is read on;
+    /// `Some(1)` (or `Some(0)`) reads everything on the calling thread. None: up to 4 (fewer on
+    /// fewer CPUs). Hosts that run several files at once pass their per-file budget. The
+    /// workbook is the same for every thread count.
+    pub threads: Option<usize>,
 }
 
 impl Default for ReadOptions {
@@ -267,6 +272,7 @@ impl Default for ReadOptions {
         ReadOptions {
             formats: crate::learned::embedded().is_some_and(|m| m.reads_formats()),
             limits: Limits::default(),
+            threads: None,
         }
     }
 }
@@ -315,8 +321,25 @@ pub fn open_bytes_with(
     )
 }
 
-/// [`open_with`] and [`open_bytes_with`].
+/// [`open_with`] and [`open_bytes_with`], with the parallel reads on at most
+/// [`ReadOptions::threads`] threads.
 fn read<S: Source>(src: &S, opts: ReadOptions) -> Result<Workbook, Error> {
+    calamine::with_parallel_read_threads(opts.threads, || read_inner(src, opts))
+}
+
+/// Gives memory back to the system ([`crate::normalize::release_free_memory`]) when a parallel
+/// read started since `started` ([`calamine::parallel_reads_started`]): its worker threads freed
+/// it in their own allocator arenas. A one-thread read skips the trim, which walks and locks
+/// every arena of the process.
+fn release_after_parallel(started: usize) {
+    if calamine::parallel_reads_started() != started {
+        let t = std::time::Instant::now();
+        crate::normalize::release_free_memory();
+        trace("read.trim", t);
+    }
+}
+
+fn read_inner<S: Source>(src: &S, opts: ReadOptions) -> Result<Workbook, Error> {
     let small = || src.size().is_some_and(|n| n <= FORMATS_MAX_BYTES);
     let opts = ReadOptions {
         formats: opts.formats || small(),
@@ -338,10 +361,11 @@ fn read<S: Source>(src: &S, opts: ReadOptions) -> Result<Workbook, Error> {
     }
     trace("read.limits", t);
     let t = std::time::Instant::now();
+    let started = calamine::parallel_reads_started();
     let opened = open_sheets(src);
     // ODS content and large shared string tables are parsed on several threads: what they
     // freed goes back to the system before the sheets are read.
-    crate::normalize::release_free_memory();
+    release_after_parallel(started);
     trace("read.workbook", t);
     match opened {
         Ok(wb) => {
@@ -581,10 +605,10 @@ fn read_xlsx_cells<RS: Read + Seek>(
 /// Sheet parts of at least this many bytes (uncompressed) are read on several threads.
 const PARALLEL_MIN_PART: u64 = 2 << 20;
 
-/// [`read_xlsx_cells`] for a large sheet, on up to four threads (calamine's
-/// `worksheet_cells_parallel`: the same records, in chunks). `Ok(None)`: not read this way, read
-/// it with [`read_xlsx_cells`] (also a sheet whose records are not in row order, which that
-/// sorts and folds).
+/// [`read_xlsx_cells`] for a large sheet, on up to four threads (at most
+/// [`ReadOptions::threads`]; calamine's `worksheet_cells_parallel`: the same records, in
+/// chunks). `Ok(None)`: not read this way, read it with [`read_xlsx_cells`] (also a sheet whose
+/// records are not in row order, which that sorts and folds).
 fn read_xlsx_parallel<RS: Read + Seek>(
     x: &mut Xlsx<RS>,
     name: &str,
@@ -618,13 +642,13 @@ fn read_xlsx_parallel<RS: Read + Seek>(
         }
         Ok(())
     };
-    let Some(dims) =
-        x.worksheet_cells_parallel(name, threads, PARALLEL_MIN_PART, cell, &mut sink)?
-    else {
+    let started = calamine::parallel_reads_started();
+    let read = x.worksheet_cells_parallel(name, threads, PARALLEL_MIN_PART, cell, &mut sink);
+    // What the worker threads freed goes back to the system before the next sheet.
+    release_after_parallel(started);
+    let Some(dims) = read? else {
         return Ok(None);
     };
-    // What the worker threads freed goes back to the system before the next sheet.
-    crate::normalize::release_free_memory();
     if !ordered {
         return Ok(None);
     }
