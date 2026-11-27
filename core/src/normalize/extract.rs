@@ -5533,7 +5533,7 @@ mod tests {
         use crate::model::Sheet;
         let text = |s: &str| Some(Value::Text(s.into()));
         let num = |n| Some(Value::Number(n));
-        let rows = vec![
+        let rows = [
             vec![
                 text("Item"),
                 text("Value A"),
@@ -5839,7 +5839,7 @@ mod tests {
         use crate::model::{Rect, Sheet};
         let t = |s: &str| Some(Value::Text(s.into()));
         for case in 0..9 {
-            let mut rows = vec![
+            let mut rows = [
                 vec![
                     t("Item"),
                     t("Number"),
@@ -5929,7 +5929,7 @@ mod tests {
         let t = |s: &str| Some(Value::Text(s.into()));
         let n = |x| Some(Value::Number(x));
         for case in 0..14 {
-            let mut rows = vec![
+            let mut rows = [
                 vec![t("Period"), t("Correlation"), None, None],
                 vec![t("B"), n(0.0), None, None],
                 vec![t("C"), n(0.4), n(0.2), None],
@@ -6004,7 +6004,7 @@ mod tests {
         use crate::model::{Rect, Sheet};
         let t = |s: &str| Some(Value::Text(s.into()));
         for case in 0..16 {
-            let mut rows = vec![
+            let mut rows = [
                 vec![
                     None,
                     t("Contemporary prices"),
@@ -6053,8 +6053,8 @@ mod tests {
                 13 => rows[0][3] = t("Contemporary prices"),
                 14 => rows[0][5] = None,
                 15 => {
-                    for col in 1..5 {
-                        rows[2][col] = Some(Value::Number(2000.0 + ((col - 1) % 2) as f64));
+                    for (i, cell) in rows[2][1..5].iter_mut().enumerate() {
+                        *cell = Some(Value::Number(2000.0 + (i % 2) as f64));
                     }
                 }
                 _ => {}
@@ -6161,7 +6161,7 @@ mod tests {
     #[test]
     fn merged_parent_recovery_does_not_reuse_owned_cells() {
         use crate::model::{Rect, Sheet};
-        let rows = vec![
+        let rows = [
             vec![
                 Some(Value::Text("North".into())),
                 None,

@@ -58,9 +58,8 @@ fn long_parent_budget_preserves_source_province_and_unit_paths() {
         .enumerate()
         {
             ws.write_string(5 + i as u32, 0, *sector).unwrap();
-            for j in 0..10 {
-                ws.write_number(5 + i as u32, 1 + j as u16, data[i][j])
-                    .unwrap();
+            for (j, value) in data[i].iter().enumerate() {
+                ws.write_number(5 + i as u32, 1 + j as u16, *value).unwrap();
             }
         }
         wb.save(&path).unwrap();

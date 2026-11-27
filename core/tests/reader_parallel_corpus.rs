@@ -39,19 +39,16 @@ fn files() -> Vec<PathBuf> {
     v
 }
 
-/// The workbook as comparable text: per sheet its name, cells, merges and formats; or the error.
-fn read(
-    path: &PathBuf,
-    formats: bool,
-) -> Result<
-    Vec<(
-        String,
-        Vec<hh_core::Cell>,
-        Vec<hh_core::Rect>,
-        Vec<hh_core::model::Format>,
-    )>,
+/// One sheet as comparable parts: its name, cells, merges and formats.
+type SheetParts = (
     String,
-> {
+    Vec<hh_core::Cell>,
+    Vec<hh_core::Rect>,
+    Vec<hh_core::model::Format>,
+);
+
+/// The workbook as comparable text: per sheet its name, cells, merges and formats; or the error.
+fn read(path: &PathBuf, formats: bool) -> Result<Vec<SheetParts>, String> {
     let wb = open_with(
         path,
         ReadOptions {

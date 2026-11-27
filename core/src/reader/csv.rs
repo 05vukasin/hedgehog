@@ -711,7 +711,7 @@ mod tests {
                 .map(|_| alphabet[(next() % alphabet.len() as u64) as usize])
                 .collect();
             let cap = 1 + (next() % 9) as usize;
-            for delim in [b',', b';', b'\t', b'|'] {
+            for delim in *b",;\t|" {
                 let mut a = Parser::new(
                     std::io::BufReader::with_capacity(cap, input.as_slice()),
                     delim,

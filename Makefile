@@ -95,7 +95,7 @@ quick-update:
 	@scripts/quick.sh --update
 
 clippy:
-	@$(call capped,2500M,clippy,cargo clippy --workspace -- -D warnings)
+	@$(call capped,2500M,clippy,cargo clippy --workspace --all-targets -- -D warnings)
 
 # Output hashes of 50 Enron files must not change (release CLI).
 golden: cli
