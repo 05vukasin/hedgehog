@@ -79,7 +79,7 @@ dependencies = [
  "memchr",
  "quick-xml",
  "serde",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -500,7 +500,7 @@ dependencies = [
  "memchr",
  "rust_xlsxwriter",
  "rustc-hash",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -511,7 +511,7 @@ dependencies = [
  "hh_agent",
  "hh_core",
  "rust_xlsxwriter",
- "zip 9.0.5",
+ "zip",
 ]
 
 [[package]]
@@ -899,7 +899,7 @@ name = "rust_xlsxwriter"
 version = "0.99.1"
 dependencies = [
  "tempfile",
- "zip 8.6.0",
+ "zip",
  "zmij",
 ]
 
@@ -1248,20 +1248,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "zip"
-version = "8.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
-dependencies = [
- "crc32fast",
- "flate2",
- "indexmap",
- "memchr",
- "typed-path",
- "zopfli",
 ]
 
 [[package]]
